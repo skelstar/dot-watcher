@@ -12,9 +12,9 @@ http:
       {
         "runnerName": "Alice",
         "sessionCode": "SUNSET23",
-        "latitude": -33.9588,
-        "longitude": 153.2093,
-        "heading": 280.5,
+        "latitude": -41.17,
+        "longitude": 174.7762,
+        "heading": 270.5,
         "timestamp": "2024-11-15T09:23:45Z"
       }
   auth:

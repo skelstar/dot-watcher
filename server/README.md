@@ -65,8 +65,8 @@ Receives a position update from a phone app.
 {
   "runnerName": "Alice",
   "sessionCode": "SUNSET23",
-  "latitude": -33.8688,
-  "longitude": 151.2093,
+  "latitude": -41.17,
+  "longitude": 174.7762,
   "heading": 270.5,
   "timestamp": "2024-11-15T09:23:45Z"
 }
@@ -103,12 +103,36 @@ Array of arrays — one inner array per runner, each containing up to `PositionH
 ```json
 [
   [
-    { "runnerName": "Alice", "latitude": -33.8680, "longitude": 151.2090, "heading": 268.0, "timestamp": "2024-11-15T09:23:25Z" },
-    { "runnerName": "Alice", "latitude": -33.8684, "longitude": 151.2091, "heading": 269.5, "timestamp": "2024-11-15T09:23:35Z" },
-    { "runnerName": "Alice", "latitude": -33.8688, "longitude": 151.2093, "heading": 270.5, "timestamp": "2024-11-15T09:23:45Z" }
+    {
+      "runnerName": "Alice",
+      "latitude": -33.868,
+      "longitude": 151.209,
+      "heading": 268.0,
+      "timestamp": "2024-11-15T09:23:25Z"
+    },
+    {
+      "runnerName": "Alice",
+      "latitude": -33.8684,
+      "longitude": 151.2091,
+      "heading": 269.5,
+      "timestamp": "2024-11-15T09:23:35Z"
+    },
+    {
+      "runnerName": "Alice",
+      "latitude": -33.8688,
+      "longitude": 151.2093,
+      "heading": 270.5,
+      "timestamp": "2024-11-15T09:23:45Z"
+    }
   ],
   [
-    { "runnerName": "Bob", "latitude": -33.8695, "longitude": 151.2101, "heading": null, "timestamp": "2024-11-15T09:23:30Z" }
+    {
+      "runnerName": "Bob",
+      "latitude": -33.8695,
+      "longitude": 151.2101,
+      "heading": null,
+      "timestamp": "2024-11-15T09:23:30Z"
+    }
   ]
 ]
 ```
