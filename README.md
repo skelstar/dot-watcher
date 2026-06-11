@@ -1,4 +1,4 @@
-# Dot Chaser
+# Dot Watcher
 
 Real-time GPS tracking for running groups. Runners share their position during a group run, race, or solo outing. Supporters and fellow runners can watch everyone's location on a live map in a browser.
 
@@ -7,7 +7,7 @@ Real-time GPS tracking for running groups. Runners share their position during a
 ## Repo structure
 
 ```
-dot-chaser/
+dot-watcher/
   server/      .NET Core minimal API
   client/      React web app (Mapbox)
   ios/         Swift iOS app
@@ -68,7 +68,7 @@ A React web app using Mapbox GL JS.
 
 - Full-screen Mapbox map, responsive and touch-friendly
 - On first load, prompts for a session code if not present in the URL
-- Session code can be embedded in the URL for easy sharing (e.g. `https://dot-chaser.yourdomain.com/SESSIONCODE`)
+- Session code can be embedded in the URL for easy sharing (e.g. `https://dot-watcher.yourdomain.com/SESSIONCODE`)
 - Polls the server for updated positions every 10–15 seconds
 - Renders each runner as a named marker with a directional arrow
 - Arrow orientation is driven by the `heading` field from the server (compass bearing from the phone)

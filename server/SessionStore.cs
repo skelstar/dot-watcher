@@ -1,6 +1,6 @@
 using System.Collections.Concurrent;
 
-namespace DotChaser.Server;
+namespace DotWatcher.Server;
 
 public class SessionStore
 {

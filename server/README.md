@@ -1,6 +1,6 @@
 # Server
 
-.NET 9 minimal API for Dot Chaser. Receives GPS positions from the iOS app and serves them to web viewers. All data is held in memory — no database.
+.NET 9 minimal API for Dot Watcher. Receives GPS positions from the iOS app and serves them to web viewers. All data is held in memory — no database.
 
 ---
 
@@ -160,13 +160,13 @@ RUN dotnet publish -c Release -o /app/publish
 FROM base AS final
 WORKDIR /app
 COPY --from=build /app/publish .
-ENTRYPOINT ["dotnet", "DotChaser.Server.dll"]
+ENTRYPOINT ["dotnet", "DotWatcher.Server.dll"]
 ```
 
 Build:
 
 ```bash
-docker build -t dot-chaser-server:latest .
+docker build -t dot-watcher-server:latest .
 ```
 
 ### Kubernetes manifests
@@ -177,7 +177,7 @@ Store the bearer token as a Secret:
 apiVersion: v1
 kind: Secret
 metadata:
-  name: dot-chaser-secrets
+  name: dot-watcher-secrets
 stringData:
   bearer-token: your-secret-token-here
 ```
@@ -188,20 +188,20 @@ Deployment:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: dot-chaser-server
+  name: dot-watcher-server
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: dot-chaser-server
+      app: dot-watcher-server
   template:
     metadata:
       labels:
-        app: dot-chaser-server
+        app: dot-watcher-server
     spec:
       containers:
         - name: server
-          image: dot-chaser-server:latest
+          image: dot-watcher-server:latest
           ports:
             - containerPort: 8080
           env:
@@ -210,7 +210,7 @@ spec:
             - name: BearerToken
               valueFrom:
                 secretKeyRef:
-                  name: dot-chaser-secrets
+                  name: dot-watcher-secrets
                   key: bearer-token
 ```
 

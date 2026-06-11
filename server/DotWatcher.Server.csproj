@@ -3,7 +3,7 @@
     <TargetFramework>net9.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <RootNamespace>DotChaser.Server</RootNamespace>
-    <AssemblyName>DotChaser.Server</AssemblyName>
+    <RootNamespace>DotWatcher.Server</RootNamespace>
+    <AssemblyName>DotWatcher.Server</AssemblyName>
   </PropertyGroup>
 </Project>

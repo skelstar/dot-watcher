@@ -1,4 +1,4 @@
-using DotChaser.Server;
+using DotWatcher.Server;
 
 var builder = WebApplication.CreateBuilder(args);
 

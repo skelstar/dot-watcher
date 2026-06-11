@@ -1,4 +1,4 @@
-namespace DotChaser.Server;
+namespace DotWatcher.Server;
 
 public record LocationUpdate(
     string RunnerName,
