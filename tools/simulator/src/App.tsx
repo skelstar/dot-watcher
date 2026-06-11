@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import positions from './positions.json'
+import seanPositions from './positions.json'
+import davidPositions from '../../../data/turbine-run-positions-david-trimmed.json'
 
 const SERVER_URL = import.meta.env.VITE_SERVER_URL ?? 'http://localhost:5000'
 const SESSION_CODE = import.meta.env.VITE_SESSION_CODE as string
@@ -7,20 +8,12 @@ const BEARER_TOKEN = import.meta.env.VITE_BEARER_TOKEN as string
 
 const RUNNERS = ['Sean', 'David']
 
-function offsetPosition(
-  lat: number,
-  lon: number,
-  heading: number | null,
-  metres: number,
-): { latitude: number; longitude: number } {
-  if (heading === null) return { latitude: lat, longitude: lon }
-  const oppositeRad = ((heading + 180) % 360) * (Math.PI / 180)
-  const deltaLat = (metres * Math.cos(oppositeRad)) / 111_320
-  const deltaLon = (metres * Math.sin(oppositeRad)) / (111_320 * Math.cos(lat * (Math.PI / 180)))
-  return { latitude: lat + deltaLat, longitude: lon + deltaLon }
-}
 const DISPLAY_COUNT = 20
-const candidates = positions.slice(0, DISPLAY_COUNT)
+const RUNNER_POSITIONS: Record<string, { latitude: number; longitude: number; heading: number | null }[]> = {
+  Sean: seanPositions.slice(0, DISPLAY_COUNT),
+  David: davidPositions.slice(0, DISPLAY_COUNT),
+}
+const MAX_ROWS = Math.max(...RUNNERS.map(name => RUNNER_POSITIONS[name].length))
 
 type Status = 'idle' | 'sending' | 'ok' | 'error'
 
@@ -33,7 +26,7 @@ type RunnerRows = Record<string, RowState[]>
 
 function emptyRows(): RunnerRows {
   return Object.fromEntries(
-    RUNNERS.map(name => [name, candidates.map(() => ({ status: 'idle' as Status }))])
+    RUNNERS.map(name => [name, RUNNER_POSITIONS[name].map(() => ({ status: 'idle' as Status }))])
   )
 }
 
@@ -48,7 +41,7 @@ export default function App() {
   }
 
   async function handleCheck(runner: string, index: number) {
-    const pos = candidates[index]
+    const pos = RUNNER_POSITIONS[runner][index]
     setRow(runner, index, { status: 'sending' })
 
     try {
@@ -61,9 +54,8 @@ export default function App() {
         body: JSON.stringify({
           runnerName: runner,
           sessionCode: SESSION_CODE,
-          ...(runner === 'David'
-            ? offsetPosition(pos.latitude, pos.longitude, pos.heading, 5)
-            : { latitude: pos.latitude, longitude: pos.longitude }),
+          latitude: pos.latitude,
+          longitude: pos.longitude,
           heading: pos.heading,
           timestamp: new Date().toISOString(),
         }),
@@ -111,19 +103,22 @@ export default function App() {
           <tr>
             <th style={th}>#</th>
             {RUNNERS.map(name => (
-              <th key={name} style={th} colSpan={2}>{name}</th>
+              <th key={name} style={th} colSpan={3}>{name}</th>
             ))}
           </tr>
         </thead>
         <tbody>
-          {candidates.map((_, i) => (
+          {Array.from({ length: MAX_ROWS }, (_, i) => (
             <tr key={i} style={{ background: i % 2 === 0 ? '#fff' : '#f1f5f9' }}>
               <td style={td}>{i + 1}</td>
               {RUNNERS.map(name => {
                 const row = runnerRows[name][i]
+                if (!row) return <td key={`${name}-empty`} style={td} colSpan={3} />
                 const enabled = isEnabled(name, i)
+                const time = RUNNER_POSITIONS[name][i]?.timestamp?.slice(11, 16) ?? ''
                 return (
                   <>
+                    <td key={`${name}-time`} style={{ ...td, color: '#64748b', fontSize: '0.78rem' }}>{time}</td>
                     <td key={`${name}-cb`} style={td}>
                       <input
                         type="checkbox"
