@@ -2,7 +2,8 @@ using DotWatcher.Server;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Services.AddSingleton<SessionStore>();
+var positionHistoryCount = builder.Configuration.GetValue<int>("PositionHistoryCount", 3);
+builder.Services.AddSingleton(new SessionStore(positionHistoryCount));
 builder.Services.AddCors(options =>
     options.AddDefaultPolicy(policy =>
         policy.AllowAnyOrigin().AllowAnyHeader().AllowAnyMethod()));
@@ -29,7 +30,7 @@ app.MapPost("/location", (LocationUpdate update, SessionStore store, HttpRequest
 });
 
 // Return the latest position for every runner in a session
-app.MapGet("/positions/{sessionCode}", (string sessionCode, SessionStore store) =>
+app.MapGet("/locations/{sessionCode}", (string sessionCode, SessionStore store) =>
     Results.Ok(store.GetLatestPositions(sessionCode)));
 
 // Clear all history for a session (use between runs)

@@ -90,30 +90,26 @@ Receives a position update from a phone app.
 
 ---
 
-### `GET /positions/{sessionCode}`
+### `GET /locations/{sessionCode}`
 
-Returns the latest position for every runner in a session. Called by the web viewer.
+Returns the last `n` positions for every runner in a session (configurable via `PositionHistoryCount` in `appsettings.json`, default 3). Called by the web viewer.
 
 **Auth:** None. The session code in the URL path is the only access control for read operations.
 
 **Response body:**
 
+Array of arrays — one inner array per runner, each containing up to `PositionHistoryCount` positions ordered oldest-to-newest.
+
 ```json
 [
-  {
-    "runnerName": "Alice",
-    "latitude": -33.8688,
-    "longitude": 151.2093,
-    "heading": 270.5,
-    "timestamp": "2024-11-15T09:23:45Z"
-  },
-  {
-    "runnerName": "Bob",
-    "latitude": -33.8695,
-    "longitude": 151.2101,
-    "heading": null,
-    "timestamp": "2024-11-15T09:23:30Z"
-  }
+  [
+    { "runnerName": "Alice", "latitude": -33.8680, "longitude": 151.2090, "heading": 268.0, "timestamp": "2024-11-15T09:23:25Z" },
+    { "runnerName": "Alice", "latitude": -33.8684, "longitude": 151.2091, "heading": 269.5, "timestamp": "2024-11-15T09:23:35Z" },
+    { "runnerName": "Alice", "latitude": -33.8688, "longitude": 151.2093, "heading": 270.5, "timestamp": "2024-11-15T09:23:45Z" }
+  ],
+  [
+    { "runnerName": "Bob", "latitude": -33.8695, "longitude": 151.2101, "heading": null, "timestamp": "2024-11-15T09:23:30Z" }
+  ]
 ]
 ```
 
@@ -219,6 +215,6 @@ spec:
 ## Notes
 
 - Restarting the server clears all sessions — data is in-memory only.
-- Full position history is stored per runner per session, not just the latest fix. The `GET /positions` endpoint returns only the latest position per runner.
+- Full position history is stored per runner per session. The `GET /locations/{sessionCode}` endpoint returns the last `n` positions per runner (controlled by `PositionHistoryCount` in `appsettings.json`).
 - CORS is open (`AllowAnyOrigin`) — appropriate for a private deployment behind Cloudflare.
 - Session codes are not validated beyond being present in the URL. An unknown code returns an empty array rather than a 404.

@@ -2,7 +2,7 @@ using System.Collections.Concurrent;
 
 namespace DotWatcher.Server;
 
-public class SessionStore
+public class SessionStore(int positionHistoryCount)
 {
     private readonly ConcurrentDictionary<string, ConcurrentDictionary<string, List<RunnerPosition>>> _sessions = new();
 
@@ -14,18 +14,18 @@ public class SessionStore
             history.Add(new RunnerPosition(update.RunnerName, update.Latitude, update.Longitude, update.Heading, update.Timestamp));
     }
 
-    public IReadOnlyList<RunnerPosition> GetLatestPositions(string sessionCode)
+    public IReadOnlyList<RunnerPosition[]> GetLatestPositions(string sessionCode)
     {
         if (!_sessions.TryGetValue(sessionCode, out var session))
             return [];
 
-        var result = new List<RunnerPosition>(session.Count);
+        var result = new List<RunnerPosition[]>(session.Count);
         foreach (var (_, history) in session)
         {
             lock (history)
             {
                 if (history.Count > 0)
-                    result.Add(history[^1]);
+                    result.Add(history.TakeLast(positionHistoryCount).ToArray());
             }
         }
         return result;

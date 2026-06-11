@@ -37,7 +37,7 @@ A lightweight .NET Core minimal API.
 
 - Receive position updates from phone apps (`POST /location`)
 - Store position history for all runners in memory (full history, not just latest)
-- Serve current runner positions to the web viewer (`GET /positions/{sessionCode}`)
+- Serve current runner positions to the web viewer (`GET /locations/{sessionCode}`)
 - No geometry or bearing logic — that is handled by the client
 
 **Auth**
@@ -114,7 +114,7 @@ A native Swift app.
 | Actor      | Method                         | Auth                                   |
 | ---------- | ------------------------------ | -------------------------------------- |
 | Phone app  | `POST /location`               | Bearer token in `Authorization` header |
-| Web viewer | `GET /positions/{sessionCode}` | Session code in URL path               |
+| Web viewer | `GET /locations/{sessionCode}` | Session code in URL path               |
 
 The bearer token (for phone apps) and the session code (for viewers) are separate credentials. The session code is safe to share publicly — it only grants read access to positions.
 
