@@ -5,6 +5,7 @@ import type { RunnerPosition } from './types.ts'
 interface MarkerEntry {
   marker: mapboxgl.Marker
   el: HTMLElement
+  isLatest: boolean
 }
 
 export function useRunnerMarkers(
@@ -14,9 +15,11 @@ export function useRunnerMarkers(
   intervalMs: number,
 ): void {
   const markersRef = useRef<Record<string, MarkerEntry>>({})
+  const hasLocatedRef = useRef(false)
 
   useEffect(() => {
     if (!sessionCode) return
+    hasLocatedRef.current = false
 
     let cancelled = false
 
@@ -33,35 +36,49 @@ export function useRunnerMarkers(
 
         for (const positions of runnerGroups) {
           if (!positions.length) continue
-          const latest = positions[positions.length - 1]
-          const { runnerName, latitude, longitude, heading } = latest
-          seen.add(runnerName)
+          const lastIndex = positions.length - 1
 
-          const lngLat: [number, number] = [longitude, latitude]
+          positions.forEach((pos, i) => {
+            const { runnerName, latitude, longitude, heading } = pos
+            const key = `${runnerName}:${pos.timestamp}`
+            const isLatest = i === lastIndex
+            seen.add(key)
 
-          if (markersRef.current[runnerName]) {
-            markersRef.current[runnerName].marker.setLngLat(lngLat)
-            if (heading != null) {
-              markersRef.current[runnerName].el.style.transform = `rotate(${heading}deg)`
+            const lngLat: [number, number] = [longitude, latitude]
+
+            const existing = markersRef.current[key]
+            if (existing && existing.isLatest === isLatest) {
+              existing.marker.setLngLat(lngLat)
+              if (isLatest && heading != null) {
+                const svg = existing.el.querySelector('svg')
+                if (svg) (svg as HTMLElement).style.transform = `rotate(${heading}deg)`
+              }
+            } else {
+              existing?.marker.remove()
+              const el = createMarkerEl(runnerName, heading, isLatest)
+              const marker = new mapboxgl.Marker({ element: el })
+                .setLngLat(lngLat)
+                .addTo(map)
+              markersRef.current[key] = { marker, el, isLatest }
             }
-          } else {
-            const el = createMarkerEl(runnerName, heading)
-            const marker = new mapboxgl.Marker({ element: el })
-              .setLngLat(lngLat)
-              .addTo(map)
-            markersRef.current[runnerName] = { marker, el }
+          })
+        }
+
+        for (const key of Object.keys(markersRef.current)) {
+          if (!seen.has(key)) {
+            markersRef.current[key].marker.remove()
+            delete markersRef.current[key]
           }
         }
 
-        for (const name of Object.keys(markersRef.current)) {
-          if (!seen.has(name)) {
-            markersRef.current[name].marker.remove()
-            delete markersRef.current[name]
-          }
-        }
-
-        if (seen.size > 0) {
-          const coords = Object.values(markersRef.current).map(({ marker }) => marker.getLngLat())
+        if (seen.size > 0 && !hasLocatedRef.current) {
+          hasLocatedRef.current = true
+          // fit to latest positions only, not history dots
+          const latestCoords = runnerGroups
+            .filter(g => g.length > 0)
+            .map(g => g[g.length - 1])
+            .map(p => new mapboxgl.LngLat(p.longitude, p.latitude))
+          const coords = latestCoords
           if (coords.length === 1) {
             map.easeTo({ center: coords[0], zoom: 15 })
           } else {
@@ -95,39 +112,56 @@ export function useRunnerMarkers(
   }, [])
 }
 
-function createMarkerEl(name: string, heading: number | null): HTMLElement {
+function createMarkerEl(name: string, heading: number | null, isLatest: boolean): HTMLElement {
   const wrapper = document.createElement('div')
-  wrapper.style.cssText = 'display:flex;flex-direction:column;align-items:center;gap:3px;'
+  wrapper.style.cssText = 'display:flex;flex-direction:column;align-items:center;gap:4px;'
 
-  const dot = document.createElement('div')
-  dot.style.cssText = `
-    width: 14px;
-    height: 14px;
-    border-radius: 50%;
-    background: #3b82f6;
-    border: 2px solid #fff;
-    box-shadow: 0 1px 4px rgba(0,0,0,0.4);
-  `
-  if (heading != null) {
-    dot.style.borderRadius = '50% 50% 50% 0'
-    dot.style.transform = `rotate(${heading}deg)`
+  if (isLatest) {
+    const arrow = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
+    arrow.setAttribute('width', '32')
+    arrow.setAttribute('height', '32')
+    arrow.setAttribute('viewBox', '0 0 24 24')
+    arrow.style.cssText = `
+      filter: drop-shadow(0 1px 3px rgba(0,0,0,0.35));
+      transform: rotate(${heading ?? 0}deg);
+    `
+    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path')
+    path.setAttribute('d', 'M12 2 L20 20 L12 15 L4 20 Z')
+    path.setAttribute('fill', '#3b82f6')
+    path.setAttribute('stroke', 'white')
+    path.setAttribute('stroke-width', '1.5')
+    path.setAttribute('stroke-linejoin', 'round')
+    arrow.appendChild(path)
+    wrapper.appendChild(arrow)
+  } else {
+    const dot = document.createElement('div')
+    dot.style.cssText = `
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: #3b82f6;
+      border: 2px solid white;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.35);
+    `
+    wrapper.appendChild(dot)
   }
 
-  const label = document.createElement('div')
-  label.textContent = name
-  label.style.cssText = `
-    font-size: 11px;
-    font-family: system-ui, sans-serif;
-    font-weight: 600;
-    color: #1e293b;
-    background: rgba(255,255,255,0.85);
-    padding: 1px 5px;
-    border-radius: 4px;
-    white-space: nowrap;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.2);
-  `
+  if (isLatest) {
+    const label = document.createElement('div')
+    label.textContent = name
+    label.style.cssText = `
+      font-size: 11px;
+      font-family: system-ui, sans-serif;
+      font-weight: 600;
+      color: #1e293b;
+      background: rgba(255,255,255,0.85);
+      padding: 1px 5px;
+      border-radius: 4px;
+      white-space: nowrap;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+    `
+    wrapper.appendChild(label)
+  }
 
-  wrapper.appendChild(dot)
-  wrapper.appendChild(label)
   return wrapper
 }
