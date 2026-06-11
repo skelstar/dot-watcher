@@ -5,6 +5,20 @@ const SERVER_URL = import.meta.env.VITE_SERVER_URL ?? 'http://localhost:5000'
 const SESSION_CODE = import.meta.env.VITE_SESSION_CODE as string
 const BEARER_TOKEN = import.meta.env.VITE_BEARER_TOKEN as string
 
+const RUNNERS = ['Sean', 'David']
+
+function offsetPosition(
+  lat: number,
+  lon: number,
+  heading: number | null,
+  metres: number,
+): { latitude: number; longitude: number } {
+  if (heading === null) return { latitude: lat, longitude: lon }
+  const oppositeRad = ((heading + 180) % 360) * (Math.PI / 180)
+  const deltaLat = (metres * Math.cos(oppositeRad)) / 111_320
+  const deltaLon = (metres * Math.sin(oppositeRad)) / (111_320 * Math.cos(lat * (Math.PI / 180)))
+  return { latitude: lat + deltaLat, longitude: lon + deltaLon }
+}
 const DISPLAY_COUNT = 20
 const candidates = positions.slice(0, DISPLAY_COUNT)
 
@@ -15,18 +29,27 @@ interface RowState {
   error?: string
 }
 
-export default function App() {
-  const [rows, setRows] = useState<RowState[]>(() =>
-    candidates.map(() => ({ status: 'idle' }))
-  )
+type RunnerRows = Record<string, RowState[]>
 
-  function setRow(index: number, update: Partial<RowState>) {
-    setRows(prev => prev.map((r, i) => (i === index ? { ...r, ...update } : r)))
+function emptyRows(): RunnerRows {
+  return Object.fromEntries(
+    RUNNERS.map(name => [name, candidates.map(() => ({ status: 'idle' as Status }))])
+  )
+}
+
+export default function App() {
+  const [runnerRows, setRunnerRows] = useState<RunnerRows>(emptyRows)
+
+  function setRow(runner: string, index: number, update: Partial<RowState>) {
+    setRunnerRows(prev => ({
+      ...prev,
+      [runner]: prev[runner].map((r, i) => (i === index ? { ...r, ...update } : r)),
+    }))
   }
 
-  async function handleCheck(index: number) {
+  async function handleCheck(runner: string, index: number) {
     const pos = candidates[index]
-    setRow(index, { status: 'sending' })
+    setRow(runner, index, { status: 'sending' })
 
     try {
       const res = await fetch(`${SERVER_URL}/location`, {
@@ -36,27 +59,24 @@ export default function App() {
           Authorization: `Bearer ${BEARER_TOKEN}`,
         },
         body: JSON.stringify({
-          runnerName: pos.runnerName,
+          runnerName: runner,
           sessionCode: SESSION_CODE,
-          latitude: pos.latitude,
-          longitude: pos.longitude,
+          ...(runner === 'David'
+            ? offsetPosition(pos.latitude, pos.longitude, pos.heading, 5)
+            : { latitude: pos.latitude, longitude: pos.longitude }),
           heading: pos.heading,
           timestamp: new Date().toISOString(),
         }),
       })
 
-      if (res.ok) {
-        setRow(index, { status: 'ok' })
-      } else {
-        setRow(index, { status: 'error', error: `HTTP ${res.status}` })
-      }
-    } catch (e) {
-      setRow(index, { status: 'error', error: 'Network error' })
+      setRow(runner, index, res.ok ? { status: 'ok' } : { status: 'error', error: `HTTP ${res.status}` })
+    } catch {
+      setRow(runner, index, { status: 'error', error: 'Network error' })
     }
   }
 
-  // Row N is enabled only when row N-1 is 'ok' (or N === 0)
-  function isEnabled(index: number) {
+  function isEnabled(runner: string, index: number) {
+    const rows = runnerRows[runner]
     if (index === 0) return rows[0].status === 'idle' || rows[0].status === 'error'
     return rows[index - 1].status === 'ok' && rows[index].status !== 'ok'
   }
@@ -68,9 +88,9 @@ export default function App() {
         headers: { Authorization: `Bearer ${BEARER_TOKEN}` },
       })
     } catch {
-      // best-effort — reset the UI regardless
+      // best-effort — reset UI regardless
     }
-    setRows(candidates.map(() => ({ status: 'idle' })))
+    setRunnerRows(emptyRows())
   }
 
   return (
@@ -90,38 +110,35 @@ export default function App() {
         <thead>
           <tr>
             <th style={th}>#</th>
-            <th style={th}>Send</th>
-            <th style={th}>Lat</th>
-            <th style={th}>Lng</th>
-            <th style={th}>Heading</th>
-            <th style={th}>Original timestamp</th>
-            <th style={th}>Result</th>
+            {RUNNERS.map(name => (
+              <th key={name} style={th} colSpan={2}>{name}</th>
+            ))}
           </tr>
         </thead>
         <tbody>
-          {candidates.map((pos, i) => {
-            const row = rows[i]
-            const enabled = isEnabled(i)
-            return (
-              <tr key={i} style={{ background: i % 2 === 0 ? '#fff' : '#f1f5f9' }}>
-                <td style={td}>{i + 1}</td>
-                <td style={td}>
-                  <input
-                    type="checkbox"
-                    disabled={!enabled}
-                    checked={row.status === 'ok'}
-                    onChange={() => enabled && handleCheck(i)}
-                    style={{ width: 18, height: 18, cursor: enabled ? 'pointer' : 'default' }}
-                  />
-                </td>
-                <td style={tdMono}>{pos.latitude.toFixed(6)}</td>
-                <td style={tdMono}>{pos.longitude.toFixed(6)}</td>
-                <td style={tdMono}>{pos.heading ?? '—'}</td>
-                <td style={tdMono}>{pos.timestamp}</td>
-                <td style={td}>{statusBadge(row)}</td>
-              </tr>
-            )
-          })}
+          {candidates.map((_, i) => (
+            <tr key={i} style={{ background: i % 2 === 0 ? '#fff' : '#f1f5f9' }}>
+              <td style={td}>{i + 1}</td>
+              {RUNNERS.map(name => {
+                const row = runnerRows[name][i]
+                const enabled = isEnabled(name, i)
+                return (
+                  <>
+                    <td key={`${name}-cb`} style={td}>
+                      <input
+                        type="checkbox"
+                        disabled={!enabled}
+                        checked={row.status === 'ok'}
+                        onChange={() => enabled && handleCheck(name, i)}
+                        style={{ width: 18, height: 18, cursor: enabled ? 'pointer' : 'default' }}
+                      />
+                    </td>
+                    <td key={`${name}-status`} style={td}>{statusBadge(row)}</td>
+                  </>
+                )
+              })}
+            </tr>
+          ))}
         </tbody>
       </table>
     </div>
@@ -136,7 +153,7 @@ function statusBadge(row: RowState) {
 }
 
 const page: React.CSSProperties = {
-  maxWidth: 860,
+  maxWidth: 600,
   margin: '0 auto',
   padding: '1.5rem 1rem',
 }
@@ -197,11 +214,6 @@ const th: React.CSSProperties = {
 const td: React.CSSProperties = {
   padding: '0.5rem 0.75rem',
   verticalAlign: 'middle',
-}
-
-const tdMono: React.CSSProperties = {
-  ...td,
-  fontFamily: 'monospace',
 }
 
 const badge = (bg: string): React.CSSProperties => ({

@@ -1,4 +1,4 @@
-import { useEffect, useRef, type RefObject } from 'react'
+import { useEffect, useRef, useState, type RefObject } from 'react'
 import mapboxgl from 'mapbox-gl'
 import type { RunnerPosition } from './types.ts'
 
@@ -8,14 +8,21 @@ interface MarkerEntry {
   isLatest: boolean
 }
 
+interface RunnerMarkersResult {
+  visibleRunners: string[]
+  centerOnRunner: (name: string) => void
+}
+
 export function useRunnerMarkers(
   mapRef: RefObject<mapboxgl.Map | null>,
   sessionCode: string | null,
   serverUrl: string,
   intervalMs: number,
-): void {
+): RunnerMarkersResult {
   const markersRef = useRef<Record<string, MarkerEntry>>({})
   const hasLocatedRef = useRef(false)
+  const latestPositionsRef = useRef<Record<string, [number, number]>>({})
+  const [visibleRunners, setVisibleRunners] = useState<string[]>([])
 
   useEffect(() => {
     if (!sessionCode) return
@@ -50,13 +57,17 @@ export function useRunnerMarkers(
             if (existing && existing.isLatest === isLatest) {
               existing.marker.setLngLat(lngLat)
               if (isLatest && heading != null) {
-                const svg = existing.el.querySelector('svg')
-                if (svg) (svg as HTMLElement).style.transform = `rotate(${heading}deg)`
+                const svg = existing.el.querySelector('svg') as HTMLElement | null
+                if (svg) {
+                  svg.style.transform = `rotate(${heading}deg)`
+                  svg.style.transformOrigin = `50% ${(2 / 24) * 100}%`
+                }
               }
             } else {
               existing?.marker.remove()
               const el = createMarkerEl(runnerName, heading, isLatest)
-              const marker = new mapboxgl.Marker({ element: el })
+              const offset: [number, number] = isLatest ? [0, ARROW_TIP_OFFSET] : [0, 0]
+              const marker = new mapboxgl.Marker({ element: el, offset })
                 .setLngLat(lngLat)
                 .addTo(map)
               markersRef.current[key] = { marker, el, isLatest }
@@ -70,6 +81,14 @@ export function useRunnerMarkers(
             delete markersRef.current[key]
           }
         }
+
+        for (const positions of runnerGroups) {
+          if (!positions.length) continue
+          const latest = positions[positions.length - 1]
+          latestPositionsRef.current[latest.runnerName] = [latest.longitude, latest.latitude]
+        }
+        updateVisibleRunners(map)
+
 
         if (seen.size > 0 && !hasLocatedRef.current) {
           hasLocatedRef.current = true
@@ -102,6 +121,24 @@ export function useRunnerMarkers(
     }
   }, [sessionCode, serverUrl, intervalMs, mapRef])
 
+  function updateVisibleRunners(map: mapboxgl.Map) {
+    const bounds = map.getBounds()
+    const visible = Object.entries(latestPositionsRef.current)
+      .filter(([, [lng, lat]]) => bounds.contains([lng, lat]))
+      .map(([name]) => name)
+    setVisibleRunners(prev =>
+      prev.length === visible.length && prev.every((r, i) => r === visible[i]) ? prev : visible
+    )
+  }
+
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map) return
+    const onMove = () => updateVisibleRunners(map)
+    map.on('move', onMove)
+    return () => { map.off('move', onMove) }
+  }, [mapRef.current]) // eslint-disable-line react-hooks/exhaustive-deps
+
   useEffect(() => {
     return () => {
       for (const { marker } of Object.values(markersRef.current)) {
@@ -110,46 +147,67 @@ export function useRunnerMarkers(
       markersRef.current = {}
     }
   }, [])
+
+  function centerOnRunner(name: string) {
+    const pos = latestPositionsRef.current[name]
+    const map = mapRef.current
+    if (!pos || !map) return
+    map.easeTo({ center: pos, zoom: Math.max(map.getZoom(), 15) })
+  }
+
+  return { visibleRunners, centerOnRunner }
+}
+
+
+// Arrow SVG: viewBox 0 0 24 24, rendered 32×32. Tip at viewBox y=2 → (2/24)*32 = 2.67px from top.
+// Center is at 16px. Offset to put tip at coordinate = center - tip = 16 - 2.67 = 13.33px.
+const ARROW_SIZE = 32
+const ARROW_TIP_OFFSET = ARROW_SIZE * (0.5 - 2 / 24)  // 13.33px
+
+const RUNNER_COLOURS: Record<string, string> = {
+  David: '#ef4444',
+}
+const DEFAULT_COLOUR = '#3b82f6'
+
+export function runnerColour(name: string): string {
+  return RUNNER_COLOURS[name] ?? DEFAULT_COLOUR
 }
 
 function createMarkerEl(name: string, heading: number | null, isLatest: boolean): HTMLElement {
-  const wrapper = document.createElement('div')
-  wrapper.style.cssText = 'display:flex;flex-direction:column;align-items:center;gap:4px;'
+  const colour = runnerColour(name)
 
   if (isLatest) {
+    // Wrapper is exactly the SVG size so Mapbox anchors to the SVG center, not label center.
+    // Label is absolutely positioned below so it doesn't affect the bounding box.
+    const wrapper = document.createElement('div')
+    wrapper.style.cssText = `position:relative;width:${ARROW_SIZE}px;height:${ARROW_SIZE}px;`
+
     const arrow = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
-    arrow.setAttribute('width', '32')
-    arrow.setAttribute('height', '32')
+    arrow.setAttribute('width', String(ARROW_SIZE))
+    arrow.setAttribute('height', String(ARROW_SIZE))
     arrow.setAttribute('viewBox', '0 0 24 24')
     arrow.style.cssText = `
+      display:block;
       filter: drop-shadow(0 1px 3px rgba(0,0,0,0.35));
       transform: rotate(${heading ?? 0}deg);
+      transform-origin: 50% ${(2 / 24) * 100}%;
     `
     const path = document.createElementNS('http://www.w3.org/2000/svg', 'path')
     path.setAttribute('d', 'M12 2 L20 20 L12 15 L4 20 Z')
-    path.setAttribute('fill', '#3b82f6')
+    path.setAttribute('fill', colour)
     path.setAttribute('stroke', 'white')
     path.setAttribute('stroke-width', '1.5')
     path.setAttribute('stroke-linejoin', 'round')
     arrow.appendChild(path)
     wrapper.appendChild(arrow)
-  } else {
-    const dot = document.createElement('div')
-    dot.style.cssText = `
-      width: 14px;
-      height: 14px;
-      border-radius: 50%;
-      background: #3b82f6;
-      border: 2px solid white;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.35);
-    `
-    wrapper.appendChild(dot)
-  }
 
-  if (isLatest) {
     const label = document.createElement('div')
     label.textContent = name
     label.style.cssText = `
+      position: absolute;
+      top: ${ARROW_SIZE + 4}px;
+      left: 50%;
+      transform: translateX(-50%);
       font-size: 11px;
       font-family: system-ui, sans-serif;
       font-weight: 600;
@@ -161,7 +219,17 @@ function createMarkerEl(name: string, heading: number | null, isLatest: boolean)
       box-shadow: 0 1px 3px rgba(0,0,0,0.2);
     `
     wrapper.appendChild(label)
+    return wrapper
+  } else {
+    const dot = document.createElement('div')
+    dot.style.cssText = `
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: ${colour};
+      border: 2px solid white;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.35);
+    `
+    return dot
   }
-
-  return wrapper
 }

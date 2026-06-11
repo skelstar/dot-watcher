@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import mapboxgl from 'mapbox-gl'
 import 'mapbox-gl/dist/mapbox-gl.css'
 import SessionPrompt from './SessionPrompt.tsx'
+import Legend from './Legend.tsx'
 import { useRunnerMarkers } from './useRunnerMarkers.ts'
 
 mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN as string
@@ -40,7 +41,7 @@ export default function App() {
     }
   }, [])
 
-  useRunnerMarkers(mapRef, sessionCode, SERVER_URL, POLL_INTERVAL_MS)
+  const { visibleRunners, centerOnRunner } = useRunnerMarkers(mapRef, sessionCode, SERVER_URL, POLL_INTERVAL_MS)
 
   function handleSessionSubmit(code: string) {
     const upper = code.trim().toUpperCase()
@@ -51,6 +52,7 @@ export default function App() {
   return (
     <>
       <div ref={containerRef} style={{ width: '100%', height: '100%' }} />
+      <Legend runners={visibleRunners} onRunnerClick={centerOnRunner} />
       {!sessionCode && <SessionPrompt onSubmit={handleSessionSubmit} />}
     </>
   )
