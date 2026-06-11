@@ -10,6 +10,7 @@ interface MarkerEntry {
 
 interface RunnerMarkersResult {
   visibleRunners: string[]
+  offScreenRunners: string[]
   centerOnRunner: (name: string) => void
 }
 
@@ -23,6 +24,7 @@ export function useRunnerMarkers(
   const hasLocatedRef = useRef(false)
   const latestPositionsRef = useRef<Record<string, [number, number]>>({})
   const [visibleRunners, setVisibleRunners] = useState<string[]>([])
+  const [offScreenRunners, setOffScreenRunners] = useState<string[]>([])
 
   useEffect(() => {
     if (!sessionCode) return
@@ -122,12 +124,20 @@ export function useRunnerMarkers(
   }, [sessionCode, serverUrl, intervalMs, mapRef])
 
   function updateVisibleRunners(map: mapboxgl.Map) {
-    const bounds = map.getBounds()
-    const visible = Object.entries(latestPositionsRef.current)
-      .filter(([, [lng, lat]]) => bounds.contains([lng, lat]))
-      .map(([name]) => name)
+    const { offsetWidth, offsetHeight } = map.getContainer()
+    const pad = 80  // px — runner stays "visible" until this far outside the viewport
+    const inView = ([lng, lat]: [number, number]) => {
+      const p = map.project(new mapboxgl.LngLat(lng, lat))
+      return p.x >= -pad && p.y >= -pad && p.x <= offsetWidth + pad && p.y <= offsetHeight + pad
+    }
+    const all = Object.entries(latestPositionsRef.current)
+    const visible = all.filter(([, pos]) => inView(pos)).map(([name]) => name)
+    const offScreen = all.filter(([, pos]) => !inView(pos)).map(([name]) => name)
     setVisibleRunners(prev =>
       prev.length === visible.length && prev.every((r, i) => r === visible[i]) ? prev : visible
+    )
+    setOffScreenRunners(prev =>
+      prev.length === offScreen.length && prev.every((r, i) => r === offScreen[i]) ? prev : offScreen
     )
   }
 
@@ -155,7 +165,7 @@ export function useRunnerMarkers(
     map.easeTo({ center: pos, zoom: Math.max(map.getZoom(), 15) })
   }
 
-  return { visibleRunners, centerOnRunner }
+  return { visibleRunners, offScreenRunners, centerOnRunner }
 }
 
 
@@ -164,13 +174,25 @@ export function useRunnerMarkers(
 const ARROW_SIZE = 32
 const ARROW_TIP_OFFSET = ARROW_SIZE * (0.5 - 2 / 24)  // 13.33px
 
-const RUNNER_COLOURS: Record<string, string> = {
-  David: '#ef4444',
+const COLOUR_PALETTE = [
+  '#3b82f6', // blue
+  '#ef4444', // red
+  '#22c55e', // green
+  '#f59e0b', // amber
+  '#8b5cf6', // purple
+  '#ec4899', // pink
+  '#06b6d4', // cyan
+  '#f97316', // orange
+]
+
+function nameHash(name: string): number {
+  let h = 0
+  for (const c of name) h = (h * 31 + c.charCodeAt(0)) >>> 0
+  return h
 }
-const DEFAULT_COLOUR = '#3b82f6'
 
 export function runnerColour(name: string): string {
-  return RUNNER_COLOURS[name] ?? DEFAULT_COLOUR
+  return COLOUR_PALETTE[nameHash(name) % COLOUR_PALETTE.length]
 }
 
 function createMarkerEl(name: string, heading: number | null, isLatest: boolean): HTMLElement {
@@ -219,6 +241,33 @@ function createMarkerEl(name: string, heading: number | null, isLatest: boolean)
       box-shadow: 0 1px 3px rgba(0,0,0,0.2);
     `
     wrapper.appendChild(label)
+
+    const crossSize = 12
+    const tipY = ARROW_SIZE * 2 / 24  // px from top of wrapper to arrow tip
+    const cross = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
+    cross.setAttribute('width', String(crossSize))
+    cross.setAttribute('height', String(crossSize))
+    cross.setAttribute('viewBox', `0 0 ${crossSize} ${crossSize}`)
+    cross.style.cssText = `
+      position: absolute;
+      top: ${tipY}px;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      pointer-events: none;
+    `
+    const half = crossSize / 2
+    for (const [x1, y1, x2, y2] of [[0, half, crossSize, half], [half, 0, half, crossSize]]) {
+      const line = document.createElementNS('http://www.w3.org/2000/svg', 'line')
+      line.setAttribute('x1', String(x1))
+      line.setAttribute('y1', String(y1))
+      line.setAttribute('x2', String(x2))
+      line.setAttribute('y2', String(y2))
+      line.setAttribute('stroke', 'red')
+      line.setAttribute('stroke-width', '2')
+      cross.appendChild(line)
+    }
+    wrapper.appendChild(cross)
+
     return wrapper
   } else {
     const dot = document.createElement('div')
