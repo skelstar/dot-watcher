@@ -1,0 +1,28 @@
+info:
+  name: POST-location
+  type: http
+  seq: 1
+
+http:
+  method: POST
+  url: http://{{baseurl}}/location
+  body:
+    type: json
+    data: |-
+      {
+        "runnerName": "Alice",
+        "sessionCode": "SUNSET23",
+        "latitude": -33.9588,
+        "longitude": 153.2093,
+        "heading": 280.5,
+        "timestamp": "2024-11-15T09:23:45Z"
+      }
+  auth:
+    type: bearer
+    token: dev-token
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
