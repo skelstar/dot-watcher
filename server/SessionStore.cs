@@ -25,7 +25,7 @@ public class SessionStore(int positionHistoryCount)
             lock (history)
             {
                 if (history.Count > 0)
-                    result.Add(history.TakeLast(positionHistoryCount).ToArray());
+                    result.Add(history.TakeLast(1).ToArray());
             }
         }
         return result;

@@ -16,6 +16,7 @@ interface RunnerMarkersResult {
   visibleRunners: string[]
   offScreenRunners: string[]
   centerOnRunner: (name: string) => void
+  fitAll: () => void
 }
 
 export function useRunnerMarkers(
@@ -27,6 +28,7 @@ export function useRunnerMarkers(
   const markersRef = useRef<Record<string, MarkerEntry>>({})
   const hasLocatedRef = useRef(false)
   const latestPositionsRef = useRef<Record<string, [number, number]>>({})
+  const latestMarkerRef = useRef<Record<string, { root: Root; heading: number | null; colour: string }>>({})
   const [visibleRunners, setVisibleRunners] = useState<string[]>([])
   const [offScreenRunners, setOffScreenRunners] = useState<string[]>([])
 
@@ -44,6 +46,11 @@ export function useRunnerMarkers(
 
         const map = mapRef.current
         if (!map || cancelled) return
+
+        // Snapshot before update: are all known runners currently in the viewport?
+        const prevPositions = Object.values(latestPositionsRef.current)
+        const allInView = prevPositions.length > 0 && prevPositions.every(pos => isInView(map, pos))
+        const isFirstLoad = !hasLocatedRef.current
 
         const seen = new Set<string>()
 
@@ -64,7 +71,7 @@ export function useRunnerMarkers(
             if (existing && existing.isLatest === isLatest) {
               existing.marker.setLngLat(lngLat)
               if (isLatest) {
-                existing.root.render(createElement(Arrow, { name: runnerName, heading, colour }))
+                latestMarkerRef.current[runnerName] = { root: existing.root, heading, colour }
               }
             } else {
               existing?.marker.remove()
@@ -73,7 +80,7 @@ export function useRunnerMarkers(
               const el = document.createElement('div')
               const root = createRoot(el)
               if (isLatest) {
-                root.render(createElement(Arrow, { name: runnerName, heading, colour }))
+                latestMarkerRef.current[runnerName] = { root, heading, colour }
               } else {
                 root.render(createElement(Dot, { colour }))
               }
@@ -101,8 +108,9 @@ export function useRunnerMarkers(
           latestPositionsRef.current[latest.runnerName] = [latest.longitude, latest.latitude]
         }
         updateVisibleRunners(map)
+        recluster(map)
 
-        if (seen.size > 0 && !hasLocatedRef.current) {
+        if (seen.size > 0 && (isFirstLoad || allInView)) {
           hasLocatedRef.current = true
           const latestCoords = runnerGroups
             .filter(g => g.length > 0)
@@ -131,16 +139,43 @@ export function useRunnerMarkers(
     }
   }, [sessionCode, serverUrl, intervalMs, mapRef])
 
-  function updateVisibleRunners(map: mapboxgl.Map) {
-    const { offsetWidth, offsetHeight } = map.getContainer()
-    const pad = 80
-    const inView = ([lng, lat]: [number, number]) => {
-      const p = map.project(new mapboxgl.LngLat(lng, lat))
-      return p.x >= -pad && p.y >= -pad && p.x <= offsetWidth + pad && p.y <= offsetHeight + pad
+  function recluster(map: mapboxgl.Map) {
+    const runners = Object.entries(latestPositionsRef.current)
+    if (runners.length === 0) return
+
+    const THRESHOLD_PX = 60
+    const assigned = new Set<string>()
+    const labels = new Map<string, string>()
+
+    for (const [name, lngLat] of runners) {
+      if (assigned.has(name)) continue
+      const p = map.project(new mapboxgl.LngLat(lngLat[0], lngLat[1]))
+      const cluster = [name]
+      assigned.add(name)
+
+      for (const [otherName, otherLngLat] of runners) {
+        if (assigned.has(otherName)) continue
+        const q = map.project(new mapboxgl.LngLat(otherLngLat[0], otherLngLat[1]))
+        if (Math.hypot(q.x - p.x, q.y - p.y) <= THRESHOLD_PX) {
+          cluster.push(otherName)
+          assigned.add(otherName)
+        }
+      }
+
+      labels.set(cluster[0], cluster.join(', '))
+      for (let i = 1; i < cluster.length; i++) labels.set(cluster[i], '')
     }
+
+    for (const [name, info] of Object.entries(latestMarkerRef.current)) {
+      const label = labels.get(name) ?? name
+      info.root.render(createElement(Arrow, { name, heading: info.heading, colour: info.colour, label }))
+    }
+  }
+
+  function updateVisibleRunners(map: mapboxgl.Map) {
     const all = Object.entries(latestPositionsRef.current)
-    const visible = all.filter(([, pos]) => inView(pos)).map(([name]) => name)
-    const offScreen = all.filter(([, pos]) => !inView(pos)).map(([name]) => name)
+    const visible = all.filter(([, pos]) => isInView(map, pos)).map(([name]) => name)
+    const offScreen = all.filter(([, pos]) => !isInView(map, pos)).map(([name]) => name)
     setVisibleRunners(prev =>
       prev.length === visible.length && prev.every((r, i) => r === visible[i]) ? prev : visible
     )
@@ -153,8 +188,13 @@ export function useRunnerMarkers(
     const map = mapRef.current
     if (!map) return
     const onMove = () => updateVisibleRunners(map)
+    const onMoveEnd = () => recluster(map)
     map.on('move', onMove)
-    return () => { map.off('move', onMove) }
+    map.on('moveend', onMoveEnd)
+    return () => {
+      map.off('move', onMove)
+      map.off('moveend', onMoveEnd)
+    }
   }, [mapRef.current]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
@@ -174,7 +214,22 @@ export function useRunnerMarkers(
     map.easeTo({ center: pos, zoom: Math.max(map.getZoom(), 15) })
   }
 
-  return { visibleRunners, offScreenRunners, centerOnRunner }
+  function fitAll() {
+    const map = mapRef.current
+    const coords = Object.values(latestPositionsRef.current)
+    if (!map || coords.length === 0) return
+    if (coords.length === 1) {
+      map.easeTo({ center: coords[0], zoom: 15 })
+    } else {
+      const bounds = coords.reduce(
+        (b, c) => b.extend(c),
+        new mapboxgl.LngLatBounds(coords[0], coords[0]),
+      )
+      map.fitBounds(bounds, { padding: 80, maxZoom: 16 })
+    }
+  }
+
+  return { visibleRunners, offScreenRunners, centerOnRunner, fitAll }
 }
 
 export { ARROW_SIZE }
@@ -189,6 +244,13 @@ const COLOUR_PALETTE = [
   '#06b6d4', // cyan
   '#f97316', // orange
 ]
+
+function isInView(map: mapboxgl.Map, [lng, lat]: [number, number]): boolean {
+  const { offsetWidth, offsetHeight } = map.getContainer()
+  const pad = 80
+  const p = map.project(new mapboxgl.LngLat(lng, lat))
+  return p.x >= -pad && p.y >= -pad && p.x <= offsetWidth + pad && p.y <= offsetHeight + pad
+}
 
 function nameHash(name: string): number {
   let h = 0

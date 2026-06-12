@@ -48,7 +48,7 @@ export default function App() {
     }
   }, [])
 
-  const { offScreenRunners, centerOnRunner } = useRunnerMarkers(mapRef, sessionCode, SERVER_URL, POLL_INTERVAL_MS)
+  const { offScreenRunners, centerOnRunner, fitAll } = useRunnerMarkers(mapRef, sessionCode, SERVER_URL, POLL_INTERVAL_MS)
 
   async function sendChester(lng: number, lat: number) {
     if (!sessionCode) return
@@ -78,6 +78,7 @@ export default function App() {
   return (
     <>
       <div ref={containerRef} style={{ width: '100%', height: '100%' }} />
+      <button onClick={fitAll} style={fitAllBtn} title="Fit all">⤢</button>
       <Legend runners={offScreenRunners} onRunnerClick={centerOnRunner} />
       {menu && (
         <MapMenu
@@ -90,4 +91,23 @@ export default function App() {
       {!sessionCode && <SessionPrompt onSubmit={handleSessionSubmit} />}
     </>
   )
+}
+
+const fitAllBtn: React.CSSProperties = {
+  position: 'absolute',
+  bottom: 32,
+  right: 12,
+  width: 36,
+  height: 36,
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  background: '#fff',
+  border: 'none',
+  borderRadius: 4,
+  boxShadow: '0 0 0 2px rgba(0,0,0,0.1)',
+  cursor: 'pointer',
+  fontSize: '1.1rem',
+  color: '#333',
+  padding: 0,
 }
