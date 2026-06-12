@@ -41,6 +41,8 @@ cd server
 dotnet run
 ```
 
+`dotnet run` picks up `Properties/launchSettings.json`, which sets `ASPNETCORE_ENVIRONMENT=Development` so that `appsettings.Development.json` (with `BearerToken: dev-token`) is loaded automatically.
+
 The server starts on `http://localhost:5000` by default. Override the port:
 
 ```bash
@@ -48,6 +50,11 @@ dotnet run --urls "http://localhost:8080"
 ```
 
 Or set `ASPNETCORE_URLS=http://localhost:8080` as an environment variable.
+
+> If `launchSettings.json` is not present (e.g. after a manual copy), set the environment explicitly:
+> ```powershell
+> $env:ASPNETCORE_ENVIRONMENT="Development"; dotnet run
+> ```
 
 ---
 
