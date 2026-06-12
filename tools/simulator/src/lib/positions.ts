@@ -5,15 +5,22 @@ export interface Position {
   timestamp: string
 }
 
+// Reduces positions to one per minute, using the fix closest to each HH:MM:00 boundary.
 export function compressToMinutes(positions: Position[]): Position[] {
   if (positions.length === 0) return []
-  const result: Position[] = [positions[0]]
-  for (let i = 1; i < positions.length; i++) {
-    const lastMs = new Date(result[result.length - 1].timestamp).getTime()
-    const currMs = new Date(positions[i].timestamp).getTime()
-    if (currMs - lastMs >= 60_000) result.push(positions[i])
+  const byMinute = new Map<number, { pos: Position; dist: number }>()
+  for (const p of positions) {
+    const ms = new Date(p.timestamp).getTime()
+    const nearestMs = Math.round(ms / 60_000) * 60_000
+    const dist = Math.abs(ms - nearestMs)
+    const existing = byMinute.get(nearestMs)
+    if (!existing || dist < existing.dist) {
+      byMinute.set(nearestMs, { pos: p, dist })
+    }
   }
-  return result
+  return [...byMinute.entries()]
+    .sort(([a], [b]) => a - b)
+    .map(([minuteMs, { pos }]) => ({ ...pos, timestamp: new Date(minuteMs).toISOString() }))
 }
 
 export function computeBearing(lat1: number, lon1: number, lat2: number, lon2: number): number {

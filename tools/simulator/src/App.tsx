@@ -1,26 +1,27 @@
 import { useState } from 'react'
-import StepperPage from './StepperPage'
 import GpxConverterPage from './GpxConverterPage'
+import RoutesPage from './RoutesPage'
 
-type Tab = 'stepper' | 'gpx'
+type Tab = 'gpx' | 'routes'
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<Tab>('stepper')
+  const [activeTab, setActiveTab] = useState<Tab>('routes')
 
   return (
     <div style={page}>
       <header style={header}>
         <h1 style={title}>Dot Watcher — Simulator</h1>
         <nav style={tabBar}>
-          <button style={tabBtn(activeTab === 'stepper')} onClick={() => setActiveTab('stepper')}>
-            Stepper
-          </button>
           <button style={tabBtn(activeTab === 'gpx')} onClick={() => setActiveTab('gpx')}>
-            GPX Converter
+            Importer
+          </button>
+          <button style={tabBtn(activeTab === 'routes')} onClick={() => setActiveTab('routes')}>
+            Routes
           </button>
         </nav>
       </header>
-      {activeTab === 'stepper' ? <StepperPage /> : <GpxConverterPage />}
+      {activeTab === 'gpx' && <GpxConverterPage />}
+      {activeTab === 'routes' && <RoutesPage />}
     </div>
   )
 }

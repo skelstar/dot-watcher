@@ -134,6 +134,25 @@ Exact field names and payload structure to be defined during implementation.
 
 ---
 
+## Position synchronisation
+
+A key goal is showing all runners at the **same moment in time** on the map. The naive approach — each phone sends on a timer from whenever tracking started — means Runner A's last known position might be 45 seconds older than Runner B's, even if they're polling at the same interval.
+
+**Strategy: clock-aligned recording intervals**
+
+Instead of `"send every 60 seconds from now"`, each phone snaps its recording times to fixed wall-clock boundaries:
+
+- 60-second interval → record at `17:47:00`, `17:48:00`, `17:49:00` …
+- 30-second interval → record at `17:47:00`, `17:47:30`, `17:48:00` …
+
+All phones independently align to the same slots without any coordination. iOS devices stay within ~50–200 ms of true UTC via NTP, which is negligible compared to GPS accuracy (~3–5 m) and a runner's movement over that time (~60 cm at jogging pace).
+
+The `timestamp` field in the payload is the **capture time** (when the GPS fix was taken), not the send time. This means retried or delayed POSTs still carry the correct position timestamp. The viewer always shows where each runner *was* at the same moment, regardless of when their phone managed to upload it.
+
+No server-side changes are needed — the server already stores and returns the timestamp from the payload.
+
+---
+
 ## Out of scope (for now)
 
 - Android app

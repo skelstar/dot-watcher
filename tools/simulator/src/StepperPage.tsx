@@ -1,17 +1,17 @@
 import { useState } from 'react'
 import seanPositions from './positions.json'
-import davidPositions from '../../../data/routes/David - Sunday_trails_-_Waimapihi___Wrights_Hill___Karori_group_run.json'
+import chesterPositions from '../../../data/routes/Chester - Morning_Run.json'
 
 const SERVER_URL = import.meta.env.VITE_SERVER_URL ?? 'http://localhost:5000'
 const SESSION_CODE = import.meta.env.VITE_SESSION_CODE as string
 const BEARER_TOKEN = import.meta.env.VITE_BEARER_TOKEN as string
 
-const RUNNERS = ['Sean', 'David']
+const RUNNERS = ['Sean', 'Chester']
 
 const DISPLAY_COUNT = 20
 const RUNNER_POSITIONS: Record<string, { latitude: number; longitude: number; heading: number | null }[]> = {
   Sean: seanPositions.slice(0, DISPLAY_COUNT),
-  David: davidPositions.slice(0, DISPLAY_COUNT),
+  Chester: chesterPositions.slice(0, DISPLAY_COUNT),
 }
 const MAX_ROWS = Math.max(...RUNNERS.map(name => RUNNER_POSITIONS[name].length))
 

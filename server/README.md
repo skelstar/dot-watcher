@@ -246,6 +246,7 @@ spec:
 ## Notes
 
 - Restarting the server clears all sessions — data is in-memory only.
+- The `timestamp` field in a `POST /location` request should be the **GPS capture time**, not the time the request was sent. Phone apps record the timestamp when the position fix is taken; the POST may be delayed or retried. Storing the capture time means the viewer always reflects where runners actually were at a given moment.
 - Full position history is stored per runner per session. The `GET /locations/{sessionCode}` endpoint returns the last `n` positions per runner (controlled by `PositionHistoryCount` in `appsettings.json`).
 - CORS is open (`AllowAnyOrigin`) — appropriate for a private deployment behind Cloudflare.
 - Session codes are not validated beyond being present in the URL. An unknown code returns an empty array rather than a 404.
