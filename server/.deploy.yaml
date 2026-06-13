@@ -1,0 +1,3 @@
+name: dot-watcher
+port: 8080
+hostname: dot-watcher-server.skelstar.io
