@@ -16,8 +16,14 @@
 	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>location</string>
+	</array>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>DotWatcher uses your location to track your position during a run.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>DotWatcher uses your location in the background to track your position during a run.</string>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSExceptionDomains</key>

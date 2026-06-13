@@ -17,17 +17,26 @@ final class LocationManager {
     let bearerToken = "dev-token"
     var sessionCode = "test"
     let runnerName = "Gerald"
-    let interval: TimeInterval = 3
+    #if targetEnvironment(simulator)
+    var interval: TimeInterval = 3
+    #else
+    var interval: TimeInterval = 15
+    #endif
 
     init() {
         locationDelegate.owner = self
         clManager.delegate = locationDelegate
-        clManager.desiredAccuracy = kCLLocationAccuracyBest
+        clManager.desiredAccuracy = kCLLocationAccuracyNearestTenMeters
+        clManager.distanceFilter = 10.0
+        clManager.activityType = .fitness
+        clManager.pausesLocationUpdatesAutomatically = false
+        clManager.allowsBackgroundLocationUpdates = true
+        clManager.showsBackgroundLocationIndicator = true
     }
 
     func start() {
         guard !isTracking else { return }
-        clManager.requestWhenInUseAuthorization()
+        clManager.requestAlwaysAuthorization()
         clManager.startUpdatingLocation()
         isTracking = true
         status = "Tracking..."
@@ -50,6 +59,10 @@ final class LocationManager {
             guard !Task.isCancelled else { break }
             captureAndPost()
         }
+    }
+
+    func forceUpdate() {
+        captureAndPost()
     }
 
     private func captureAndPost() {
@@ -81,8 +94,12 @@ final class LocationManager {
             req.httpBody = try JSONSerialization.data(withJSONObject: body)
             let (_, response) = try await URLSession.shared.data(for: req)
             let code = (response as? HTTPURLResponse)?.statusCode ?? 0
-            status = code == 200 ? "Sent ✓" : "HTTP \(code)"
-            lastSent = Date()
+            if code == 200 {
+                status = "Sent ✓"
+                lastSent = Date()
+            } else {
+                status = "HTTP \(code)"
+            }
         } catch {
             status = "Error: \(error.localizedDescription)"
         }

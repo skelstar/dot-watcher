@@ -1,5 +1,15 @@
 import SwiftUI
 
+private let intervalOptions: [(label: String, seconds: TimeInterval)] = [
+    ("3 seconds", 3),
+    ("5 seconds", 5),
+    ("10 seconds", 10),
+    ("15 seconds", 15),
+    ("30 seconds", 30),
+    ("60 seconds", 60),
+    ("5 minutes", 300),
+]
+
 struct ContentView: View {
     @State private var location = LocationManager()
 
@@ -21,6 +31,18 @@ struct ContentView: View {
                     .disabled(location.isTracking)
             }
 
+            HStack {
+                Label("Interval", systemImage: "clock")
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Picker("Interval", selection: $location.interval) {
+                    ForEach(intervalOptions, id: \.seconds) { option in
+                        Text(option.label).tag(option.seconds)
+                    }
+                }
+                .disabled(location.isTracking)
+            }
+
             Text(location.status)
                 .font(.headline)
 
@@ -30,11 +52,17 @@ struct ContentView: View {
                     .foregroundStyle(.tertiary)
             }
 
-            Button(location.isTracking ? "Stop" : "Start Tracking") {
-                location.isTracking ? location.stop() : location.start()
+            HStack(spacing: 12) {
+                if location.isTracking {
+                    Button("Force Update") { location.forceUpdate() }
+                        .buttonStyle(.bordered)
+                }
+                Button(location.isTracking ? "Stop" : "Start Tracking") {
+                    location.isTracking ? location.stop() : location.start()
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(location.isTracking ? .red : .green)
             }
-            .buttonStyle(.borderedProminent)
-            .tint(location.isTracking ? .red : .green)
         }
         .padding()
     }
