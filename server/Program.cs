@@ -20,12 +20,17 @@ bool IsAuthorized(HttpRequest request) =>
     auth.ToString() == $"Bearer {bearerToken}";
 
 // Receive a position update from a phone app
-app.MapPost("/location", (LocationUpdate update, SessionStore store, HttpRequest request) =>
+app.MapPost("/location", (LocationUpdate update, SessionStore store, HttpRequest request, ILogger<Program> logger) =>
 {
     if (!IsAuthorized(request))
         return Results.Unauthorized();
 
     store.AddPosition(update);
+    logger.LogInformation("[{Session}] {Runner} → {Lat:F6}, {Lon:F6}  heading={Heading}  t={Timestamp:HH:mm:ss}",
+        update.SessionCode, update.RunnerName,
+        update.Latitude, update.Longitude,
+        update.Heading.HasValue ? $"{update.Heading:F1}°" : "n/a",
+        update.Timestamp);
     return Results.Ok();
 });
 
