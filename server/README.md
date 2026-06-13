@@ -173,11 +173,33 @@ Clears all position history for a session. Use this between runs.
 
 The server runs on Tatooine, a home lab k3s cluster. Deployments are managed via the `/deploy` skill in Claude Code, which builds a Docker image, pushes it to the local registry at `localhost:5000`, and applies k8s manifests.
 
-- **URL:** `http://dot-watcher-server.skelstar.io`
+- **URL:** `http://dot-watcher.skelstar.io/api`
 - **Namespace:** `dot-watcher-server`
 - **Image:** `localhost:5000/dot-watcher-server:latest`
-- **Source on cluster:** `/home/skelstar/deployments/dot-watcher-server/src/`
 - **Manifests:** `/home/skelstar/deployments/dot-watcher-server/k8s/manifests.yaml`
+
+The server shares the hostname `dot-watcher.skelstar.io` with the client. Traefik routes `/api/*` requests here via a `StripPrefix` middleware, so the server still sees requests at `/location`, `/locations/{code}` etc. — no `/api` prefix in the code.
+
+### Path-based routing
+
+A `Middleware` resource in the manifest strips the `/api` prefix before forwarding to the pod:
+
+```yaml
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: strip-api-prefix
+  namespace: dot-watcher-server
+spec:
+  stripPrefix:
+    prefixes:
+      - /api
+```
+
+Referenced from the `Ingress` via annotation:
+```
+traefik.ingress.kubernetes.io/router.middlewares: dot-watcher-server-strip-api-prefix@kubernetescrd
+```
 
 ### First-time deploy
 
@@ -186,7 +208,7 @@ The `server/.deploy.yaml` at the root of this folder drives the deployment:
 ```yaml
 name: dot-watcher-server
 port: 8080
-hostname: dot-watcher-server.skelstar.io
+hostname: dot-watcher.skelstar.io
 ```
 
 The `server/Dockerfile` is a two-stage build:
@@ -220,7 +242,9 @@ kubectl create secret generic dot-watcher-server-secrets \
 ```
 
 Add the DNS record in Unifi (Settings → Routing → DNS):
-`dot-watcher-server.skelstar.io → 192.168.1.71`
+`dot-watcher.skelstar.io → 192.168.1.71`
+
+(This record is shared with the client — only one DNS entry needed for both.)
 
 ### Updating after code changes
 
@@ -255,5 +279,5 @@ BearerToken=your-secret-token
 - Restarting the server clears all sessions — data is in-memory only.
 - The `timestamp` field in a `POST /location` request should be the **GPS capture time**, not the time the request was sent. Phone apps record the timestamp when the position fix is taken; the POST may be delayed or retried. Storing the capture time means the viewer always reflects where runners actually were at a given moment.
 - Full position history is stored per runner per session. The `GET /locations/{sessionCode}` endpoint returns the last `n` positions per runner (controlled by `PositionHistoryCount` in `appsettings.json`).
-- CORS is open (`AllowAnyOrigin`) — appropriate for a private deployment behind Cloudflare.
+- CORS is open (`AllowAnyOrigin`) — appropriate for a private home lab deployment.
 - Session codes are not validated beyond being present in the URL. An unknown code returns an empty array rather than a 404.

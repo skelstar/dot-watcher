@@ -42,3 +42,60 @@ The app will be available at `http://localhost:5173` by default.
 ## Usage
 
 Open the app and enter a session code when prompted, or navigate directly to `http://localhost:5173/SESSIONCODE` to skip the prompt. The map will poll the server and render all runners in that session as directional markers.
+
+---
+
+## Deployment (Tatooine — home k3s cluster)
+
+The client runs on Tatooine, a home lab k3s cluster. It is deployed via the `/deploy` skill in Claude Code, which builds a Docker image (nginx serving the Vite static build), pushes it to the local registry at `localhost:5000`, and applies k8s manifests.
+
+- **URL:** `http://dot-watcher.skelstar.io`
+- **Namespace:** `dot-watcher-client`
+- **Image:** `localhost:5000/dot-watcher-client:latest`
+- **Manifests:** `/home/skelstar/deployments/dot-watcher-client/k8s/manifests.yaml`
+
+The client shares the hostname `dot-watcher.skelstar.io` with the server. Traefik routes `/api/*` to the server pod and everything else to this pod. In production, set `VITE_SERVER_URL=/api` so the client calls the server via a relative URL on the same hostname.
+
+### First-time deploy
+
+The `client/.deploy.yaml` drives the deployment:
+
+```yaml
+name: dot-watcher-client
+port: 80
+hostname: dot-watcher.skelstar.io
+```
+
+The `client/Dockerfile` builds with yarn and serves via nginx. `nginx.conf` handles SPA client-side routing with `try_files`.
+
+> **Important:** Vite bakes env vars into the JS bundle at build time — they cannot be injected at runtime. Before deploying, copy your `.env` into `/home/skelstar/deployments/dot-watcher-client/src/`:
+>
+> ```
+> VITE_MAPBOX_TOKEN=your-mapbox-token
+> VITE_SERVER_URL=/api
+> ```
+
+Then run in Claude Code:
+
+```
+/deploy https://github.com/skelstar/dot-watcher.git but just deploy the app from the /client folder
+```
+
+Add the DNS record in Unifi (Settings → Routing → DNS):
+`dot-watcher.skelstar.io → 192.168.1.71`
+
+(This record is shared with the server — only one DNS entry needed for both.)
+
+### Updating after code changes
+
+The `.env` is gitignored. On every update it must be re-copied into the source folder before the build runs:
+
+```bash
+cp /path/to/your/.env /home/skelstar/deployments/dot-watcher-client/src/.env
+```
+
+Then run in Claude Code:
+
+```
+/deploy update dot-watcher-client
+```
