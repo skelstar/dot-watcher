@@ -8,11 +8,18 @@ struct ContentView: View {
             Text("DotWatcher")
                 .font(.largeTitle.bold())
 
-            VStack(spacing: 8) {
-                Label(location.runnerName, systemImage: "figure.run")
-                Label(location.sessionCode, systemImage: "tag")
+            Label(location.runnerName, systemImage: "figure.run")
+                .foregroundStyle(.secondary)
+
+            HStack {
+                Label("Session", systemImage: "tag")
+                    .foregroundStyle(.secondary)
+                TextField("session code", text: $location.sessionCode)
+                    .textFieldStyle(.roundedBorder)
+                    .autocorrectionDisabled()
+                    .textInputAutocapitalization(.never)
+                    .disabled(location.isTracking)
             }
-            .foregroundStyle(.secondary)
 
             Text(location.status)
                 .font(.headline)

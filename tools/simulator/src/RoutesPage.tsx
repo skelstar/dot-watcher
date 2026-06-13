@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 
-const SERVER_URL = import.meta.env.VITE_SERVER_URL ?? 'http://localhost:5000'
+const SERVER_URL = import.meta.env.VITE_SERVER_URL ?? 'http://dot-watcher.skelstar.io/api'
 const SESSION_CODE = import.meta.env.VITE_ROUTES_SESSION_CODE ?? 'sim-routes'
 const BEARER_TOKEN = import.meta.env.VITE_BEARER_TOKEN as string
 

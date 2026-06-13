@@ -8,8 +8,8 @@ import { useRunnerMarkers } from './useRunnerMarkers.ts'
 
 mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN as string
 
-const POLL_INTERVAL_MS: number = parseInt(import.meta.env.VITE_POLL_INTERVAL_MS ?? '10000', 10)
-const SERVER_URL: string = import.meta.env.VITE_SERVER_URL ?? 'http://localhost:5000'
+const POLL_INTERVAL_MS: number = parseInt(import.meta.env.VITE_POLL_INTERVAL_MS ?? '2000', 10)
+const SERVER_URL: string = import.meta.env.VITE_SERVER_URL ?? 'http://dot-watcher.skelstar.io/api'
 
 function sessionCodeFromPath(): string | null {
   const code = window.location.pathname.replace(/^\//, '').trim()

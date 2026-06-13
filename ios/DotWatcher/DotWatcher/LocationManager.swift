@@ -13,9 +13,9 @@ final class LocationManager {
     private let locationDelegate = LocationDelegate()
     private var trackingTask: Task<Void, Never>?
 
-    let serverURL = URL(string: "http://192.168.1.199:8080/location")!
+    let serverURL = URL(string: "http://dot-watcher.skelstar.io/api/location")!
     let bearerToken = "dev-token"
-    let sessionCode = "test"
+    var sessionCode = "test"
     let runnerName = "Gerald"
     let interval: TimeInterval = 3
 
