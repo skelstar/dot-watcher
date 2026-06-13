@@ -169,76 +169,83 @@ Clears all position history for a session. Use this between runs.
 
 ---
 
-## Deployment (k3s + Cloudflare Tunnel)
+## Deployment (Tatooine — home k3s cluster)
 
-The server runs on Tatooine behind a Cloudflare Tunnel. Cloudflare handles TLS termination, so the container only speaks HTTP internally.
+The server runs on Tatooine, a home lab k3s cluster. Deployments are managed via the `/deploy` skill in Claude Code, which builds a Docker image, pushes it to the local registry at `localhost:5000`, and applies k8s manifests.
 
-### Dockerfile
+- **URL:** `http://dot-watcher-server.skelstar.io`
+- **Namespace:** `dot-watcher-server`
+- **Image:** `localhost:5000/dot-watcher-server:latest`
+- **Source on cluster:** `/home/skelstar/deployments/dot-watcher-server/src/`
+- **Manifests:** `/home/skelstar/deployments/dot-watcher-server/k8s/manifests.yaml`
+
+### First-time deploy
+
+The `server/.deploy.yaml` at the root of this folder drives the deployment:
+
+```yaml
+name: dot-watcher-server
+port: 8080
+hostname: dot-watcher-server.skelstar.io
+```
+
+The `server/Dockerfile` is a two-stage build:
 
 ```dockerfile
-FROM mcr.microsoft.com/dotnet/aspnet:9.0 AS base
-WORKDIR /app
-
 FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build
-WORKDIR /src
-COPY . .
-RUN dotnet publish -c Release -o /app/publish
-
-FROM base AS final
 WORKDIR /app
-COPY --from=build /app/publish .
+COPY . .
+RUN dotnet publish -c Release -o /out
+
+FROM mcr.microsoft.com/dotnet/aspnet:9.0
+WORKDIR /app
+COPY --from=build /out .
+EXPOSE 8080
+ENV ASPNETCORE_URLS=http://+:8080
 ENTRYPOINT ["dotnet", "DotWatcher.Server.dll"]
 ```
 
-Build:
+Run in Claude Code:
+
+```
+/deploy https://github.com/skelstar/dot-watcher.git but just deploy the app from the /server folder
+```
+
+After the deploy completes, create the k8s secret for the bearer token (the value lives in `server/.env`, which is gitignored):
 
 ```bash
-docker build -t dot-watcher-server:latest .
+kubectl create secret generic dot-watcher-server-secrets \
+  --from-env-file=server/.env \
+  -n dot-watcher-server
 ```
 
-### Kubernetes manifests
+Add the DNS record in Unifi (Settings → Routing → DNS):
+`dot-watcher-server.skelstar.io → 192.168.1.71`
 
-Store the bearer token as a Secret:
+### Updating after code changes
 
-```yaml
-apiVersion: v1
-kind: Secret
-metadata:
-  name: dot-watcher-secrets
-stringData:
-  bearer-token: your-secret-token-here
+Push changes to `main`, then run in Claude Code:
+
+```
+/deploy update dot-watcher-server
 ```
 
-Deployment:
+This re-clones the repo, rebuilds the image, pushes it to the local registry, and restarts the pod.
 
-```yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: dot-watcher-server
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: dot-watcher-server
-  template:
-    metadata:
-      labels:
-        app: dot-watcher-server
-    spec:
-      containers:
-        - name: server
-          image: dot-watcher-server:latest
-          ports:
-            - containerPort: 8080
-          env:
-            - name: ASPNETCORE_URLS
-              value: http://+:8080
-            - name: BearerToken
-              valueFrom:
-                secretKeyRef:
-                  name: dot-watcher-secrets
-                  key: bearer-token
+### BearerToken secret
+
+The `BearerToken` is injected into the container via a k8s secret rather than committed to the repo. The secret is named `dot-watcher-server-secrets` in the `dot-watcher-server` namespace. To recreate it (e.g. after a namespace teardown):
+
+```bash
+kubectl create secret generic dot-watcher-server-secrets \
+  --from-env-file=server/.env \
+  -n dot-watcher-server
+```
+
+`server/.env` format:
+
+```
+BearerToken=your-secret-token
 ```
 
 ---
