@@ -33,7 +33,7 @@ export interface ReplayState {
   setSpeed: (s: number) => void
 }
 
-const TRAIL_LENGTH = 3
+const TRAIL_LENGTH = 1
 const TICK_MS = 100
 
 export function useReplay(sessionCode: string | null, serverUrl: string): ReplayState {
@@ -42,10 +42,11 @@ export function useReplay(sessionCode: string | null, serverUrl: string): Replay
   const [durationMs, setDurationMs] = useState(0)
   const [currentTimeMs, setCurrentTimeMs] = useState(0)
   const [playing, setPlaying] = useState(false)
-  const [speed, setSpeed] = useState(1)
+  const [speed, setSpeed] = useState(10)
   const [error, setError] = useState<string | null>(null)
   const speedRef = useRef(speed)
   speedRef.current = speed
+  const playingRef = useRef(false)
 
   useEffect(() => {
     if (!sessionCode) return
@@ -90,17 +91,20 @@ export function useReplay(sessionCode: string | null, serverUrl: string): Replay
 
   useEffect(() => {
     if (!playing) return
+    playingRef.current = true
     const id = setInterval(() => {
+      if (!playingRef.current) return
       setCurrentTimeMs(t => {
         const next = t + TICK_MS * speedRef.current
         if (next >= durationMs) {
+          playingRef.current = false
           setPlaying(false)
           return durationMs
         }
         return next
       })
     }, TICK_MS)
-    return () => clearInterval(id)
+    return () => { playingRef.current = false; clearInterval(id) }
   }, [playing, durationMs])
 
   const positions = useMemo((): RunnerPosition[][] | undefined => {
@@ -125,7 +129,7 @@ export function useReplay(sessionCode: string | null, serverUrl: string): Replay
     speed,
     virtualNowMs: startEpochMs + currentTimeMs,
     play: () => { if (currentTimeMs >= durationMs) setCurrentTimeMs(0); setPlaying(true) },
-    pause: () => setPlaying(false),
+    pause: () => { playingRef.current = false; setPlaying(false) },
     seek: (ms) => setCurrentTimeMs(Math.max(0, Math.min(ms, durationMs))),
     setSpeed,
   }

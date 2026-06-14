@@ -180,10 +180,19 @@ export function useRunnerMarkers(
     }
 
     const now = virtualNowRef.current ?? Date.now()
+    const stationaryRunners = new Set<string>()
+
     for (const [name, info] of Object.entries(latestMarkerRef.current)) {
       const label = labels.get(name) ?? name
       const stationary = now - new Date(info.timestamp).getTime() > 45_000
+      if (stationary) stationaryRunners.add(name)
       info.root.render(createElement(Arrow, { name, heading: info.heading, colour: info.colour, label, stationary }))
+    }
+
+    for (const [key, entry] of Object.entries(markersRef.current)) {
+      if (entry.isLatest) continue
+      const runnerName = key.substring(0, key.indexOf(':'))
+      entry.root.render(createElement(Dot, { colour: runnerColour(runnerName), hidden: stationaryRunners.has(runnerName) }))
     }
   }
 

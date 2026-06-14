@@ -4,8 +4,6 @@ interface Props {
   replay: ReplayState
 }
 
-const SPEEDS = [1, 2, 5, 10, 20]
-
 function formatTime(ms: number): string {
   const totalSec = Math.floor(ms / 1000)
   const h = Math.floor(totalSec / 3600)
@@ -17,6 +15,15 @@ function formatTime(ms: number): string {
 
 export default function ReplayControls({ replay }: Props) {
   const { currentTimeMs, durationMs, loaded, error, playing, speed, play, pause, seek, setSpeed } = replay
+
+  function handleFast() {
+    if (speed === 20) {
+      setSpeed(10)
+    } else {
+      setSpeed(20)
+      if (!playing) play()
+    }
+  }
 
   if (error) {
     return (
@@ -42,7 +49,22 @@ export default function ReplayControls({ replay }: Props) {
         style={playBtn}
         title={playing ? 'Pause' : 'Play'}
       >
-        {playing ? '⏸' : '▶'}
+        {playing
+          ? '⏸'
+          : <svg width="10" height="14" viewBox="0 0 10 14" fill="white"><polygon points="0,0 10,7 0,14" /></svg>
+        }
+      </button>
+
+      <button
+        onClick={handleFast}
+        disabled={!loaded}
+        style={playBtn}
+        title="Fast forward (20×)"
+      >
+        <svg width="17" height="14" viewBox="0 0 17 14" fill="white">
+          <polygon points="0,0 7,7 0,14" />
+          <polygon points="10,0 17,7 10,14" />
+        </svg>
       </button>
 
       <span style={timeLabel}>
@@ -55,6 +77,7 @@ export default function ReplayControls({ replay }: Props) {
         max={durationMs || 1}
         value={currentTimeMs}
         disabled={!loaded}
+        onPointerDown={pause}
         onChange={e => seek(Number(e.target.value))}
         style={scrubber}
       />
@@ -62,18 +85,6 @@ export default function ReplayControls({ replay }: Props) {
       <span style={timeLabel}>
         {formatTime(durationMs)}
       </span>
-
-      <div style={speedGroup}>
-        {SPEEDS.map(s => (
-          <button
-            key={s}
-            onClick={() => setSpeed(s)}
-            style={{ ...speedBtn, ...(speed === s ? speedBtnActive : {}) }}
-          >
-            {s}×
-          </button>
-        ))}
-      </div>
     </div>
   )
 }
@@ -125,26 +136,3 @@ const timeLabel: React.CSSProperties = {
   textAlign: 'center',
 }
 
-const speedGroup: React.CSSProperties = {
-  display: 'flex',
-  gap: 3,
-  flexShrink: 0,
-}
-
-const speedBtn: React.CSSProperties = {
-  padding: '3px 7px',
-  border: '1.5px solid #cbd5e1',
-  borderRadius: 5,
-  background: '#fff',
-  color: '#475569',
-  fontSize: 12,
-  fontFamily: 'system-ui, sans-serif',
-  fontWeight: 600,
-  cursor: 'pointer',
-}
-
-const speedBtnActive: React.CSSProperties = {
-  background: '#3b82f6',
-  borderColor: '#3b82f6',
-  color: '#fff',
-}
