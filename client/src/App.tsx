@@ -99,7 +99,7 @@ export default function App() {
   return (
     <>
       <div ref={containerRef} style={{ width: '100%', height: '100%' }} />
-      <button onClick={fitAll} style={fitAllBtn} title="Fit all">⤢</button>
+      <button onClick={fitAll} style={{ ...fitAllBtn, bottom: isReplay ? 96 : 32 }} title="Fit all">⤢</button>
       <Legend runners={offScreenRunners} onRunnerClick={centerOnRunner} />
       {menu && (
         <MapMenu
