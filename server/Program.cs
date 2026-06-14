@@ -2,6 +2,10 @@ using DotWatcher.Server;
 
 var builder = WebApplication.CreateBuilder(args);
 
+var logBuffer = new LogBuffer();
+builder.Services.AddSingleton(logBuffer);
+builder.Logging.AddProvider(new LogBufferProvider(logBuffer));
+
 var positionHistoryCount = builder.Configuration.GetValue<int>("PositionHistoryCount", 3);
 var recordingsPath = builder.Configuration.GetValue<string>("RecordingsPath", "recordings")!;
 builder.Services.AddSingleton(new SessionStore(positionHistoryCount, recordingsPath));
@@ -10,6 +14,8 @@ builder.Services.AddCors(options =>
         policy.AllowAnyOrigin().AllowAnyHeader().AllowAnyMethod()));
 
 var app = builder.Build();
+app.UseDefaultFiles();
+app.UseStaticFiles();
 app.UseCors();
 
 var bearerToken = app.Configuration["BearerToken"]
@@ -46,9 +52,10 @@ app.MapGet("/sessions", (SessionStore store) =>
 // Download the full NDJSON recording for a session
 app.MapGet("/sessions/{sessionCode}/recording", (string sessionCode, SessionStore store) =>
 {
-    var path = store.GetRecordingPath(sessionCode);
+    var upper = sessionCode.ToUpperInvariant();
+    var path = store.GetRecordingPath(upper);
     if (path is null) return Results.NotFound();
-    return Results.File(path, "application/x-ndjson", $"{sessionCode}.ndjson");
+    return Results.File(path, "application/x-ndjson", $"{upper}.ndjson");
 });
 
 // Clear all history for a session (use between runs)
@@ -60,5 +67,8 @@ app.MapDelete("/sessions/{sessionCode}", (string sessionCode, SessionStore store
     store.ClearSession(sessionCode);
     return Results.NoContent();
 });
+
+// Debug dashboard log feed
+app.MapGet("/log", (LogBuffer log) => Results.Ok(log.GetAll()));
 
 app.Run();

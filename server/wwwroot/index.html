@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>DotWatcher Debug</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: #0d1117; color: #c9d1d9; font-family: monospace; font-size: 13px; padding: 16px; }
+    h2 { color: #58a6ff; margin-bottom: 10px; font-size: 14px; letter-spacing: 0.05em; text-transform: uppercase; }
+    .grid { display: grid; grid-template-columns: 280px 1fr; gap: 16px; height: calc(100vh - 32px); }
+    .panel { background: #161b22; border: 1px solid #30363d; border-radius: 6px; padding: 12px; display: flex; flex-direction: column; overflow: hidden; }
+    .sessions-list { overflow-y: auto; flex: 1; }
+    .session-item { padding: 6px 8px; border-radius: 4px; margin-bottom: 4px; display: flex; justify-content: space-between; align-items: center; }
+    .session-item:hover { background: #21262d; }
+    .session-code { color: #f0883e; font-weight: bold; }
+    .dl-link { color: #58a6ff; text-decoration: none; font-size: 11px; }
+    .dl-link:hover { text-decoration: underline; }
+    .log-panel { flex: 1; overflow-y: auto; display: flex; flex-direction: column-reverse; }
+    .log-line { padding: 2px 4px; border-radius: 2px; white-space: pre-wrap; word-break: break-all; line-height: 1.5; }
+    .log-line:nth-child(odd) { background: #1c2128; }
+    .log-line.warn { color: #e3b341; }
+    .log-line.error { color: #f85149; }
+    .log-line.crit { color: #f85149; font-weight: bold; }
+    .status { color: #8b949e; font-size: 11px; margin-top: 8px; }
+    .empty { color: #484f58; padding: 8px; }
+    .badge { background: #21262d; border: 1px solid #30363d; color: #8b949e; border-radius: 10px; padding: 1px 7px; font-size: 10px; }
+  </style>
+</head>
+<body>
+  <div class="grid">
+    <div class="panel">
+      <h2>Sessions <span id="session-count" class="badge">0</span></h2>
+      <div class="sessions-list" id="sessions"></div>
+      <div class="status" id="sessions-status"></div>
+    </div>
+    <div class="panel">
+      <h2>Log <span id="log-count" class="badge">0</span></h2>
+      <div class="log-panel" id="log"></div>
+      <div class="status" id="log-status"></div>
+    </div>
+  </div>
+
+  <script>
+    async function refreshSessions() {
+      try {
+        const r = await fetch('/sessions');
+        const sessions = await r.json();
+        document.getElementById('session-count').textContent = sessions.length;
+        const el = document.getElementById('sessions');
+        if (sessions.length === 0) {
+          el.innerHTML = '<div class="empty">No recorded sessions</div>';
+        } else {
+          el.innerHTML = sessions.map(s =>
+            `<div class="session-item">
+              <span class="session-code">${s}</span>
+              <a class="dl-link" href="/sessions/${s}/recording" download="${s}.ndjson">↓ ndjson</a>
+            </div>`
+          ).join('');
+        }
+        document.getElementById('sessions-status').textContent = `Updated ${new Date().toLocaleTimeString()}`;
+      } catch (e) {
+        document.getElementById('sessions-status').textContent = `Error: ${e.message}`;
+      }
+    }
+
+    let lastLogCount = 0;
+
+    async function refreshLog() {
+      try {
+        const r = await fetch('/log');
+        const lines = await r.json();
+        document.getElementById('log-count').textContent = lines.length;
+        if (lines.length !== lastLogCount) {
+          lastLogCount = lines.length;
+          const el = document.getElementById('log');
+          // Reverse so newest is at top (panel is column-reverse)
+          el.innerHTML = [...lines].reverse().map(line => {
+            let cls = 'log-line';
+            if (line.includes(' WARN ')) cls += ' warn';
+            else if (line.includes(' ERROR')) cls += ' error';
+            else if (line.includes(' CRIT ')) cls += ' crit';
+            return `<div class="${cls}">${escHtml(line)}</div>`;
+          }).join('');
+        }
+        document.getElementById('log-status').textContent = `Updated ${new Date().toLocaleTimeString()}`;
+      } catch (e) {
+        document.getElementById('log-status').textContent = `Error: ${e.message}`;
+      }
+    }
+
+    function escHtml(s) {
+      return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+
+    refreshSessions();
+    refreshLog();
+    setInterval(refreshSessions, 10000);
+    setInterval(refreshLog, 2000);
+  </script>
+</body>
+</html>
