@@ -41,9 +41,11 @@
   </div>
 
   <script>
+    const apiBase = window.location.pathname.startsWith('/api') ? '/api' : '';
+
     async function refreshSessions() {
       try {
-        const r = await fetch('/sessions');
+        const r = await fetch(`${apiBase}/sessions`);
         const sessions = await r.json();
         document.getElementById('session-count').textContent = sessions.length;
         const el = document.getElementById('sessions');
@@ -53,7 +55,7 @@
           el.innerHTML = sessions.map(s =>
             `<div class="session-item">
               <span class="session-code">${s}</span>
-              <a class="dl-link" href="/sessions/${s}/recording" download="${s}.ndjson">↓ ndjson</a>
+              <a class="dl-link" href="${apiBase}/sessions/${s}/recording" download="${s}.ndjson">↓ ndjson</a>
             </div>`
           ).join('');
         }
@@ -67,7 +69,7 @@
 
     async function refreshLog() {
       try {
-        const r = await fetch('/log');
+        const r = await fetch(`${apiBase}/log`);
         const lines = await r.json();
         document.getElementById('log-count').textContent = lines.length;
         if (lines.length !== lastLogCount) {
