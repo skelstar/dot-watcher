@@ -25,6 +25,13 @@ public class SessionStore(int positionHistoryCount, string recordingsPath)
         }
     }
 
+    public IReadOnlyList<string> GetParticipants(string sessionCode)
+    {
+        if (!_sessions.TryGetValue(sessionCode.ToUpperInvariant(), out var session))
+            return [];
+        return session.Keys.ToList();
+    }
+
     public IReadOnlyList<RunnerPosition[]> GetLatestPositions(string sessionCode)
     {
         if (!_sessions.TryGetValue(sessionCode.ToUpperInvariant(), out var session))

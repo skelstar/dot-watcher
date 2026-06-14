@@ -38,7 +38,8 @@ app.MapPost("/location", (LocationUpdate update, SessionStore store, HttpRequest
         update.Latitude, update.Longitude,
         update.Heading.HasValue ? $"{update.Heading:F1}°" : "n/a",
         update.Timestamp);
-    return Results.Ok();
+    var participants = store.GetParticipants(update.SessionCode);
+    return Results.Ok(new { participants });
 });
 
 // Return the latest position for every runner in a session
