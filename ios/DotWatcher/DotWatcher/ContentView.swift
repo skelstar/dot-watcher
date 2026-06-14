@@ -11,8 +11,14 @@ struct ContentView: View {
             Text("DotWatcher")
                 .font(.largeTitle.bold())
 
-            Label(location.runnerName, systemImage: "figure.run")
-                .foregroundStyle(.secondary)
+            HStack {
+                Image(systemName: "figure.run")
+                    .foregroundStyle(.secondary)
+                TextField("Runner name", text: $location.runnerName)
+                    .multilineTextAlignment(.center)
+                    .foregroundStyle(.secondary)
+                    .disabled(location.isTracking)
+            }
 
             sessionCodeEntry
 

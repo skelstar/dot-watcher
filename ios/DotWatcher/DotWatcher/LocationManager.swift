@@ -18,7 +18,9 @@ final class LocationManager {
     let serverURL = URL(string: "http://dot-watcher.skelstar.io/api/location")!
     let bearerToken = "dev-token"
     var sessionCode = ""
-    let runnerName = "Gerald"
+    var runnerName: String = UserDefaults.standard.string(forKey: "runnerName") ?? "" {
+        didSet { UserDefaults.standard.set(runnerName, forKey: "runnerName") }
+    }
     let interval: TimeInterval = 15
 
     init() {
