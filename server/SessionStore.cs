@@ -10,23 +10,24 @@ public class SessionStore(int positionHistoryCount, string recordingsPath)
 
     public void AddPosition(LocationUpdate update)
     {
-        var session = _sessions.GetOrAdd(update.SessionCode, _ => new());
+        var code = update.SessionCode.ToUpperInvariant();
+        var session = _sessions.GetOrAdd(code, _ => new());
         var history = session.GetOrAdd(update.RunnerName, _ => []);
         lock (history)
             history.Add(new RunnerPosition(update.RunnerName, update.Latitude, update.Longitude, update.Heading, update.Timestamp));
 
-        var fileLock = _fileLocks.GetOrAdd(update.SessionCode, _ => new object());
+        var fileLock = _fileLocks.GetOrAdd(code, _ => new object());
         lock (fileLock)
         {
             Directory.CreateDirectory(recordingsPath);
-            var path = Path.Combine(recordingsPath, $"{update.SessionCode}.ndjson");
-            File.AppendAllText(path, JsonSerializer.Serialize(update) + "\n");
+            var path = Path.Combine(recordingsPath, $"{code}.ndjson");
+            File.AppendAllText(path, JsonSerializer.Serialize(update with { SessionCode = code }) + "\n");
         }
     }
 
     public IReadOnlyList<RunnerPosition[]> GetLatestPositions(string sessionCode)
     {
-        if (!_sessions.TryGetValue(sessionCode, out var session))
+        if (!_sessions.TryGetValue(sessionCode.ToUpperInvariant(), out var session))
             return [];
 
         var result = new List<RunnerPosition[]>(session.Count);
@@ -53,9 +54,9 @@ public class SessionStore(int positionHistoryCount, string recordingsPath)
 
     public string? GetRecordingPath(string sessionCode)
     {
-        var path = Path.Combine(recordingsPath, $"{sessionCode}.ndjson");
+        var path = Path.Combine(recordingsPath, $"{sessionCode.ToUpperInvariant()}.ndjson");
         return File.Exists(path) ? path : null;
     }
 
-    public void ClearSession(string sessionCode) => _sessions.TryRemove(sessionCode, out _);
+    public void ClearSession(string sessionCode) => _sessions.TryRemove(sessionCode.ToUpperInvariant(), out _);
 }

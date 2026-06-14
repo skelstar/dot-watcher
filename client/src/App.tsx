@@ -14,9 +14,10 @@ const SERVER_URL: string = import.meta.env.VITE_SERVER_URL ?? 'http://dot-watche
 
 function parseUrl(): { sessionCode: string | null; isReplay: boolean } {
   const parts = window.location.pathname.replace(/^\//, '').split('/')
+  const norm = (s: string) => s.toUpperCase() || null
   if (parts[0] === 'replay') return { sessionCode: null, isReplay: true }
-  if (parts[1] === 'replay') return { sessionCode: parts[0] || null, isReplay: true }
-  return { sessionCode: parts[0] || null, isReplay: false }
+  if (parts[1] === 'replay') return { sessionCode: norm(parts[0]), isReplay: true }
+  return { sessionCode: norm(parts[0]), isReplay: false }
 }
 
 export default function App() {

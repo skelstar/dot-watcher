@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git -C /Users/skelstar/Documents/GitHub/dot-watcher diff)",
+      "Bash(git -C /Users/skelstar/Documents/GitHub/dot-watcher log --oneline -5)",
+      "Bash(git -C /Users/skelstar/Documents/GitHub/dot-watcher add client/src/App.tsx client/.env 'data/routes/Chester - Morning_Run.json' 'data/routes/David - Sunday_trails_-_Waimapihi___Wrights_Hill___Karori_group_run.json' 'data/routes/Sean - Recovery_Pig_.json' 'data/routes/Talia - Morning_Run.json' 'data/routes/old/David'\\\\''s Turbine Run.gpx' 'data/routes/old/Turbine Run.gpx' data/routes/old/turbine-run-positions-david-trimmed.json data/routes/old/turbine-run-positions-david.json data/routes/old/turbine-run-positions.json tools/simulator/src/GpxConverterPage.tsx tools/simulator/src/RoutesPage.tsx tools/simulator/src/StepperPage.tsx tools/simulator/src/lib/positions.ts tools/simulator/vite.config.ts tools/simulator/data/)",
+      "Bash(git -C /Users/skelstar/Documents/GitHub/dot-watcher add client/src/App.tsx 'data/routes/Chester - Morning_Run.json' 'data/routes/David - Sunday_trails_-_Waimapihi___Wrights_Hill___Karori_group_run.json' 'data/routes/Sean - Recovery_Pig_.json' 'data/routes/Talia - Morning_Run.json' 'data/routes/old/David'\\\\''s Turbine Run.gpx' 'data/routes/old/Turbine Run.gpx' data/routes/old/turbine-run-positions-david-trimmed.json data/routes/old/turbine-run-positions-david.json data/routes/old/turbine-run-positions.json tools/simulator/src/GpxConverterPage.tsx tools/simulator/src/RoutesPage.tsx tools/simulator/src/StepperPage.tsx tools/simulator/src/lib/positions.ts tools/simulator/vite.config.ts tools/simulator/data/)",
+      "Bash(git -C /Users/skelstar/Documents/GitHub/dot-watcher status)",
+      "Bash(git -C /Users/skelstar/Documents/GitHub/dot-watcher commit -m ' *)",
+      "Bash(dotnet build *)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(curl -v http://dot-watcher.skelstar.io/api)",
+      "Bash(curl -s http://dot-watcher.skelstar.io/api)"
+    ]
+  }
+}

@@ -47,9 +47,6 @@ export function useRunnerMarkers(
         const map = mapRef.current
         if (!map || cancelled) return
 
-        // Snapshot before update: are all known runners currently in the viewport?
-        const prevPositions = Object.values(latestPositionsRef.current)
-        const allInView = prevPositions.length > 0 && prevPositions.every(pos => isInView(map, pos))
         const isFirstLoad = !hasLocatedRef.current
 
         const seen = new Set<string>()
@@ -110,7 +107,7 @@ export function useRunnerMarkers(
         updateVisibleRunners(map)
         recluster(map)
 
-        if (seen.size > 0 && (isFirstLoad || allInView)) {
+        if (seen.size > 0 && isFirstLoad) {
           hasLocatedRef.current = true
           const latestCoords = runnerGroups
             .filter(g => g.length > 0)
