@@ -24,6 +24,16 @@
     .status { color: #8b949e; font-size: 11px; margin-top: 8px; }
     .empty { color: #484f58; padding: 8px; }
     .badge { background: #21262d; border: 1px solid #30363d; color: #8b949e; border-radius: 10px; padding: 1px 7px; font-size: 10px; }
+    .upload-section { margin-top: 10px; padding-top: 10px; border-top: 1px solid #30363d; display: flex; flex-direction: column; gap: 6px; }
+    .upload-section input[type=text], .upload-section input[type=password] { background: #0d1117; border: 1px solid #30363d; border-radius: 4px; color: #c9d1d9; padding: 4px 8px; font-family: monospace; font-size: 12px; width: 100%; }
+    .upload-section input[type=text]:focus, .upload-section input[type=password]:focus { outline: none; border-color: #58a6ff; }
+    .upload-label { color: #8b949e; font-size: 11px; }
+    .upload-btn { background: #238636; border: 1px solid #2ea043; border-radius: 4px; color: #fff; padding: 5px 10px; font-family: monospace; font-size: 12px; cursor: pointer; }
+    .upload-btn:hover { background: #2ea043; }
+    .upload-btn:disabled { opacity: 0.5; cursor: default; }
+    .upload-status { font-size: 11px; min-height: 14px; }
+    .upload-status.ok { color: #3fb950; }
+    .upload-status.err { color: #f85149; }
   </style>
 </head>
 <body>
@@ -32,6 +42,14 @@
       <h2>Sessions <span id="session-count" class="badge">0</span></h2>
       <div class="sessions-list" id="sessions"></div>
       <div class="status" id="sessions-status"></div>
+      <div class="upload-section">
+        <span class="upload-label">Upload recording</span>
+        <input type="text" id="upload-code" placeholder="Session code (e.g. WAINOT)" />
+        <input type="file" id="upload-file" accept=".ndjson" style="color:#8b949e;font-size:11px;" />
+        <input type="password" id="upload-token" placeholder="Bearer token" />
+        <button class="upload-btn" id="upload-btn" onclick="uploadRecording()">Upload</button>
+        <div class="upload-status" id="upload-status"></div>
+      </div>
     </div>
     <div class="panel">
       <h2>Log <span id="log-count" class="badge">0</span></h2>
@@ -92,6 +110,59 @@
 
     function escHtml(s) {
       return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+
+    document.getElementById('upload-token').value = localStorage.getItem('bearerToken') || '';
+    document.getElementById('upload-file').addEventListener('change', function() {
+      const file = this.files[0];
+      if (file) {
+        const code = file.name.replace(/\.ndjson$/i, '').toUpperCase();
+        document.getElementById('upload-code').value = code;
+      }
+    });
+
+    async function uploadRecording() {
+      const code = document.getElementById('upload-code').value.trim().toUpperCase();
+      const file = document.getElementById('upload-file').files[0];
+      const token = document.getElementById('upload-token').value.trim();
+      const status = document.getElementById('upload-status');
+      const btn = document.getElementById('upload-btn');
+
+      if (!code || !file || !token) {
+        status.textContent = 'Fill in all fields.';
+        status.className = 'upload-status err';
+        return;
+      }
+
+      localStorage.setItem('bearerToken', token);
+      btn.disabled = true;
+      status.textContent = 'Uploading…';
+      status.className = 'upload-status';
+
+      try {
+        const content = await file.text();
+        const r = await fetch(`${apiBase}/sessions/${code}/recording`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/x-ndjson',
+            'Authorization': `Bearer ${token}`,
+          },
+          body: content,
+        });
+        if (r.ok) {
+          status.textContent = `Uploaded ${code} (${content.split('\n').filter(Boolean).length} entries)`;
+          status.className = 'upload-status ok';
+          refreshSessions();
+        } else {
+          status.textContent = `Failed: HTTP ${r.status}`;
+          status.className = 'upload-status err';
+        }
+      } catch (e) {
+        status.textContent = `Error: ${e.message}`;
+        status.className = 'upload-status err';
+      } finally {
+        btn.disabled = false;
+      }
     }
 
     refreshSessions();

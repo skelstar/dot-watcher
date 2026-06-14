@@ -72,5 +72,14 @@ public class SessionStore(int positionHistoryCount, string recordingsPath)
         return File.Exists(path) ? Path.GetFullPath(path) : null;
     }
 
+    public void SaveRecording(string sessionCode, string content)
+    {
+        Directory.CreateDirectory(recordingsPath);
+        var path = Path.Combine(recordingsPath, $"{sessionCode.ToUpperInvariant()}.ndjson");
+        var fileLock = _fileLocks.GetOrAdd(sessionCode, _ => new object());
+        lock (fileLock)
+            File.WriteAllText(path, content);
+    }
+
     public void ClearSession(string sessionCode) => _sessions.TryRemove(sessionCode.ToUpperInvariant(), out _);
 }

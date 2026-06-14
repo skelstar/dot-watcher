@@ -50,6 +50,20 @@ app.MapGet("/locations/{sessionCode}", (string sessionCode, SessionStore store) 
 app.MapGet("/sessions", (SessionStore store) =>
     Results.Ok(store.GetRecordedSessions()));
 
+// Upload an NDJSON recording for a session
+app.MapPost("/sessions/{sessionCode}/recording", async (string sessionCode, SessionStore store, HttpRequest request, ILogger<Program> logger) =>
+{
+    if (!IsAuthorized(request))
+        return Results.Unauthorized();
+
+    using var reader = new StreamReader(request.Body);
+    var content = await reader.ReadToEndAsync();
+    var upper = sessionCode.ToUpperInvariant();
+    store.SaveRecording(upper, content);
+    logger.LogInformation("Uploaded recording for {Session} ({Bytes} bytes)", upper, content.Length);
+    return Results.Ok(new { sessionCode = upper });
+});
+
 // Download the full NDJSON recording for a session
 app.MapGet("/sessions/{sessionCode}/recording", (string sessionCode, SessionStore store) =>
 {
