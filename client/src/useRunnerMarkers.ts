@@ -28,7 +28,7 @@ export function useRunnerMarkers(
   const markersRef = useRef<Record<string, MarkerEntry>>({})
   const hasLocatedRef = useRef(false)
   const latestPositionsRef = useRef<Record<string, [number, number]>>({})
-  const latestMarkerRef = useRef<Record<string, { root: Root; heading: number | null; colour: string }>>({})
+  const latestMarkerRef = useRef<Record<string, { root: Root; heading: number | null; colour: string; timestamp: string }>>({})
   const [visibleRunners, setVisibleRunners] = useState<string[]>([])
   const [offScreenRunners, setOffScreenRunners] = useState<string[]>([])
 
@@ -68,7 +68,7 @@ export function useRunnerMarkers(
             if (existing && existing.isLatest === isLatest) {
               existing.marker.setLngLat(lngLat)
               if (isLatest) {
-                latestMarkerRef.current[runnerName] = { root: existing.root, heading, colour }
+                latestMarkerRef.current[runnerName] = { root: existing.root, heading, colour, timestamp: pos.timestamp }
               }
             } else {
               existing?.marker.remove()
@@ -77,7 +77,7 @@ export function useRunnerMarkers(
               const el = document.createElement('div')
               const root = createRoot(el)
               if (isLatest) {
-                latestMarkerRef.current[runnerName] = { root, heading, colour }
+                latestMarkerRef.current[runnerName] = { root, heading, colour, timestamp: pos.timestamp }
               } else {
                 root.render(createElement(Dot, { colour }))
               }
@@ -163,9 +163,11 @@ export function useRunnerMarkers(
       for (let i = 1; i < cluster.length; i++) labels.set(cluster[i], '')
     }
 
+    const now = Date.now()
     for (const [name, info] of Object.entries(latestMarkerRef.current)) {
       const label = labels.get(name) ?? name
-      info.root.render(createElement(Arrow, { name, heading: info.heading, colour: info.colour, label }))
+      const stationary = now - new Date(info.timestamp).getTime() > 45_000
+      info.root.render(createElement(Arrow, { name, heading: info.heading, colour: info.colour, label, stationary }))
     }
   }
 

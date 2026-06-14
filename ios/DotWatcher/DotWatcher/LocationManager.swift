@@ -9,6 +9,7 @@ final class LocationManager {
     private(set) var isTracking = false
     var participants: [String] = []
     fileprivate var latestLocation: CLLocation?
+    private var lastTransmittedLocation: CLLocation?
 
     private let clManager = CLLocationManager()
     private let locationDelegate = LocationDelegate()
@@ -67,6 +68,11 @@ final class LocationManager {
             status = "Waiting for GPS..."
             return
         }
+        if let last = lastTransmittedLocation, loc.distance(from: last) < 10 {
+            status = "Stationary 💤"
+            return
+        }
+        lastTransmittedLocation = loc
         let captureTime = loc.timestamp
         let lat = loc.coordinate.latitude
         let lon = loc.coordinate.longitude
