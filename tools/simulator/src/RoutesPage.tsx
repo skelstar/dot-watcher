@@ -7,7 +7,7 @@ const INTERVAL_OPTIONS: { label: string; seconds: number }[] = [
 ]
 
 const SERVER_URL = import.meta.env.VITE_SERVER_URL ?? 'http://dot-watcher.skelstar.io/api'
-const SESSION_CODE = import.meta.env.VITE_ROUTES_SESSION_CODE ?? 'sim-routes'
+const DEFAULT_SESSION_CODE = (import.meta.env.VITE_ROUTES_SESSION_CODE ?? '') as string
 const BEARER_TOKEN = import.meta.env.VITE_BEARER_TOKEN as string
 
 type Position = {
@@ -46,6 +46,10 @@ function formatUTC(isoTimestamp: string): string {
 }
 
 export default function RoutesPage() {
+  const [sessionCode, setSessionCode] = useState(DEFAULT_SESSION_CODE)
+  const [codeFocused, setCodeFocused] = useState(false)
+  const codeInputRef = useRef<HTMLInputElement>(null)
+
   const [timeIdx, setTimeIdx] = useState(0)
   const [statuses, setStatuses] = useState<Record<string, SendStatus>>(
     Object.fromEntries(routes.map(r => [r.runnerName, 'idle']))
@@ -60,10 +64,19 @@ export default function RoutesPage() {
   const atEnd = timeIdx >= allTimestamps.length - 1
 
   useEffect(() => {
+    codeInputRef.current?.focus()
+  }, [])
+
+  useEffect(() => {
     if (!currentTime) return
     sendPositionsAt(currentTime)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [timeIdx])
+
+  function handleCodeChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const filtered = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6)
+    setSessionCode(filtered)
+  }
 
   function startPlay(intervalSec: number) {
     if (timerRef.current) clearInterval(timerRef.current)
@@ -87,7 +100,7 @@ export default function RoutesPage() {
 
   async function handleReset() {
     try {
-      await fetch(`${SERVER_URL}/sessions/${SESSION_CODE}`, {
+      await fetch(`${SERVER_URL}/sessions/${sessionCode}`, {
         method: 'DELETE',
         headers: { Authorization: `Bearer ${BEARER_TOKEN}` },
       })
@@ -122,7 +135,7 @@ export default function RoutesPage() {
               },
               body: JSON.stringify({
                 runnerName: runner,
-                sessionCode: SESSION_CODE,
+                sessionCode,
                 latitude: pos!.latitude,
                 longitude: pos!.longitude,
                 heading: pos!.heading,
@@ -139,11 +152,35 @@ export default function RoutesPage() {
 
   return (
     <div>
-      <div style={subHeader}>
-        <div style={metaStyle}>
-          <span>Session: <strong>{SESSION_CODE}</strong></span>
-          <span>Server: <strong>{SERVER_URL}</strong></span>
+      <div style={sessionEntry}>
+        <label style={sessionLabel}>Session Name</label>
+        <div
+          style={codeBoxRow}
+          onClick={() => { if (!isPlaying) codeInputRef.current?.focus() }}
+        >
+          <input
+            ref={codeInputRef}
+            value={sessionCode}
+            onChange={handleCodeChange}
+            onFocus={() => setCodeFocused(true)}
+            onBlur={() => setCodeFocused(false)}
+            disabled={isPlaying}
+            style={hiddenInput}
+            autoComplete="off"
+            autoCapitalize="characters"
+          />
+          {Array.from({ length: 6 }, (_, i) => (
+            <CodeBox
+              key={i}
+              char={sessionCode[i] ?? null}
+              isActive={codeFocused && !isPlaying && sessionCode.length === i}
+            />
+          ))}
         </div>
+      </div>
+
+      <div style={subHeader}>
+        <span style={metaServer}>Server: <strong>{SERVER_URL}</strong></span>
         <button style={resetButton} onClick={handleReset}>Reset</button>
       </div>
 
@@ -155,7 +192,11 @@ export default function RoutesPage() {
         <button style={arrowBtn(atEnd || isPlaying)} onClick={() => setTimeIdx(i => i + 1)} disabled={atEnd || isPlaying}>
           →
         </button>
-        <button style={playBtn(isPlaying, atEnd)} onClick={() => isPlaying ? stopPlay() : startPlay(postInterval)} disabled={atEnd}>
+        <button
+          style={playBtn(isPlaying, atEnd || sessionCode.length < 6)}
+          onClick={() => isPlaying ? stopPlay() : startPlay(postInterval)}
+          disabled={atEnd || sessionCode.length < 6}
+        >
           {isPlaying ? 'Pause' : 'Play'}
         </button>
         <select
@@ -193,6 +234,19 @@ export default function RoutesPage() {
   )
 }
 
+function CodeBox({ char, isActive }: { char: string | null; isActive: boolean }) {
+  return (
+    <div style={codeBox(isActive)}>
+      {char
+        ? <span style={codeChar}>{char}</span>
+        : isActive
+          ? <span style={cursor} />
+          : null
+      }
+    </div>
+  )
+}
+
 function statusBadge(status: SendStatus) {
   switch (status) {
     case 'sending': return <span style={badge('#94a3b8')}>Sending…</span>
@@ -201,6 +255,60 @@ function statusBadge(status: SendStatus) {
     case 'no-data': return <span style={badge('#e2e8f0', '#94a3b8')}>No data</span>
     default:        return null
   }
+}
+
+const sessionEntry: React.CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  alignItems: 'center',
+  gap: '0.5rem',
+  marginBottom: '1.5rem',
+}
+
+const sessionLabel: React.CSSProperties = {
+  fontSize: '0.85rem',
+  color: '#64748b',
+  fontWeight: 500,
+}
+
+const codeBoxRow: React.CSSProperties = {
+  display: 'flex',
+  gap: '0.5rem',
+  position: 'relative',
+  cursor: 'text',
+}
+
+const hiddenInput: React.CSSProperties = {
+  position: 'absolute',
+  opacity: 0,
+  width: 1,
+  height: 1,
+  pointerEvents: 'none',
+}
+
+const codeBox = (active: boolean): React.CSSProperties => ({
+  width: 44,
+  height: 54,
+  borderRadius: 8,
+  border: `${active ? 2 : 1.5}px solid ${active ? '#3b82f6' : '#cbd5e1'}`,
+  background: '#fff',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+})
+
+const codeChar: React.CSSProperties = {
+  fontSize: '1.4rem',
+  fontWeight: 700,
+  color: '#1e293b',
+  fontFamily: 'monospace',
+}
+
+const cursor: React.CSSProperties = {
+  width: 2,
+  height: 22,
+  background: '#3b82f6',
+  animation: 'blink 1s step-start infinite',
 }
 
 const subHeader: React.CSSProperties = {
@@ -221,9 +329,7 @@ const resetButton: React.CSSProperties = {
   fontWeight: 600,
 }
 
-const metaStyle: React.CSSProperties = {
-  display: 'flex',
-  gap: '1.5rem',
+const metaServer: React.CSSProperties = {
   fontSize: '0.85rem',
   color: '#64748b',
 }
