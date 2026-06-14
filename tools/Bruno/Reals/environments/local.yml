@@ -1,0 +1,4 @@
+name: local
+variables:
+  - name: baseurl
+    value: dot-watcher.skelstar.io/api
