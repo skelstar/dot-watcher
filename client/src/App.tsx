@@ -4,13 +4,15 @@ import 'mapbox-gl/dist/mapbox-gl.css'
 import SessionPrompt from './SessionPrompt.tsx'
 import Legend from './Legend.tsx'
 import MapMenu from './MapMenu.tsx'
+import ReplayControls from './ReplayControls.tsx'
+import ReplayPicker from './ReplayPicker.tsx'
 import { useRunnerMarkers } from './useRunnerMarkers.ts'
+import { useReplay } from './useReplay.ts'
 
 mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN as string
 
 const POLL_INTERVAL_MS: number = parseInt(import.meta.env.VITE_POLL_INTERVAL_MS ?? '2000', 10)
-const REPLAY_POLL_INTERVAL_MS = 500
-const SERVER_URL: string = import.meta.env.VITE_SERVER_URL ?? 'http://dot-watcher.skelstar.io/api'
+const SERVER_URL: string = import.meta.env.VITE_SERVER_URL ?? '/api'
 
 function parseUrl(): { sessionCode: string | null; isReplay: boolean } {
   const parts = window.location.pathname.replace(/^\//, '').split('/')
@@ -53,7 +55,16 @@ export default function App() {
     }
   }, [])
 
-  const { offScreenRunners, centerOnRunner, fitAll } = useRunnerMarkers(mapRef, sessionCode, SERVER_URL, isReplay ? REPLAY_POLL_INTERVAL_MS : POLL_INTERVAL_MS)
+  const replay = useReplay(isReplay ? sessionCode : null, SERVER_URL)
+
+  const { offScreenRunners, centerOnRunner, fitAll } = useRunnerMarkers(
+    mapRef,
+    sessionCode,
+    SERVER_URL,
+    POLL_INTERVAL_MS,
+    isReplay ? replay.positions : undefined,
+    isReplay ? replay.virtualNowMs : undefined,
+  )
 
   async function sendChester(lng: number, lat: number) {
     if (!sessionCode) return
@@ -80,6 +91,11 @@ export default function App() {
     setSessionCode(upper)
   }
 
+  function handleReplaySelect(code: string) {
+    window.history.replaceState(null, '', `/${code}/replay`)
+    setSessionCode(code)
+  }
+
   return (
     <>
       <div ref={containerRef} style={{ width: '100%', height: '100%' }} />
@@ -93,7 +109,9 @@ export default function App() {
           onClose={() => setMenu(null)}
         />
       )}
-      {!sessionCode && <SessionPrompt onSubmit={handleSessionSubmit} />}
+      {isReplay && sessionCode && <ReplayControls replay={replay} />}
+      {isReplay && !sessionCode && <ReplayPicker serverUrl={SERVER_URL} onSelect={handleReplaySelect} />}
+      {!isReplay && !sessionCode && <SessionPrompt onSubmit={handleSessionSubmit} />}
     </>
   )
 }

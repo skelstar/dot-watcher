@@ -24,16 +24,99 @@ export function useRunnerMarkers(
   sessionCode: string | null,
   serverUrl: string,
   intervalMs: number,
+  replayPositions?: RunnerPosition[][],
+  replayNowMs?: number,
 ): RunnerMarkersResult {
   const markersRef = useRef<Record<string, MarkerEntry>>({})
   const hasLocatedRef = useRef(false)
   const latestPositionsRef = useRef<Record<string, [number, number]>>({})
   const latestMarkerRef = useRef<Record<string, { root: Root; heading: number | null; colour: string; timestamp: string }>>({})
+  const virtualNowRef = useRef<number | null>(null)
   const [visibleRunners, setVisibleRunners] = useState<string[]>([])
   const [offScreenRunners, setOffScreenRunners] = useState<string[]>([])
 
+  function applyPositions(runnerGroups: RunnerPosition[][], map: mapboxgl.Map, virtualNow?: number) {
+    if (virtualNow !== undefined) virtualNowRef.current = virtualNow
+    const isFirstLoad = !hasLocatedRef.current
+    const seen = new Set<string>()
+
+    for (const positions of runnerGroups) {
+      if (!positions.length) continue
+      const lastIndex = positions.length - 1
+
+      positions.forEach((pos, i) => {
+        const { runnerName, latitude, longitude, heading } = pos
+        const key = `${runnerName}:${pos.timestamp}`
+        const isLatest = i === lastIndex
+        seen.add(key)
+
+        const lngLat: [number, number] = [longitude, latitude]
+        const colour = runnerColour(runnerName)
+
+        const existing = markersRef.current[key]
+        if (existing && existing.isLatest === isLatest) {
+          existing.marker.setLngLat(lngLat)
+          if (isLatest) {
+            latestMarkerRef.current[runnerName] = { root: existing.root, heading, colour, timestamp: pos.timestamp }
+          }
+        } else {
+          existing?.marker.remove()
+          existing?.root.unmount()
+
+          const el = document.createElement('div')
+          const root = createRoot(el)
+          if (isLatest) {
+            latestMarkerRef.current[runnerName] = { root, heading, colour, timestamp: pos.timestamp }
+          } else {
+            root.render(createElement(Dot, { colour }))
+          }
+          const marker = new mapboxgl.Marker({ element: el, offset: [0, 0] })
+            .setLngLat(lngLat)
+            .addTo(map)
+          markersRef.current[key] = { marker, root, isLatest }
+        }
+      })
+    }
+
+    for (const key of Object.keys(markersRef.current)) {
+      if (!seen.has(key)) {
+        markersRef.current[key].marker.remove()
+        markersRef.current[key].root.unmount()
+        delete markersRef.current[key]
+      }
+    }
+
+    if (seen.size === 0) hasLocatedRef.current = false
+
+    for (const positions of runnerGroups) {
+      if (!positions.length) continue
+      const latest = positions[positions.length - 1]
+      latestPositionsRef.current[latest.runnerName] = [latest.longitude, latest.latitude]
+    }
+    updateVisibleRunners(map)
+    recluster(map)
+
+    if (seen.size > 0 && isFirstLoad) {
+      hasLocatedRef.current = true
+      const latestCoords = runnerGroups
+        .filter(g => g.length > 0)
+        .map(g => g[g.length - 1])
+        .map(p => new mapboxgl.LngLat(p.longitude, p.latitude))
+      if (latestCoords.length === 1) {
+        map.easeTo({ center: latestCoords[0], zoom: 15 })
+      } else {
+        const bounds = latestCoords.reduce(
+          (b, c) => b.extend(c),
+          new mapboxgl.LngLatBounds(latestCoords[0], latestCoords[0]),
+        )
+        map.fitBounds(bounds, { padding: 80, maxZoom: 16 })
+      }
+    }
+  }
+
+  // Live polling effect — skipped when replayPositions is provided
   useEffect(() => {
-    if (!sessionCode) return
+    if (!sessionCode || replayPositions !== undefined) return
     hasLocatedRef.current = false
 
     let cancelled = false
@@ -47,82 +130,7 @@ export function useRunnerMarkers(
         const map = mapRef.current
         if (!map || cancelled) return
 
-        const isFirstLoad = !hasLocatedRef.current
-
-        const seen = new Set<string>()
-
-        for (const positions of runnerGroups) {
-          if (!positions.length) continue
-          const lastIndex = positions.length - 1
-
-          positions.forEach((pos, i) => {
-            const { runnerName, latitude, longitude, heading } = pos
-            const key = `${runnerName}:${pos.timestamp}`
-            const isLatest = i === lastIndex
-            seen.add(key)
-
-            const lngLat: [number, number] = [longitude, latitude]
-            const colour = runnerColour(runnerName)
-
-            const existing = markersRef.current[key]
-            if (existing && existing.isLatest === isLatest) {
-              existing.marker.setLngLat(lngLat)
-              if (isLatest) {
-                latestMarkerRef.current[runnerName] = { root: existing.root, heading, colour, timestamp: pos.timestamp }
-              }
-            } else {
-              existing?.marker.remove()
-              existing?.root.unmount()
-
-              const el = document.createElement('div')
-              const root = createRoot(el)
-              if (isLatest) {
-                latestMarkerRef.current[runnerName] = { root, heading, colour, timestamp: pos.timestamp }
-              } else {
-                root.render(createElement(Dot, { colour }))
-              }
-              const marker = new mapboxgl.Marker({ element: el, offset: [0, 0] })
-                .setLngLat(lngLat)
-                .addTo(map)
-              markersRef.current[key] = { marker, root, isLatest }
-            }
-          })
-        }
-
-        for (const key of Object.keys(markersRef.current)) {
-          if (!seen.has(key)) {
-            markersRef.current[key].marker.remove()
-            markersRef.current[key].root.unmount()
-            delete markersRef.current[key]
-          }
-        }
-
-        if (seen.size === 0) hasLocatedRef.current = false
-
-        for (const positions of runnerGroups) {
-          if (!positions.length) continue
-          const latest = positions[positions.length - 1]
-          latestPositionsRef.current[latest.runnerName] = [latest.longitude, latest.latitude]
-        }
-        updateVisibleRunners(map)
-        recluster(map)
-
-        if (seen.size > 0 && isFirstLoad) {
-          hasLocatedRef.current = true
-          const latestCoords = runnerGroups
-            .filter(g => g.length > 0)
-            .map(g => g[g.length - 1])
-            .map(p => new mapboxgl.LngLat(p.longitude, p.latitude))
-          if (latestCoords.length === 1) {
-            map.easeTo({ center: latestCoords[0], zoom: 15 })
-          } else {
-            const bounds = latestCoords.reduce(
-              (b, c) => b.extend(c),
-              new mapboxgl.LngLatBounds(latestCoords[0], latestCoords[0]),
-            )
-            map.fitBounds(bounds, { padding: 80, maxZoom: 16 })
-          }
-        }
+        applyPositions(runnerGroups, map)
       } catch {
         // network errors are silent — we'll retry on the next interval
       }
@@ -134,7 +142,15 @@ export function useRunnerMarkers(
       cancelled = true
       clearInterval(id)
     }
-  }, [sessionCode, serverUrl, intervalMs, mapRef])
+  }, [sessionCode, serverUrl, intervalMs, mapRef, replayPositions]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Replay effect — runs when replayPositions changes
+  useEffect(() => {
+    if (replayPositions === undefined) return
+    const map = mapRef.current
+    if (!map) return
+    applyPositions(replayPositions, map, replayNowMs)
+  }, [replayPositions, replayNowMs]) // eslint-disable-line react-hooks/exhaustive-deps
 
   function recluster(map: mapboxgl.Map) {
     const runners = Object.entries(latestPositionsRef.current)
@@ -163,7 +179,7 @@ export function useRunnerMarkers(
       for (let i = 1; i < cluster.length; i++) labels.set(cluster[i], '')
     }
 
-    const now = Date.now()
+    const now = virtualNowRef.current ?? Date.now()
     for (const [name, info] of Object.entries(latestMarkerRef.current)) {
       const label = labels.get(name) ?? name
       const stationary = now - new Date(info.timestamp).getTime() > 45_000

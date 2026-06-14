@@ -11,7 +11,9 @@
       "Bash(git add *)",
       "Bash(git commit -m ' *)",
       "Bash(curl -v http://dot-watcher.skelstar.io/api)",
-      "Bash(curl -s http://dot-watcher.skelstar.io/api)"
+      "Bash(curl -s http://dot-watcher.skelstar.io/api)",
+      "Bash(npm run *)",
+      "Read(//Users/skelstar/**)"
     ]
   }
 }
