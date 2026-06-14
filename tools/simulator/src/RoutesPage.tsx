@@ -1,4 +1,10 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
+
+const INTERVAL_OPTIONS: { label: string; seconds: number }[] = [
+  { label: '0.5s', seconds: 0.5 },
+  { label: '1s', seconds: 1 },
+  { label: '2s', seconds: 2 },
+]
 
 const SERVER_URL = import.meta.env.VITE_SERVER_URL ?? 'http://dot-watcher.skelstar.io/api'
 const SESSION_CODE = import.meta.env.VITE_ROUTES_SESSION_CODE ?? 'sim-routes'
@@ -18,7 +24,7 @@ type RunnerRoute = {
 
 type SendStatus = 'idle' | 'sending' | 'sent' | 'error' | 'no-data'
 
-const routeModules = import.meta.glob('../../../data/routes/*.json', { eager: true })
+const routeModules = import.meta.glob('../data/current_route/*.json', { eager: true })
 
 function extractRunnerName(filePath: string): string {
   const filename = filePath.split('/').pop()!.replace('.json', '')
@@ -35,14 +41,8 @@ const allTimestamps = [
   ...new Set(routes.flatMap(r => r.positions.map(p => p.timestamp))),
 ].sort()
 
-function formatNZST(isoTimestamp: string): string {
-  return new Date(isoTimestamp).toLocaleTimeString('en-NZ', {
-    timeZone: 'Pacific/Auckland',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hour12: false,
-  })
+function formatUTC(isoTimestamp: string): string {
+  return isoTimestamp.slice(11, 19)
 }
 
 export default function RoutesPage() {
@@ -50,14 +50,40 @@ export default function RoutesPage() {
   const [statuses, setStatuses] = useState<Record<string, SendStatus>>(
     Object.fromEntries(routes.map(r => [r.runnerName, 'idle']))
   )
+  const [postInterval, setPostInterval] = useState(1)
+  const [isPlaying, setIsPlaying] = useState(false)
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const timeIdxRef = useRef(timeIdx)
+  timeIdxRef.current = timeIdx
 
   const currentTime = allTimestamps[timeIdx] ?? null
+  const atEnd = timeIdx >= allTimestamps.length - 1
 
   useEffect(() => {
     if (!currentTime) return
     sendPositionsAt(currentTime)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [timeIdx])
+
+  function startPlay(intervalSec: number) {
+    if (timerRef.current) clearInterval(timerRef.current)
+    timerRef.current = setInterval(() => {
+      const next = timeIdxRef.current + 1
+      if (next >= allTimestamps.length) {
+        clearInterval(timerRef.current!)
+        timerRef.current = null
+        setIsPlaying(false)
+        return
+      }
+      setTimeIdx(next)
+    }, intervalSec * 1000)
+    setIsPlaying(true)
+  }
+
+  function stopPlay() {
+    if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null }
+    setIsPlaying(false)
+  }
 
   async function handleReset() {
     try {
@@ -68,6 +94,7 @@ export default function RoutesPage() {
     } catch {
       // best-effort
     }
+    stopPlay()
     setTimeIdx(0)
     setStatuses(Object.fromEntries(routes.map(r => [r.runnerName, 'idle'])))
   }
@@ -110,8 +137,6 @@ export default function RoutesPage() {
     )
   }
 
-  const atEnd = timeIdx >= allTimestamps.length - 1
-
   return (
     <div>
       <div style={subHeader}>
@@ -123,10 +148,26 @@ export default function RoutesPage() {
       </div>
 
       <div style={timeRow}>
-        <div style={timeBox}>{currentTime ? formatNZST(currentTime) : '—'}</div>
-        <button style={arrowBtn(atEnd)} onClick={() => setTimeIdx(i => i + 1)} disabled={atEnd}>
+        <button style={arrowBtn(timeIdx === 0 || isPlaying)} onClick={() => setTimeIdx(i => i - 1)} disabled={timeIdx === 0 || isPlaying}>
+          ←
+        </button>
+        <div style={timeBox}>{currentTime ? formatUTC(currentTime) : '—'}</div>
+        <button style={arrowBtn(atEnd || isPlaying)} onClick={() => setTimeIdx(i => i + 1)} disabled={atEnd || isPlaying}>
           →
         </button>
+        <button style={playBtn(isPlaying, atEnd)} onClick={() => isPlaying ? stopPlay() : startPlay(postInterval)} disabled={atEnd}>
+          {isPlaying ? 'Pause' : 'Play'}
+        </button>
+        <select
+          value={postInterval}
+          onChange={e => { const v = Number(e.target.value); setPostInterval(v); if (isPlaying) startPlay(v) }}
+          style={intervalSelect}
+          disabled={isPlaying}
+        >
+          {INTERVAL_OPTIONS.map(opt => (
+            <option key={opt.seconds} value={opt.seconds}>{opt.label}</option>
+          ))}
+        </select>
         <span style={stepLabel}>
           Step {timeIdx + 1} of {allTimestamps.length}
         </span>
@@ -217,6 +258,27 @@ const arrowBtn = (disabled: boolean): React.CSSProperties => ({
   cursor: disabled ? 'default' : 'pointer',
   fontWeight: 700,
 })
+
+const playBtn = (playing: boolean, disabled: boolean): React.CSSProperties => ({
+  padding: '0.35rem 0.9rem',
+  borderRadius: 8,
+  border: '2px solid #e2e8f0',
+  background: disabled ? '#f1f5f9' : playing ? '#dc2626' : '#16a34a',
+  color: disabled ? '#cbd5e1' : '#fff',
+  cursor: disabled ? 'default' : 'pointer',
+  fontWeight: 700,
+  fontSize: '0.85rem',
+})
+
+const intervalSelect: React.CSSProperties = {
+  padding: '0.3rem 0.6rem',
+  borderRadius: 6,
+  border: '1.5px solid #cbd5e1',
+  background: '#fff',
+  fontSize: '0.85rem',
+  color: '#1e293b',
+  cursor: 'pointer',
+}
 
 const stepLabel: React.CSSProperties = {
   fontSize: '0.8rem',

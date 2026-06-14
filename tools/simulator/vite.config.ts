@@ -4,7 +4,7 @@ import path from 'path'
 import fs from 'fs'
 import type { Plugin } from 'vite'
 
-const ROUTES_DIR = path.resolve(__dirname, '../../data/routes')
+const ROUTES_DIR = path.resolve(__dirname, 'data/current_route')
 
 function saveRoutePlugin(): Plugin {
   return {

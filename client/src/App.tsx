@@ -9,17 +9,21 @@ import { useRunnerMarkers } from './useRunnerMarkers.ts'
 mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN as string
 
 const POLL_INTERVAL_MS: number = parseInt(import.meta.env.VITE_POLL_INTERVAL_MS ?? '2000', 10)
+const REPLAY_POLL_INTERVAL_MS = 500
 const SERVER_URL: string = import.meta.env.VITE_SERVER_URL ?? 'http://dot-watcher.skelstar.io/api'
 
-function sessionCodeFromPath(): string | null {
-  const code = window.location.pathname.replace(/^\//, '').trim()
-  return code || null
+function parseUrl(): { sessionCode: string | null; isReplay: boolean } {
+  const parts = window.location.pathname.replace(/^\//, '').split('/')
+  if (parts[0] === 'replay') return { sessionCode: null, isReplay: true }
+  if (parts[1] === 'replay') return { sessionCode: parts[0] || null, isReplay: true }
+  return { sessionCode: parts[0] || null, isReplay: false }
 }
 
 export default function App() {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<mapboxgl.Map | null>(null)
-  const [sessionCode, setSessionCode] = useState<string | null>(sessionCodeFromPath)
+  const { sessionCode: initialCode, isReplay } = parseUrl()
+  const [sessionCode, setSessionCode] = useState<string | null>(initialCode)
   const [menu, setMenu] = useState<{ x: number; y: number; lng: number; lat: number } | null>(null)
 
   useEffect(() => {
@@ -48,7 +52,7 @@ export default function App() {
     }
   }, [])
 
-  const { offScreenRunners, centerOnRunner, fitAll } = useRunnerMarkers(mapRef, sessionCode, SERVER_URL, POLL_INTERVAL_MS)
+  const { offScreenRunners, centerOnRunner, fitAll } = useRunnerMarkers(mapRef, sessionCode, SERVER_URL, isReplay ? REPLAY_POLL_INTERVAL_MS : POLL_INTERVAL_MS)
 
   async function sendChester(lng: number, lat: number) {
     if (!sessionCode) return
@@ -71,7 +75,7 @@ export default function App() {
 
   function handleSessionSubmit(code: string) {
     const upper = code.trim().toUpperCase()
-    window.history.replaceState(null, '', `/${upper}`)
+    window.history.replaceState(null, '', isReplay ? `/${upper}/replay` : `/${upper}`)
     setSessionCode(upper)
   }
 

@@ -1,15 +1,24 @@
-import { useState, useMemo } from 'react'
-import { type Position, compressToMinutes, computeBearing } from './lib/positions'
+import { useState, useMemo, useEffect } from 'react'
+import { type Position, compressToInterval, filterByDistance, computeBearing } from './lib/positions'
+
+const DISTANCE_FILTER_METERS = 10
+
+const INTERVAL_OPTIONS: { label: string; seconds: number }[] = [
+  { label: '15 seconds', seconds: 15 },
+  { label: '30 seconds', seconds: 30 },
+  { label: '60 seconds', seconds: 60 },
+  { label: '5 minutes', seconds: 300 },
+]
 
 interface ParseResult {
-  rawPositions: Position[]  // timestamps may be '' when file has none
+  rawPositions: Position[]
   hasTimestamps: boolean
 }
 
 function defaultStartTime() {
   const d = new Date()
   d.setSeconds(0, 0)
-  return d.toISOString().slice(0, 16)  // "YYYY-MM-DDTHH:MM" for datetime-local
+  return d.toISOString().slice(0, 16)
 }
 
 export default function GpxConverterPage() {
@@ -19,18 +28,49 @@ export default function GpxConverterPage() {
   const [dragging, setDragging] = useState(false)
   const [copied, setCopied] = useState(false)
   const [startTime, setStartTime] = useState(defaultStartTime)
-  const [intervalSec, setIntervalSec] = useState(1)
-  const [saveStatus, setSaveStatus] = useState<'idle' | 'conflict' | 'saved' | 'error'>('idle')
+  const [postInterval, setPostInterval] = useState(15)
+  const [shift12h, setShift12h] = useState(false)
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saved' | 'error'>('idle')
 
   const positions = useMemo<Position[] | null>(() => {
     if (!parseResult) return null
-    if (parseResult.hasTimestamps) return parseResult.rawPositions
-    const origin = new Date(startTime).getTime()
-    return parseResult.rawPositions.map((p, i) => ({
-      ...p,
-      timestamp: new Date(origin + i * intervalSec * 1000).toISOString(),
-    }))
-  }, [parseResult, startTime, intervalSec])
+
+    let pts: Position[]
+    if (parseResult.hasTimestamps) {
+      pts = compressToInterval(parseResult.rawPositions, postInterval)
+      pts = filterByDistance(pts, DISTANCE_FILTER_METERS)
+    } else {
+      const filtered = filterByDistance(parseResult.rawPositions, DISTANCE_FILTER_METERS)
+      const origin = new Date(startTime).getTime()
+      pts = filtered.map((p, i) => ({
+        ...p,
+        timestamp: new Date(origin + i * postInterval * 1000).toISOString(),
+      }))
+    }
+
+    if (shift12h) {
+      pts = pts.map(p => ({
+        ...p,
+        timestamp: new Date(new Date(p.timestamp).getTime() + 12 * 60 * 60 * 1000).toISOString(),
+      }))
+    }
+
+    if (pts.length > 0) pts[0].heading = null
+    for (let i = 1; i < pts.length; i++) {
+      const prev = pts[i - 1]
+      pts[i].heading = Math.round(
+        computeBearing(prev.latitude, prev.longitude, pts[i].latitude, pts[i].longitude) * 10
+      ) / 10
+    }
+
+    return pts
+  }, [parseResult, postInterval, startTime, shift12h])
+
+  useEffect(() => {
+    if (!positions || !fileName) return
+    const jsonName = fileName.replace(/\.gpx$/i, '.json')
+    saveRoute(jsonName, positions)
+  }, [positions, fileName])
 
   function processFile(file: File) {
     setError('')
@@ -49,7 +89,6 @@ export default function GpxConverterPage() {
           return
         }
         setParseResult(result)
-        saveRoute(file.name.replace(/\.gpx$/i, '.json'), result, false)
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to parse GPX file.')
       }
@@ -57,23 +96,14 @@ export default function GpxConverterPage() {
     reader.readAsText(file)
   }
 
-  async function saveRoute(jsonName: string, result: ParseResult, force: boolean) {
-    const pts = result.hasTimestamps
-      ? result.rawPositions
-      : result.rawPositions.map((p, i) => ({
-          ...p,
-          timestamp: new Date(new Date(startTime).getTime() + i * intervalSec * 1000).toISOString(),
-        }))
-
+  async function saveRoute(jsonName: string, pts: Position[]) {
     try {
       const res = await fetch('/api/save-route', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ filename: jsonName, content: JSON.stringify(pts, null, 2), force }),
+        body: JSON.stringify({ filename: jsonName, content: JSON.stringify(pts, null, 2), force: true }),
       })
-      if (res.status === 409) { setSaveStatus('conflict'); return }
-      if (!res.ok) { setSaveStatus('error'); return }
-      setSaveStatus('saved')
+      setSaveStatus(res.ok ? 'saved' : 'error')
     } catch {
       setSaveStatus('error')
     }
@@ -99,8 +129,7 @@ export default function GpxConverterPage() {
 
   function downloadJson() {
     if (!positions) return
-    const json = JSON.stringify(positions, null, 2)
-    const blob = new Blob([json], { type: 'application/json' })
+    const blob = new Blob([JSON.stringify(positions, null, 2)], { type: 'application/json' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
@@ -133,11 +162,45 @@ export default function GpxConverterPage() {
         </label>
       </div>
 
+      <div style={intervalRow}>
+        <label style={intervalLabel}>
+          POST interval
+          <select
+            value={postInterval}
+            onChange={e => setPostInterval(Number(e.target.value))}
+            style={intervalSelect}
+          >
+            {INTERVAL_OPTIONS.map(opt => (
+              <option key={opt.seconds} value={opt.seconds}>{opt.label}</option>
+            ))}
+          </select>
+        </label>
+        <span style={filterNote}>Distance filter: {DISTANCE_FILTER_METERS} m</span>
+        <label style={checkLabel}>
+          <input
+            type="checkbox"
+            checked={shift12h}
+            onChange={e => setShift12h(e.target.checked)}
+          />
+          +12h (UTC fix)
+        </label>
+      </div>
+
+      {positions && (
+        <p style={startTimeNote}>
+          Start time: {new Date(positions[0].timestamp).toLocaleString(undefined, {
+            weekday: 'short', day: 'numeric', month: 'short',
+            hour: '2-digit', minute: '2-digit', second: '2-digit',
+            timeZone: 'UTC', hour12: false,
+          })} (UTC)
+        </p>
+      )}
+
       {error && <div style={errorBox}>{error}</div>}
 
       {parseResult && !parseResult.hasTimestamps && (
         <div style={noticeBox}>
-          <strong>No timestamps in file</strong> — times will be generated from the settings below.
+          <strong>No timestamps in file</strong> — times will be generated from the start time below.
           <div style={genControls}>
             <label style={genLabel}>
               Start time
@@ -148,36 +211,17 @@ export default function GpxConverterPage() {
                 style={genInput}
               />
             </label>
-            <label style={genLabel}>
-              Interval (seconds)
-              <input
-                type="number"
-                min={1}
-                value={intervalSec}
-                onChange={e => setIntervalSec(Math.max(1, parseInt(e.target.value) || 1))}
-                style={{ ...genInput, width: 70 }}
-              />
-            </label>
           </div>
         </div>
       )}
 
-      {saveStatus === 'conflict' && (
-        <div style={conflictBox}>
-          <strong>{fileName.replace(/\.gpx$/i, '.json')}</strong> already exists in /data/routes.{' '}
-          <button style={inlineBtn} onClick={() => parseResult && saveRoute(fileName.replace(/\.gpx$/i, '.json'), parseResult, true)}>
-            Replace
-          </button>
-          <button style={{ ...inlineBtn, marginLeft: '0.4rem', color: '#64748b' }} onClick={() => setSaveStatus('idle')}>
-            Keep existing
-          </button>
+      {saveStatus === 'saved' && (
+        <div style={savedBox}>
+          Saved to /tools/simulator/data/current_route/{fileName.replace(/\.gpx$/i, '.json')}
         </div>
       )}
-      {saveStatus === 'saved' && (
-        <div style={savedBox}>Saved to /data/routes/{fileName.replace(/\.gpx$/i, '.json')}</div>
-      )}
       {saveStatus === 'error' && (
-        <div style={errorBox}>Could not save to /data/routes — is the dev server running?</div>
+        <div style={errorBox}>Could not save to current_route — is the dev server running?</div>
       )}
 
       {positions && (
@@ -249,20 +293,7 @@ function parseGpx(xml: string): ParseResult {
     rawPositions.push({ latitude: lat, longitude: lon, heading: null, timestamp })
   }
 
-  if (rawPositions.length === 0) return { rawPositions: [], hasTimestamps: false }
-
-  // If the file has real timestamps, thin to one point per minute
-  const finalPositions = hasTimestamps ? compressToMinutes(rawPositions) : rawPositions
-
-  // Compute headings on the final set
-  finalPositions[0].heading = null
-  for (let i = 1; i < finalPositions.length; i++) {
-    const prev = finalPositions[i - 1]
-    const curr = finalPositions[i]
-    curr.heading = Math.round(computeBearing(prev.latitude, prev.longitude, curr.latitude, curr.longitude) * 10) / 10
-  }
-
-  return { rawPositions: finalPositions, hasTimestamps }
+  return { rawPositions, hasTimestamps }
 }
 
 
@@ -307,6 +338,54 @@ const fileLabel: React.CSSProperties = {
   fontWeight: 600,
 }
 
+const intervalRow: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: '1.5rem',
+  marginTop: '1rem',
+  flexWrap: 'wrap',
+}
+
+const intervalLabel: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: '0.6rem',
+  fontSize: '0.85rem',
+  fontWeight: 600,
+  color: '#1e293b',
+}
+
+const intervalSelect: React.CSSProperties = {
+  padding: '0.3rem 0.6rem',
+  borderRadius: 6,
+  border: '1.5px solid #cbd5e1',
+  background: '#fff',
+  fontSize: '0.85rem',
+  color: '#1e293b',
+  cursor: 'pointer',
+}
+
+const filterNote: React.CSSProperties = {
+  fontSize: '0.8rem',
+  color: '#94a3b8',
+}
+
+const startTimeNote: React.CSSProperties = {
+  margin: '0.5rem 0 0',
+  fontSize: '0.8rem',
+  color: '#64748b',
+}
+
+const checkLabel: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: '0.4rem',
+  fontSize: '0.85rem',
+  fontWeight: 600,
+  color: '#1e293b',
+  cursor: 'pointer',
+}
+
 const errorBox: React.CSSProperties = {
   marginTop: '1rem',
   padding: '0.75rem 1rem',
@@ -314,16 +393,6 @@ const errorBox: React.CSSProperties = {
   background: '#fef2f2',
   border: '1px solid #fecaca',
   color: '#dc2626',
-  fontSize: '0.85rem',
-}
-
-const conflictBox: React.CSSProperties = {
-  marginTop: '1rem',
-  padding: '0.75rem 1rem',
-  borderRadius: 6,
-  background: '#fff7ed',
-  border: '1px solid #fed7aa',
-  color: '#9a3412',
   fontSize: '0.85rem',
 }
 
@@ -335,17 +404,6 @@ const savedBox: React.CSSProperties = {
   border: '1px solid #bbf7d0',
   color: '#166534',
   fontSize: '0.85rem',
-}
-
-const inlineBtn: React.CSSProperties = {
-  padding: '0.2rem 0.7rem',
-  borderRadius: 4,
-  border: '1px solid currentColor',
-  background: 'transparent',
-  cursor: 'pointer',
-  fontSize: '0.82rem',
-  fontWeight: 600,
-  color: '#9a3412',
 }
 
 const noticeBox: React.CSSProperties = {
