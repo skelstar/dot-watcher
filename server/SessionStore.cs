@@ -1,10 +1,17 @@
 using System.Collections.Concurrent;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace DotWatcher.Server;
 
 public class SessionStore(int positionHistoryCount, string recordingsPath)
 {
+    private static readonly JsonSerializerOptions _ndjsonOptions = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        DefaultIgnoreCondition = JsonIgnoreCondition.Never,
+    };
+
     private readonly ConcurrentDictionary<string, ConcurrentDictionary<string, List<RunnerPosition>>> _sessions = new();
     private readonly ConcurrentDictionary<string, object> _fileLocks = new();
 
@@ -21,7 +28,7 @@ public class SessionStore(int positionHistoryCount, string recordingsPath)
         {
             Directory.CreateDirectory(recordingsPath);
             var path = Path.Combine(recordingsPath, $"{code}.ndjson");
-            File.AppendAllText(path, JsonSerializer.Serialize(update with { SessionCode = code }) + "\n");
+            File.AppendAllText(path, JsonSerializer.Serialize(update with { SessionCode = code }, _ndjsonOptions) + "\n");
         }
     }
 
@@ -62,7 +69,7 @@ public class SessionStore(int positionHistoryCount, string recordingsPath)
     public string? GetRecordingPath(string sessionCode)
     {
         var path = Path.Combine(recordingsPath, $"{sessionCode.ToUpperInvariant()}.ndjson");
-        return File.Exists(path) ? path : null;
+        return File.Exists(path) ? Path.GetFullPath(path) : null;
     }
 
     public void ClearSession(string sessionCode) => _sessions.TryRemove(sessionCode.ToUpperInvariant(), out _);
