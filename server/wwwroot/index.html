@@ -41,7 +41,7 @@
   </div>
 
   <script>
-    const apiBase = window.location.pathname.startsWith('/api') ? '/api' : '';
+    const apiBase = window.location.href.replace(/\/+$/, '');
 
     async function refreshSessions() {
       try {
