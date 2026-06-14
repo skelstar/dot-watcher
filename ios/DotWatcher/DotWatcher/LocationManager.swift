@@ -7,6 +7,7 @@ final class LocationManager {
     private(set) var status = "Idle"
     private(set) var lastSent: Date?
     private(set) var isTracking = false
+    var participants: [String] = []
     fileprivate var latestLocation: CLLocation?
 
     private let clManager = CLLocationManager()
@@ -15,13 +16,9 @@ final class LocationManager {
 
     let serverURL = URL(string: "http://dot-watcher.skelstar.io/api/location")!
     let bearerToken = "dev-token"
-    var sessionCode = "test"
+    var sessionCode = ""
     let runnerName = "Gerald"
-    #if targetEnvironment(simulator)
-    var interval: TimeInterval = 3
-    #else
-    var interval: TimeInterval = 15
-    #endif
+    let interval: TimeInterval = 15
 
     init() {
         locationDelegate.owner = self
@@ -92,11 +89,15 @@ final class LocationManager {
         if let h = heading { body["heading"] = h }
         do {
             req.httpBody = try JSONSerialization.data(withJSONObject: body)
-            let (_, response) = try await URLSession.shared.data(for: req)
+            let (data, response) = try await URLSession.shared.data(for: req)
             let code = (response as? HTTPURLResponse)?.statusCode ?? 0
             if code == 200 {
                 status = "Sent ✓"
                 lastSent = Date()
+                if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                   let names = json["participants"] as? [String] {
+                    participants = names
+                }
             } else {
                 status = "HTTP \(code)"
             }
