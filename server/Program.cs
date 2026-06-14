@@ -3,7 +3,8 @@ using DotWatcher.Server;
 var builder = WebApplication.CreateBuilder(args);
 
 var positionHistoryCount = builder.Configuration.GetValue<int>("PositionHistoryCount", 3);
-builder.Services.AddSingleton(new SessionStore(positionHistoryCount));
+var recordingsPath = builder.Configuration.GetValue<string>("RecordingsPath", "recordings")!;
+builder.Services.AddSingleton(new SessionStore(positionHistoryCount, recordingsPath));
 builder.Services.AddCors(options =>
     options.AddDefaultPolicy(policy =>
         policy.AllowAnyOrigin().AllowAnyHeader().AllowAnyMethod()));
@@ -37,6 +38,18 @@ app.MapPost("/location", (LocationUpdate update, SessionStore store, HttpRequest
 // Return the latest position for every runner in a session
 app.MapGet("/locations/{sessionCode}", (string sessionCode, SessionStore store) =>
     Results.Ok(store.GetLatestPositions(sessionCode)));
+
+// List all recorded sessions on disk
+app.MapGet("/sessions", (SessionStore store) =>
+    Results.Ok(store.GetRecordedSessions()));
+
+// Download the full NDJSON recording for a session
+app.MapGet("/sessions/{sessionCode}/recording", (string sessionCode, SessionStore store) =>
+{
+    var path = store.GetRecordingPath(sessionCode);
+    if (path is null) return Results.NotFound();
+    return Results.File(path, "application/x-ndjson", $"{sessionCode}.ndjson");
+});
 
 // Clear all history for a session (use between runs)
 app.MapDelete("/sessions/{sessionCode}", (string sessionCode, SessionStore store, HttpRequest request) =>

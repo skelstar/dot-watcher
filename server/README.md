@@ -1,6 +1,6 @@
 # Server
 
-.NET 9 minimal API for Dot Watcher. Receives GPS positions from the iOS app and serves them to web viewers. All data is held in memory — no database.
+.NET 9 minimal API for Dot Watcher. Receives GPS positions from the iOS app and serves them to web viewers. Live data is held in memory; every incoming position is also appended to an NDJSON file on disk so sessions can be replayed later.
 
 ---
 
@@ -11,6 +11,12 @@
 ---
 
 ## Configuration
+
+| Key | Default | Description |
+| --- | --- | --- |
+| `BearerToken` | *(required)* | Token used to authenticate `POST` and `DELETE` requests |
+| `PositionHistoryCount` | `3` | How many recent positions to return per runner in `GET /locations/{sessionCode}` |
+| `RecordingsPath` | `recordings` | Directory where NDJSON session recordings are written |
 
 The server requires a bearer token used to authenticate `POST` and `DELETE` requests from phone apps. Set it via:
 
@@ -154,6 +160,48 @@ Returns `[]` for an unknown session code.
 
 ---
 
+### `GET /sessions`
+
+Lists all session codes that have a recording on disk, ordered newest first.
+
+**Auth:** None.
+
+**Response body:**
+
+```json
+["SUNSET23", "HILLTOP01"]
+```
+
+**Responses:**
+
+| Status | Meaning |
+| ------ | ------- |
+| 200    | Success (array may be empty) |
+
+---
+
+### `GET /sessions/{sessionCode}/recording`
+
+Downloads the full NDJSON recording for a session. Each line is one `LocationUpdate` JSON object in the order it was received.
+
+**Auth:** None.
+
+**Response:** `application/x-ndjson` file download named `{sessionCode}.ndjson`.
+
+```json
+{"runnerName":"Alice","sessionCode":"SUNSET23","latitude":-33.868,"longitude":151.209,"heading":268.0,"timestamp":"2024-11-15T09:23:25Z"}
+{"runnerName":"Alice","sessionCode":"SUNSET23","latitude":-33.8684,"longitude":151.2091,"heading":269.5,"timestamp":"2024-11-15T09:23:35Z"}
+```
+
+**Responses:**
+
+| Status | Meaning |
+| ------ | ------- |
+| 200    | File download |
+| 404    | No recording exists for this session code |
+
+---
+
 ### `DELETE /sessions/{sessionCode}`
 
 Clears all position history for a session. Use this between runs.
@@ -276,7 +324,8 @@ BearerToken=your-secret-token
 
 ## Notes
 
-- Restarting the server clears all sessions — data is in-memory only.
+- Restarting the server clears live session state (in-memory), but recordings on disk survive. After a restart, `GET /sessions` will still list past sessions and their recordings will still be downloadable.
+- Recordings are **not** persisted across container redeployments — the `recordings/` directory lives inside the container. Mount a volume at `RecordingsPath` if you need recordings to survive deploys.
 - The `timestamp` field in a `POST /location` request should be the **GPS capture time**, not the time the request was sent. Phone apps record the timestamp when the position fix is taken; the POST may be delayed or retried. Storing the capture time means the viewer always reflects where runners actually were at a given moment.
 - Full position history is stored per runner per session. The `GET /locations/{sessionCode}` endpoint returns the last `n` positions per runner (controlled by `PositionHistoryCount` in `appsettings.json`).
 - CORS is open (`AllowAnyOrigin`) — appropriate for a private home lab deployment.
