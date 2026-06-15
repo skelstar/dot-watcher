@@ -62,15 +62,15 @@ final class LocationManager {
     }
 
     func forceUpdate() {
-        captureAndPost()
+        captureAndPost(forced: true)
     }
 
-    private func captureAndPost() {
+    private func captureAndPost(forced: Bool = false) {
         guard let loc = latestLocation else {
             status = "Waiting for GPS..."
             return
         }
-        if let last = lastTransmittedLocation, loc.distance(from: last) < 10 {
+        if !forced, let last = lastTransmittedLocation, loc.distance(from: last) < 10 {
             status = "Stationary 💤"
             return
         }

@@ -19,6 +19,14 @@ struct ContentView: View {
                     .foregroundStyle(.secondary)
                     .disabled(location.isTracking)
             }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(Color(.systemBackground))
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+            .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(location.runnerName.trimmingCharacters(in: .whitespaces).isEmpty ? Color.orange : Color.secondary.opacity(0.3), lineWidth: location.runnerName.trimmingCharacters(in: .whitespaces).isEmpty ? 2 : 1)
+            )
 
             sessionCodeEntry
 
@@ -51,7 +59,7 @@ struct ContentView: View {
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(location.isTracking ? .red : .green)
-                .disabled(!location.isTracking && location.sessionCode.count < 6)
+                .disabled(!location.isTracking && (location.sessionCode.count < 6 || location.runnerName.trimmingCharacters(in: .whitespaces).isEmpty))
             }
 
             VStack(alignment: .leading, spacing: 8) {
@@ -118,6 +126,13 @@ struct ContentView: View {
                 .onTapGesture {
                     if !location.isTracking { codeFieldFocused = true }
                 }
+            }
+
+            if !location.sessionCode.isEmpty,
+               let url = URL(string: "http://dot-watcher.skelstar.io/\(location.sessionCode)") {
+                Link("Open map in browser →", destination: url)
+                    .font(.caption)
+                    .foregroundStyle(Color.accentColor)
             }
         }
     }
