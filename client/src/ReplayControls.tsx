@@ -2,6 +2,7 @@ import type { ReplayState } from './useReplay.ts'
 
 interface Props {
   replay: ReplayState
+  onFitAll: () => void
 }
 
 function formatTime(ms: number): string {
@@ -13,7 +14,7 @@ function formatTime(ms: number): string {
   return `${m}:${String(s).padStart(2, '0')}`
 }
 
-export default function ReplayControls({ replay }: Props) {
+export default function ReplayControls({ replay, onFitAll }: Props) {
   const { currentTimeMs, durationMs, loaded, error, playing, speed, play, pause, seek, setSpeed } = replay
 
   function handleFast() {
@@ -85,6 +86,8 @@ export default function ReplayControls({ replay }: Props) {
       <span style={timeLabel}>
         {formatTime(durationMs)}
       </span>
+
+      <button onClick={onFitAll} style={fitAllBtn} title="Fit all">⤢</button>
     </div>
   )
 }
@@ -134,5 +137,20 @@ const timeLabel: React.CSSProperties = {
   flexShrink: 0,
   minWidth: 38,
   textAlign: 'center',
+}
+
+const fitAllBtn: React.CSSProperties = {
+  width: 34,
+  height: 34,
+  border: 'none',
+  borderRadius: 6,
+  background: '#e2e8f0',
+  color: '#334155',
+  fontSize: '1.1rem',
+  cursor: 'pointer',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  flexShrink: 0,
 }
 

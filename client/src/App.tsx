@@ -38,9 +38,11 @@ export default function App() {
     })
 
     map.doubleClickZoom.disable()
-    map.on('dblclick', (e) => {
-      setMenu({ x: e.point.x, y: e.point.y, lng: e.lngLat.lng, lat: e.lngLat.lat })
-    })
+    if (!isReplay) {
+      map.on('dblclick', (e) => {
+        setMenu({ x: e.point.x, y: e.point.y, lng: e.lngLat.lng, lat: e.lngLat.lat })
+      })
+    }
 
     map.addControl(new mapboxgl.NavigationControl(), 'top-right')
     map.addControl(new mapboxgl.GeolocateControl({
@@ -99,7 +101,7 @@ export default function App() {
   return (
     <>
       <div ref={containerRef} style={{ width: '100%', height: '100%' }} />
-      <button onClick={fitAll} style={{ ...fitAllBtn, bottom: isReplay ? 96 : 32 }} title="Fit all">⤢</button>
+      {!isReplay && <button onClick={fitAll} style={fitAllBtn} title="Fit all">⤢</button>}
       <Legend runners={offScreenRunners} onRunnerClick={centerOnRunner} />
       {menu && (
         <MapMenu
@@ -109,7 +111,7 @@ export default function App() {
           onClose={() => setMenu(null)}
         />
       )}
-      {isReplay && sessionCode && <ReplayControls replay={replay} />}
+      {isReplay && sessionCode && <ReplayControls replay={replay} onFitAll={fitAll} />}
       {isReplay && !sessionCode && <ReplayPicker serverUrl={SERVER_URL} onSelect={handleReplaySelect} />}
       {!isReplay && !sessionCode && <SessionPrompt onSubmit={handleSessionSubmit} />}
     </>
