@@ -34,6 +34,8 @@
     .upload-status { font-size: 11px; min-height: 14px; }
     .upload-status.ok { color: #3fb950; }
     .upload-status.err { color: #f85149; }
+    .del-btn { background: none; border: none; color: #6e7681; font-size: 12px; cursor: pointer; padding: 0 4px; }
+    .del-btn:hover { color: #f85149; }
   </style>
 </head>
 <body>
@@ -71,9 +73,12 @@
           el.innerHTML = '<div class="empty">No recorded sessions</div>';
         } else {
           el.innerHTML = sessions.map(s =>
-            `<div class="session-item">
+            `<div class="session-item" id="session-${s}">
               <span class="session-code">${s}</span>
-              <a class="dl-link" href="${apiBase}/sessions/${s}/recording" download="${s}.ndjson">↓ ndjson</a>
+              <span style="display:flex;gap:8px;align-items:center;">
+                <a class="dl-link" href="${apiBase}/sessions/${s}/recording" download="${s}.ndjson">↓ ndjson</a>
+                <button class="del-btn" onclick="deleteRecording('${s}')" title="Delete recording">✕</button>
+              </span>
             </div>`
           ).join('');
         }
@@ -162,6 +167,24 @@
         status.className = 'upload-status err';
       } finally {
         btn.disabled = false;
+      }
+    }
+
+    async function deleteRecording(code) {
+      const token = document.getElementById('upload-token').value.trim();
+      if (!token) { alert('Enter your bearer token first.'); return; }
+      if (!confirm(`Delete recording for ${code}?`)) return;
+      const r = await fetch(`${apiBase}/sessions/${code}/recording`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` },
+      });
+      if (r.ok || r.status === 204) {
+        document.getElementById(`session-${code}`)?.remove();
+        const count = document.querySelectorAll('.session-item').length;
+        document.getElementById('session-count').textContent = count;
+        if (count === 0) document.getElementById('sessions').innerHTML = '<div class="empty">No recorded sessions</div>';
+      } else {
+        alert(`Failed to delete: HTTP ${r.status}`);
       }
     }
 

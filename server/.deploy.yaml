@@ -1,3 +1,10 @@
 name: dot-watcher-server
 port: 8080
 hostname: dot-watcher-server.skelstar.io
+env:
+  - name: RecordingsPath
+    value: /data/recordings
+volumes:
+  - name: recordings
+    mountPath: /data/recordings
+    size: 1Gi

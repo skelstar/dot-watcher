@@ -73,6 +73,20 @@ app.MapGet("/sessions/{sessionCode}/recording", (string sessionCode, SessionStor
     return Results.File(path, "application/x-ndjson", $"{upper}.ndjson");
 });
 
+// Delete the NDJSON recording file for a session
+app.MapDelete("/sessions/{sessionCode}/recording", (string sessionCode, SessionStore store, HttpRequest request, ILogger<Program> logger) =>
+{
+    if (!IsAuthorized(request))
+        return Results.Unauthorized();
+
+    var upper = sessionCode.ToUpperInvariant();
+    var path = store.GetRecordingPath(upper);
+    if (path is null) return Results.NotFound();
+    File.Delete(path);
+    logger.LogInformation("Deleted recording for {Session}", upper);
+    return Results.NoContent();
+});
+
 // Clear all history for a session (use between runs)
 app.MapDelete("/sessions/{sessionCode}", (string sessionCode, SessionStore store, HttpRequest request) =>
 {
