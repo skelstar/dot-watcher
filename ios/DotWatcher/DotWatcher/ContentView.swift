@@ -13,6 +13,14 @@ struct ContentView: View {
             Text("DotWatcher")
                 .font(.largeTitle.bold())
 
+            let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String
+            let sha = Bundle.main.infoDictionary?["GitCommitSHA"] as? String
+            if build != nil || sha != nil {
+                Text([build.map { "build \($0)" }, sha].compactMap { $0 }.joined(separator: " · "))
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+            }
+
             HStack {
                 Image(systemName: "figure.run")
                     .foregroundStyle(.secondary)
