@@ -5,6 +5,8 @@ struct ContentView: View {
     @State private var location = LocationManager()
     @FocusState private var codeFieldFocused: Bool
     @State private var batteryLevel: Float = UIDevice.current.batteryLevel
+    @State private var showNameEntry: Bool = false
+    @State private var nameInput: String = ""
 
     var body: some View {
         VStack(spacing: 24) {
@@ -14,10 +16,16 @@ struct ContentView: View {
             HStack {
                 Image(systemName: "figure.run")
                     .foregroundStyle(.secondary)
-                TextField("Runner name", text: $location.runnerName)
-                    .multilineTextAlignment(.center)
-                    .foregroundStyle(.secondary)
-                    .disabled(location.isTracking)
+                Group {
+                    if location.runnerName.trimmingCharacters(in: .whitespaces).isEmpty {
+                        Text("Runner name")
+                            .foregroundStyle(.tertiary)
+                    } else {
+                        Text(location.runnerName)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .frame(maxWidth: .infinity)
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
@@ -27,6 +35,11 @@ struct ContentView: View {
                 RoundedRectangle(cornerRadius: 8)
                     .stroke(location.runnerName.trimmingCharacters(in: .whitespaces).isEmpty ? Color.orange : Color.secondary.opacity(0.3), lineWidth: location.runnerName.trimmingCharacters(in: .whitespaces).isEmpty ? 2 : 1)
             )
+            .onTapGesture {
+                guard !location.isTracking else { return }
+                nameInput = location.runnerName
+                showNameEntry = true
+            }
 
             sessionCodeEntry
 
@@ -81,9 +94,22 @@ struct ContentView: View {
             codeFieldFocused = true
             UIDevice.current.isBatteryMonitoringEnabled = true
             batteryLevel = UIDevice.current.batteryLevel
+            if location.runnerName.trimmingCharacters(in: .whitespaces).isEmpty {
+                showNameEntry = true
+            }
         }
         .onReceive(NotificationCenter.default.publisher(for: UIDevice.batteryLevelDidChangeNotification)) { _ in
             batteryLevel = UIDevice.current.batteryLevel
+        }
+        .sheet(isPresented: $showNameEntry) {
+            NameEntryView(
+                name: $nameInput,
+                isFirstLaunch: location.runnerName.trimmingCharacters(in: .whitespaces).isEmpty
+            ) {
+                location.runnerName = nameInput.trimmingCharacters(in: .whitespaces)
+                showNameEntry = false
+            }
+            .interactiveDismissDisabled(location.runnerName.trimmingCharacters(in: .whitespaces).isEmpty)
         }
     }
 
@@ -140,6 +166,63 @@ struct ContentView: View {
     private func character(at index: Int) -> Character? {
         guard index < location.sessionCode.count else { return nil }
         return location.sessionCode[location.sessionCode.index(location.sessionCode.startIndex, offsetBy: index)]
+    }
+}
+
+struct NameEntryView: View {
+    @Binding var name: String
+    let isFirstLaunch: Bool
+    let onConfirm: () -> Void
+    @Environment(\.dismiss) private var dismiss
+    @FocusState private var focused: Bool
+
+    private var trimmedName: String { name.trimmingCharacters(in: .whitespaces) }
+
+    var body: some View {
+        VStack(spacing: 24) {
+            Image(systemName: "figure.run.circle")
+                .font(.system(size: 60))
+                .foregroundStyle(.tint)
+
+            Text(isFirstLaunch ? "Welcome to DotWatcher" : "Edit Name")
+                .font(.title2.bold())
+
+            Text("Enter your name so others can find you on the map. Only letters (A–Z) and \"-\", max 8 characters.")
+                .multilineTextAlignment(.center)
+                .foregroundStyle(.secondary)
+
+            VStack(spacing: 6) {
+                TextField("Your name", text: $name)
+                    .textFieldStyle(.roundedBorder)
+                    .multilineTextAlignment(.center)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .focused($focused)
+                    .onChange(of: name) { _, new in
+                        let filtered = String(new.filter { ($0.isLetter && $0.isASCII) || $0 == "-" }.prefix(8))
+                        if filtered != new { name = filtered }
+                    }
+
+                Text("\(name.count)/8")
+                    .font(.caption)
+                    .foregroundStyle(name.count == 8 ? .orange : .secondary)
+            }
+
+            Button("Save") {
+                onConfirm()
+            }
+            .buttonStyle(.borderedProminent)
+            .disabled(trimmedName.isEmpty)
+
+            if !isFirstLaunch {
+                Button("Cancel", role: .cancel) {
+                    dismiss()
+                }
+                .foregroundStyle(.secondary)
+            }
+        }
+        .padding(32)
+        .onAppear { focused = true }
     }
 }
 
