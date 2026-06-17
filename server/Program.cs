@@ -6,9 +6,11 @@ var logBuffer = new LogBuffer();
 builder.Services.AddSingleton(logBuffer);
 builder.Logging.AddProvider(new LogBufferProvider(logBuffer));
 
-var positionHistoryCount = builder.Configuration.GetValue<int>("PositionHistoryCount", 3);
-var recordingsPath = builder.Configuration.GetValue<string>("RecordingsPath", "recordings")!;
-builder.Services.AddSingleton(new SessionStore(positionHistoryCount, recordingsPath));
+var dbPath = builder.Configuration.GetValue<string>("DbPath", "dotwatcher.db")!;
+var store = new SessionStore(dbPath);
+store.Initialize();
+builder.Services.AddSingleton(store);
+
 builder.Services.AddCors(options =>
     options.AddDefaultPolicy(policy =>
         policy.AllowAnyOrigin().AllowAnyHeader().AllowAnyMethod()));
@@ -17,6 +19,21 @@ var app = builder.Build();
 app.UseDefaultFiles();
 app.UseStaticFiles();
 app.UseCors();
+
+// Migrate any existing NDJSON recordings into SQLite
+var recordingsPath = app.Configuration.GetValue<string>("RecordingsPath", "recordings")!;
+if (Directory.Exists(recordingsPath))
+{
+    foreach (var file in Directory.GetFiles(recordingsPath, "*.ndjson"))
+    {
+        var code = Path.GetFileNameWithoutExtension(file)!.ToUpperInvariant();
+        if (!store.HasRecording(code))
+        {
+            store.SaveRecording(code, File.ReadAllText(file));
+            app.Logger.LogInformation("Migrated recording {Session} from NDJSON", code);
+        }
+    }
+}
 
 var bearerToken = app.Configuration["BearerToken"]
     ?? throw new InvalidOperationException(
@@ -46,11 +63,11 @@ app.MapPost("/location", (LocationUpdate update, SessionStore store, HttpRequest
 app.MapGet("/locations/{sessionCode}", (string sessionCode, SessionStore store) =>
     Results.Ok(store.GetLatestPositions(sessionCode)));
 
-// List all recorded sessions on disk
+// List all recorded sessions
 app.MapGet("/sessions", (SessionStore store) =>
     Results.Ok(store.GetRecordedSessions()));
 
-// Upload an NDJSON recording for a session
+// Upload an NDJSON recording for a session (replaces any existing data for that session)
 app.MapPost("/sessions/{sessionCode}/recording", async (string sessionCode, SessionStore store, HttpRequest request, ILogger<Program> logger) =>
 {
     if (!IsAuthorized(request))
@@ -68,26 +85,24 @@ app.MapPost("/sessions/{sessionCode}/recording", async (string sessionCode, Sess
 app.MapGet("/sessions/{sessionCode}/recording", (string sessionCode, SessionStore store) =>
 {
     var upper = sessionCode.ToUpperInvariant();
-    var path = store.GetRecordingPath(upper);
-    if (path is null) return Results.NotFound();
-    return Results.File(path, "application/x-ndjson", $"{upper}.ndjson");
+    if (!store.HasRecording(upper)) return Results.NotFound();
+    var ndjson = store.GetRecordingAsNdjson(upper);
+    return Results.Text(ndjson, "application/x-ndjson");
 });
 
-// Delete the NDJSON recording file for a session
+// Delete the recording for a session
 app.MapDelete("/sessions/{sessionCode}/recording", (string sessionCode, SessionStore store, HttpRequest request, ILogger<Program> logger) =>
 {
     if (!IsAuthorized(request))
         return Results.Unauthorized();
 
     var upper = sessionCode.ToUpperInvariant();
-    var path = store.GetRecordingPath(upper);
-    if (path is null) return Results.NotFound();
-    File.Delete(path);
+    if (!store.DeleteRecording(upper)) return Results.NotFound();
     logger.LogInformation("Deleted recording for {Session}", upper);
     return Results.NoContent();
 });
 
-// Clear all history for a session (use between runs)
+// Clear live tracking for a session (use between runs)
 app.MapDelete("/sessions/{sessionCode}", (string sessionCode, SessionStore store, HttpRequest request) =>
 {
     if (!IsAuthorized(request))

@@ -6,4 +6,7 @@
     <RootNamespace>DotWatcher.Server</RootNamespace>
     <AssemblyName>DotWatcher.Server</AssemblyName>
   </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="9.0.6" />
+  </ItemGroup>
 </Project>
