@@ -108,7 +108,6 @@ struct ContentView: View {
         }
         .padding()
         .onAppear {
-            codeFieldFocused = true
             UIDevice.current.isBatteryMonitoringEnabled = true
             batteryLevel = UIDevice.current.batteryLevel
             if location.runnerName.trimmingCharacters(in: .whitespaces).isEmpty {
