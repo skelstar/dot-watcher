@@ -15,14 +15,13 @@ export default function Arrow({ name, heading, colour, label, stationary }: Prop
   if (stationary) {
     return (
       <div style={{ position: 'relative', width: 20, height: 20 }}>
-        <div style={{
+        <div className="dot-sleep" style={{
           width: 20,
           height: 20,
           borderRadius: '50%',
           background: colour,
           border: '1.5px solid white',
           boxShadow: '0 1px 3px rgba(0,0,0,0.35)',
-          opacity: 0.6,
         }} />
         {displayLabel && (
           <div style={{

@@ -1,3 +1,13 @@
+@keyframes dot-sleep {
+  0%, 100% { opacity: 0.35; transform: scale(0.85); }
+  50%       { opacity: 0.7;  transform: scale(1.05); }
+}
+
+.dot-sleep {
+  animation: dot-sleep 2.8s ease-in-out infinite;
+  transform-origin: center;
+}
+
 *, *::before, *::after {
   box-sizing: border-box;
   margin: 0;
