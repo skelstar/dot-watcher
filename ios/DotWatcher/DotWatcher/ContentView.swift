@@ -162,8 +162,13 @@ struct ContentView: View {
                 }
             }
 
-            if !location.sessionCode.isEmpty,
-               let url = URL(string: "http://dot-watcher.skelstar.io/\(location.sessionCode)") {
+            let paddedCode = location.sessionCode.padding(toLength: 6, withPad: "_", startingAt: 0)
+            Label("\(paddedCode)\(location.dateSuffix)", systemImage: "globe")
+                .font(.title3.monospaced())
+                .foregroundStyle(location.sessionCode.count == 6 ? .primary : .tertiary)
+
+            if location.sessionCode.count == 6,
+               let url = URL(string: "http://dot-watcher.skelstar.io/\(location.fullSessionName)") {
                 Link("Open map in browser →", destination: url)
                     .font(.caption)
                     .foregroundStyle(Color.accentColor)

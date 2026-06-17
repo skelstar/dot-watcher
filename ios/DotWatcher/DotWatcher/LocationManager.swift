@@ -18,6 +18,16 @@ final class LocationManager {
     let serverURL = URL(string: "http://dot-watcher.skelstar.io/api/location")!
     let bearerToken = "dev-token"
     var sessionCode = ""
+
+    var dateSuffix: String {
+        let cal = Calendar.current
+        let now = Date()
+        let day = cal.component(.day, from: now)
+        let month = cal.component(.month, from: now)
+        return String(format: "-%02d%02d", day, month)
+    }
+
+    var fullSessionName: String { sessionCode + dateSuffix }
     var runnerName: String = UserDefaults.standard.string(forKey: "runnerName") ?? "" {
         didSet { UserDefaults.standard.set(runnerName, forKey: "runnerName") }
     }
@@ -89,7 +99,7 @@ final class LocationManager {
         req.setValue("Bearer \(bearerToken)", forHTTPHeaderField: "Authorization")
         var body: [String: Any] = [
             "runnerName": runnerName,
-            "sessionCode": sessionCode,
+            "sessionCode": fullSessionName,
             "latitude": lat,
             "longitude": lon,
             "timestamp": ISO8601DateFormatter().string(from: timestamp)
