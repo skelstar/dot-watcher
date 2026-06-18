@@ -16,7 +16,7 @@
     .dl-link { color: #58a6ff; text-decoration: none; font-size: 11px; }
     .dl-link:hover { text-decoration: underline; }
     .log-panel { flex: 1; overflow-y: auto; display: flex; flex-direction: column-reverse; }
-    .log-line { padding: 2px 4px; border-radius: 2px; white-space: pre-wrap; word-break: break-all; line-height: 1.5; }
+    .log-line { padding: 2px 4px; border-radius: 2px; white-space: pre; line-height: 1.5; }
     .log-line:nth-child(odd) { background: #1c2128; }
     .log-line.warn { color: #e3b341; }
     .log-line.error { color: #f85149; }
@@ -36,6 +36,10 @@
     .upload-status.err { color: #f85149; }
     .del-btn { background: none; border: none; color: #6e7681; font-size: 12px; cursor: pointer; padding: 0 4px; }
     .del-btn:hover { color: #f85149; }
+    .session-item { cursor: pointer; }
+    .session-item.active { background: #1c2128; }
+    .filter-badge { color: #fff; border-radius: 4px; padding: 1px 6px; font-size: 10px; margin-left: 6px; cursor: pointer; opacity: 0.85; }
+    .filter-badge:hover { opacity: 1; }
   </style>
 </head>
 <body>
@@ -54,7 +58,7 @@
       </div>
     </div>
     <div class="panel">
-      <h2>Log <span id="log-count" class="badge">0</span></h2>
+      <h2><span id="log-header">Log</span> <span id="log-count" class="badge">0</span></h2>
       <div class="log-panel" id="log"></div>
       <div class="status" id="log-status"></div>
     </div>
@@ -63,24 +67,78 @@
   <script>
     const apiBase = window.location.href.replace(/\/+$/, '');
 
+    const PALETTE = ['#ff5252','#ff9800','#ffeb3b','#00e676','#00e5ff','#448aff','#e040fb','#ff4081'];
+    const sessionColors = {};
+    let colorIndex = 0;
+
+    function getSessionColor(code) {
+      if (!sessionColors[code]) sessionColors[code] = PALETTE[colorIndex++ % PALETTE.length];
+      return sessionColors[code];
+    }
+
+    function getLineSession(line) {
+      for (const code of Object.keys(sessionColors)) {
+        if (line.includes(`[${code}]`)) return code;
+      }
+      return null;
+    }
+
+    let activeSession = null;
+    let cachedLines = [];
+
+    function setSessionFilter(code) {
+      activeSession = (activeSession === code) ? null : code;
+      document.querySelectorAll('.session-item').forEach(el => el.classList.remove('active'));
+      if (activeSession) {
+        document.getElementById(`session-${activeSession}`)?.classList.add('active');
+      }
+      const header = document.getElementById('log-header');
+      if (activeSession) {
+        const color = getSessionColor(activeSession);
+        header.innerHTML = `Log — <span style="color:${color}">${escHtml(activeSession)}</span> <span class="filter-badge" style="background:${color}" onclick="setSessionFilter('${escHtml(activeSession)}')" title="Clear filter">×</span>`;
+      } else {
+        header.textContent = 'Log';
+      }
+      renderLog(cachedLines);
+    }
+
+    function renderLog(lines) {
+      const filtered = activeSession ? lines.filter(l => l.includes(activeSession)) : lines;
+      document.getElementById('log-count').textContent = filtered.length;
+      const el = document.getElementById('log');
+      el.innerHTML = [...filtered].reverse().map(line => {
+        let cls = 'log-line';
+        if (line.includes(' WARN ')) cls += ' warn';
+        else if (line.includes(' ERROR')) cls += ' error';
+        else if (line.includes(' CRIT ')) cls += ' crit';
+        const sessionCode = getLineSession(line);
+        const hasLevel = cls !== 'log-line';
+        const colorStyle = (sessionCode && !hasLevel) ? `color:${getSessionColor(sessionCode)}` : '';
+        return `<div class="${cls}" style="${colorStyle}">${escHtml(line)}</div>`;
+      }).join('');
+    }
+
     async function refreshSessions() {
       try {
         const r = await fetch(`${apiBase}/sessions`);
         const sessions = await r.json();
+        sessions.forEach(s => getSessionColor(s));
         document.getElementById('session-count').textContent = sessions.length;
         const el = document.getElementById('sessions');
         if (sessions.length === 0) {
           el.innerHTML = '<div class="empty">No recorded sessions</div>';
         } else {
-          el.innerHTML = sessions.map(s =>
-            `<div class="session-item" id="session-${s}">
-              <span class="session-code">${s}</span>
-              <span style="display:flex;gap:8px;align-items:center;">
+          el.innerHTML = sessions.map(s => {
+            const color = getSessionColor(s);
+            return `<div class="session-item${activeSession === s ? ' active' : ''}" id="session-${s}"
+                onclick="setSessionFilter('${s}')">
+              <span class="session-code" style="color:${color}">${s}</span>
+              <span style="display:flex;gap:8px;align-items:center;" onclick="event.stopPropagation()">
                 <a class="dl-link" href="${apiBase}/sessions/${s}/recording" download="${s}.ndjson">↓ ndjson</a>
                 <button class="del-btn" onclick="deleteRecording('${s}')" title="Delete recording">✕</button>
               </span>
-            </div>`
-          ).join('');
+            </div>`;
+          }).join('');
         }
         document.getElementById('sessions-status').textContent = `Updated ${new Date().toLocaleTimeString()}`;
       } catch (e) {
@@ -88,25 +146,11 @@
       }
     }
 
-    let lastLogCount = 0;
-
     async function refreshLog() {
       try {
         const r = await fetch(`${apiBase}/log`);
-        const lines = await r.json();
-        document.getElementById('log-count').textContent = lines.length;
-        if (lines.length !== lastLogCount) {
-          lastLogCount = lines.length;
-          const el = document.getElementById('log');
-          // Reverse so newest is at top (panel is column-reverse)
-          el.innerHTML = [...lines].reverse().map(line => {
-            let cls = 'log-line';
-            if (line.includes(' WARN ')) cls += ' warn';
-            else if (line.includes(' ERROR')) cls += ' error';
-            else if (line.includes(' CRIT ')) cls += ' crit';
-            return `<div class="${cls}">${escHtml(line)}</div>`;
-          }).join('');
-        }
+        cachedLines = await r.json();
+        renderLog(cachedLines);
         document.getElementById('log-status').textContent = `Updated ${new Date().toLocaleTimeString()}`;
       } catch (e) {
         document.getElementById('log-status').textContent = `Error: ${e.message}`;
