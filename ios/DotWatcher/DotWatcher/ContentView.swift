@@ -22,8 +22,9 @@ struct ContentView: View {
         }
         .safeAreaInset(edge: .bottom) {
             bottomButton
-                .padding(.horizontal)
+                .padding(.horizontal, 16)
                 .padding(.vertical, 12)
+                .frame(maxWidth: .infinity)
                 .background(.regularMaterial)
         }
         .onAppear {
@@ -222,23 +223,25 @@ struct ContentView: View {
     @ViewBuilder
     private var bottomButton: some View {
         if location.isTracking {
-            Button("Stop") { location.stop() }
-                .buttonStyle(.borderedProminent)
-                .tint(.red)
-                .controlSize(.large)
-                .frame(maxWidth: .infinity)
+            Button { location.stop() } label: {
+                Text("Stop").frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(.red)
+            .controlSize(.large)
         } else {
-            Button("Start tracking") {
+            Button {
                 if location.sessionCode.count == 6 {
                     location.start()
                 } else {
                     showSessionEntry = true
                 }
+            } label: {
+                Text("Start tracking").frame(maxWidth: .infinity)
             }
             .buttonStyle(.borderedProminent)
             .tint(.green)
             .controlSize(.large)
-            .frame(maxWidth: .infinity)
         }
     }
 
