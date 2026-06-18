@@ -15,9 +15,9 @@
 	<key>CFBundleShortVersionString</key>
 	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleVersion</key>
-	<string>54</string>
+	<string>56</string>
 	<key>GitCommitSHA</key>
-	<string>4a45b7d</string>
+	<string>b599b75</string>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSExceptionDomains</key>

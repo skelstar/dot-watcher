@@ -82,28 +82,14 @@ struct ContentView: View {
     // MARK: - Runner Row
 
     private var runnerRow: some View {
-        HStack(spacing: 12) {
-            ZStack {
-                Circle()
-                    .fill(Color(.systemGray4))
-                    .frame(width: 40, height: 40)
-                let initial = String(location.runnerName.prefix(1).uppercased())
-                Text(initial.isEmpty ? "?" : initial)
-                    .font(.headline.bold())
+        RunnerCircle(name: location.runnerName, size: 56, isHighlighted: true)
+            .frame(maxWidth: .infinity)
+            .contentShape(Rectangle())
+            .onTapGesture {
+                guard !location.isTracking else { return }
+                nameInput = location.runnerName
+                showNameEntry = true
             }
-            Text(location.runnerName.trimmingCharacters(in: .whitespaces).isEmpty
-                 ? "Tap to set your name"
-                 : location.runnerName)
-                .foregroundStyle(location.runnerName.trimmingCharacters(in: .whitespaces).isEmpty
-                                 ? .secondary : .primary)
-            Spacer()
-        }
-        .contentShape(Rectangle())
-        .onTapGesture {
-            guard !location.isTracking else { return }
-            nameInput = location.runnerName
-            showNameEntry = true
-        }
     }
 
     // MARK: - Session Name Card
@@ -201,13 +187,13 @@ struct ContentView: View {
                     .font(.caption)
                     .foregroundStyle(.tertiary)
             } else {
-                ForEach(location.participants, id: \.self) { name in
-                    HStack(spacing: 8) {
-                        Image(systemName: "figure.run")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        Text(name)
-                            .font(.subheadline)
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 56))], spacing: 10) {
+                    ForEach(location.participants, id: \.self) { participant in
+                        RunnerCircle(
+                            name: participant,
+                            size: 56,
+                            isHighlighted: participant == location.runnerName
+                        )
                     }
                 }
             }
@@ -412,32 +398,36 @@ struct NameEntryView: View {
 
     var body: some View {
         VStack(spacing: 24) {
-            Image(systemName: "figure.run.circle")
-                .font(.system(size: 60))
-                .foregroundStyle(.tint)
+            RunnerCircle(name: name, size: 72)
 
-            Text(isFirstLaunch ? "Welcome to DotWatcher" : "Edit Name")
+            Text(isFirstLaunch ? "Welcome to DotWatcher" : "Enter Initials")
                 .font(.title2.bold())
 
-            Text("Enter your name so others can find you on the map. Only letters (A–Z) and \"-\", max 8 characters.")
+            Text("Enter your initials so others can find you on the map.")
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.secondary)
 
-            VStack(spacing: 6) {
-                TextField("Your name", text: $name)
-                    .textFieldStyle(.roundedBorder)
-                    .multilineTextAlignment(.center)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
+            HStack(spacing: 6) {
+                ForEach(0..<3, id: \.self) { i in
+                    CodeBox(
+                        character: character(at: i),
+                        isActive: focused && name.count == i
+                    )
+                }
+            }
+            .onTapGesture { focused = true }
+            .overlay {
+                TextField("", text: $name)
                     .focused($focused)
+                    .keyboardType(.alphabet)
+                    .autocorrectionDisabled()
+                    .textInputAutocapitalization(.characters)
+                    .opacity(0)
+                    .frame(width: 1, height: 1)
                     .onChange(of: name) { _, new in
-                        let filtered = String(new.filter { ($0.isLetter && $0.isASCII) || $0 == "-" }.prefix(8))
+                        let filtered = String(new.uppercased().filter { $0.isLetter && $0.isASCII }.prefix(3))
                         if filtered != new { name = filtered }
                     }
-
-                Text("\(name.count)/8")
-                    .font(.caption)
-                    .foregroundStyle(name.count == 8 ? .orange : .secondary)
             }
 
             Button("Save") {
@@ -455,6 +445,11 @@ struct NameEntryView: View {
         }
         .padding(32)
         .onAppear { focused = true }
+    }
+
+    private func character(at index: Int) -> Character? {
+        guard index < name.count else { return nil }
+        return name[name.index(name.startIndex, offsetBy: index)]
     }
 }
 
@@ -532,7 +527,33 @@ struct HelpView: View {
     }
 }
 
+// MARK: - Runner Circle
+
+struct RunnerCircle: View {
+    let name: String
+    var size: CGFloat = 40
+    var isHighlighted: Bool = false
+
+    private static let highlightColor = Color.accentColor
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .fill(isHighlighted ? Self.highlightColor : Color(.systemGray4))
+                .frame(width: size, height: size)
+            Text(name.trimmingCharacters(in: .whitespaces).isEmpty ? "?" : name)
+                .font(.system(size: size * 0.3, weight: .bold))
+                .foregroundStyle(isHighlighted ? .white : .primary)
+        }
+    }
+}
+
 #Preview {
+    ContentView()
+}
+
+#Preview("First Launch") {
+    let _ = UserDefaults.standard.removeObject(forKey: "runnerName")
     ContentView()
 }
 
@@ -542,4 +563,24 @@ struct HelpView: View {
 
 #Preview("Help") {
     HelpView()
+}
+
+#Preview("Participants Dots") {
+    let names = ["SKE", "JOH", "CHQ", "ALI", "ROS", "TOM", "BEA", "WIL", "ZOE", "MAX"]
+    VStack(alignment: .leading, spacing: 10) {
+        Text("PARTICIPANTS")
+            .font(.caption)
+            .fontWeight(.semibold)
+            .foregroundStyle(.secondary)
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: 56))], spacing: 10) {
+            ForEach(names, id: \.self) { name in
+                RunnerCircle(name: name, size: 56, isHighlighted: name == "SKE")
+            }
+        }
+    }
+    .frame(maxWidth: .infinity, alignment: .topLeading)
+    .padding(16)
+    .background(Color(.secondarySystemBackground))
+    .clipShape(RoundedRectangle(cornerRadius: 14))
+    .padding()
 }
