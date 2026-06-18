@@ -3,110 +3,29 @@ import UIKit
 
 struct ContentView: View {
     @State private var location = LocationManager()
-    @FocusState private var codeFieldFocused: Bool
     @State private var batteryLevel: Float = UIDevice.current.batteryLevel
     @State private var showNameEntry: Bool = false
     @State private var nameInput: String = ""
     @State private var showHelp: Bool = false
+    @State private var showSessionEntry: Bool = false
 
     var body: some View {
-        VStack(spacing: 24) {
-            Text("DotWatcher")
-                .font(.largeTitle.bold())
-                .frame(maxWidth: .infinity)
-                .overlay(alignment: .trailing) {
-                    Button { showHelp = true } label: {
-                        Image(systemName: "questionmark.circle")
-                            .font(.title2)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-
-            let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String
-            let sha = Bundle.main.infoDictionary?["GitCommitSHA"] as? String
-            if build != nil || sha != nil {
-                Text([build.map { "build \($0)" }, sha].compactMap { $0 }.joined(separator: " · "))
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
+        ScrollView {
+            VStack(spacing: 16) {
+                headerSection
+                runnerRow
+                sessionNameCard
+                statusCard
+                participantsCard
             }
-
-            HStack {
-                Image(systemName: "figure.run")
-                    .foregroundStyle(.secondary)
-                Group {
-                    if location.runnerName.trimmingCharacters(in: .whitespaces).isEmpty {
-                        Text("Runner name")
-                            .foregroundStyle(.tertiary)
-                    } else {
-                        Text(location.runnerName)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                .frame(maxWidth: .infinity)
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            .background(Color(.systemBackground))
-            .clipShape(RoundedRectangle(cornerRadius: 8))
-            .overlay(
-                RoundedRectangle(cornerRadius: 8)
-                    .stroke(location.runnerName.trimmingCharacters(in: .whitespaces).isEmpty ? Color.orange : Color.secondary.opacity(0.3), lineWidth: location.runnerName.trimmingCharacters(in: .whitespaces).isEmpty ? 2 : 1)
-            )
-            .onTapGesture {
-                guard !location.isTracking else { return }
-                nameInput = location.runnerName
-                showNameEntry = true
-            }
-
-            sessionCodeEntry
-
-            Text("Location is sent every 15s")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-
-            Text(location.status)
-                .font(.headline)
-
-            if batteryLevel >= 0 {
-                Label("\(Int(batteryLevel * 100))%", systemImage: batteryIcon)
-                    .font(.caption)
-                    .foregroundStyle(batteryLevel < 0.2 ? .red : .secondary)
-            }
-
-            if let sent = location.lastSent {
-                Text("Last sent \(sent.formatted(date: .omitted, time: .standard))")
-                    .font(.caption)
-                    .foregroundStyle(.tertiary)
-            }
-
-            HStack(spacing: 12) {
-                if location.isTracking {
-                    Button("Force Update") { location.forceUpdate() }
-                        .buttonStyle(.bordered)
-                }
-                Button(location.isTracking ? "Stop" : "Start Tracking") {
-                    location.isTracking ? location.stop() : location.start()
-                }
-                .buttonStyle(.borderedProminent)
-                .tint(location.isTracking ? .red : .green)
-                .disabled(!location.isTracking && (location.sessionCode.count < 6 || location.runnerName.trimmingCharacters(in: .whitespaces).isEmpty))
-            }
-
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Participants")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                ForEach(location.participants, id: \.self) { name in
-                    Label(name, systemImage: "figure.run")
-                        .font(.caption)
-                }
-            }
-            .frame(maxWidth: .infinity, minHeight: 80, alignment: .topLeading)
-            .padding(12)
-            .background(Color(.secondarySystemBackground))
-            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .padding()
         }
-        .padding()
+        .safeAreaInset(edge: .bottom) {
+            bottomButton
+                .padding(.horizontal)
+                .padding(.vertical, 12)
+                .background(.regularMaterial)
+        }
         .onAppear {
             UIDevice.current.isBatteryMonitoringEnabled = true
             batteryLevel = UIDevice.current.batteryLevel
@@ -130,6 +49,207 @@ struct ContentView: View {
             }
             .interactiveDismissDisabled(location.runnerName.trimmingCharacters(in: .whitespaces).isEmpty)
         }
+        .sheet(isPresented: $showSessionEntry) {
+            SessionEntrySheet(location: location)
+        }
+    }
+
+    // MARK: - Header
+
+    private var headerSection: some View {
+        HStack(alignment: .top) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("DotWatcher")
+                    .font(.largeTitle.bold())
+                let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String
+                let sha = Bundle.main.infoDictionary?["GitCommitSHA"] as? String
+                if build != nil || sha != nil {
+                    Text([build.map { "build \($0)" }, sha].compactMap { $0 }.joined(separator: " · "))
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
+            }
+            Spacer()
+            Button { showHelp = true } label: {
+                Image(systemName: "questionmark.circle")
+                    .font(.title2)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    // MARK: - Runner Row
+
+    private var runnerRow: some View {
+        HStack(spacing: 12) {
+            ZStack {
+                Circle()
+                    .fill(Color(.systemGray4))
+                    .frame(width: 40, height: 40)
+                let initial = String(location.runnerName.prefix(1).uppercased())
+                Text(initial.isEmpty ? "?" : initial)
+                    .font(.headline.bold())
+            }
+            Text(location.runnerName.trimmingCharacters(in: .whitespaces).isEmpty
+                 ? "Tap to set your name"
+                 : location.runnerName)
+                .foregroundStyle(location.runnerName.trimmingCharacters(in: .whitespaces).isEmpty
+                                 ? .secondary : .primary)
+            Spacer()
+        }
+        .contentShape(Rectangle())
+        .onTapGesture {
+            guard !location.isTracking else { return }
+            nameInput = location.runnerName
+            showNameEntry = true
+        }
+    }
+
+    // MARK: - Session Name Card
+
+    private var sessionNameCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("SESSION NAME")
+                .font(.caption)
+                .fontWeight(.semibold)
+                .foregroundStyle(.secondary)
+
+            HStack(spacing: 0) {
+                if location.sessionCode.isEmpty {
+                    Text("Tap to set")
+                        .font(.title3.monospaced())
+                        .foregroundStyle(.tertiary)
+                } else {
+                    Text(location.sessionCode)
+                        .font(.title3.bold().monospaced())
+                        .foregroundStyle(.primary)
+                    Text(location.dateSuffix)
+                        .font(.title3.bold().monospaced())
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                Image(systemName: "lock")
+                    .font(.subheadline)
+                    .foregroundStyle(.tertiary)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 14)
+            .background(Color(.tertiarySystemBackground))
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .contentShape(RoundedRectangle(cornerRadius: 10))
+            .onTapGesture { showSessionEntry = true }
+
+            if location.sessionCode.count == 6,
+               let url = URL(string: "http://dot-watcher.skelstar.io/\(location.fullSessionName)") {
+                Link("Open map in browser →", destination: url)
+                    .font(.subheadline)
+                    .foregroundStyle(Color.accentColor)
+            }
+        }
+        .padding(16)
+        .background(Color(.secondarySystemBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 14))
+    }
+
+    // MARK: - Status Card
+
+    private var statusCard: some View {
+        VStack(spacing: 10) {
+            HStack {
+                HStack(spacing: 8) {
+                    Circle()
+                        .fill(statusDotColor)
+                        .frame(width: 10, height: 10)
+                    Text(location.status)
+                        .font(.headline)
+                }
+                Spacer()
+                Text("every 15s")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            HStack {
+                if batteryLevel >= 0 {
+                    Label("\(Int(batteryLevel * 100))%", systemImage: batteryIcon)
+                        .font(.caption)
+                        .foregroundStyle(batteryLevel < 0.2 ? .red : .secondary)
+                }
+                Spacer()
+                if let sent = location.lastSent {
+                    Text("Last sent \(sent.formatted(date: .omitted, time: .standard))")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                }
+            }
+        }
+        .padding(16)
+        .background(Color(.secondarySystemBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 14))
+    }
+
+    // MARK: - Participants Card
+
+    private var participantsCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("PARTICIPANTS")
+                .font(.caption)
+                .fontWeight(.semibold)
+                .foregroundStyle(.secondary)
+            if location.participants.isEmpty {
+                Text("No participants yet")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+            } else {
+                ForEach(location.participants, id: \.self) { name in
+                    HStack(spacing: 8) {
+                        Image(systemName: "figure.run")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Text(name)
+                            .font(.subheadline)
+                    }
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .padding(16)
+        .background(Color(.secondarySystemBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 14))
+    }
+
+    // MARK: - Bottom Button
+
+    @ViewBuilder
+    private var bottomButton: some View {
+        if location.isTracking {
+            Button("Stop") { location.stop() }
+                .buttonStyle(.borderedProminent)
+                .tint(.red)
+                .controlSize(.large)
+                .frame(maxWidth: .infinity)
+        } else {
+            Button("Start tracking") {
+                if location.sessionCode.count == 6 {
+                    location.start()
+                } else {
+                    showSessionEntry = true
+                }
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(.green)
+            .controlSize(.large)
+            .frame(maxWidth: .infinity)
+        }
+    }
+
+    // MARK: - Helpers
+
+    private var statusDotColor: Color {
+        let s = location.status
+        if s == "Idle" { return .gray }
+        if s == "Stopped" { return .red }
+        if s.hasPrefix("Sent") || s.hasPrefix("Tracking") { return .green }
+        return .orange
     }
 
     private var batteryIcon: String {
@@ -140,58 +260,143 @@ struct ContentView: View {
         default:      return "battery.100"
         }
     }
+}
 
-    private var sessionCodeEntry: some View {
-        VStack(spacing: 10) {
-            Label("Session Name:", systemImage: "tag")
+// MARK: - Session Entry Sheet
+
+struct SessionEntrySheet: View {
+    var location: LocationManager
+
+    @State private var localCode: String = ""
+    @State private var participantCount: Int? = nil
+    @State private var isChecking: Bool = false
+    @FocusState private var focused: Bool
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        VStack(spacing: 24) {
+            Text("Edit session name")
+                .font(.title2.bold())
+                .padding(.top, 8)
+
+            Text("Friends search for this name to find and follow you. Starting will share your live location with them.")
+                .multilineTextAlignment(.center)
                 .foregroundStyle(.secondary)
 
-            ZStack {
-                TextField("", text: $location.sessionCode)
-                    .focused($codeFieldFocused)
-                    .keyboardType(.alphabet)
-                    .autocorrectionDisabled()
-                    .textInputAutocapitalization(.characters)
-                    .opacity(0)
-                    .frame(width: 1, height: 1)
-                    .disabled(location.isTracking)
-                    .onChange(of: location.sessionCode) { _, new in
-                        let filtered = String(new.uppercased().filter { $0.isLetter || $0.isNumber }.prefix(6))
-                        if filtered != new { location.sessionCode = filtered }
-                    }
+            tileInput
 
-                HStack(spacing: 10) {
-                    ForEach(0..<6, id: \.self) { i in
-                        CodeBox(
-                            character: character(at: i),
-                            isActive: codeFieldFocused && !location.isTracking && location.sessionCode.count == i
-                        )
-                    }
+            participantStatusView
+
+            Spacer()
+
+            Button(location.isTracking ? "Done" : "Start") {
+                location.sessionCode = localCode
+                if !location.isTracking {
+                    location.start()
                 }
-                .onTapGesture {
-                    if !location.isTracking { codeFieldFocused = true }
+                dismiss()
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(.green)
+            .controlSize(.large)
+            .frame(maxWidth: .infinity)
+            .disabled(localCode.count < 6)
+
+            Button("Cancel", role: .cancel) {
+                dismiss()
+            }
+            .foregroundStyle(Color.accentColor)
+        }
+        .padding(24)
+        .onAppear {
+            localCode = location.sessionCode
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                focused = true
+            }
+        }
+        .task(id: localCode) {
+            guard localCode.count == 6 else {
+                participantCount = nil
+                isChecking = false
+                return
+            }
+            isChecking = true
+            participantCount = nil
+            try? await Task.sleep(for: .milliseconds(500))
+            guard !Task.isCancelled else { return }
+            let count = await location.fetchParticipantCount(for: localCode + location.dateSuffix)
+            guard !Task.isCancelled else { return }
+            participantCount = count
+            isChecking = false
+        }
+        .presentationDetents([.height(480), .large])
+        .presentationDragIndicator(.visible)
+    }
+
+    private var tileInput: some View {
+        HStack(spacing: 6) {
+            HStack(spacing: 6) {
+                ForEach(0..<6, id: \.self) { i in
+                    CodeBox(
+                        character: character(at: i),
+                        isActive: focused && localCode.count == i
+                    )
                 }
             }
+            .onTapGesture { focused = true }
 
-            let paddedCode = location.sessionCode.padding(toLength: 6, withPad: "_", startingAt: 0)
-            Label("\(paddedCode)\(location.dateSuffix)", systemImage: "globe")
-                .font(.title3.monospaced())
-                .foregroundStyle(location.sessionCode.count == 6 ? .primary : .tertiary)
+            Text(location.dateSuffix)
+                .font(.title3.bold().monospaced())
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .padding(.leading, 2)
+        }
+        .overlay {
+            TextField("", text: $localCode)
+                .focused($focused)
+                .keyboardType(.alphabet)
+                .autocorrectionDisabled()
+                .textInputAutocapitalization(.characters)
+                .opacity(0)
+                .frame(width: 1, height: 1)
+                .onChange(of: localCode) { _, new in
+                    let filtered = String(new.uppercased().filter { $0.isLetter || $0.isNumber }.prefix(6))
+                    if filtered != new { localCode = filtered }
+                }
+        }
+    }
 
-            if location.sessionCode.count == 6,
-               let url = URL(string: "http://dot-watcher.skelstar.io/\(location.fullSessionName)") {
-                Link("Open map in browser →", destination: url)
+    @ViewBuilder
+    private var participantStatusView: some View {
+        if isChecking {
+            HStack(spacing: 6) {
+                ProgressView()
+                    .scaleEffect(0.8)
+                Text("Checking...")
                     .font(.caption)
-                    .foregroundStyle(Color.accentColor)
+                    .foregroundStyle(.secondary)
+            }
+        } else if let count = participantCount {
+            HStack(spacing: 6) {
+                Image(systemName: "figure.run")
+                    .font(.caption)
+                    .foregroundStyle(.green)
+                Text(count == 0
+                     ? "No one else here yet"
+                     : "\(count) runner\(count == 1 ? "" : "s") already here")
+                    .font(.caption)
+                    .foregroundStyle(.green)
             }
         }
     }
 
     private func character(at index: Int) -> Character? {
-        guard index < location.sessionCode.count else { return nil }
-        return location.sessionCode[location.sessionCode.index(location.sessionCode.startIndex, offsetBy: index)]
+        guard index < localCode.count else { return nil }
+        return localCode[localCode.index(localCode.startIndex, offsetBy: index)]
     }
 }
+
+// MARK: - Name Entry Sheet
 
 struct NameEntryView: View {
     @Binding var name: String
@@ -250,6 +455,8 @@ struct NameEntryView: View {
     }
 }
 
+// MARK: - Code Box
+
 struct CodeBox: View {
     let character: Character?
     let isActive: Bool
@@ -270,9 +477,11 @@ struct CodeBox: View {
                     .foregroundStyle(Color.accentColor)
             }
         }
-        .frame(width: 44, height: 54)
+        .frame(width: 40, height: 54)
     }
 }
+
+// MARK: - Help View
 
 struct HelpView: View {
     @Environment(\.dismiss) private var dismiss
@@ -322,6 +531,10 @@ struct HelpView: View {
 
 #Preview {
     ContentView()
+}
+
+#Preview("Session Entry") {
+    SessionEntrySheet(location: LocationManager())
 }
 
 #Preview("Help") {

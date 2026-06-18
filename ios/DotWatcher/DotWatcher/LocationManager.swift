@@ -75,6 +75,17 @@ final class LocationManager {
         captureAndPost(forced: true)
     }
 
+    func fetchParticipantCount(for sessionName: String) async -> Int {
+        guard let url = URL(string: "http://dot-watcher.skelstar.io/api/participants?session=\(sessionName)") else { return 0 }
+        var req = URLRequest(url: url)
+        req.setValue("Bearer \(bearerToken)", forHTTPHeaderField: "Authorization")
+        guard let (data, response) = try? await URLSession.shared.data(for: req),
+              (response as? HTTPURLResponse)?.statusCode == 200,
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let names = json["participants"] as? [String] else { return 0 }
+        return names.count
+    }
+
     private func captureAndPost(forced: Bool = false) {
         guard let loc = latestLocation else {
             status = "Waiting for GPS..."
