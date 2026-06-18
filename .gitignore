@@ -15,6 +15,9 @@ obj/
 *.nupkg
 appsettings.Production.json
 appsettings.Staging.json
+*.db
+*.db-shm
+*.db-wal
 
 # ─── Node / React (client) ────────────────────────────────────────────────────
 node_modules/
