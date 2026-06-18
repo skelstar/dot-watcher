@@ -30,7 +30,7 @@
 		</dict>
 	</dict>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
-	<string>DotWatcher uses your location in the background to track your position during a run.</string>
+	<string>DotWatcher uses your location in the background to track your position during a run. This includes while the phone is locked in order for you to find your group.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>DotWatcher uses your location to track your position during a run.</string>
 	<key>UIApplicationSceneManifest</key>
