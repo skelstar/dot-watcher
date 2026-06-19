@@ -132,5 +132,11 @@ app.MapPost("/sessions/{targetCode}/merge-from/{sourceCode}",
 
 // Debug dashboard log feed
 app.MapGet("/log", (LogBuffer log) => Results.Ok(log.GetAll()));
+app.MapDelete("/log", (LogBuffer log, HttpRequest request) =>
+{
+    if (!IsAuthorized(request)) return Results.Unauthorized();
+    log.Clear();
+    return Results.NoContent();
+});
 
 app.Run();

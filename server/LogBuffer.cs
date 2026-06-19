@@ -15,6 +15,8 @@ public class LogBuffer
     }
 
     public string[] GetAll() => _lines.ToArray();
+
+    public void Clear() { while (_lines.TryDequeue(out _)) { } }
 }
 
 public class LogBufferProvider(LogBuffer buffer) : ILoggerProvider
