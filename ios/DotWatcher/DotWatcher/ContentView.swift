@@ -257,7 +257,7 @@ struct SessionEntrySheet: View {
     var location: LocationManager
 
     @State private var localCode: String = ""
-    @State private var participantCount: Int? = nil
+    @State private var sessionParticipants: [String]? = nil
     @State private var isChecking: Bool = false
     @FocusState private var focused: Bool
     @Environment(\.dismiss) private var dismiss
@@ -305,17 +305,17 @@ struct SessionEntrySheet: View {
         }
         .task(id: localCode) {
             guard localCode.count == 6 else {
-                participantCount = nil
+                sessionParticipants = nil
                 isChecking = false
                 return
             }
             isChecking = true
-            participantCount = nil
+            sessionParticipants = nil
             try? await Task.sleep(for: .milliseconds(500))
             guard !Task.isCancelled else { return }
-            let count = await location.fetchParticipantCount(for: localCode + location.dateSuffix)
+            let names = await location.previewSession(localCode + location.dateSuffix)
             guard !Task.isCancelled else { return }
-            participantCount = count
+            sessionParticipants = names
             isChecking = false
         }
         .presentationDetents([.height(480), .large])
@@ -365,16 +365,17 @@ struct SessionEntrySheet: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
-        } else if let count = participantCount {
-            HStack(spacing: 6) {
-                Image(systemName: "figure.run")
+        } else if let participants = sessionParticipants {
+            if participants.isEmpty {
+                Text("No one else here yet")
                     .font(.caption)
-                    .foregroundStyle(.green)
-                Text(count == 0
-                     ? "No one else here yet"
-                     : "\(count) runner\(count == 1 ? "" : "s") already here")
-                    .font(.caption)
-                    .foregroundStyle(.green)
+                    .foregroundStyle(.secondary)
+            } else {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 48))], spacing: 8) {
+                    ForEach(participants, id: \.self) { name in
+                        RunnerCircle(name: name, size: 48, isHighlighted: name == location.runnerName)
+                    }
+                }
             }
         }
     }

@@ -8,8 +8,8 @@ final class LocationManager {
     private(set) var lastSent: Date?
     private(set) var isTracking = false
     var participants: [String] = []
+    private var lastParticipantCount = 0
     fileprivate var latestLocation: CLLocation?
-    private var lastTransmittedLocation: CLLocation?
 
     private let clManager = CLLocationManager()
     private let locationDelegate = LocationDelegate()
@@ -17,7 +17,13 @@ final class LocationManager {
 
     let serverURL = URL(string: "http://dot-watcher.skelstar.io/api/location")!
     let bearerToken = "dev-token"
-    var sessionCode = ""
+    var sessionCode = "" {
+        didSet {
+            participants = []
+            lastParticipantCount = 0
+            if isTracking { captureAndPost() }
+        }
+    }
 
     var dateSuffix: String {
         let cal = Calendar.current
@@ -37,9 +43,9 @@ final class LocationManager {
         locationDelegate.owner = self
         clManager.delegate = locationDelegate
         clManager.desiredAccuracy = kCLLocationAccuracyNearestTenMeters
-        clManager.distanceFilter = 10.0
+        clManager.distanceFilter = 25.0
         clManager.activityType = .fitness
-        clManager.pausesLocationUpdatesAutomatically = false
+        clManager.pausesLocationUpdatesAutomatically = true
         clManager.allowsBackgroundLocationUpdates = true
         clManager.showsBackgroundLocationIndicator = true
     }
@@ -51,6 +57,7 @@ final class LocationManager {
         isTracking = true
         status = "Tracking..."
         trackingTask = Task { [weak self] in await self?.trackingLoop() }
+        captureAndPost()
     }
 
     func stop() {
@@ -71,39 +78,26 @@ final class LocationManager {
         }
     }
 
-    func forceUpdate() {
-        captureAndPost(forced: true)
-    }
-
-    func fetchParticipantCount(for sessionName: String) async -> Int {
-        guard let url = URL(string: "http://dot-watcher.skelstar.io/api/participants?session=\(sessionName)") else { return 0 }
+func previewSession(_ sessionName: String) async -> [String] {
+        guard let url = URL(string: "http://dot-watcher.skelstar.io/api/locations/\(sessionName)") else { return [] }
         var req = URLRequest(url: url)
         req.setValue("Bearer \(bearerToken)", forHTTPHeaderField: "Authorization")
         guard let (data, response) = try? await URLSession.shared.data(for: req),
               (response as? HTTPURLResponse)?.statusCode == 200,
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let names = json["participants"] as? [String] else { return 0 }
-        return names.count
+              let groups = try? JSONSerialization.jsonObject(with: data) as? [[[String: Any]]] else { return [] }
+        return groups.compactMap { $0.first?["runnerName"] as? String }
     }
 
-    private func captureAndPost(forced: Bool = false) {
-        guard let loc = latestLocation else {
-            status = "Waiting for GPS..."
-            return
+    private func captureAndPost() {
+        if let loc = latestLocation {
+            let heading: Double? = loc.course >= 0 ? loc.course : nil
+            Task { await post(lat: loc.coordinate.latitude, lon: loc.coordinate.longitude, heading: heading, timestamp: loc.timestamp) }
+        } else {
+            Task { await post(lat: nil, lon: nil, heading: nil, timestamp: nil) }
         }
-        if !forced, let last = lastTransmittedLocation, loc.distance(from: last) < 10 {
-            status = "Stationary 💤"
-            return
-        }
-        lastTransmittedLocation = loc
-        let captureTime = loc.timestamp
-        let lat = loc.coordinate.latitude
-        let lon = loc.coordinate.longitude
-        let heading: Double? = loc.course >= 0 ? loc.course : nil
-        Task { await post(lat: lat, lon: lon, heading: heading, timestamp: captureTime) }
     }
 
-    private func post(lat: Double, lon: Double, heading: Double?, timestamp: Date) async {
+    private func post(lat: Double?, lon: Double?, heading: Double?, timestamp: Date?) async {
         var req = URLRequest(url: serverURL)
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -111,10 +105,12 @@ final class LocationManager {
         var body: [String: Any] = [
             "runnerName": runnerName,
             "sessionCode": fullSessionName,
-            "latitude": lat,
-            "longitude": lon,
-            "timestamp": ISO8601DateFormatter().string(from: timestamp)
+            "timestamp": ISO8601DateFormatter().string(from: timestamp ?? Date())
         ]
+        if let lat, let lon {
+            body["latitude"] = lat
+            body["longitude"] = lon
+        }
         if let h = heading { body["heading"] = h }
         do {
             req.httpBody = try JSONSerialization.data(withJSONObject: body)
@@ -124,7 +120,9 @@ final class LocationManager {
                 status = "Sent ✓"
                 lastSent = Date()
                 if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                   let names = json["participants"] as? [String] {
+                   let names = json["participants"] as? [String],
+                   names.count != lastParticipantCount {
+                    lastParticipantCount = names.count
                     participants = names
                 }
             } else {
