@@ -10,12 +10,14 @@
     .grid { display: grid; grid-template-columns: 280px 1fr; gap: 16px; height: calc(100vh - 32px); }
     .panel { background: #161b22; border: 1px solid #30363d; border-radius: 6px; padding: 12px; display: flex; flex-direction: column; overflow: hidden; }
     .sessions-list { overflow-y: auto; flex: 1; }
-    .session-item { padding: 6px 8px; border-radius: 4px; margin-bottom: 4px; display: flex; justify-content: space-between; align-items: center; }
+    .session-item { padding: 6px 8px; border-radius: 4px; margin-bottom: 4px; display: flex; justify-content: space-between; align-items: center; cursor: pointer; }
     .session-item:hover { background: #21262d; }
+    .session-item.merge-source { background: #1c2128; border: 1px solid #58a6ff; }
+    .session-item.merge-dimmed { opacity: 0.4; }
     .session-code { color: #f0883e; font-weight: bold; }
     .dl-link { color: #58a6ff; text-decoration: none; font-size: 11px; }
     .dl-link:hover { text-decoration: underline; }
-    .log-panel { flex: 1; overflow-y: auto; display: flex; flex-direction: column-reverse; }
+    .log-panel { flex: 1; overflow-y: auto; }
     .log-line { padding: 2px 4px; border-radius: 2px; white-space: pre; line-height: 1.5; }
     .log-line:nth-child(odd) { background: #1c2128; }
     .log-line.warn { color: #e3b341; }
@@ -36,16 +38,19 @@
     .upload-status.err { color: #f85149; }
     .del-btn { background: none; border: none; color: #6e7681; font-size: 12px; cursor: pointer; padding: 0 4px; }
     .del-btn:hover { color: #f85149; }
-    .session-item { cursor: pointer; }
-    .session-item.active { background: #1c2128; }
+    .merge-btn { background: none; border: none; color: #6e7681; cursor: pointer; padding: 0 4px; display: flex; align-items: center; }
+    .merge-btn:hover { color: #58a6ff; }
     .filter-badge { color: #fff; border-radius: 4px; padding: 1px 6px; font-size: 10px; margin-left: 6px; cursor: pointer; opacity: 0.85; }
     .filter-badge:hover { opacity: 1; }
+    .merge-hint { font-size: 11px; color: #8b949e; background: #1c2128; border: 1px solid #30363d; border-radius: 4px; padding: 6px 8px; margin-bottom: 6px; display: none; }
+    .merge-hint strong { color: #58a6ff; }
   </style>
 </head>
 <body>
   <div class="grid">
     <div class="panel">
       <h2>Sessions <span id="session-count" class="badge">0</span></h2>
+      <div class="merge-hint" id="merge-hint"></div>
       <div class="sessions-list" id="sessions"></div>
       <div class="status" id="sessions-status"></div>
       <div class="upload-section">
@@ -85,28 +90,158 @@
 
     let activeSession = null;
     let cachedLines = [];
+    let cachedSessions = [];
+    let mergeSource = null;
+
+    // --- Session rendering ---
+
+    function renderSessions() {
+      const el = document.getElementById('sessions');
+      document.getElementById('session-count').textContent = cachedSessions.length;
+
+      if (cachedSessions.length === 0) {
+        el.innerHTML = '<div class="empty">No recorded sessions</div>';
+        return;
+      }
+
+      el.innerHTML = cachedSessions.map(s => {
+        const color = getSessionColor(s);
+        const isSource = s === mergeSource;
+        const isDimmed = mergeSource && !isSource;
+        let cls = 'session-item';
+        if (isSource) cls += ' merge-source';
+        else if (isDimmed) cls += ' merge-dimmed';
+        else if (activeSession === s) cls += ' active';
+
+        return `<div class="${cls}" id="session-${s}" onclick="handleSessionClick('${s}')">
+          <span class="session-code" style="color:${color}">${s}</span>
+          <span style="display:flex;gap:8px;align-items:center;" onclick="event.stopPropagation()">
+            <a class="dl-link" href="${apiBase}/sessions/${s}/recording" download="${s}.ndjson">↓ ndjson</a>
+            ${!mergeSource ? `<button class="merge-btn" onclick="startMerge('${s}')" title="Merge ${s} into another session"><svg viewBox="0 0 20 14" width="14" height="10" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M1,3 C7,3 9,7 13,7"/><path d="M1,11 C7,11 9,7 13,7"/><line x1="13" y1="7" x2="18" y2="7"/><polyline points="15,4 18.5,7 15,10"/></svg></button>` : ''}
+            <button class="del-btn" onclick="deleteRecording('${s}')" title="Delete recording">✕</button>
+          </span>
+        </div>`;
+      }).join('');
+
+      const hint = document.getElementById('merge-hint');
+      if (mergeSource) {
+        hint.style.display = 'block';
+        hint.innerHTML = `Select target to merge <strong>${escHtml(mergeSource)}</strong> into — or click it again to cancel.`;
+      } else {
+        hint.style.display = 'none';
+      }
+    }
+
+    // --- Session click handling ---
+
+    function handleSessionClick(code) {
+      if (!mergeSource) {
+        setSessionFilter(code);
+        return;
+      }
+      if (code === mergeSource) {
+        mergeSource = null;
+        renderSessions();
+        return;
+      }
+      if (confirm(`Merge "${mergeSource}" into "${code}"?\n\nAll records from ${mergeSource} will be moved to ${code}. This cannot be undone.`)) {
+        doMerge(mergeSource, code);
+      }
+    }
+
+    function startMerge(code) {
+      mergeSource = code;
+      renderSessions();
+    }
+
+    async function doMerge(src, tgt) {
+      const token = document.getElementById('upload-token').value.trim();
+      if (!token) { alert('Enter your bearer token in the field below first.'); return; }
+
+      try {
+        const r = await fetch(`${apiBase}/sessions/${tgt}/merge-from/${src}`, {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${token}` },
+        });
+        mergeSource = null;
+        if (r.ok) {
+          const result = await r.json();
+          setUploadStatus(`Merged ${src} → ${tgt} (${result.recordsMerged} records)`, 'ok');
+          await refreshSessions();
+        } else {
+          setUploadStatus(`Merge failed: HTTP ${r.status}`, 'err');
+          renderSessions();
+        }
+      } catch (e) {
+        mergeSource = null;
+        setUploadStatus(`Merge error: ${e.message}`, 'err');
+        renderSessions();
+      }
+    }
+
+    // --- Log ---
 
     function setSessionFilter(code) {
       activeSession = (activeSession === code) ? null : code;
       document.querySelectorAll('.session-item').forEach(el => el.classList.remove('active'));
       if (activeSession) {
         document.getElementById(`session-${activeSession}`)?.classList.add('active');
-      }
-      const header = document.getElementById('log-header');
-      if (activeSession) {
-        const color = getSessionColor(activeSession);
-        header.innerHTML = `Log — <span style="color:${color}">${escHtml(activeSession)}</span> <span class="filter-badge" style="background:${color}" onclick="setSessionFilter('${escHtml(activeSession)}')" title="Clear filter">×</span>`;
+        showSessionRecords(activeSession);
       } else {
-        header.textContent = 'Log';
+        renderLog(cachedLines);
       }
-      renderLog(cachedLines);
+    }
+
+    async function showSessionRecords(code) {
+      const color = getSessionColor(code);
+      const header = document.getElementById('log-header');
+      header.innerHTML = `Records — <span style="color:${color}">${escHtml(code)}</span> <span class="filter-badge" style="background:${color}" onclick="setSessionFilter('${escHtml(code)}')" title="Clear">×</span>`;
+      document.getElementById('log-count').textContent = '…';
+      const el = document.getElementById('log');
+      el.innerHTML = '<div class="empty">Loading…</div>';
+
+      try {
+        const r = await fetch(`${apiBase}/sessions/${code}/recording`);
+        if (!r.ok) { el.innerHTML = '<div class="empty">No recording found.</div>'; return; }
+        const text = await r.text();
+        const rows = text.trim().split('\n').filter(Boolean).map(l => JSON.parse(l));
+        document.getElementById('log-count').textContent = rows.length;
+        if (rows.length === 0) { el.innerHTML = '<div class="empty">No records.</div>'; return; }
+
+        el.innerHTML = `
+          <table style="width:100%;border-collapse:collapse;font-size:12px;">
+            <thead>
+              <tr style="color:#8b949e;text-align:left;border-bottom:1px solid #30363d;">
+                <th style="padding:4px 6px;">#</th>
+                <th style="padding:4px 6px;">Runner</th>
+                <th style="padding:4px 6px;">Lat</th>
+                <th style="padding:4px 6px;">Lon</th>
+                <th style="padding:4px 6px;">Heading</th>
+                <th style="padding:4px 6px;">Timestamp</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${rows.map((r, i) => `
+                <tr style="border-bottom:1px solid #21262d;">
+                  <td style="padding:3px 6px;color:#484f58;">${i + 1}</td>
+                  <td style="padding:3px 6px;color:${getSessionColor(code)};font-weight:bold;">${escHtml(r.runnerName)}</td>
+                  <td style="padding:3px 6px;">${r.latitude.toFixed(6)}</td>
+                  <td style="padding:3px 6px;">${r.longitude.toFixed(6)}</td>
+                  <td style="padding:3px 6px;color:#8b949e;">${r.heading != null ? r.heading.toFixed(1) + '°' : '—'}</td>
+                  <td style="padding:3px 6px;color:#8b949e;">${escHtml(r.timestamp)}</td>
+                </tr>`).join('')}
+            </tbody>
+          </table>`;
+      } catch (e) {
+        el.innerHTML = `<div class="empty">Error: ${escHtml(e.message)}</div>`;
+      }
     }
 
     function renderLog(lines) {
-      const filtered = activeSession ? lines.filter(l => l.includes(activeSession)) : lines;
-      document.getElementById('log-count').textContent = filtered.length;
+      document.getElementById('log-header').textContent = 'Log';
+      document.getElementById('log-count').textContent = lines.length;
       const el = document.getElementById('log');
-      el.innerHTML = [...filtered].reverse().map(line => {
+      el.innerHTML = [...lines].reverse().map(line => {
         let cls = 'log-line';
         if (line.includes(' WARN ')) cls += ' warn';
         else if (line.includes(' ERROR')) cls += ' error';
@@ -118,28 +253,14 @@
       }).join('');
     }
 
+    // --- Data fetching ---
+
     async function refreshSessions() {
       try {
         const r = await fetch(`${apiBase}/sessions`);
-        const sessions = await r.json();
-        sessions.forEach(s => getSessionColor(s));
-        document.getElementById('session-count').textContent = sessions.length;
-        const el = document.getElementById('sessions');
-        if (sessions.length === 0) {
-          el.innerHTML = '<div class="empty">No recorded sessions</div>';
-        } else {
-          el.innerHTML = sessions.map(s => {
-            const color = getSessionColor(s);
-            return `<div class="session-item${activeSession === s ? ' active' : ''}" id="session-${s}"
-                onclick="setSessionFilter('${s}')">
-              <span class="session-code" style="color:${color}">${s}</span>
-              <span style="display:flex;gap:8px;align-items:center;" onclick="event.stopPropagation()">
-                <a class="dl-link" href="${apiBase}/sessions/${s}/recording" download="${s}.ndjson">↓ ndjson</a>
-                <button class="del-btn" onclick="deleteRecording('${s}')" title="Delete recording">✕</button>
-              </span>
-            </div>`;
-          }).join('');
-        }
+        cachedSessions = await r.json();
+        cachedSessions.forEach(s => getSessionColor(s));
+        renderSessions();
         document.getElementById('sessions-status').textContent = `Updated ${new Date().toLocaleTimeString()}`;
       } catch (e) {
         document.getElementById('sessions-status').textContent = `Error: ${e.message}`;
@@ -150,7 +271,7 @@
       try {
         const r = await fetch(`${apiBase}/log`);
         cachedLines = await r.json();
-        renderLog(cachedLines);
+        if (!activeSession) renderLog(cachedLines);
         document.getElementById('log-status').textContent = `Updated ${new Date().toLocaleTimeString()}`;
       } catch (e) {
         document.getElementById('log-status').textContent = `Error: ${e.message}`;
@@ -160,6 +281,14 @@
     function escHtml(s) {
       return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     }
+
+    function setUploadStatus(msg, cls) {
+      const el = document.getElementById('upload-status');
+      el.textContent = msg;
+      el.className = `upload-status ${cls}`;
+    }
+
+    // --- Upload / delete ---
 
     document.getElementById('upload-token').value = localStorage.getItem('bearerToken') || '';
     document.getElementById('upload-file').addEventListener('change', function() {
@@ -174,19 +303,16 @@
       const code = document.getElementById('upload-code').value.trim().toUpperCase();
       const file = document.getElementById('upload-file').files[0];
       const token = document.getElementById('upload-token').value.trim();
-      const status = document.getElementById('upload-status');
       const btn = document.getElementById('upload-btn');
 
       if (!code || !file || !token) {
-        status.textContent = 'Fill in all fields.';
-        status.className = 'upload-status err';
+        setUploadStatus('Fill in all fields.', 'err');
         return;
       }
 
       localStorage.setItem('bearerToken', token);
       btn.disabled = true;
-      status.textContent = 'Uploading…';
-      status.className = 'upload-status';
+      setUploadStatus('Uploading…', '');
 
       try {
         const content = await file.text();
@@ -199,16 +325,13 @@
           body: content,
         });
         if (r.ok) {
-          status.textContent = `Uploaded ${code} (${content.split('\n').filter(Boolean).length} entries)`;
-          status.className = 'upload-status ok';
+          setUploadStatus(`Uploaded ${code} (${content.split('\n').filter(Boolean).length} entries)`, 'ok');
           refreshSessions();
         } else {
-          status.textContent = `Failed: HTTP ${r.status}`;
-          status.className = 'upload-status err';
+          setUploadStatus(`Failed: HTTP ${r.status}`, 'err');
         }
       } catch (e) {
-        status.textContent = `Error: ${e.message}`;
-        status.className = 'upload-status err';
+        setUploadStatus(`Error: ${e.message}`, 'err');
       } finally {
         btn.disabled = false;
       }
@@ -223,10 +346,7 @@
         headers: { 'Authorization': `Bearer ${token}` },
       });
       if (r.ok || r.status === 204) {
-        document.getElementById(`session-${code}`)?.remove();
-        const count = document.querySelectorAll('.session-item').length;
-        document.getElementById('session-count').textContent = count;
-        if (count === 0) document.getElementById('sessions').innerHTML = '<div class="empty">No recorded sessions</div>';
+        await refreshSessions();
       } else {
         alert(`Failed to delete: HTTP ${r.status}`);
       }
