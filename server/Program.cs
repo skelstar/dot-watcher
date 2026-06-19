@@ -112,6 +112,24 @@ app.MapDelete("/sessions/{sessionCode}", (string sessionCode, SessionStore store
     return Results.NoContent();
 });
 
+// Merge all records from one session into another
+app.MapPost("/sessions/{targetCode}/merge-from/{sourceCode}",
+    (string targetCode, string sourceCode, SessionStore store, HttpRequest request, ILogger<Program> logger) =>
+{
+    if (!IsAuthorized(request))
+        return Results.Unauthorized();
+
+    var tgt = targetCode.ToUpperInvariant();
+    var src = sourceCode.ToUpperInvariant();
+
+    if (!store.HasRecording(src))
+        return Results.NotFound(new { error = $"Source session '{src}' not found" });
+
+    var rows = store.MergeSession(src, tgt);
+    logger.LogInformation("Merged session {Source} into {Target} ({Rows} records)", src, tgt, rows);
+    return Results.Ok(new { sourceCode = src, targetCode = tgt, recordsMerged = rows });
+});
+
 // Debug dashboard log feed
 app.MapGet("/log", (LogBuffer log) => Results.Ok(log.GetAll()));
 

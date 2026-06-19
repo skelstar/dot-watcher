@@ -203,4 +203,33 @@ public class SessionStore(string dbPath)
 
     public void ClearSession(string sessionCode) =>
         _sessions.TryRemove(sessionCode.ToUpperInvariant(), out _);
+
+    public int MergeSession(string sourceCode, string targetCode)
+    {
+        var src = sourceCode.ToUpperInvariant();
+        var tgt = targetCode.ToUpperInvariant();
+
+        using var conn = Connect();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "UPDATE location_updates SET session_code = $tgt WHERE session_code = $src";
+        cmd.Parameters.AddWithValue("$tgt", tgt);
+        cmd.Parameters.AddWithValue("$src", src);
+        var rows = cmd.ExecuteNonQuery();
+
+        if (_sessions.TryRemove(src, out var srcSession))
+        {
+            var tgtSession = _sessions.GetOrAdd(tgt, _ => new());
+            foreach (var (runner, srcHistory) in srcSession)
+            {
+                var tgtHistory = tgtSession.GetOrAdd(runner, _ => []);
+                lock (srcHistory) lock (tgtHistory)
+                {
+                    tgtHistory.AddRange(srcHistory);
+                    tgtHistory.Sort((a, b) => a.Timestamp.CompareTo(b.Timestamp));
+                }
+            }
+        }
+
+        return rows;
+    }
 }
