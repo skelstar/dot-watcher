@@ -10,7 +10,7 @@ http:
     type: json
     data: |-
       {
-        "runnerName": "Alice",
+        "runnerName": "AM",
         "sessionCode": "SUNSET23",
         "latitude": -41.17,
         "longitude": 174.7762,
@@ -20,6 +20,11 @@ http:
   auth:
     type: bearer
     token: dev-token
+
+runtime:
+  variables:
+    - name: baseurl
+      value: dot-watcher.skelstar.io/api
 
 settings:
   encodeUrl: true

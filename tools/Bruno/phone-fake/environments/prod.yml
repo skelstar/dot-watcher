@@ -1,1 +1,4 @@
 name: prod
+variables:
+  - name: baseurl
+    value: dot-watcher.skelstar.io/api

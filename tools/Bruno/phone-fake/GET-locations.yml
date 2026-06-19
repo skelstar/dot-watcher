@@ -5,7 +5,7 @@ info:
 
 http:
   method: GET
-  url: http://{{baseurl}}/locations/SUNSET23
+  url: http://{{baseurl}}/locations/123455-1906
   auth: inherit
 
 settings:
@@ -13,4 +13,3 @@ settings:
   timeout: 0
   followRedirects: true
   maxRedirects: 5
-​
