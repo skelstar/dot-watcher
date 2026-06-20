@@ -8,11 +8,3 @@ public record LocationUpdate(
     double? Heading,
     DateTimeOffset Timestamp
 );
-
-public record RunnerPosition(
-    string RunnerName,
-    double Latitude,
-    double Longitude,
-    double? Heading,
-    DateTimeOffset Timestamp
-);
