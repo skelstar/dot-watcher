@@ -8,6 +8,7 @@ import MemberManager from './MemberManager.tsx'
 import ReplayControls from './ReplayControls.tsx'
 import ReplayPicker from './ReplayPicker.tsx'
 import AuthPrompt from './AuthPrompt.tsx'
+import LegalPage from './LegalPage.tsx'
 import { useRunnerMarkers } from './useRunnerMarkers.ts'
 import { useReplay } from './useReplay.ts'
 import { canManageMembersForRole, canWriteLocationForRole, shouldShowAuthPrompt, shouldShowSessionPrompt } from './sessionState.ts'
@@ -28,15 +29,18 @@ interface RouteState {
   sessionCode: string | null
   isReplay: boolean
   inviteCode: string | null
+  legalPage: 'privacy' | 'terms' | null
 }
 
 function parseUrl(): RouteState {
   const parts = window.location.pathname.replace(/^\//, '').split('/')
   const norm = (s: string) => s.toUpperCase() || null
-  if (parts[0] === 'join') return { sessionCode: null, isReplay: false, inviteCode: norm(parts[1] ?? '') }
-  if (parts[0] === 'replay') return { sessionCode: null, isReplay: true, inviteCode: null }
-  if (parts[1] === 'replay') return { sessionCode: norm(parts[0]), isReplay: true, inviteCode: null }
-  return { sessionCode: norm(parts[0]), isReplay: false, inviteCode: null }
+  if (parts[0] === 'privacy') return { sessionCode: null, isReplay: false, inviteCode: null, legalPage: 'privacy' }
+  if (parts[0] === 'terms') return { sessionCode: null, isReplay: false, inviteCode: null, legalPage: 'terms' }
+  if (parts[0] === 'join') return { sessionCode: null, isReplay: false, inviteCode: norm(parts[1] ?? ''), legalPage: null }
+  if (parts[0] === 'replay') return { sessionCode: null, isReplay: true, inviteCode: null, legalPage: null }
+  if (parts[1] === 'replay') return { sessionCode: norm(parts[0]), isReplay: true, inviteCode: null, legalPage: null }
+  return { sessionCode: norm(parts[0]), isReplay: false, inviteCode: null, legalPage: null }
 }
 
 function readStoredAuth(): AuthResponse | null {
@@ -75,7 +79,7 @@ function clearStoredAuth() {
 export default function App() {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<mapboxgl.Map | null>(null)
-  const { sessionCode: initialCode, isReplay, inviteCode } = parseUrl()
+  const { sessionCode: initialCode, isReplay, inviteCode, legalPage } = parseUrl()
   const [sessionCode, setSessionCode] = useState<string | null>(initialCode)
   const [auth, setAuth] = useState<AuthResponse | null>(() => readStoredAuth())
   const [memberships, setMemberships] = useState<SessionMembership[]>([])
@@ -85,8 +89,10 @@ export default function App() {
   const accessToken = auth?.accessToken ?? null
 
   useEffect(() => {
+    if (legalPage || !containerRef.current) return
+
     const map = new mapboxgl.Map({
-      container: containerRef.current!,
+      container: containerRef.current,
       style: 'mapbox://styles/mapbox/streets-v12',
       center: [151.2093, -33.8688],
       zoom: 13,
@@ -110,7 +116,7 @@ export default function App() {
       map.remove()
       mapRef.current = null
     }
-  }, [])
+  }, [isReplay, legalPage])
 
   useEffect(() => {
     if (!accessToken) {
@@ -226,10 +232,18 @@ export default function App() {
     setSessionCode(code)
   }
 
+  if (legalPage) {
+    return <LegalPage kind={legalPage} />
+  }
+
   return (
     <>
       <div ref={containerRef} style={{ width: '100%', height: '100%' }} />
-      <div style={versionBadge}>{VERSION_LABEL}</div>
+      <div style={versionBadge}>
+        <span>{VERSION_LABEL}</span>
+        <a href="/privacy" style={legalLink}>Privacy</a>
+        <a href="/terms" style={legalLink}>Terms</a>
+      </div>
       {auth && (
         <div style={accountBar}>
           <span>{auth.user.displayName || auth.user.username}</span>
@@ -331,10 +345,13 @@ const versionBadge: React.CSSProperties = {
   left: 12,
   bottom: 12,
   zIndex: 7,
-  maxWidth: 'min(460px, calc(100vw - 96px))',
+  maxWidth: 'min(620px, calc(100vw - 96px))',
   overflow: 'hidden',
   textOverflow: 'ellipsis',
   whiteSpace: 'nowrap',
+  display: 'flex',
+  alignItems: 'center',
+  gap: 8,
   background: 'rgba(255,255,255,0.92)',
   color: '#57606a',
   borderRadius: 4,
@@ -342,6 +359,12 @@ const versionBadge: React.CSSProperties = {
   padding: '4px 7px',
   fontFamily: 'system-ui, sans-serif',
   fontSize: '0.75rem',
+}
+
+const legalLink: React.CSSProperties = {
+  flex: '0 0 auto',
+  color: '#1f6feb',
+  textDecoration: 'none',
 }
 
 const signOutButton: React.CSSProperties = {

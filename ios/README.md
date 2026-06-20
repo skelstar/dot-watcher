@@ -33,6 +33,13 @@ GitHub Actions does not currently build or run the iOS project. iOS verification
 
 Manual pre-release checks should cover sign-in/register, Keychain persistence, logout revocation, create session, join invite, owner/runner-only posting, `401`/`403` handling, background location, clock-aligned posting, offline retry, and TestFlight packaging.
 
+The app links to:
+
+- Privacy Policy: `https://dot-watcher.skelstar.io/privacy`
+- Terms of Use: `https://dot-watcher.skelstar.io/terms`
+
+These pages are beta-oriented drafts and should be reviewed before public App Store release.
+
 ---
 
 ## Position recording strategy

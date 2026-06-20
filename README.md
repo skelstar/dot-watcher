@@ -131,6 +131,7 @@ A native Swift app.
 **Distribution**
 
 - Distributed via TestFlight (not the App Store)
+- Public legal pages are served by the web client at `/privacy` and `/terms`; review them before public App Store release.
 
 ---
 

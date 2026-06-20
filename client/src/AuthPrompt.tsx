@@ -85,6 +85,9 @@ export default function AuthPrompt({ serverUrl, onAuth }: Props) {
         >
           {mode === 'login' ? 'Create account' : 'Use existing account'}
         </button>
+        <p style={legalCopy}>
+          By using Dot Watcher, you agree to the <a href="/terms" style={legalLink}>Terms</a> and acknowledge the <a href="/privacy" style={legalLink}>Privacy Policy</a>.
+        </p>
       </form>
     </div>
   )
@@ -152,4 +155,18 @@ const switchButton: React.CSSProperties = {
   background: '#f8fafc',
   color: '#1e293b',
   border: '1px solid #e2e8f0',
+}
+
+const legalCopy: React.CSSProperties = {
+  margin: '0.25rem 0 0',
+  color: '#64748b',
+  fontFamily: 'system-ui, sans-serif',
+  fontSize: '0.75rem',
+  lineHeight: 1.35,
+  textAlign: 'center',
+}
+
+const legalLink: React.CSSProperties = {
+  color: '#2563eb',
+  textDecoration: 'none',
 }

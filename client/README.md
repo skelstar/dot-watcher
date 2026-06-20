@@ -49,6 +49,8 @@ Open the app, sign in, then select an existing session, create one, or join from
 
 For local development against a server on another origin, override `VITE_SERVER_URL` in `.env`, for example `http://localhost:5000`.
 
+Public legal pages are available at `/privacy` and `/terms`. These should be reviewed before public App Store release and can be used as App Store Connect metadata URLs once deployed.
+
 ## Auth and sessions
 
 - Sign-in and account creation call `POST /auth/login` and `POST /auth/register`.

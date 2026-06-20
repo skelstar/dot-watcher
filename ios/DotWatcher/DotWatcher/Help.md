@@ -20,6 +20,14 @@ Once you've selected a session, a link appears below it. Tap **Open map in brows
 
 Share the same link with spectators so they can watch from any device.
 
+## Privacy and Terms
+
+Privacy Policy: https://dot-watcher.skelstar.io/privacy
+
+Terms of Use: https://dot-watcher.skelstar.io/terms
+
+DotWatcher is a beta service. Do not use it for emergency response, rescue, medical, safety-critical tracking, or any situation where delayed or missing location data could cause harm.
+
 ## Battery
 
 Keep an eye on the battery indicator — continuous GPS use drains the battery faster than normal. 15 seconds is a good trade-off. For longer events, this interval will be extended.

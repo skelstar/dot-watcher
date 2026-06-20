@@ -1,6 +1,9 @@
 import SwiftUI
 import UIKit
 
+private let privacyURL = URL(string: "https://dot-watcher.skelstar.io/privacy")!
+private let termsURL = URL(string: "https://dot-watcher.skelstar.io/terms")!
+
 struct ContentView: View {
     @State private var location = LocationManager()
     @State private var batteryLevel: Float = UIDevice.current.batteryLevel
@@ -321,6 +324,7 @@ struct AuthSheet: View {
                             Task { await location.signOut() }
                         }
                     }
+                    legalSection
                 } else {
                     Section {
                         Picker("Mode", selection: $mode) {
@@ -354,6 +358,7 @@ struct AuthSheet: View {
                         }
                         .disabled(isBusy || username.trimmingCharacters(in: .whitespaces).isEmpty || password.count < 8 || (mode == .register && displayName.trimmingCharacters(in: .whitespaces).isEmpty))
                     }
+                    legalSection
                 }
             }
             .navigationTitle("Account")
@@ -364,6 +369,15 @@ struct AuthSheet: View {
                     }
                 }
             }
+        }
+    }
+
+    private var legalSection: some View {
+        Section {
+            Link("Privacy Policy", destination: privacyURL)
+            Link("Terms of Use", destination: termsURL)
+        } footer: {
+            Text("Dot Watcher is a beta service. Location data can be delayed, inaccurate, or unavailable.")
         }
     }
 
