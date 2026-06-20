@@ -49,7 +49,7 @@ Open the app, sign in, then select an existing session, create one, or join from
 - The server returns `{ accessToken, expiresAt, user }`; the app keeps the access token in `sessionStorage`, clears older `localStorage` token keys, and calls `POST /auth/logout` on sign-out.
 - After sign-in, the app loads `GET /me/sessions`. Users can open live or replay views only for returned memberships.
 - Creating a session calls `POST /sessions` and stores the creator as `owner`.
-- Joining from an invite calls `POST /session-invites/{inviteCode}/join`. Invite joins always create `viewer` membership; invite codes do not grant runner or owner privileges.
+- Joining from an invite calls `POST /session-invites/{inviteCode}/join`. Invite joins create `viewer` membership for new members and preserve existing roles; invite codes do not grant runner or owner privileges.
 - A raw session code in the URL is only an identifier. If the user lacks membership, protected server endpoints return `403`.
 
 ## CI

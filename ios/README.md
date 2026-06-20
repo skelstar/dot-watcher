@@ -10,7 +10,7 @@ Native Swift app that signs in with a Dot Watcher account and sends GPS position
 - User access tokens should be stored in Keychain, not `UserDefaults`.
 - Sign-out should call `POST /auth/logout` and remove the token from Keychain.
 - The app should load `GET /me/sessions` after sign-in and let the user select an existing membership, create a session with `POST /sessions`, or join from an invite code with `POST /session-invites/{inviteCode}/join`.
-- Invite joins create `viewer` membership only. The app can post locations only when the selected membership role is `owner` or `runner`.
+- Invite joins create `viewer` membership for new members and preserve existing roles. The app can post locations only when the selected membership role is `owner` or `runner`.
 - `POST /location` must send `Authorization: Bearer <user access token>`. The server stores the authenticated member display name and ignores any client-supplied runner name for identity.
 - `GET /locations/{sessionCode}` and recording download return `403` for valid-looking session codes where the signed-in user is not a member.
 

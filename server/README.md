@@ -314,9 +314,9 @@ Joins the authenticated user to a session from an invite code. Invite codes are 
 }
 ```
 
-Invite joins always create `viewer` membership. Invite codes are not role grants; runner/owner privileges must be assigned by a trusted server-side flow.
+Invite joins create `viewer` membership for new members and preserve any existing role for current members. Invite codes are not role grants; runner/owner privileges must be assigned by a trusted server-side flow.
 
-**Responses:** `200` with viewer membership, `400` for invalid display name, `401` for missing or invalid user token, `404` for an unknown invite code.
+**Responses:** `200` with the resulting membership, `400` for invalid display name, `401` for missing or invalid user token, `404` for an unknown invite code.
 
 ---
 

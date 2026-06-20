@@ -205,15 +205,10 @@ public class SessionStore(string dbPath)
         var storedInviteCode = reader.GetString(1);
         reader.Close();
 
-        UpsertMembership(
-            conn,
-            sessionCode,
-            userId,
-            "viewer",
-            displayName,
-            DateTimeOffset.UtcNow.ToString("O"));
+        var joinedAt = DateTimeOffset.UtcNow.ToString("O");
+        UpsertMembershipPreservingRole(conn, sessionCode, userId, "viewer", displayName, joinedAt);
 
-        return new SessionMembership(sessionCode, storedInviteCode, "viewer", displayName);
+        return GetMembership(conn, sessionCode, userId, storedInviteCode)!;
     }
 
     public IReadOnlyList<SessionMembership> GetSessionsForUser(string userId)
@@ -244,6 +239,15 @@ public class SessionStore(string dbPath)
     public SessionMembership? GetMembership(string sessionCode, string userId)
     {
         using var conn = Connect();
+        return GetMembership(conn, sessionCode.ToUpperInvariant(), userId);
+    }
+
+    private static SessionMembership? GetMembership(
+        SqliteConnection conn,
+        string sessionCode,
+        string userId,
+        string? inviteCode = null)
+    {
         using var cmd = conn.CreateCommand();
         cmd.CommandText = """
             SELECT s.session_code, s.invite_code, m.role, m.display_name
@@ -251,11 +255,11 @@ public class SessionStore(string dbPath)
             JOIN app_sessions s ON s.session_code = m.session_code
             WHERE m.session_code = $sessionCode AND m.user_id = $userId
             """;
-        cmd.Parameters.AddWithValue("$sessionCode", sessionCode.ToUpperInvariant());
+        cmd.Parameters.AddWithValue("$sessionCode", sessionCode);
         cmd.Parameters.AddWithValue("$userId", userId);
         using var reader = cmd.ExecuteReader();
         return reader.Read()
-            ? new SessionMembership(reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetString(3))
+            ? new SessionMembership(reader.GetString(0), inviteCode ?? reader.GetString(1), reader.GetString(2), reader.GetString(3))
             : null;
     }
 
@@ -493,6 +497,29 @@ public class SessionStore(string dbPath)
             VALUES ($sessionCode, $userId, $role, $displayName, $joinedAt)
             ON CONFLICT(session_code, user_id)
             DO UPDATE SET role = excluded.role, display_name = excluded.display_name
+            """;
+        cmd.Parameters.AddWithValue("$sessionCode", sessionCode);
+        cmd.Parameters.AddWithValue("$userId", userId);
+        cmd.Parameters.AddWithValue("$role", role);
+        cmd.Parameters.AddWithValue("$displayName", displayName);
+        cmd.Parameters.AddWithValue("$joinedAt", joinedAt);
+        cmd.ExecuteNonQuery();
+    }
+
+    private static void UpsertMembershipPreservingRole(
+        SqliteConnection conn,
+        string sessionCode,
+        string userId,
+        string role,
+        string displayName,
+        string joinedAt)
+    {
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = """
+            INSERT INTO session_members (session_code, user_id, role, display_name, joined_at)
+            VALUES ($sessionCode, $userId, $role, $displayName, $joinedAt)
+            ON CONFLICT(session_code, user_id)
+            DO UPDATE SET display_name = excluded.display_name
             """;
         cmd.Parameters.AddWithValue("$sessionCode", sessionCode);
         cmd.Parameters.AddWithValue("$userId", userId);

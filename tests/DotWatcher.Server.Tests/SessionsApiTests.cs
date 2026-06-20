@@ -85,6 +85,32 @@ public class SessionsApiTests
     }
 
     [Fact]
+    public async Task JoinSession_WithExistingOwnerMembership_PreservesOwnerRole()
+    {
+        using var factory = new DotWatcherApiFactory();
+        using var client = factory.CreateClient();
+        var ownerToken = await AuthTestHelpers.RegisterAsync(client, "owner", "Owner");
+        var session = await AuthTestHelpers.CreateSessionAsync(client, ownerToken);
+
+        var joined = await AuthTestHelpers.JoinSessionAsync(
+            client,
+            ownerToken,
+            session.InviteCode,
+            displayName: "Still The Owner");
+
+        Assert.Equal(session.SessionCode, joined.SessionCode);
+        Assert.Equal("owner", joined.Role);
+        Assert.Equal("Still The Owner", joined.DisplayName);
+
+        var writeAttempt = await LocationsApiTests.PostLocationAsync(
+            client,
+            LocationsApiTests.TestLocation("Ignored", session.SessionCode),
+            ownerToken);
+
+        Assert.Equal(HttpStatusCode.OK, writeAttempt.StatusCode);
+    }
+
+    [Fact]
     public async Task GetMySessions_WithUserToken_ReturnsMemberships()
     {
         using var factory = new DotWatcherApiFactory();

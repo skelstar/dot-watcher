@@ -144,7 +144,7 @@ A native Swift app.
 | Admin/debug dashboard | `GET /sessions`, `GET /log`, recording mutations | Admin bearer token in `Authorization` header |
 
 Session codes are identifiers, not credentials. Invite codes/links are used to join a session, then the server stores membership and authorizes future reads/writes from the authenticated user identity.
-Invite joins always create `viewer` membership; runner/owner privileges are not granted by invite code. `GET /locations/{sessionCode}` returns `403` for authenticated users without membership, including unknown session codes, and returns `200 []` only for a member session with no live positions yet.
+Invite joins create `viewer` membership for new members and preserve any existing role for current members; runner/owner privileges are not granted by invite code. `GET /locations/{sessionCode}` returns `403` for authenticated users without membership, including unknown session codes, and returns `200 []` only for a member session with no live positions yet.
 
 ```text
                  public account endpoints
