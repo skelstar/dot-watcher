@@ -57,7 +57,7 @@
         <span class="upload-label">Upload recording</span>
         <input type="text" id="upload-code" placeholder="Session code (e.g. WAINOT)" />
         <input type="file" id="upload-file" accept=".ndjson" style="color:#8b949e;font-size:11px;" />
-        <input type="password" id="upload-token" placeholder="Bearer token" />
+        <input type="password" id="upload-token" placeholder="Bearer token" autocomplete="off" />
         <button class="upload-btn" id="upload-btn" onclick="uploadRecording()">Upload</button>
         <div class="upload-status" id="upload-status"></div>
       </div>
@@ -95,9 +95,7 @@
     let mergeSource = null;
 
     function getBearerToken() {
-      const token = document.getElementById('upload-token').value.trim();
-      if (token) localStorage.setItem('bearerToken', token);
-      return token;
+      return document.getElementById('upload-token').value.trim();
     }
 
     function getAuthHeaders() {
@@ -339,7 +337,6 @@
 
     // --- Upload / delete ---
 
-    document.getElementById('upload-token').value = localStorage.getItem('bearerToken') || '';
     document.getElementById('upload-file').addEventListener('change', function() {
       const file = this.files[0];
       if (file) {
