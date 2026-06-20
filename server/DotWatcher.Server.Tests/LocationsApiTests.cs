@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
+using Xunit;
 
 namespace DotWatcher.Server.Tests;
 
@@ -13,7 +14,7 @@ public class LocationsApiTests
         using var factory = new DotWatcherApiFactory();
         using var client = factory.CreateClient();
 
-        var response = await client.PostAsJsonAsync("/location", NewLocation("Alice", "SUNSET23"));
+        var response = await client.PostAsJsonAsync("/location", TestLocation("Alice", "SUNSET23"));
 
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
@@ -24,7 +25,7 @@ public class LocationsApiTests
         using var factory = new DotWatcherApiFactory();
         using var client = factory.CreateClient();
 
-        var response = await PostLocationAsync(client, NewLocation("Alice", "SUNSET23"));
+        var response = await PostLocationAsync(client, TestLocation("Alice", "SUNSET23"));
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
@@ -59,9 +60,9 @@ public class LocationsApiTests
         using var factory = new DotWatcherApiFactory();
         using var client = factory.CreateClient();
 
-        await PostLocationAsync(client, NewLocation("Alice", "sunset23", latitude: -33.8680, timestampSeconds: 1));
-        await PostLocationAsync(client, NewLocation("Alice", "sunset23", latitude: -33.8688, timestampSeconds: 2));
-        await PostLocationAsync(client, NewLocation("Bob", "sunset23", latitude: -33.8695, timestampSeconds: 3));
+        await PostLocationAsync(client, TestLocation("Alice", "sunset23", latitude: -33.8680, timestampSeconds: 1));
+        await PostLocationAsync(client, TestLocation("Alice", "sunset23", latitude: -33.8688, timestampSeconds: 2));
+        await PostLocationAsync(client, TestLocation("Bob", "sunset23", latitude: -33.8695, timestampSeconds: 3));
 
         var response = await client.GetAsync("/locations/SUNSET23");
 
@@ -79,7 +80,7 @@ public class LocationsApiTests
         Assert.Equal(-33.8695, positionsByRunner["Bob"].Latitude);
     }
 
-    private static async Task<HttpResponseMessage> PostLocationAsync(HttpClient client, LocationUpdate update)
+    internal static async Task<HttpResponseMessage> PostLocationAsync(HttpClient client, LocationUpdate update)
     {
         using var request = new HttpRequestMessage(HttpMethod.Post, "/location")
         {
@@ -90,7 +91,7 @@ public class LocationsApiTests
         return await client.SendAsync(request);
     }
 
-    private static LocationUpdate NewLocation(
+    internal static LocationUpdate TestLocation(
         string runnerName,
         string sessionCode,
         double latitude = -41.17,
