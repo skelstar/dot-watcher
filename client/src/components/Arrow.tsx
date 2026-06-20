@@ -73,17 +73,18 @@ export default function Arrow({ name, heading, colour, label, stationary }: Prop
         viewBox={`${VB_X} ${VB_Y} ${VB_W} ${VB_H}`}
         style={{
           display: 'block',
-          filter: 'drop-shadow(0 1px 3px rgba(0,0,0,0.35))',
+          filter: 'drop-shadow(0 1px 4px rgba(0,0,0,0.45))',
           transform: `rotate(${h}deg)`,
           transformOrigin: '50% 50%',
         }}
       >
         <path
           d="m 2.397561,10.97932 a 13,13 0 0 0 0,18.384776 13,13 0 0 0 18.384776,0 13,13 0 0 0 0,-18.384776 L 11.589949,1.7869317 Z"
-          fill={colour}
-          stroke="#f9f9f9"
+          fill="#ffffff"
+          stroke="#ffffff"
           strokeWidth="1.6"
         />
+        <circle cx={CX} cy={CY} r={12} fill={colour} />
         <text
           x={CX}
           y={CY + 4}
