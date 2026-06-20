@@ -250,6 +250,72 @@ public class SessionsApiTests
     }
 
     [Fact]
+    public async Task UploadRecording_WithInvalidLocation_ReturnsBadRequestAndPreservesExistingRecording()
+    {
+        using var factory = new DotWatcherApiFactory();
+        using var client = factory.CreateClient();
+
+        await SendWithAdminBearerAsync(client, HttpMethod.Post, "/sessions/SUNSET23/recording",
+            NdjsonLine("Bob", "SUNSET23"));
+
+        var invalid = JsonSerializer.Serialize(
+            LocationsApiTests.TestLocation("Alice", "SUNSET23") with { Latitude = 91 });
+
+        var response = await SendWithAdminBearerAsync(
+            client,
+            HttpMethod.Post,
+            "/sessions/SUNSET23/recording",
+            invalid);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+
+        var recording = await SendWithAdminBearerAsync(client, HttpMethod.Get, "/sessions/SUNSET23/recording");
+        Assert.Equal(HttpStatusCode.OK, recording.StatusCode);
+        var line = Assert.Single((await recording.Content.ReadAsStringAsync()).Split('\n', StringSplitOptions.RemoveEmptyEntries));
+        using var uploaded = JsonDocument.Parse(line);
+        Assert.Equal("Bob", uploaded.RootElement.GetProperty("runnerName").GetString());
+    }
+
+    [Fact]
+    public async Task UploadRecording_WithMissingTimestamp_ReturnsBadRequest()
+    {
+        using var factory = new DotWatcherApiFactory();
+        using var client = factory.CreateClient();
+
+        var missingTimestamp = JsonSerializer.Serialize(new
+        {
+            runnerName = "Alice",
+            sessionCode = "SUNSET23",
+            latitude = -41.17,
+            longitude = 174.7762,
+            heading = 270.5,
+        });
+
+        var response = await SendWithAdminBearerAsync(
+            client,
+            HttpMethod.Post,
+            "/sessions/SUNSET23/recording",
+            missingTimestamp);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task UploadRecording_WithEmptyBody_ReturnsBadRequest()
+    {
+        using var factory = new DotWatcherApiFactory();
+        using var client = factory.CreateClient();
+
+        var response = await SendWithAdminBearerAsync(
+            client,
+            HttpMethod.Post,
+            "/sessions/SUNSET23/recording",
+            "");
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
     public async Task UploadRecording_WithAdminBearerToken_ReplacesRecordingAndListsSession()
     {
         using var factory = new DotWatcherApiFactory();

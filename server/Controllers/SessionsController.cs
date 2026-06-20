@@ -87,21 +87,28 @@ public class SessionsController(
         if (!auth.IsAuthorized(Request))
             return Unauthorized();
 
+        var code = SessionStore.NormalizeSessionCode(sessionCode);
+        if (code is null)
+            return BadRequest(new { error = "Invalid session code." });
+
         using var reader = new StreamReader(Request.Body);
         var content = await reader.ReadToEndAsync();
-        var upper = sessionCode.ToUpperInvariant();
 
         try
         {
-            store.SaveRecording(upper, content);
+            store.SaveRecording(code, content);
         }
         catch (JsonException)
         {
             return BadRequest(new { error = "Invalid NDJSON recording." });
         }
+        catch (LocationUpdateValidationException ex)
+        {
+            return BadRequest(new { error = "Invalid NDJSON recording.", details = ex.Errors });
+        }
 
-        logger.LogInformation("Uploaded recording for {Session} ({Bytes} bytes)", upper, content.Length);
-        return Ok(new { sessionCode = upper });
+        logger.LogInformation("Uploaded recording for {Session} ({Bytes} bytes)", code, content.Length);
+        return Ok(new { sessionCode = code });
     }
 
     [HttpGet("/sessions/{sessionCode}/recording")]

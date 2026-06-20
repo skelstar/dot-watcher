@@ -229,14 +229,19 @@ public class SessionStore(string dbPath)
         return membership?.Role is "owner" or "runner";
     }
 
-    public void AddPosition(LocationUpdate update)
+    public void AddPosition(ValidatedLocationUpdate update)
     {
-        var code = update.SessionCode.ToUpperInvariant();
+        var code = update.SessionCode;
 
         var session = _sessions.GetOrAdd(code, _ => new());
         var history = session.GetOrAdd(update.RunnerName, _ => []);
         lock (history)
-            history.Add(new RunnerPosition(update.RunnerName, update.Latitude, update.Longitude, update.Heading, update.Timestamp));
+            history.Add(new RunnerPosition(
+                update.RunnerName,
+                update.Latitude,
+                update.Longitude,
+                update.Heading,
+                update.Timestamp));
 
         using var conn = Connect();
         using var cmd = conn.CreateCommand();
@@ -333,12 +338,17 @@ public class SessionStore(string dbPath)
 
     public void SaveRecording(string sessionCode, string ndjsonContent)
     {
-        var code = sessionCode.ToUpperInvariant();
-        var updates = ndjsonContent
-            .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .Select(line => JsonSerializer.Deserialize<LocationUpdate>(line, _jsonOptions))
-            .OfType<LocationUpdate>()
+        var code = NormalizeSessionCode(sessionCode);
+        if (code is null)
+            throw new LocationUpdateValidationException(["Session code must be 3-32 letters, numbers, dashes, or underscores."]);
+
+        var lines = ndjsonContent.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        var updates = lines
+            .Select((line, index) => ParseRecordingLine(line, code, index + 1))
             .ToList();
+
+        if (updates.Count == 0)
+            throw new LocationUpdateValidationException(["Recording must contain at least one location update."]);
 
         using var conn = Connect();
         using var tx = conn.BeginTransaction();
@@ -374,6 +384,19 @@ public class SessionStore(string dbPath)
         }
 
         tx.Commit();
+    }
+
+    private static ValidatedLocationUpdate ParseRecordingLine(string line, string sessionCode, int lineNumber)
+    {
+        var parsed = JsonSerializer.Deserialize<LocationUpdate>(line, _jsonOptions)
+            ?? throw new LocationUpdateValidationException([$"Line {lineNumber}: location update is required."]);
+
+        var update = parsed with { SessionCode = sessionCode };
+        if (!LocationUpdateValidation.TryValidate(update, out var validated, out var errors))
+            throw new LocationUpdateValidationException(
+                errors.Select(error => $"Line {lineNumber}: {error}").ToList());
+
+        return validated;
     }
 
     public bool DeleteRecording(string sessionCode)

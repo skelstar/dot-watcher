@@ -1,4 +1,5 @@
 using DotWatcher.Server;
+using System.Text.Json;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -40,8 +41,15 @@ if (Directory.Exists(recordingsPath))
         var code = Path.GetFileNameWithoutExtension(file)!.ToUpperInvariant();
         if (!store.HasRecording(code))
         {
-            store.SaveRecording(code, File.ReadAllText(file));
-            app.Logger.LogInformation("Migrated recording {Session} from NDJSON", code);
+            try
+            {
+                store.SaveRecording(code, File.ReadAllText(file));
+                app.Logger.LogInformation("Migrated recording {Session} from NDJSON", code);
+            }
+            catch (Exception ex) when (ex is JsonException or LocationUpdateValidationException)
+            {
+                app.Logger.LogWarning(ex, "Skipped invalid legacy NDJSON recording {Session}", code);
+            }
         }
     }
 }

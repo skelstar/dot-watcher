@@ -9,10 +9,13 @@ public class LocationsController(
     ILogger<LocationsController> logger) : ControllerBase
 {
     [HttpPost("/location")]
-    public IActionResult AddLocation([FromBody] LocationUpdate update)
+    public IActionResult AddLocation([FromBody] LocationUpdate? update)
     {
         if (!userAuth.TryAuthenticate(Request, out var user))
             return Unauthorized();
+
+        if (update is null)
+            return BadRequest(new { error = "Request body is required." });
 
         var sessionCode = SessionStore.NormalizeSessionCode(update.SessionCode);
         if (sessionCode is null)
@@ -28,13 +31,16 @@ public class LocationsController(
             SessionCode = sessionCode,
         };
 
-        store.AddPosition(storedUpdate);
+        if (!LocationUpdateValidation.TryValidate(storedUpdate, out var validatedUpdate, out var errors))
+            return BadRequest(new { error = "Invalid location update.", details = errors });
+
+        store.AddPosition(validatedUpdate);
         logger.LogInformation("[{Session}] {Runner} → {Lat:F6}, {Lon:F6}  heading={Heading}  t={Timestamp:HH:mm:ss}",
-            storedUpdate.SessionCode, storedUpdate.RunnerName,
-            storedUpdate.Latitude, storedUpdate.Longitude,
-            storedUpdate.Heading.HasValue ? $"{storedUpdate.Heading:F1}°" : "n/a",
-            storedUpdate.Timestamp);
-        var participants = store.GetParticipants(storedUpdate.SessionCode);
+            validatedUpdate.SessionCode, validatedUpdate.RunnerName,
+            validatedUpdate.Latitude, validatedUpdate.Longitude,
+            validatedUpdate.Heading.HasValue ? $"{validatedUpdate.Heading:F1}°" : "n/a",
+            validatedUpdate.Timestamp);
+        var participants = store.GetParticipants(validatedUpdate.SessionCode);
         return Ok(new { participants });
     }
 

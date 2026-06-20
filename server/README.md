@@ -155,17 +155,21 @@ Receives a position update from a phone app.
 | ------------- | ------ | -------- | --------------------------------------------------------- |
 | `runnerName`  | string | Yes      | Display name shown on the map                             |
 | `sessionCode` | string | Yes      | Session identifier shared with viewers                    |
-| `latitude`    | number | Yes      | WGS84 latitude                                            |
-| `longitude`   | number | Yes      | WGS84 longitude                                           |
+| `latitude`    | number | Yes      | WGS84 latitude, `-90` to `90`                             |
+| `longitude`   | number | Yes      | WGS84 longitude, `-180` to `180`                          |
 | `heading`     | number | No       | Compass bearing 0–360°, true north. Omit when unavailable |
-| `timestamp`   | string | Yes      | ISO 8601 UTC timestamp                                    |
+| `timestamp`   | string | Yes      | ISO 8601 UTC timestamp, using GPS capture time            |
+
+Live posts and uploaded NDJSON recordings share the same payload validation. The server rejects missing/default timestamps, invalid session codes, empty stored runner names, non-finite coordinates, out-of-range coordinates, and out-of-range headings. For live posts, the server stores the authenticated member display name instead of trusting `runnerName`.
 
 **Responses:**
 
-| Status | Meaning                         |
-| ------ | ------------------------------- |
-| 200    | Position recorded               |
-| 401    | Missing or invalid bearer token |
+| Status | Meaning |
+| ------ | ------- |
+| 200    | Position recorded |
+| 400    | Invalid JSON, session code, or GPS payload |
+| 401    | Missing or invalid user token |
+| 403    | Authenticated user is not an owner/runner member |
 
 ---
 
@@ -335,6 +339,8 @@ Lists all session codes that have a recording on disk, ordered newest first. Thi
 Downloads the full NDJSON recording for a session. Each line is one `LocationUpdate` JSON object in the order it was received.
 
 **Auth:** User access token with session membership, or admin bearer token.
+
+Admin recording uploads use the same `LocationUpdate` validation as live posts. The URL session code overrides any session code inside each NDJSON row, and failed validation preserves the previous recording.
 
 **Response:** `application/x-ndjson` file download named `{sessionCode}.ndjson`.
 

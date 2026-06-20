@@ -89,6 +89,71 @@ public class LocationsApiTests
         Assert.DoesNotContain("Ignored", participants);
     }
 
+    [Theory]
+    [InlineData(91, 174.7762, 270.5)]
+    [InlineData(-41.17, 181, 270.5)]
+    [InlineData(-41.17, 174.7762, 361)]
+    public async Task PostLocation_WithInvalidGpsPayload_ReturnsBadRequest(
+        double latitude,
+        double longitude,
+        double heading)
+    {
+        using var factory = new DotWatcherApiFactory();
+        using var client = factory.CreateClient();
+        var token = await AuthTestHelpers.RegisterAsync(client, "alice", "Alice");
+        var session = await AuthTestHelpers.CreateSessionAsync(client, token);
+
+        var response = await PostLocationAsync(
+            client,
+            TestLocation("Ignored", session.SessionCode) with
+            {
+                Latitude = latitude,
+                Longitude = longitude,
+                Heading = heading,
+            },
+            token);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task PostLocation_WithDefaultTimestamp_ReturnsBadRequest()
+    {
+        using var factory = new DotWatcherApiFactory();
+        using var client = factory.CreateClient();
+        var token = await AuthTestHelpers.RegisterAsync(client, "alice", "Alice");
+        var session = await AuthTestHelpers.CreateSessionAsync(client, token);
+
+        var response = await PostLocationAsync(
+            client,
+            TestLocation("Ignored", session.SessionCode) with { Timestamp = default },
+            token);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task PostLocation_WithMissingLatitude_ReturnsBadRequest()
+    {
+        using var factory = new DotWatcherApiFactory();
+        using var client = factory.CreateClient();
+        var token = await AuthTestHelpers.RegisterAsync(client, "alice", "Alice");
+        var session = await AuthTestHelpers.CreateSessionAsync(client, token);
+
+        var body = JsonSerializer.Serialize(new
+        {
+            runnerName = "Ignored",
+            sessionCode = session.SessionCode,
+            longitude = 174.7762,
+            heading = 270.5,
+            timestamp = "2024-11-15T09:23:00Z",
+        });
+
+        var response = await PostRawLocationAsync(client, body, token);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
     [Fact]
     public async Task GetLocations_WithoutUserToken_ReturnsUnauthorized()
     {
@@ -148,6 +213,20 @@ public class LocationsApiTests
         using var request = new HttpRequestMessage(HttpMethod.Post, "/location")
         {
             Content = JsonContent.Create(update),
+        };
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+
+        return await client.SendAsync(request);
+    }
+
+    private static async Task<HttpResponseMessage> PostRawLocationAsync(
+        HttpClient client,
+        string json,
+        string accessToken)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/location")
+        {
+            Content = new StringContent(json, Encoding.UTF8, "application/json"),
         };
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
 
