@@ -35,9 +35,8 @@ public class LocationsController(
             return BadRequest(new { error = "Invalid location update.", details = errors });
 
         store.AddPosition(validatedUpdate, user.UserId);
-        logger.LogInformation("[{Session}] {Runner} → {Lat:F6}, {Lon:F6}  heading={Heading}  t={Timestamp:HH:mm:ss}",
+        logger.LogInformation("[{Session}] {Runner} position received heading={Heading} t={Timestamp:HH:mm:ss}",
             validatedUpdate.SessionCode, validatedUpdate.RunnerName,
-            validatedUpdate.Latitude, validatedUpdate.Longitude,
             validatedUpdate.Heading.HasValue ? $"{validatedUpdate.Heading:F1}°" : "n/a",
             validatedUpdate.Timestamp);
         var participants = store.GetParticipants(validatedUpdate.SessionCode);

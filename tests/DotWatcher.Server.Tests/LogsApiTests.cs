@@ -48,6 +48,7 @@ public class LogsApiTests
         var lines = await response.Content.ReadFromJsonAsync<List<string>>();
         Assert.NotNull(lines);
         Assert.Contains(lines, line => line.Contains("SUNSET23") && line.Contains("Alice"));
+        Assert.DoesNotContain(lines, line => line.Contains("-41.17") || line.Contains("174.7762"));
     }
 
     [Fact]
