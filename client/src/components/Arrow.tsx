@@ -1,4 +1,19 @@
-const ARROW_SIZE = 32
+// Circle centre of the marker shape in SVG path coordinates
+const CX = 11.589949
+const CY = 20.171708
+
+// ViewBox sized so (CX, CY) is exactly at the element's 50% 50%,
+// giving enough room for the tip above and the circle below (plus stroke padding)
+const VB_W = 30
+const VB_H = 40
+const VB_X = CX - VB_W / 2   // -3.410051
+const VB_Y = CY - VB_H / 2   //  0.171708
+
+const MARKER_W = VB_W
+const MARKER_H = VB_H
+
+// Legacy export — useRunnerMarkers imports this but only uses it for label offset
+const ARROW_SIZE = MARKER_W
 
 interface Props {
   name: string
@@ -12,6 +27,10 @@ export { ARROW_SIZE }
 
 export default function Arrow({ name, heading, colour, label, stationary }: Props) {
   const displayLabel = label !== undefined ? label : name
+  // Only show the label when it's a cluster label (multiple runners merged)
+  const showLabel = displayLabel !== '' && displayLabel !== name
+  const h = heading ?? 0
+
   if (stationary) {
     return (
       <div style={{ position: 'relative', width: 20, height: 20 }}>
@@ -23,7 +42,7 @@ export default function Arrow({ name, heading, colour, label, stationary }: Prop
           border: '1.5px solid white',
           boxShadow: '0 1px 3px rgba(0,0,0,0.35)',
         }} />
-        {displayLabel && (
+        {showLabel && (
           <div style={{
             position: 'absolute',
             top: 24,
@@ -47,31 +66,42 @@ export default function Arrow({ name, heading, colour, label, stationary }: Prop
   }
 
   return (
-    <div style={{ position: 'relative', width: ARROW_SIZE, height: ARROW_SIZE }}>
+    <div style={{ position: 'relative', width: MARKER_W, height: MARKER_H }}>
       <svg
-        width={ARROW_SIZE}
-        height={ARROW_SIZE}
-        viewBox="0 0 24 24"
+        width={MARKER_W}
+        height={MARKER_H}
+        viewBox={`${VB_X} ${VB_Y} ${VB_W} ${VB_H}`}
         style={{
           display: 'block',
           filter: 'drop-shadow(0 1px 3px rgba(0,0,0,0.35))',
-          transform: `rotate(${heading ?? 0}deg)`,
+          transform: `rotate(${h}deg)`,
           transformOrigin: '50% 50%',
         }}
       >
         <path
-          d="M12 2 L20 20 L12 15 L4 20 Z"
+          d="m 2.397561,10.97932 a 13,13 0 0 0 0,18.384776 13,13 0 0 0 18.384776,0 13,13 0 0 0 0,-18.384776 L 11.589949,1.7869317 Z"
           fill={colour}
-          stroke="white"
-          strokeWidth="1.5"
-          strokeLinejoin="round"
+          stroke="#f9f9f9"
+          strokeWidth="1.6"
         />
+        <text
+          x={CX}
+          y={CY + 4}
+          fontFamily="Arial, 'Helvetica Neue', sans-serif"
+          fontWeight="bold"
+          fontSize="11"
+          fill="#ffffff"
+          textAnchor="middle"
+          transform={`rotate(${-h}, ${CX}, ${CY})`}
+        >
+          {name}
+        </text>
       </svg>
 
-      {displayLabel && (
+      {showLabel && (
         <div style={{
           position: 'absolute',
-          top: ARROW_SIZE + 4,
+          top: MARKER_H + 4,
           left: '50%',
           transform: 'translateX(-50%)',
           fontSize: 11,
@@ -87,7 +117,6 @@ export default function Arrow({ name, heading, colour, label, stationary }: Prop
           {displayLabel}
         </div>
       )}
-
     </div>
   )
 }
