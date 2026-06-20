@@ -50,6 +50,7 @@ Open the app, sign in, then select an existing session, create one, or join from
 - After sign-in, the app loads `GET /me/sessions`. Users can open live or replay views only for returned memberships.
 - Creating a session calls `POST /sessions` and stores the creator as `owner`.
 - Joining from an invite calls `POST /session-invites/{inviteCode}/join`. Invite joins create `viewer` membership for new members and preserve existing roles; invite codes do not grant runner or owner privileges.
+- Owners can open the member manager, load `GET /sessions/{sessionCode}/members`, and call `POST /sessions/{sessionCode}/members/{userId}/role` to promote viewers to runners or demote runners to viewers.
 - A raw session code in the URL is only an identifier. If the user lacks membership, protected server endpoints return `403`.
 
 ## CI

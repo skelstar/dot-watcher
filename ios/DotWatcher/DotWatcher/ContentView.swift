@@ -9,6 +9,7 @@ struct ContentView: View {
     @State private var showHelp: Bool = false
     @State private var showSessionEntry: Bool = false
     @State private var showAuth: Bool = false
+    @State private var showMembers: Bool = false
 
     var body: some View {
         ScrollView {
@@ -62,6 +63,9 @@ struct ContentView: View {
         .sheet(isPresented: $showAuth) {
             AuthSheet(location: location)
                 .interactiveDismissDisabled(!location.isAuthenticated)
+        }
+        .sheet(isPresented: $showMembers) {
+            MemberManagementSheet(location: location)
         }
     }
 
@@ -158,6 +162,10 @@ struct ContentView: View {
                 Text("Invite \(inviteCode)")
                     .font(.caption.monospaced())
                     .foregroundStyle(.secondary)
+                Button("Manage members") {
+                    showMembers = true
+                }
+                .font(.subheadline)
             }
         }
         .padding(16)
@@ -507,6 +515,83 @@ struct SessionEntrySheet: View {
             self.error = error.localizedDescription
         }
         isBusy = false
+    }
+}
+
+// MARK: - Member Management Sheet
+
+struct MemberManagementSheet: View {
+    var location: LocationManager
+
+    @State private var error: String?
+    @State private var busyUserId: String?
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                if let membership = location.activeMembership {
+                    Section("Session") {
+                        LabeledContent("Code", value: membership.sessionCode)
+                        LabeledContent("Invite", value: membership.inviteCode)
+                    }
+                }
+
+                Section("Members") {
+                    if location.selectedSessionMembers.isEmpty {
+                        Text("No members yet")
+                            .foregroundStyle(.secondary)
+                    } else {
+                        ForEach(location.selectedSessionMembers) { member in
+                            HStack {
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text(member.displayName)
+                                    Text(member.role.uppercased())
+                                        .font(.caption2.bold())
+                                        .foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                                if member.role != "owner" {
+                                    Button(member.role == "runner" ? "Make Viewer" : "Make Runner") {
+                                        Task { await update(member) }
+                                    }
+                                    .disabled(busyUserId == member.userId)
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if let error {
+                    Section {
+                        Text(error)
+                            .foregroundStyle(.red)
+                    }
+                }
+            }
+            .navigationTitle("Members")
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { dismiss() }
+                }
+            }
+            .task {
+                await location.loadSelectedSessionMembers()
+            }
+        }
+    }
+
+    private func update(_ member: SessionMember) async {
+        busyUserId = member.userId
+        error = nil
+        do {
+            try await location.updateMemberRole(
+                member,
+                role: member.role == "runner" ? "viewer" : "runner")
+        } catch {
+            self.error = error.localizedDescription
+        }
+        busyUserId = nil
     }
 }
 

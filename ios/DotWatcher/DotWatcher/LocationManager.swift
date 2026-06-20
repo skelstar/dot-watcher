@@ -22,6 +22,14 @@ struct SessionMembership: Codable, Identifiable {
     let displayName: String
 }
 
+struct SessionMember: Codable, Identifiable {
+    var id: String { userId }
+
+    let userId: String
+    let role: String
+    let displayName: String
+}
+
 private struct LocationPostResponse: Codable {
     let participants: [String]
 }
@@ -53,6 +61,7 @@ final class LocationManager {
     private(set) var isTracking = false
     private(set) var currentUser: AppUser?
     private(set) var memberships: [SessionMembership] = []
+    private(set) var selectedSessionMembers: [SessionMember] = []
 
     var participants: [String] = []
     private var lastParticipantCount = 0
@@ -136,6 +145,7 @@ final class LocationManager {
         accessToken = nil
         currentUser = nil
         memberships = []
+        selectedSessionMembers = []
         sessionCode = ""
         Self.storeToken(nil)
         UserDefaults.standard.removeObject(forKey: "currentUser")
@@ -148,6 +158,11 @@ final class LocationManager {
             memberships = try await send(path: "/me/sessions")
             if !sessionCode.isEmpty && activeMembership == nil {
                 sessionCode = ""
+            }
+            if activeMembership?.role == "owner" {
+                await loadSelectedSessionMembers()
+            } else {
+                selectedSessionMembers = []
             }
         } catch DotWatcherAPIError.badResponse(401) {
             signOut()
@@ -188,6 +203,37 @@ final class LocationManager {
         sessionCode = membership.sessionCode
         status = membership.role == "viewer" ? "Viewer only" : "Ready"
         Task { participants = await previewSession(membership.sessionCode) }
+        Task { await loadSelectedSessionMembers() }
+    }
+
+    func loadSelectedSessionMembers() async {
+        guard let membership = activeMembership, membership.role == "owner" else {
+            selectedSessionMembers = []
+            return
+        }
+
+        do {
+            selectedSessionMembers = try await send(path: "/sessions/\(membership.sessionCode)/members")
+        } catch DotWatcherAPIError.badResponse(401) {
+            signOut()
+            status = "Sign in required"
+        } catch {
+            status = error.localizedDescription
+        }
+    }
+
+    func updateMemberRole(_ member: SessionMember, role: String) async throws {
+        guard let membership = activeMembership, membership.role == "owner" else {
+            throw DotWatcherAPIError.badResponse(403)
+        }
+
+        let updated: SessionMember = try await send(
+            path: "/sessions/\(membership.sessionCode)/members/\(member.userId)/role",
+            method: "POST",
+            body: ["role": role])
+        if let index = selectedSessionMembers.firstIndex(where: { $0.userId == updated.userId }) {
+            selectedSessionMembers[index] = updated
+        }
     }
 
     func start() {

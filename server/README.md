@@ -320,6 +320,53 @@ Invite joins create `viewer` membership for new members and preserve any existin
 
 ---
 
+### `GET /sessions/{sessionCode}/members`
+
+Returns the stored members for a session so owners can manage runner access.
+
+**Auth:** Session owner user access token, or admin bearer token.
+
+**Response body:**
+
+```json
+[
+  {
+    "userId": "9b3d...",
+    "role": "owner",
+    "displayName": "Alice"
+  },
+  {
+    "userId": "2a8f...",
+    "role": "viewer",
+    "displayName": "Bob"
+  }
+]
+```
+
+**Responses:** `200` with members, `400` for invalid session code, `401` for missing or invalid credentials, `403` when the signed-in user is not the owner, `404` when an admin requests an unknown session.
+
+---
+
+### `POST /sessions/{sessionCode}/members/{userId}/role`
+
+Promotes or demotes a non-owner member between `runner` and `viewer`.
+
+**Auth:** Session owner user access token, or admin bearer token.
+
+**Request body:**
+
+```json
+{
+  "role": "runner"
+}
+```
+
+Only `runner` and `viewer` are accepted. `owner` is created by `POST /sessions` and cannot be assigned or removed through this endpoint.
+
+**Responses:** `200` with the updated member, `400` for invalid session code, invalid role, or attempts to change the owner role, `401` for missing or invalid credentials, `403` when the signed-in user is not the owner, `404` for unknown sessions or members.
+
+---
+
 ### `GET /me/sessions`
 
 Returns the authenticated user's session memberships.

@@ -51,9 +51,32 @@ public record JoinSessionRequest(
     string? DisplayName = null
 );
 
+public record UpdateSessionMemberRoleRequest(
+    string? Role = null
+);
+
 public record SessionMembership(
     string SessionCode,
     string InviteCode,
     string Role,
     string DisplayName
+);
+
+public record SessionMember(
+    string UserId,
+    string Role,
+    string DisplayName
+);
+
+public enum UpdateSessionMemberRoleStatus
+{
+    Updated,
+    SessionNotFound,
+    MemberNotFound,
+    OwnerRoleImmutable,
+}
+
+public record UpdateSessionMemberRoleResult(
+    UpdateSessionMemberRoleStatus Status,
+    SessionMember? Member
 );

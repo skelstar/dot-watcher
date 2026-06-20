@@ -24,3 +24,9 @@ export interface SessionMembership {
   role: 'owner' | 'runner' | 'viewer'
   displayName: string
 }
+
+export interface SessionMember {
+  userId: string
+  role: 'owner' | 'runner' | 'viewer'
+  displayName: string
+}

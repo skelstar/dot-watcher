@@ -111,6 +111,122 @@ public class SessionsApiTests
     }
 
     [Fact]
+    public async Task UpdateSessionMemberRole_WithOwnerToken_PromotesViewerToRunner()
+    {
+        using var factory = new DotWatcherApiFactory();
+        using var client = factory.CreateClient();
+        var owner = await AuthTestHelpers.RegisterWithResponseAsync(client, "owner", "Owner");
+        var session = await AuthTestHelpers.CreateSessionAsync(client, owner.AccessToken);
+        var viewer = await AuthTestHelpers.RegisterWithResponseAsync(client, "viewer", "Viewer");
+        await AuthTestHelpers.JoinSessionAsync(client, viewer.AccessToken, session.InviteCode, displayName: "Trail Viewer");
+
+        var listResponse = await SendWithUserTokenAsync(
+            client,
+            HttpMethod.Get,
+            $"/sessions/{session.SessionCode}/members",
+            owner.AccessToken);
+
+        Assert.Equal(HttpStatusCode.OK, listResponse.StatusCode);
+        var members = await listResponse.Content.ReadFromJsonAsync<List<SessionMember>>();
+        Assert.NotNull(members);
+        Assert.Contains(members, member => member.UserId == owner.User.UserId && member.Role == "owner");
+        Assert.Contains(members, member => member.UserId == viewer.User.UserId && member.Role == "viewer");
+
+        var response = await SendWithUserTokenAsync(
+            client,
+            HttpMethod.Post,
+            $"/sessions/{session.SessionCode}/members/{viewer.User.UserId}/role",
+            owner.AccessToken,
+            new { role = "runner" });
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var promoted = await response.Content.ReadFromJsonAsync<SessionMember>();
+        Assert.NotNull(promoted);
+        Assert.Equal(viewer.User.UserId, promoted.UserId);
+        Assert.Equal("runner", promoted.Role);
+        Assert.Equal("Trail Viewer", promoted.DisplayName);
+
+        var writeAttempt = await LocationsApiTests.PostLocationAsync(
+            client,
+            LocationsApiTests.TestLocation("Ignored", session.SessionCode),
+            viewer.AccessToken);
+
+        Assert.Equal(HttpStatusCode.OK, writeAttempt.StatusCode);
+    }
+
+    [Fact]
+    public async Task UpdateSessionMemberRole_WithViewerToken_ReturnsForbidden()
+    {
+        using var factory = new DotWatcherApiFactory();
+        using var client = factory.CreateClient();
+        var ownerToken = await AuthTestHelpers.RegisterAsync(client, "owner", "Owner");
+        var session = await AuthTestHelpers.CreateSessionAsync(client, ownerToken);
+        var viewer = await AuthTestHelpers.RegisterWithResponseAsync(client, "viewer", "Viewer");
+        await AuthTestHelpers.JoinSessionAsync(client, viewer.AccessToken, session.InviteCode);
+
+        var response = await SendWithUserTokenAsync(
+            client,
+            HttpMethod.Post,
+            $"/sessions/{session.SessionCode}/members/{viewer.User.UserId}/role",
+            viewer.AccessToken,
+            new { role = "runner" });
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task UpdateSessionMemberRole_WithAdminBearerToken_PromotesViewerToRunner()
+    {
+        using var factory = new DotWatcherApiFactory();
+        using var client = factory.CreateClient();
+        var ownerToken = await AuthTestHelpers.RegisterAsync(client, "owner", "Owner");
+        var session = await AuthTestHelpers.CreateSessionAsync(client, ownerToken);
+        var viewer = await AuthTestHelpers.RegisterWithResponseAsync(client, "viewer", "Viewer");
+        await AuthTestHelpers.JoinSessionAsync(client, viewer.AccessToken, session.InviteCode);
+
+        using var request = new HttpRequestMessage(
+            HttpMethod.Post,
+            $"/sessions/{session.SessionCode}/members/{viewer.User.UserId}/role")
+        {
+            Content = JsonContent.Create(new { role = "runner" }),
+        };
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", "test-token");
+
+        var response = await client.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var promoted = await response.Content.ReadFromJsonAsync<SessionMember>();
+        Assert.NotNull(promoted);
+        Assert.Equal("runner", promoted.Role);
+    }
+
+    [Fact]
+    public async Task JoinSession_WithExistingRunnerMembership_PreservesRunnerRole()
+    {
+        using var factory = new DotWatcherApiFactory();
+        using var client = factory.CreateClient();
+        var owner = await AuthTestHelpers.RegisterWithResponseAsync(client, "owner", "Owner");
+        var session = await AuthTestHelpers.CreateSessionAsync(client, owner.AccessToken);
+        var runner = await AuthTestHelpers.RegisterWithResponseAsync(client, "runner", "Runner");
+        await AuthTestHelpers.JoinSessionAsync(client, runner.AccessToken, session.InviteCode);
+        await SendWithUserTokenAsync(
+            client,
+            HttpMethod.Post,
+            $"/sessions/{session.SessionCode}/members/{runner.User.UserId}/role",
+            owner.AccessToken,
+            new { role = "runner" });
+
+        var joined = await AuthTestHelpers.JoinSessionAsync(
+            client,
+            runner.AccessToken,
+            session.InviteCode,
+            displayName: "Still Runner");
+
+        Assert.Equal("runner", joined.Role);
+        Assert.Equal("Still Runner", joined.DisplayName);
+    }
+
+    [Fact]
     public async Task GetMySessions_WithUserToken_ReturnsMemberships()
     {
         using var factory = new DotWatcherApiFactory();

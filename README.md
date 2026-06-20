@@ -144,7 +144,7 @@ A native Swift app.
 | Admin/debug dashboard | `GET /sessions`, `GET /log`, recording mutations | Admin bearer token in `Authorization` header |
 
 Session codes are identifiers, not credentials. Invite codes/links are used to join a session, then the server stores membership and authorizes future reads/writes from the authenticated user identity.
-Invite joins create `viewer` membership for new members and preserve any existing role for current members; runner/owner privileges are not granted by invite code. `GET /locations/{sessionCode}` returns `403` for authenticated users without membership, including unknown session codes, and returns `200 []` only for a member session with no live positions yet.
+Invite joins create `viewer` membership for new members and preserve any existing role for current members; runner/owner privileges are not granted by invite code. Session owners or the admin bearer token can list members and promote viewers to runners through server-side membership endpoints. `GET /locations/{sessionCode}` returns `403` for authenticated users without membership, including unknown session codes, and returns `200 []` only for a member session with no live positions yet.
 
 ```text
                  public account endpoints
@@ -186,6 +186,14 @@ Invite joins create `viewer` membership for new members and preserve any existin
               | POST /location          |
               | GET /.../recording      |
               +--------------------------+
+
+        owner/admin role management
+        +-----------------------------+
+        | GET /sessions/{code}/       |
+        |   members                   |
+        | POST /sessions/{code}/      |
+        |   members/{userId}/role     |
+        +-----------------------------+
 
         logout revokes current token jti
         +-----------------------------+
@@ -250,7 +258,6 @@ No server-side changes are needed — the server already stores and returns the 
 - Android app
 - Trail lines on the map (history of each runner's path)
 - Production OIDC/identity-provider integration
-- Owner-managed role promotion UI for turning viewers into runners
 - Push notifications
 - Offline map tiles
 - Public App Store or Play Store distribution

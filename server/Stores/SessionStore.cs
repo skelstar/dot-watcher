@@ -272,6 +272,70 @@ public class SessionStore(string dbPath)
         return membership?.Role is "owner" or "runner";
     }
 
+    public bool IsSessionOwner(string sessionCode, string userId) =>
+        GetMembership(sessionCode, userId)?.Role == "owner";
+
+    public IReadOnlyList<SessionMember>? GetSessionMembers(string sessionCode)
+    {
+        using var conn = Connect();
+        if (!SessionExists(conn, sessionCode))
+            return null;
+
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = """
+            SELECT user_id, role, display_name
+            FROM session_members
+            WHERE session_code = $sessionCode
+            ORDER BY joined_at ASC, display_name ASC
+            """;
+        cmd.Parameters.AddWithValue("$sessionCode", sessionCode);
+        using var reader = cmd.ExecuteReader();
+
+        var members = new List<SessionMember>();
+        while (reader.Read())
+            members.Add(new SessionMember(
+                reader.GetString(0),
+                reader.GetString(1),
+                reader.GetString(2)));
+
+        return members;
+    }
+
+    public UpdateSessionMemberRoleResult UpdateSessionMemberRole(
+        string sessionCode,
+        string userId,
+        string role)
+    {
+        if (role is not ("runner" or "viewer"))
+            throw new ArgumentOutOfRangeException(nameof(role), "Role must be runner or viewer.");
+
+        using var conn = Connect();
+        if (!SessionExists(conn, sessionCode))
+            return new UpdateSessionMemberRoleResult(UpdateSessionMemberRoleStatus.SessionNotFound, null);
+
+        var existing = GetSessionMember(conn, sessionCode, userId);
+        if (existing is null)
+            return new UpdateSessionMemberRoleResult(UpdateSessionMemberRoleStatus.MemberNotFound, null);
+
+        if (existing.Role == "owner")
+            return new UpdateSessionMemberRoleResult(UpdateSessionMemberRoleStatus.OwnerRoleImmutable, existing);
+
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = """
+            UPDATE session_members
+            SET role = $role
+            WHERE session_code = $sessionCode AND user_id = $userId
+            """;
+        cmd.Parameters.AddWithValue("$role", role);
+        cmd.Parameters.AddWithValue("$sessionCode", sessionCode);
+        cmd.Parameters.AddWithValue("$userId", userId);
+        cmd.ExecuteNonQuery();
+
+        return new UpdateSessionMemberRoleResult(
+            UpdateSessionMemberRoleStatus.Updated,
+            existing with { Role = role });
+    }
+
     public void AddPosition(ValidatedLocationUpdate update)
     {
         var code = update.SessionCode;
@@ -504,6 +568,37 @@ public class SessionStore(string dbPath)
         cmd.Parameters.AddWithValue("$displayName", displayName);
         cmd.Parameters.AddWithValue("$joinedAt", joinedAt);
         cmd.ExecuteNonQuery();
+    }
+
+    private static bool SessionExists(SqliteConnection conn, string sessionCode)
+    {
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = """
+            SELECT 1
+            FROM app_sessions
+            WHERE session_code = $sessionCode
+            """;
+        cmd.Parameters.AddWithValue("$sessionCode", sessionCode);
+        return cmd.ExecuteScalar() is not null;
+    }
+
+    private static SessionMember? GetSessionMember(
+        SqliteConnection conn,
+        string sessionCode,
+        string userId)
+    {
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = """
+            SELECT user_id, role, display_name
+            FROM session_members
+            WHERE session_code = $sessionCode AND user_id = $userId
+            """;
+        cmd.Parameters.AddWithValue("$sessionCode", sessionCode);
+        cmd.Parameters.AddWithValue("$userId", userId);
+        using var reader = cmd.ExecuteReader();
+        return reader.Read()
+            ? new SessionMember(reader.GetString(0), reader.GetString(1), reader.GetString(2))
+            : null;
     }
 
     private static void UpsertMembershipPreservingRole(

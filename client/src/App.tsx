@@ -4,6 +4,7 @@ import 'mapbox-gl/dist/mapbox-gl.css'
 import SessionPrompt from './SessionPrompt.tsx'
 import Legend from './Legend.tsx'
 import MapMenu from './MapMenu.tsx'
+import MemberManager from './MemberManager.tsx'
 import ReplayControls from './ReplayControls.tsx'
 import ReplayPicker from './ReplayPicker.tsx'
 import AuthPrompt from './AuthPrompt.tsx'
@@ -76,6 +77,7 @@ export default function App() {
   const [memberships, setMemberships] = useState<SessionMembership[]>([])
   const [membershipsLoaded, setMembershipsLoaded] = useState(false)
   const [menu, setMenu] = useState<{ x: number; y: number; lng: number; lat: number } | null>(null)
+  const [showMembers, setShowMembers] = useState(false)
   const accessToken = auth?.accessToken ?? null
 
   useEffect(() => {
@@ -197,11 +199,13 @@ export default function App() {
     setAuth(null)
     setMemberships([])
     setSessionCode(null)
+    setShowMembers(false)
   }
 
   function handleMembershipSelect(membership: SessionMembership) {
     window.history.replaceState(null, '', isReplay ? `/${membership.sessionCode}/replay` : `/${membership.sessionCode}`)
     setSessionCode(membership.sessionCode)
+    setShowMembers(false)
   }
 
   function handleReplaySelect(code: string) {
@@ -215,6 +219,9 @@ export default function App() {
       {auth && (
         <div style={accountBar}>
           <span>{auth.user.displayName || auth.user.username}</span>
+          {activeMembership?.role === 'owner' && (
+            <button type="button" style={signOutButton} onClick={() => setShowMembers(true)}>Members</button>
+          )}
           <button type="button" style={signOutButton} onClick={handleSignOut}>Sign out</button>
         </div>
       )}
@@ -266,6 +273,14 @@ export default function App() {
           isReplay
           onSelect={handleMembershipSelect}
           onMembershipsChanged={setMemberships}
+        />
+      )}
+      {accessToken && activeMembership?.role === 'owner' && showMembers && (
+        <MemberManager
+          serverUrl={SERVER_URL}
+          accessToken={accessToken}
+          membership={activeMembership}
+          onClose={() => setShowMembers(false)}
         />
       )}
     </>

@@ -81,6 +81,50 @@ public class SessionsController(
             : Ok(membership);
     }
 
+    [HttpGet("/sessions/{sessionCode}/members")]
+    public IActionResult GetSessionMembers(string sessionCode)
+    {
+        var code = SessionStore.NormalizeSessionCode(sessionCode);
+        if (code is null)
+            return BadRequest(new { error = "Invalid session code." });
+
+        if (!TryAuthorizeSessionOwnerOrAdmin(code, out var error))
+            return error!;
+
+        var members = store.GetSessionMembers(code);
+        return members is null
+            ? NotFound(new { error = "Session not found." })
+            : Ok(members);
+    }
+
+    [HttpPost("/sessions/{sessionCode}/members/{userId}/role")]
+    public IActionResult UpdateSessionMemberRole(
+        string sessionCode,
+        string userId,
+        [FromBody] UpdateSessionMemberRoleRequest? request)
+    {
+        var code = SessionStore.NormalizeSessionCode(sessionCode);
+        if (code is null)
+            return BadRequest(new { error = "Invalid session code." });
+
+        var role = request?.Role?.Trim().ToLowerInvariant();
+        if (role is not ("runner" or "viewer"))
+            return BadRequest(new { error = "Role must be runner or viewer." });
+
+        if (!TryAuthorizeSessionOwnerOrAdmin(code, out var error))
+            return error!;
+
+        var result = store.UpdateSessionMemberRole(code, userId, role);
+        return result.Status switch
+        {
+            UpdateSessionMemberRoleStatus.Updated => Ok(result.Member),
+            UpdateSessionMemberRoleStatus.SessionNotFound => NotFound(new { error = "Session not found." }),
+            UpdateSessionMemberRoleStatus.MemberNotFound => NotFound(new { error = "Member not found." }),
+            UpdateSessionMemberRoleStatus.OwnerRoleImmutable => BadRequest(new { error = "Owner role cannot be changed." }),
+            _ => StatusCode(StatusCodes.Status500InternalServerError),
+        };
+    }
+
     [HttpPost("/sessions/{sessionCode}/recording")]
     public async Task<IActionResult> UploadRecording(string sessionCode)
     {
@@ -174,5 +218,26 @@ public class SessionsController(
         var rows = store.MergeSession(src, tgt);
         logger.LogInformation("Merged session {Source} into {Target} ({Rows} records)", src, tgt, rows);
         return Ok(new { sourceCode = src, targetCode = tgt, recordsMerged = rows });
+    }
+
+    private bool TryAuthorizeSessionOwnerOrAdmin(string sessionCode, out IActionResult? error)
+    {
+        error = null;
+        if (auth.IsAuthorized(Request))
+            return true;
+
+        if (!userAuth.TryAuthenticate(Request, out var user))
+        {
+            error = Unauthorized();
+            return false;
+        }
+
+        if (!store.IsSessionOwner(sessionCode, user.UserId))
+        {
+            error = StatusCode(StatusCodes.Status403Forbidden);
+            return false;
+        }
+
+        return true;
     }
 }

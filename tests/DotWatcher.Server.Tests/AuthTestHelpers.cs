@@ -1,12 +1,20 @@
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
-using System.Text.Json;
 
 namespace DotWatcher.Server.Tests;
 
 internal static class AuthTestHelpers
 {
     internal static async Task<string> RegisterAsync(
+        HttpClient client,
+        string username,
+        string displayName)
+    {
+        var auth = await RegisterWithResponseAsync(client, username, displayName);
+        return auth.AccessToken;
+    }
+
+    internal static async Task<AuthResponse> RegisterWithResponseAsync(
         HttpClient client,
         string username,
         string displayName)
@@ -18,8 +26,7 @@ internal static class AuthTestHelpers
             displayName,
         });
 
-        using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
-        return body.RootElement.GetProperty("accessToken").GetString()!;
+        return (await response.Content.ReadFromJsonAsync<AuthResponse>())!;
     }
 
     internal static async Task<SessionMembership> CreateSessionAsync(
