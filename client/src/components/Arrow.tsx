@@ -33,19 +33,28 @@ export default function Arrow({ name, heading, colour, label, stationary }: Prop
 
   if (stationary) {
     return (
-      <div style={{ position: 'relative', width: 20, height: 20 }}>
+      <div style={{ position: 'relative', width: 28, height: 28 }}>
         <div className="dot-sleep" style={{
-          width: 20,
-          height: 20,
+          width: 28,
+          height: 28,
           borderRadius: '50%',
-          background: colour,
-          border: '1.5px solid white',
-          boxShadow: '0 1px 3px rgba(0,0,0,0.35)',
-        }} />
+          background: '#ffffff',
+          border: `2px solid ${colour}`,
+          boxShadow: '0 1px 4px rgba(0,0,0,0.45)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          fontSize: 11,
+          fontFamily: 'system-ui, sans-serif',
+          fontWeight: 700,
+          color: colour,
+        }}>
+          {name}
+        </div>
         {showLabel && (
           <div style={{
             position: 'absolute',
-            top: 24,
+            top: 32,
             left: '50%',
             transform: 'translateX(-50%)',
             fontSize: 11,
