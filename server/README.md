@@ -33,9 +33,9 @@
                                    v
 +----------------------+   +-------+--------+   +----------------------+
 | Web viewer / browser |-->| ASP.NET Core   |-->| SessionStore         |
-|                      |   | minimal API    |   |                      |
+|                      |   | controllers    |   |                      |
 | GET /locations/{id}  |   | Program.cs     |   | In-memory live state |
-| GET /sessions        |   | Static files   |   | SQLite recordings    |
+| GET /sessions        |   | Controllers/*  |   | SQLite recordings    |
 | GET /.../recording   |   | CORS enabled   |   | dotwatcher.db        |
 +----------+-----------+   +-------+--------+   +----------+-----------+
            ^                       |                       ^
@@ -53,7 +53,7 @@
                           +---------------------+
 ```
 
-`Program.cs` wires the HTTP endpoints, static file hosting, CORS, bearer-token checks, logging, and startup migration. `SessionStore.cs` owns both the current in-memory session positions and the SQLite-backed recording history.
+`Program.cs` wires startup, static file hosting, CORS, controller routing, logging, and startup migration. `Controllers/*.cs` owns the HTTP endpoints. `SessionStore.cs` owns both the current in-memory session positions and the SQLite-backed recording history.
 
 ---
 
@@ -118,6 +118,8 @@ Or set `ASPNETCORE_URLS=http://localhost:8080` as an environment variable.
 ---
 
 ## API
+
+The API routes are implemented as ASP.NET Core controllers under `Controllers/`. Routes use absolute attributes so existing client URIs remain unchanged.
 
 ### `POST /location`
 
