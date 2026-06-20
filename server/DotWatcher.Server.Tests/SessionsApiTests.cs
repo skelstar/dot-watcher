@@ -77,6 +77,37 @@ public class SessionsApiTests
     }
 
     [Fact]
+    public async Task UploadRecording_WithInvalidBearerToken_ReturnsUnauthorized()
+    {
+        using var factory = new DotWatcherApiFactory();
+        using var client = factory.CreateClient();
+
+        var response = await SendWithBearerAsync(
+            client,
+            HttpMethod.Post,
+            "/sessions/SUNSET23/recording",
+            NdjsonLine("Alice", "SUNSET23"),
+            bearerToken: "wrong-token");
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task UploadRecording_WithMalformedNdjson_ReturnsBadRequest()
+    {
+        using var factory = new DotWatcherApiFactory();
+        using var client = factory.CreateClient();
+
+        var response = await SendWithBearerAsync(
+            client,
+            HttpMethod.Post,
+            "/sessions/SUNSET23/recording",
+            "{");
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
     public async Task UploadRecording_WithBearerToken_ReplacesRecordingAndListsSession()
     {
         using var factory = new DotWatcherApiFactory();
@@ -123,6 +154,17 @@ public class SessionsApiTests
 
         var download = await client.GetAsync("/sessions/SUNSET23/recording");
         Assert.Equal(HttpStatusCode.NotFound, download.StatusCode);
+    }
+
+    [Fact]
+    public async Task DeleteRecording_ForMissingRecording_ReturnsNotFound()
+    {
+        using var factory = new DotWatcherApiFactory();
+        using var client = factory.CreateClient();
+
+        var response = await SendWithBearerAsync(client, HttpMethod.Delete, "/sessions/MISSING/recording");
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
 
     [Fact]
@@ -176,14 +218,29 @@ public class SessionsApiTests
         Assert.Equal(HttpStatusCode.OK, targetRecording.StatusCode);
     }
 
+    [Fact]
+    public async Task MergeSession_ForMissingSource_ReturnsNotFound()
+    {
+        using var factory = new DotWatcherApiFactory();
+        using var client = factory.CreateClient();
+
+        var response = await SendWithBearerAsync(
+            client,
+            HttpMethod.Post,
+            "/sessions/TARGET1/merge-from/MISSING");
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
     private static async Task<HttpResponseMessage> SendWithBearerAsync(
         HttpClient client,
         HttpMethod method,
         string uri,
-        string? body = null)
+        string? body = null,
+        string bearerToken = "test-token")
     {
         using var request = new HttpRequestMessage(method, uri);
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", "test-token");
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
 
         if (body is not null)
             request.Content = new StringContent(body, Encoding.UTF8, "application/x-ndjson");

@@ -37,6 +37,17 @@ public class LogsApiTests
     }
 
     [Fact]
+    public async Task ClearLog_WithInvalidBearerToken_ReturnsUnauthorized()
+    {
+        using var factory = new DotWatcherApiFactory();
+        using var client = factory.CreateClient();
+
+        var response = await DeleteLogWithBearerAsync(client, bearerToken: "wrong-token");
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
     public async Task ClearLog_WithBearerToken_ClearsBufferedLogs()
     {
         using var factory = new DotWatcherApiFactory();
@@ -54,10 +65,12 @@ public class LogsApiTests
         Assert.Empty(lines);
     }
 
-    private static async Task<HttpResponseMessage> DeleteLogWithBearerAsync(HttpClient client)
+    private static async Task<HttpResponseMessage> DeleteLogWithBearerAsync(
+        HttpClient client,
+        string bearerToken = "test-token")
     {
         using var request = new HttpRequestMessage(HttpMethod.Delete, "/log");
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", "test-token");
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
 
         return await client.SendAsync(request);
     }

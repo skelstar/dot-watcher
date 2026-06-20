@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Text;
 using System.Text.Json;
 using Xunit;
 
@@ -17,6 +18,37 @@ public class LocationsApiTests
         var response = await client.PostAsJsonAsync("/location", TestLocation("Alice", "SUNSET23"));
 
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task PostLocation_WithInvalidBearerToken_ReturnsUnauthorized()
+    {
+        using var factory = new DotWatcherApiFactory();
+        using var client = factory.CreateClient();
+
+        var response = await PostLocationAsync(
+            client,
+            TestLocation("Alice", "SUNSET23"),
+            bearerToken: "wrong-token");
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task PostLocation_WithMalformedJson_ReturnsBadRequest()
+    {
+        using var factory = new DotWatcherApiFactory();
+        using var client = factory.CreateClient();
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/location")
+        {
+            Content = new StringContent("{", Encoding.UTF8, "application/json"),
+        };
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", "test-token");
+
+        var response = await client.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
     [Fact]
@@ -80,13 +112,16 @@ public class LocationsApiTests
         Assert.Equal(-33.8695, positionsByRunner["Bob"].Latitude);
     }
 
-    internal static async Task<HttpResponseMessage> PostLocationAsync(HttpClient client, LocationUpdate update)
+    internal static async Task<HttpResponseMessage> PostLocationAsync(
+        HttpClient client,
+        LocationUpdate update,
+        string bearerToken = "test-token")
     {
         using var request = new HttpRequestMessage(HttpMethod.Post, "/location")
         {
             Content = JsonContent.Create(update),
         };
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", "test-token");
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
 
         return await client.SendAsync(request);
     }

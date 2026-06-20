@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.AspNetCore.Mvc;
 
 namespace DotWatcher.Server.Controllers;
@@ -21,7 +22,16 @@ public class SessionsController(
         using var reader = new StreamReader(Request.Body);
         var content = await reader.ReadToEndAsync();
         var upper = sessionCode.ToUpperInvariant();
-        store.SaveRecording(upper, content);
+
+        try
+        {
+            store.SaveRecording(upper, content);
+        }
+        catch (JsonException)
+        {
+            return BadRequest(new { error = "Invalid NDJSON recording." });
+        }
+
         logger.LogInformation("Uploaded recording for {Session} ({Bytes} bytes)", upper, content.Length);
         return Ok(new { sessionCode = upper });
     }
