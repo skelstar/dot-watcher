@@ -8,12 +8,32 @@ Real-time GPS tracking for running groups. Runners share their position during a
 
 ```
 dot-watcher/
+  .ai/         AI-assisted PR review template and helper prompt script
   server/      .NET Core minimal API
   client/      React web app (Mapbox)
   ios/         Swift iOS app
   android/     Kotlin Android app (not started)
+  AGENTS.md   Codex/agent repository instructions
   README.md
 ```
+
+---
+
+## AI review workflow
+
+This repo uses a small, practical split for AI-assisted work:
+
+- `AGENTS.md` contains standing Codex/agent instructions. The main rule is that agents should not run local build, publish, or test commands because GitHub Actions CI owns that verification.
+- `.ai/pr-review-template.md` contains the reusable static PR review template. It is intentionally separate from `AGENTS.md` so the always-on agent rules stay short.
+- `.ai/review-pr.sh` prints a ready-to-copy PR review prompt for the current branch.
+
+Run the helper from the repo root:
+
+```bash
+./.ai/review-pr.sh main
+```
+
+Generated review files belong under `.ai/reviews/` and are ignored by git. This keeps local review artifacts out of commits while preserving the template and helper script in the repo.
 
 ---
 
