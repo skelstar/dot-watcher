@@ -348,6 +348,17 @@ public class SessionsApiTests
     }
 
     [Fact]
+    public async Task DownloadRecording_WithInvalidAdminSessionCode_ReturnsBadRequest()
+    {
+        using var factory = new DotWatcherApiFactory();
+        using var client = factory.CreateClient();
+
+        var response = await SendWithAdminBearerAsync(client, HttpMethod.Get, "/sessions/NO.DOTS/recording");
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
     public async Task UploadRecording_WithoutAdminBearerToken_ReturnsUnauthorized()
     {
         using var factory = new DotWatcherApiFactory();
@@ -519,6 +530,17 @@ public class SessionsApiTests
     }
 
     [Fact]
+    public async Task DeleteRecording_WithInvalidAdminSessionCode_ReturnsBadRequest()
+    {
+        using var factory = new DotWatcherApiFactory();
+        using var client = factory.CreateClient();
+
+        var response = await SendWithAdminBearerAsync(client, HttpMethod.Delete, "/sessions/NO.DOTS/recording");
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
     public async Task ClearSession_RequiresAdminBearerTokenAndClearsOnlyLivePositions()
     {
         using var factory = new DotWatcherApiFactory();
@@ -543,6 +565,17 @@ public class SessionsApiTests
 
         var recording = await SendWithAdminBearerAsync(client, HttpMethod.Get, "/sessions/SUNSET23/recording");
         Assert.Equal(HttpStatusCode.OK, recording.StatusCode);
+    }
+
+    [Fact]
+    public async Task ClearSession_WithInvalidAdminSessionCode_ReturnsBadRequest()
+    {
+        using var factory = new DotWatcherApiFactory();
+        using var client = factory.CreateClient();
+
+        var response = await SendWithAdminBearerAsync(client, HttpMethod.Delete, "/sessions/NO.DOTS");
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
     [Fact]
@@ -585,6 +618,45 @@ public class SessionsApiTests
             "/sessions/TARGET1/merge-from/MISSING");
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task MergeSession_WithInvalidTargetCode_ReturnsBadRequestAndLeavesSourceRecording()
+    {
+        using var factory = new DotWatcherApiFactory();
+        using var client = factory.CreateClient();
+
+        await SendWithAdminBearerAsync(client, HttpMethod.Post, "/sessions/SOURCE1/recording",
+            NdjsonLine("Alice", "SOURCE1"));
+
+        var response = await SendWithAdminBearerAsync(
+            client,
+            HttpMethod.Post,
+            "/sessions/NO.DOTS/merge-from/SOURCE1");
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+
+        var sourceRecording = await SendWithAdminBearerAsync(client, HttpMethod.Get, "/sessions/SOURCE1/recording");
+        Assert.Equal(HttpStatusCode.OK, sourceRecording.StatusCode);
+
+        var sessionsResponse = await SendWithAdminBearerAsync(client, HttpMethod.Get, "/sessions");
+        var sessions = await sessionsResponse.Content.ReadFromJsonAsync<List<string>>();
+        Assert.NotNull(sessions);
+        Assert.DoesNotContain("NO.DOTS", sessions);
+    }
+
+    [Fact]
+    public async Task MergeSession_WithInvalidSourceCode_ReturnsBadRequest()
+    {
+        using var factory = new DotWatcherApiFactory();
+        using var client = factory.CreateClient();
+
+        var response = await SendWithAdminBearerAsync(
+            client,
+            HttpMethod.Post,
+            "/sessions/TARGET1/merge-from/NO.DOTS");
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
     private static async Task<HttpResponseMessage> SendWithAdminBearerAsync(

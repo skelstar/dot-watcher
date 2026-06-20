@@ -158,24 +158,27 @@ public class SessionsController(
     [HttpGet("/sessions/{sessionCode}/recording")]
     public IActionResult DownloadRecording(string sessionCode)
     {
-        var upper = sessionCode.ToUpperInvariant();
+        var code = SessionStore.NormalizeSessionCode(sessionCode);
         if (!auth.IsAuthorized(Request))
         {
             if (!userAuth.TryAuthenticate(Request, out var user))
                 return Unauthorized();
 
-            var code = SessionStore.NormalizeSessionCode(sessionCode);
             if (code is null)
                 return BadRequest(new { error = "Invalid session code." });
 
             if (!store.CanReadSession(code, user.UserId))
                 return StatusCode(StatusCodes.Status403Forbidden);
         }
+        else if (code is null)
+        {
+            return BadRequest(new { error = "Invalid session code." });
+        }
 
-        if (!store.HasRecording(upper))
+        if (!store.HasRecording(code))
             return NotFound();
 
-        var ndjson = store.GetRecordingAsNdjson(upper);
+        var ndjson = store.GetRecordingAsNdjson(code);
         return Content(ndjson, "application/x-ndjson");
     }
 
@@ -185,11 +188,14 @@ public class SessionsController(
         if (!auth.IsAuthorized(Request))
             return Unauthorized();
 
-        var upper = sessionCode.ToUpperInvariant();
-        if (!store.DeleteRecording(upper))
+        var code = SessionStore.NormalizeSessionCode(sessionCode);
+        if (code is null)
+            return BadRequest(new { error = "Invalid session code." });
+
+        if (!store.DeleteRecording(code))
             return NotFound();
 
-        logger.LogInformation("Deleted recording for {Session}", upper);
+        logger.LogInformation("Deleted recording for {Session}", code);
         return NoContent();
     }
 
@@ -199,7 +205,11 @@ public class SessionsController(
         if (!auth.IsAuthorized(Request))
             return Unauthorized();
 
-        store.ClearSession(sessionCode);
+        var code = SessionStore.NormalizeSessionCode(sessionCode);
+        if (code is null)
+            return BadRequest(new { error = "Invalid session code." });
+
+        store.ClearSession(code);
         return NoContent();
     }
 
@@ -209,8 +219,10 @@ public class SessionsController(
         if (!auth.IsAuthorized(Request))
             return Unauthorized();
 
-        var tgt = targetCode.ToUpperInvariant();
-        var src = sourceCode.ToUpperInvariant();
+        var tgt = SessionStore.NormalizeSessionCode(targetCode);
+        var src = SessionStore.NormalizeSessionCode(sourceCode);
+        if (tgt is null || src is null)
+            return BadRequest(new { error = "Invalid session code." });
 
         if (!store.HasRecording(src))
             return NotFound(new { error = $"Source session '{src}' not found" });
