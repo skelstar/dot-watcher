@@ -13,8 +13,8 @@ Create a `.env` file in this directory:
 
 ```
 VITE_MAPBOX_TOKEN=your_mapbox_public_token_here
-VITE_SERVER_URL=http://localhost:5000
-VITE_POLL_INTERVAL_MS=10000
+VITE_SERVER_URL=/api
+VITE_POLL_INTERVAL_MS=2000
 ```
 
 Install dependencies (first time only):
@@ -36,12 +36,14 @@ The app will be available at `http://localhost:5173` by default.
 | Variable               | Required | Default                 | Description                                              |
 | ---------------------- | -------- | ----------------------- | -------------------------------------------------------- |
 | `VITE_MAPBOX_TOKEN`    | Yes      | —                       | Mapbox public access token for rendering the map         |
-| `VITE_SERVER_URL`      | No       | `http://localhost:5000` | Base URL of the dot-watcher server                       |
-| `VITE_POLL_INTERVAL_MS`| No       | `10000`                 | How often (ms) to poll the server for updated positions  |
+| `VITE_SERVER_URL`      | No       | `/api`                  | Base URL of the dot-watcher server                       |
+| `VITE_POLL_INTERVAL_MS`| No       | `2000`                  | How often (ms) to poll the server for updated positions  |
 
 ## Usage
 
 Open the app, sign in, then select an existing session, create one, or join from an invite code. Direct links such as `http://localhost:5173/SESSIONCODE` work after the signed-in user has membership for that session. Invite links use `/join/INVITECODE`.
+
+For local development against a server on another origin, override `VITE_SERVER_URL` in `.env`, for example `http://localhost:5000`.
 
 ## Auth and sessions
 
@@ -55,7 +57,7 @@ Open the app, sign in, then select an existing session, create one, or join from
 
 ## CI
 
-GitHub Actions runs the `Client Node` workflow for client changes. It installs dependencies with `npm ci`, runs `npm run test`, and builds the Vite app with a placeholder Mapbox token. Local agents should not run those commands unless explicitly asked.
+GitHub Actions runs the `Client Node` workflow for client changes. It installs dependencies with `npm ci`, runs all `src/*.test.ts` unit tests through `npm run test`, and builds the Vite app with a placeholder Mapbox token. Local agents should not run those commands unless explicitly asked.
 
 ---
 
@@ -63,7 +65,7 @@ GitHub Actions runs the `Client Node` workflow for client changes. It installs d
 
 The client runs on Tatooine, a home lab k3s cluster. It is deployed via the `/deploy` skill in Claude Code, which builds a Docker image (nginx serving the Vite static build), pushes it to the local registry at `localhost:5000`, and applies k8s manifests.
 
-- **URL:** `http://dot-watcher.skelstar.io`
+- **URL:** `https://dot-watcher.skelstar.io`
 - **Namespace:** `dot-watcher-client`
 - **Image:** `localhost:5000/dot-watcher-client:latest`
 - **Manifests:** `/home/skelstar/deployments/dot-watcher-client/k8s/manifests.yaml`

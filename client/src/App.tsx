@@ -10,6 +10,7 @@ import ReplayPicker from './ReplayPicker.tsx'
 import AuthPrompt from './AuthPrompt.tsx'
 import { useRunnerMarkers } from './useRunnerMarkers.ts'
 import { useReplay } from './useReplay.ts'
+import { canManageMembersForRole, canWriteLocationForRole, shouldShowAuthPrompt, shouldShowSessionPrompt } from './sessionState.ts'
 import type { AuthResponse, AuthenticatedUser, SessionMembership } from './types.ts'
 
 mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN as string
@@ -145,7 +146,16 @@ export default function App() {
 
   const activeMembership = memberships.find(membership => membership.sessionCode === sessionCode) ?? null
   const hasSessionMembership = sessionCode ? activeMembership !== null : false
-  const canWriteLocation = activeMembership?.role === 'owner' || activeMembership?.role === 'runner'
+  const canWriteLocation = canWriteLocationForRole(activeMembership?.role)
+  const canManageMembers = canManageMembersForRole(activeMembership?.role)
+  const showSessionPrompt = shouldShowSessionPrompt({
+    accessToken,
+    membershipsLoaded,
+    isReplay,
+    inviteCode,
+    sessionCode,
+    hasSessionMembership,
+  })
 
   const replay = useReplay(isReplay && hasSessionMembership ? sessionCode : null, SERVER_URL, accessToken)
 
@@ -219,7 +229,7 @@ export default function App() {
       {auth && (
         <div style={accountBar}>
           <span>{auth.user.displayName || auth.user.username}</span>
-          {activeMembership?.role === 'owner' && (
+          {canManageMembers && (
             <button type="button" style={signOutButton} onClick={() => setShowMembers(true)}>Members</button>
           )}
           <button type="button" style={signOutButton} onClick={handleSignOut}>Sign out</button>
@@ -238,28 +248,17 @@ export default function App() {
       {isReplay && sessionCode && <ReplayControls replay={replay} onFitAll={fitAll} />}
       {liveError && !isReplay && hasSessionMembership && <div style={statusToast}>{liveError}</div>}
       {replay.error && isReplay && hasSessionMembership && <div style={statusToast}>{replay.error}</div>}
-      {!accessToken && <AuthPrompt serverUrl={SERVER_URL} onAuth={handleAuth} />}
+      {shouldShowAuthPrompt(accessToken) && <AuthPrompt serverUrl={SERVER_URL} onAuth={handleAuth} />}
       {accessToken && membershipsLoaded && isReplay && !sessionCode && (
         <ReplayPicker memberships={memberships} onSelect={handleReplaySelect} />
       )}
-      {accessToken && membershipsLoaded && !inviteCode && (!sessionCode || !hasSessionMembership) && !isReplay && (
+      {accessToken && showSessionPrompt && (
         <SessionPrompt
           serverUrl={SERVER_URL}
           accessToken={accessToken}
           memberships={memberships}
-          requestedSessionCode={sessionCode}
+          requestedSessionCode={inviteCode ? undefined : sessionCode}
           initialInviteCode={inviteCode}
-          onSelect={handleMembershipSelect}
-          onMembershipsChanged={setMemberships}
-        />
-      )}
-      {accessToken && membershipsLoaded && inviteCode && !hasSessionMembership && (
-        <SessionPrompt
-          serverUrl={SERVER_URL}
-          accessToken={accessToken}
-          memberships={memberships}
-          initialInviteCode={inviteCode}
-          isReplay={isReplay}
           onSelect={handleMembershipSelect}
           onMembershipsChanged={setMemberships}
         />
@@ -275,7 +274,7 @@ export default function App() {
           onMembershipsChanged={setMemberships}
         />
       )}
-      {accessToken && activeMembership?.role === 'owner' && showMembers && (
+      {accessToken && canManageMembers && activeMembership && showMembers && (
         <MemberManager
           serverUrl={SERVER_URL}
           accessToken={accessToken}
