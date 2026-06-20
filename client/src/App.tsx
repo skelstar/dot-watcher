@@ -9,27 +9,55 @@ import ReplayPicker from './ReplayPicker.tsx'
 import AuthPrompt from './AuthPrompt.tsx'
 import { useRunnerMarkers } from './useRunnerMarkers.ts'
 import { useReplay } from './useReplay.ts'
+import type { AuthResponse, AuthenticatedUser, SessionMembership } from './types.ts'
 
 mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN as string
 
 const POLL_INTERVAL_MS: number = parseInt(import.meta.env.VITE_POLL_INTERVAL_MS ?? '2000', 10)
 const SERVER_URL: string = import.meta.env.VITE_SERVER_URL ?? '/api'
 
-function parseUrl(): { sessionCode: string | null; isReplay: boolean } {
+interface RouteState {
+  sessionCode: string | null
+  isReplay: boolean
+  inviteCode: string | null
+}
+
+function parseUrl(): RouteState {
   const parts = window.location.pathname.replace(/^\//, '').split('/')
   const norm = (s: string) => s.toUpperCase() || null
-  if (parts[0] === 'replay') return { sessionCode: null, isReplay: true }
-  if (parts[1] === 'replay') return { sessionCode: norm(parts[0]), isReplay: true }
-  return { sessionCode: norm(parts[0]), isReplay: false }
+  if (parts[0] === 'join') return { sessionCode: null, isReplay: false, inviteCode: norm(parts[1] ?? '') }
+  if (parts[0] === 'replay') return { sessionCode: null, isReplay: true, inviteCode: null }
+  if (parts[1] === 'replay') return { sessionCode: norm(parts[0]), isReplay: true, inviteCode: null }
+  return { sessionCode: norm(parts[0]), isReplay: false, inviteCode: null }
+}
+
+function readStoredAuth(): AuthResponse | null {
+  const accessToken = localStorage.getItem('userAccessToken')
+  if (!accessToken) return null
+
+  const storedUser = localStorage.getItem('user')
+  let user: AuthenticatedUser = { userId: '', username: '', displayName: '' }
+  if (storedUser) {
+    try {
+      user = JSON.parse(storedUser) as AuthenticatedUser
+    } catch {
+      localStorage.removeItem('user')
+    }
+  }
+
+  return { accessToken, user }
 }
 
 export default function App() {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<mapboxgl.Map | null>(null)
-  const { sessionCode: initialCode, isReplay } = parseUrl()
+  const { sessionCode: initialCode, isReplay, inviteCode } = parseUrl()
   const [sessionCode, setSessionCode] = useState<string | null>(initialCode)
-  const [accessToken, setAccessToken] = useState<string | null>(() => localStorage.getItem('userAccessToken'))
+  const [auth, setAuth] = useState<AuthResponse | null>(() => readStoredAuth())
+  const [memberships, setMemberships] = useState<SessionMembership[]>([])
+  const [membershipsLoaded, setMembershipsLoaded] = useState(false)
   const [menu, setMenu] = useState<{ x: number; y: number; lng: number; lat: number } | null>(null)
+  const accessToken = auth?.accessToken ?? null
 
   useEffect(() => {
     const map = new mapboxgl.Map({
@@ -59,11 +87,50 @@ export default function App() {
     }
   }, [])
 
-  const replay = useReplay(isReplay ? sessionCode : null, SERVER_URL, accessToken)
+  useEffect(() => {
+    if (!accessToken) {
+      setMemberships([])
+      setMembershipsLoaded(false)
+      return
+    }
 
-  const { offScreenRunners, centerOnRunner, fitAll } = useRunnerMarkers(
+    let cancelled = false
+    setMembershipsLoaded(false)
+
+    async function loadMemberships() {
+      try {
+        const response = await fetch(`${SERVER_URL}/me/sessions`, {
+          headers: { 'Authorization': `Bearer ${accessToken}` },
+        })
+
+        if (cancelled) return
+
+        if (response.status === 401) {
+          handleSignOut()
+          return
+        }
+
+        if (response.ok) {
+          setMemberships(await response.json() as SessionMembership[])
+        }
+      } finally {
+        if (!cancelled) setMembershipsLoaded(true)
+      }
+    }
+
+    void loadMemberships()
+    return () => { cancelled = true }
+  }, [accessToken])
+
+  const activeMembership = memberships.find(membership => membership.sessionCode === sessionCode) ?? null
+  const hasSessionMembership = sessionCode ? activeMembership !== null : false
+  const canWriteLocation = activeMembership?.role === 'owner' || activeMembership?.role === 'runner'
+
+  const replay = useReplay(isReplay && hasSessionMembership ? sessionCode : null, SERVER_URL, accessToken)
+
+  const { offScreenRunners, error: liveError, centerOnRunner, fitAll } = useRunnerMarkers(
     mapRef,
-    sessionCode,
+    !isReplay && hasSessionMembership ? sessionCode : null,
     SERVER_URL,
     accessToken,
     POLL_INTERVAL_MS,
@@ -72,7 +139,7 @@ export default function App() {
   )
 
   async function sendChester(lng: number, lat: number) {
-    if (!sessionCode || !accessToken) return
+    if (!sessionCode || !accessToken || !canWriteLocation) return
     await fetch(`${SERVER_URL}/location`, {
       method: 'POST',
       headers: {
@@ -90,10 +157,23 @@ export default function App() {
     })
   }
 
-  function handleSessionSubmit(code: string) {
-    const upper = code.trim().toUpperCase()
-    window.history.replaceState(null, '', isReplay ? `/${upper}/replay` : `/${upper}`)
-    setSessionCode(upper)
+  function handleAuth(nextAuth: AuthResponse) {
+    localStorage.setItem('userAccessToken', nextAuth.accessToken)
+    localStorage.setItem('user', JSON.stringify(nextAuth.user))
+    setAuth(nextAuth)
+  }
+
+  function handleSignOut() {
+    localStorage.removeItem('userAccessToken')
+    localStorage.removeItem('user')
+    setAuth(null)
+    setMemberships([])
+    setSessionCode(null)
+  }
+
+  function handleMembershipSelect(membership: SessionMembership) {
+    window.history.replaceState(null, '', isReplay ? `/${membership.sessionCode}/replay` : `/${membership.sessionCode}`)
+    setSessionCode(membership.sessionCode)
   }
 
   function handleReplaySelect(code: string) {
@@ -104,9 +184,15 @@ export default function App() {
   return (
     <>
       <div ref={containerRef} style={{ width: '100%', height: '100%' }} />
+      {auth && (
+        <div style={accountBar}>
+          <span>{auth.user.displayName || auth.user.username}</span>
+          <button type="button" style={signOutButton} onClick={handleSignOut}>Sign out</button>
+        </div>
+      )}
       {!isReplay && <button onClick={fitAll} style={fitAllBtn} title="Fit all">⤢</button>}
       <Legend runners={offScreenRunners} onRunnerClick={centerOnRunner} />
-      {menu && (
+      {menu && canWriteLocation && (
         <MapMenu
           x={menu.x}
           y={menu.y}
@@ -115,9 +201,45 @@ export default function App() {
         />
       )}
       {isReplay && sessionCode && <ReplayControls replay={replay} onFitAll={fitAll} />}
-      {!accessToken && <AuthPrompt serverUrl={SERVER_URL} onAuth={setAccessToken} />}
-      {accessToken && isReplay && !sessionCode && <ReplayPicker onSelect={handleReplaySelect} />}
-      {accessToken && !isReplay && !sessionCode && <SessionPrompt onSubmit={handleSessionSubmit} />}
+      {liveError && !isReplay && hasSessionMembership && <div style={statusToast}>{liveError}</div>}
+      {replay.error && isReplay && hasSessionMembership && <div style={statusToast}>{replay.error}</div>}
+      {!accessToken && <AuthPrompt serverUrl={SERVER_URL} onAuth={handleAuth} />}
+      {accessToken && membershipsLoaded && isReplay && !sessionCode && (
+        <ReplayPicker memberships={memberships} onSelect={handleReplaySelect} />
+      )}
+      {accessToken && membershipsLoaded && !inviteCode && (!sessionCode || !hasSessionMembership) && !isReplay && (
+        <SessionPrompt
+          serverUrl={SERVER_URL}
+          accessToken={accessToken}
+          memberships={memberships}
+          requestedSessionCode={sessionCode}
+          initialInviteCode={inviteCode}
+          onSelect={handleMembershipSelect}
+          onMembershipsChanged={setMemberships}
+        />
+      )}
+      {accessToken && membershipsLoaded && inviteCode && !hasSessionMembership && (
+        <SessionPrompt
+          serverUrl={SERVER_URL}
+          accessToken={accessToken}
+          memberships={memberships}
+          initialInviteCode={inviteCode}
+          isReplay={isReplay}
+          onSelect={handleMembershipSelect}
+          onMembershipsChanged={setMemberships}
+        />
+      )}
+      {accessToken && membershipsLoaded && isReplay && sessionCode && !hasSessionMembership && !inviteCode && (
+        <SessionPrompt
+          serverUrl={SERVER_URL}
+          accessToken={accessToken}
+          memberships={memberships}
+          requestedSessionCode={sessionCode}
+          isReplay
+          onSelect={handleMembershipSelect}
+          onMembershipsChanged={setMemberships}
+        />
+      )}
     </>
   )
 }
@@ -139,4 +261,48 @@ const fitAllBtn: React.CSSProperties = {
   fontSize: '1.1rem',
   color: '#333',
   padding: 0,
+}
+
+const accountBar: React.CSSProperties = {
+  position: 'absolute',
+  top: 12,
+  left: 12,
+  zIndex: 8,
+  display: 'flex',
+  alignItems: 'center',
+  gap: 8,
+  background: '#fff',
+  color: '#24292f',
+  borderRadius: 6,
+  boxShadow: '0 0 0 2px rgba(0,0,0,0.1)',
+  padding: '6px 8px',
+  fontFamily: 'system-ui, sans-serif',
+  fontSize: '0.85rem',
+}
+
+const signOutButton: React.CSSProperties = {
+  border: '1px solid #d0d7de',
+  borderRadius: 4,
+  background: '#f6f8fa',
+  color: '#24292f',
+  cursor: 'pointer',
+  fontFamily: 'system-ui, sans-serif',
+  fontSize: '0.8rem',
+  padding: '3px 6px',
+}
+
+const statusToast: React.CSSProperties = {
+  position: 'absolute',
+  left: '50%',
+  bottom: 88,
+  transform: 'translateX(-50%)',
+  zIndex: 8,
+  maxWidth: 'min(420px, 92vw)',
+  background: '#fff',
+  color: '#92400e',
+  borderRadius: 6,
+  boxShadow: '0 0 0 2px rgba(0,0,0,0.1)',
+  padding: '8px 12px',
+  fontFamily: 'system-ui, sans-serif',
+  fontSize: '0.9rem',
 }

@@ -41,7 +41,7 @@ The app will be available at `http://localhost:5173` by default.
 
 ## Usage
 
-Open the app and enter a session code when prompted, or navigate directly to `http://localhost:5173/SESSIONCODE` to skip the prompt. The map will poll the server and render all runners in that session as directional markers.
+Open the app, sign in, then select an existing session, create one, or join from an invite code. Direct links such as `http://localhost:5173/SESSIONCODE` work after the signed-in user has membership for that session. Invite links use `/join/INVITECODE`.
 
 ---
 

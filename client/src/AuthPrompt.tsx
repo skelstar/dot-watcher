@@ -1,8 +1,9 @@
 import { useState, type FormEvent } from 'react'
+import type { AuthResponse } from './types.ts'
 
 interface Props {
   serverUrl: string
-  onAuth: (accessToken: string) => void
+  onAuth: (auth: AuthResponse) => void
 }
 
 export default function AuthPrompt({ serverUrl, onAuth }: Props) {
@@ -20,20 +21,23 @@ export default function AuthPrompt({ serverUrl, onAuth }: Props) {
       ? { username, password }
       : { username, password, displayName }
 
-    const response = await fetch(`${serverUrl}/auth/${mode}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    })
+    try {
+      const response = await fetch(`${serverUrl}/auth/${mode}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
 
-    if (!response.ok) {
-      setError(`Sign ${mode === 'login' ? 'in' : 'up'} failed.`)
-      return
+      if (!response.ok) {
+        setError(`Sign ${mode === 'login' ? 'in' : 'up'} failed.`)
+        return
+      }
+
+      const result = await response.json() as AuthResponse
+      onAuth(result)
+    } catch {
+      setError('Network error.')
     }
-
-    const result = await response.json() as { accessToken: string }
-    localStorage.setItem('userAccessToken', result.accessToken)
-    onAuth(result.accessToken)
   }
 
   return (

@@ -40,7 +40,7 @@ Generated review files belong under `.ai/reviews/` and are ignored by git. This 
 
 ## How it works
 
-1. Each runner opens the iOS app, enters their name and a session code, and starts tracking
+1. Each runner signs in to the iOS app, creates or selects an owner/runner session, and starts tracking
 2. The app sends GPS coordinates and compass heading to the server at a configurable interval (default 60s)
 3. The server stores the latest positions for all runners in that session
 4. Other users sign in and join the session from an invite code or link
@@ -89,8 +89,8 @@ A React web app using Mapbox GL JS.
 **Behaviour**
 
 - Full-screen Mapbox map, responsive and touch-friendly
-- On first load, prompts for a session code if not present in the URL
-- Session code can be embedded in the URL for easy sharing (e.g. `https://dot-watcher.yourdomain.com/SESSIONCODE`)
+- On first load, prompts for sign-in, then lists existing memberships or offers create/join actions
+- Session code can be embedded in the URL for members (e.g. `https://dot-watcher.yourdomain.com/SESSIONCODE`)
 - Polls the server for updated positions every 10–15 seconds
 - Renders each runner as a named marker with a directional arrow
 - Arrow orientation is driven by the `heading` field from the server (compass bearing from the phone)

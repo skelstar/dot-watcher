@@ -15,6 +15,7 @@ interface MarkerEntry {
 interface RunnerMarkersResult {
   visibleRunners: string[]
   offScreenRunners: string[]
+  error: string | null
   centerOnRunner: (name: string) => void
   fitAll: () => void
 }
@@ -35,6 +36,7 @@ export function useRunnerMarkers(
   const virtualNowRef = useRef<number | null>(null)
   const [visibleRunners, setVisibleRunners] = useState<string[]>([])
   const [offScreenRunners, setOffScreenRunners] = useState<string[]>([])
+  const [error, setError] = useState<string | null>(null)
 
   function applyPositions(runnerGroups: RunnerPosition[][], map: mapboxgl.Map, virtualNow?: number) {
     if (virtualNow !== undefined) virtualNowRef.current = virtualNow
@@ -117,7 +119,10 @@ export function useRunnerMarkers(
 
   // Live polling effect — skipped when replayPositions is provided
   useEffect(() => {
-    if (!sessionCode || !accessToken || replayPositions !== undefined) return
+    if (!sessionCode || !accessToken || replayPositions !== undefined) {
+      setError(null)
+      return
+    }
     hasLocatedRef.current = false
 
     let cancelled = false
@@ -127,15 +132,20 @@ export function useRunnerMarkers(
         const res = await fetch(`${serverUrl}/locations/${sessionCode}`, {
           headers: { 'Authorization': `Bearer ${accessToken}` },
         })
-        if (!res.ok || cancelled) return
+        if (cancelled) return
+        if (!res.ok) {
+          setError(res.status === 403 ? 'No membership for this session.' : `Live update failed: HTTP ${res.status}`)
+          return
+        }
         const runnerGroups: RunnerPosition[][] = await res.json()
+        setError(null)
 
         const map = mapRef.current
         if (!map || cancelled) return
 
         applyPositions(runnerGroups, map)
       } catch {
-        // network errors are silent — we'll retry on the next interval
+        setError('Network error while loading live positions.')
       }
     }
 
@@ -256,7 +266,7 @@ export function useRunnerMarkers(
     }
   }
 
-  return { visibleRunners, offScreenRunners, centerOnRunner, fitAll }
+  return { visibleRunners, offScreenRunners, error, centerOnRunner, fitAll }
 }
 
 export { ARROW_SIZE }

@@ -1,6 +1,6 @@
 # iOS
 
-Native Swift app that sends GPS positions to the Dot Watcher server every 3 seconds.
+Native Swift app that signs in with a Dot Watcher account and sends GPS positions to the server every 15 seconds while tracking.
 
 ---
 
