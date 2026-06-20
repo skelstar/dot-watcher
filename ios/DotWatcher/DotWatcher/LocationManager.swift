@@ -118,9 +118,9 @@ final class LocationManager {
         locationDelegate.owner = self
         clManager.delegate = locationDelegate
         clManager.desiredAccuracy = kCLLocationAccuracyNearestTenMeters
-        clManager.distanceFilter = 25.0
+        clManager.distanceFilter = 10.0
         clManager.activityType = .fitness
-        clManager.pausesLocationUpdatesAutomatically = true
+        clManager.pausesLocationUpdatesAutomatically = false
         clManager.allowsBackgroundLocationUpdates = true
         clManager.showsBackgroundLocationIndicator = true
     }
@@ -140,8 +140,17 @@ final class LocationManager {
         ])
     }
 
-    func signOut() {
+    func signOut(status nextStatus: String = "Signed out") async {
         stop()
+        let tokenToRevoke = accessToken
+        status = "Signing out..."
+        if let tokenToRevoke {
+            await revokeToken(tokenToRevoke)
+        }
+        clearAuthState(status: nextStatus)
+    }
+
+    private func clearAuthState(status nextStatus: String) {
         accessToken = nil
         currentUser = nil
         memberships = []
@@ -149,7 +158,7 @@ final class LocationManager {
         sessionCode = ""
         Self.storeToken(nil)
         UserDefaults.standard.removeObject(forKey: "currentUser")
-        status = "Signed out"
+        status = nextStatus
     }
 
     func loadSessions() async {
@@ -165,8 +174,7 @@ final class LocationManager {
                 selectedSessionMembers = []
             }
         } catch DotWatcherAPIError.badResponse(401) {
-            signOut()
-            status = "Sign in required"
+            await signOut(status: "Sign in required")
         } catch {
             status = error.localizedDescription
         }
@@ -215,8 +223,7 @@ final class LocationManager {
         do {
             selectedSessionMembers = try await send(path: "/sessions/\(membership.sessionCode)/members")
         } catch DotWatcherAPIError.badResponse(401) {
-            signOut()
-            status = "Sign in required"
+            await signOut(status: "Sign in required")
         } catch {
             status = error.localizedDescription
         }
@@ -373,6 +380,17 @@ final class LocationManager {
         } catch {
             throw DotWatcherAPIError.network
         }
+    }
+
+    private func revokeToken(_ token: String) async {
+        guard let url = URL(string: serverBaseURL.absoluteString + "/auth/logout") else {
+            return
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        _ = try? await URLSession.shared.data(for: request)
     }
 
     private func upsertMembership(_ membership: SessionMembership) {

@@ -318,7 +318,7 @@ struct AuthSheet: View {
                     Section {
                         LabeledContent("User", value: location.currentUser?.displayName ?? location.currentUser?.username ?? "")
                         Button("Sign out", role: .destructive) {
-                            location.signOut()
+                            Task { await location.signOut() }
                         }
                     }
                 } else {
