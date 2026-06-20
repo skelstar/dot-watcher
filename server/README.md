@@ -76,6 +76,8 @@
 | `JwtClockSkewSeconds` | `60` | Clock skew allowed while validating user access tokens, clamped to 0-300 |
 | `AuthMaxFailedAttempts` | `5` | Failed login attempts allowed per username/IP before temporary lockout |
 | `AuthLockoutMinutes` | `15` | Temporary login lockout duration after repeated failures |
+| `AuthAttemptWindowMinutes` | `15` | Idle failed-login attempt window lifetime before process-local limiter state is pruned |
+| `AuthMaxTrackedAttempts` | `10000` | Maximum username/IP failed-login keys retained by the process-local limiter |
 | `DbPath` | `dotwatcher.db` | SQLite database file used for persisted session recordings |
 | `RecordingsPath` | `recordings` | Directory scanned on startup for legacy NDJSON recordings to import into SQLite |
 
