@@ -14,6 +14,18 @@ Native Swift app that signs in with a Dot Watcher account and sends GPS position
 - `POST /location` must send `Authorization: Bearer <user access token>`. The server stores the authenticated member display name and ignores any client-supplied runner name for identity.
 - `GET /locations/{sessionCode}` and recording download return `403` for valid-looking session codes where the signed-in user is not a member.
 
+## API endpoint configuration
+
+The API base URL is configured through the `DOTWATCHER_API_BASE_URL` Xcode build setting, exposed to the app as `DotWatcherAPIBaseURL` in `Info.plist`.
+
+Production builds should use:
+
+```text
+https://dot-watcher.skelstar.io/api
+```
+
+The app rejects non-HTTPS API URLs outside local debug development. Debug builds may use `http://localhost`, `http://127.0.0.1`, or `http://[::1]` for local server testing.
+
 ## Verification boundary
 
 GitHub Actions does not currently build or run the iOS project. iOS verification is manual for now because it depends on local Xcode, signing, simulator/device availability, Keychain behavior, background-location permissions, and real GPS/background execution.

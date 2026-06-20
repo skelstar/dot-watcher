@@ -147,7 +147,7 @@ struct ContentView: View {
             .onTapGesture { showSessionEntry = true }
 
             if !location.sessionCode.isEmpty,
-               let url = URL(string: "http://dot-watcher.skelstar.io/\(location.fullSessionName)") {
+               let url = URL(string: "https://dot-watcher.skelstar.io/\(location.fullSessionName)") {
                 Link("Open map in browser", destination: url)
                     .font(.subheadline)
                     .foregroundStyle(Color.accentColor)

@@ -63,7 +63,7 @@ final class LocationManager {
     private var trackingTask: Task<Void, Never>?
     private var accessToken: String?
 
-    let serverBaseURL = URL(string: "http://dot-watcher.skelstar.io/api")!
+    let serverBaseURL = LocationManager.configuredServerBaseURL()
     var sessionCode = UserDefaults.standard.string(forKey: "sessionCode") ?? "" {
         didSet {
             UserDefaults.standard.set(sessionCode, forKey: "sessionCode")
@@ -363,6 +363,37 @@ final class LocationManager {
             kSecValueData as String: data,
         ]
         SecItemAdd(item as CFDictionary, nil)
+    }
+
+    private static func configuredServerBaseURL() -> URL {
+        let configured = Bundle.main.object(forInfoDictionaryKey: "DotWatcherAPIBaseURL") as? String
+        let rawValue = configured?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let fallback = "https://dot-watcher.skelstar.io/api"
+        let urlString: String
+        if let rawValue, !rawValue.isEmpty {
+            urlString = rawValue
+        } else {
+            urlString = fallback
+        }
+
+        guard let url = URL(string: urlString),
+              let scheme = url.scheme?.lowercased(),
+              let host = url.host?.lowercased()
+        else {
+            preconditionFailure("DotWatcherAPIBaseURL must be a valid absolute URL.")
+        }
+
+        if scheme == "https" {
+            return url
+        }
+
+        #if DEBUG
+        if scheme == "http", host == "localhost" || host == "127.0.0.1" || host == "::1" {
+            return url
+        }
+        #endif
+
+        preconditionFailure("DotWatcherAPIBaseURL must use HTTPS outside local development.")
     }
 }
 

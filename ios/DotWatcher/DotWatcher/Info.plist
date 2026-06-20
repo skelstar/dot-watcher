@@ -18,17 +18,8 @@
 	<string>56</string>
 	<key>GitCommitSHA</key>
 	<string>b599b75</string>
-	<key>NSAppTransportSecurity</key>
-	<dict>
-		<key>NSExceptionDomains</key>
-		<dict>
-			<key>dot-watcher.skelstar.io</key>
-			<dict>
-				<key>NSExceptionAllowsInsecureHTTPLoads</key>
-				<true/>
-			</dict>
-		</dict>
-	</dict>
+	<key>DotWatcherAPIBaseURL</key>
+	<string>$(DOTWATCHER_API_BASE_URL)</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
 	<string>DotWatcher uses your location in the background to track your position during a run. This includes while the phone is locked in order for you to find your group.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
