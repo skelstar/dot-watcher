@@ -144,6 +144,9 @@ public sealed class UserTokenAuth
         if (_store.IsUserTokenRevoked(payload.Jti, now))
             return false;
 
+        if (!_store.UserExists(payload.Sub))
+            return false;
+
         user = new AuthenticatedUser(payload.Sub, payload.Username, payload.Name);
         var expiresAt = DateTimeOffset.FromUnixTimeSeconds(payload.Exp);
         validatedToken = new ValidatedUserToken(

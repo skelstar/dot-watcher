@@ -27,6 +27,7 @@ public class SessionStore(string dbPath)
             CREATE TABLE IF NOT EXISTS location_updates (
                 id           INTEGER PRIMARY KEY AUTOINCREMENT,
                 session_code TEXT NOT NULL,
+                runner_user_id TEXT,
                 runner_name  TEXT NOT NULL,
                 latitude     REAL NOT NULL,
                 longitude    REAL NOT NULL,
@@ -75,6 +76,13 @@ public class SessionStore(string dbPath)
             CREATE INDEX IF NOT EXISTS idx_revoked_user_tokens_expires_at ON revoked_user_tokens(expires_at);
             """;
         cmd.ExecuteNonQuery();
+        AddColumnIfMissing(conn, "location_updates", "runner_user_id", "TEXT");
+
+        using var locationRunnerUserIndex = conn.CreateCommand();
+        locationRunnerUserIndex.CommandText = """
+            CREATE INDEX IF NOT EXISTS idx_location_updates_runner_user ON location_updates(runner_user_id)
+            """;
+        locationRunnerUserIndex.ExecuteNonQuery();
     }
 
     private SqliteConnection Connect()
@@ -116,6 +124,19 @@ public class SessionStore(string dbPath)
             : null;
     }
 
+    public bool UserExists(string userId)
+    {
+        using var conn = Connect();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = """
+            SELECT 1
+            FROM users
+            WHERE id = $userId
+            """;
+        cmd.Parameters.AddWithValue("$userId", userId);
+        return cmd.ExecuteScalar() is not null;
+    }
+
     public void RevokeUserToken(string tokenId, DateTimeOffset expiresAt)
     {
         using var conn = Connect();
@@ -146,6 +167,80 @@ public class SessionStore(string dbPath)
         cmd.Parameters.AddWithValue("$tokenId", tokenId);
         cmd.Parameters.AddWithValue("$now", now.ToString("O"));
         return (long)(cmd.ExecuteScalar() ?? 0L) > 0;
+    }
+
+    public bool DeleteUserAccount(string userId)
+    {
+        using var conn = Connect();
+        var memberships = GetSessionMembersForUser(conn, userId);
+        var ownedSessionCodes = GetOwnedSessionCodes(conn, userId);
+
+        using var tx = conn.BeginTransaction();
+
+        using (var cmd = conn.CreateCommand())
+        {
+            cmd.Transaction = tx;
+            cmd.CommandText = "DELETE FROM location_updates WHERE runner_user_id = $userId";
+            cmd.Parameters.AddWithValue("$userId", userId);
+            cmd.ExecuteNonQuery();
+        }
+
+        foreach (var sessionCode in ownedSessionCodes)
+        {
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.Transaction = tx;
+                cmd.CommandText = "DELETE FROM location_updates WHERE session_code = $sessionCode";
+                cmd.Parameters.AddWithValue("$sessionCode", sessionCode);
+                cmd.ExecuteNonQuery();
+            }
+
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.Transaction = tx;
+                cmd.CommandText = "DELETE FROM session_members WHERE session_code = $sessionCode";
+                cmd.Parameters.AddWithValue("$sessionCode", sessionCode);
+                cmd.ExecuteNonQuery();
+            }
+        }
+
+        using (var cmd = conn.CreateCommand())
+        {
+            cmd.Transaction = tx;
+            cmd.CommandText = "DELETE FROM app_sessions WHERE owner_user_id = $userId";
+            cmd.Parameters.AddWithValue("$userId", userId);
+            cmd.ExecuteNonQuery();
+        }
+
+        using (var cmd = conn.CreateCommand())
+        {
+            cmd.Transaction = tx;
+            cmd.CommandText = "DELETE FROM session_members WHERE user_id = $userId";
+            cmd.Parameters.AddWithValue("$userId", userId);
+            cmd.ExecuteNonQuery();
+        }
+
+        int deletedUsers;
+        using (var cmd = conn.CreateCommand())
+        {
+            cmd.Transaction = tx;
+            cmd.CommandText = "DELETE FROM users WHERE id = $userId";
+            cmd.Parameters.AddWithValue("$userId", userId);
+            deletedUsers = cmd.ExecuteNonQuery();
+        }
+
+        tx.Commit();
+
+        foreach (var sessionCode in ownedSessionCodes)
+            _sessions.TryRemove(sessionCode, out _);
+
+        foreach (var membership in memberships.Where(membership => !ownedSessionCodes.Contains(membership.SessionCode)))
+        {
+            if (_sessions.TryGetValue(membership.SessionCode, out var session))
+                session.TryRemove(membership.DisplayName, out _);
+        }
+
+        return deletedUsers > 0;
     }
 
     public SessionMembership CreateSessionForUser(string userId, string displayName, string? requestedCode = null)
@@ -336,7 +431,7 @@ public class SessionStore(string dbPath)
             existing with { Role = role });
     }
 
-    public void AddPosition(ValidatedLocationUpdate update)
+    public void AddPosition(ValidatedLocationUpdate update, string userId)
     {
         var code = update.SessionCode;
 
@@ -353,10 +448,11 @@ public class SessionStore(string dbPath)
         using var conn = Connect();
         using var cmd = conn.CreateCommand();
         cmd.CommandText = """
-            INSERT INTO location_updates (session_code, runner_name, latitude, longitude, heading, timestamp)
-            VALUES ($code, $name, $lat, $lon, $heading, $ts)
+            INSERT INTO location_updates (session_code, runner_user_id, runner_name, latitude, longitude, heading, timestamp)
+            VALUES ($code, $userId, $name, $lat, $lon, $heading, $ts)
             """;
         cmd.Parameters.AddWithValue("$code", code);
+        cmd.Parameters.AddWithValue("$userId", userId);
         cmd.Parameters.AddWithValue("$name", update.RunnerName);
         cmd.Parameters.AddWithValue("$lat", update.Latitude);
         cmd.Parameters.AddWithValue("$lon", update.Longitude);
@@ -469,8 +565,8 @@ public class SessionStore(string dbPath)
 
         using var cmd = conn.CreateCommand();
         cmd.CommandText = """
-            INSERT INTO location_updates (session_code, runner_name, latitude, longitude, heading, timestamp)
-            VALUES ($code, $name, $lat, $lon, $heading, $ts)
+            INSERT INTO location_updates (session_code, runner_user_id, runner_name, latitude, longitude, heading, timestamp)
+            VALUES ($code, NULL, $name, $lat, $lon, $heading, $ts)
             """;
         var pCode    = cmd.Parameters.Add("$code",    SqliteType.Text);
         var pName    = cmd.Parameters.Add("$name",    SqliteType.Text);
@@ -570,6 +666,62 @@ public class SessionStore(string dbPath)
         cmd.ExecuteNonQuery();
     }
 
+    private static void AddColumnIfMissing(
+        SqliteConnection conn,
+        string tableName,
+        string columnName,
+        string columnDefinition)
+    {
+        using (var check = conn.CreateCommand())
+        {
+            check.CommandText = $"PRAGMA table_info({tableName})";
+            using var reader = check.ExecuteReader();
+            while (reader.Read())
+            {
+                if (string.Equals(reader.GetString(1), columnName, StringComparison.OrdinalIgnoreCase))
+                    return;
+            }
+        }
+
+        using var alter = conn.CreateCommand();
+        alter.CommandText = $"ALTER TABLE {tableName} ADD COLUMN {columnName} {columnDefinition}";
+        alter.ExecuteNonQuery();
+    }
+
+    private static IReadOnlyList<SessionMemberForAccountDeletion> GetSessionMembersForUser(
+        SqliteConnection conn,
+        string userId)
+    {
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = """
+            SELECT session_code, display_name
+            FROM session_members
+            WHERE user_id = $userId
+            """;
+        cmd.Parameters.AddWithValue("$userId", userId);
+        using var reader = cmd.ExecuteReader();
+        var memberships = new List<SessionMemberForAccountDeletion>();
+        while (reader.Read())
+            memberships.Add(new SessionMemberForAccountDeletion(reader.GetString(0), reader.GetString(1)));
+        return memberships;
+    }
+
+    private static HashSet<string> GetOwnedSessionCodes(SqliteConnection conn, string userId)
+    {
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = """
+            SELECT session_code
+            FROM app_sessions
+            WHERE owner_user_id = $userId
+            """;
+        cmd.Parameters.AddWithValue("$userId", userId);
+        using var reader = cmd.ExecuteReader();
+        var sessionCodes = new HashSet<string>(StringComparer.Ordinal);
+        while (reader.Read())
+            sessionCodes.Add(reader.GetString(0));
+        return sessionCodes;
+    }
+
     private static bool SessionExists(SqliteConnection conn, string sessionCode)
     {
         using var cmd = conn.CreateCommand();
@@ -645,4 +797,8 @@ public class SessionStore(string dbPath)
 
     private static string GenerateCode(int bytes) =>
         Convert.ToHexString(RandomNumberGenerator.GetBytes(bytes / 2)).ToUpperInvariant();
+
+    private sealed record SessionMemberForAccountDeletion(
+        string SessionCode,
+        string DisplayName);
 }

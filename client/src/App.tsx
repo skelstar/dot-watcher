@@ -9,6 +9,7 @@ import ReplayControls from './ReplayControls.tsx'
 import ReplayPicker from './ReplayPicker.tsx'
 import AuthPrompt from './AuthPrompt.tsx'
 import LegalPage from './LegalPage.tsx'
+import AccountSettings from './AccountSettings.tsx'
 import { useRunnerMarkers } from './useRunnerMarkers.ts'
 import { useReplay } from './useReplay.ts'
 import { canManageMembersForRole, canWriteLocationForRole, shouldShowAuthPrompt, shouldShowSessionPrompt } from './sessionState.ts'
@@ -86,6 +87,7 @@ export default function App() {
   const [membershipsLoaded, setMembershipsLoaded] = useState(false)
   const [menu, setMenu] = useState<{ x: number; y: number; lng: number; lat: number } | null>(null)
   const [showMembers, setShowMembers] = useState(false)
+  const [showSettings, setShowSettings] = useState(false)
   const accessToken = auth?.accessToken ?? null
 
   useEffect(() => {
@@ -219,6 +221,33 @@ export default function App() {
     setMemberships([])
     setSessionCode(null)
     setShowMembers(false)
+    setShowSettings(false)
+  }
+
+  async function handleDeleteAccount() {
+    if (!accessToken) return
+    let response: Response
+    try {
+      response = await fetch(`${SERVER_URL}/me`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${accessToken}` },
+      })
+    } catch {
+      window.alert('Delete account failed: network error')
+      throw new Error('Delete account failed: network error')
+    }
+
+    if (!response.ok) {
+      window.alert(`Delete account failed: HTTP ${response.status}`)
+      throw new Error(`Delete account failed: HTTP ${response.status}`)
+    }
+
+    clearStoredAuth()
+    setAuth(null)
+    setMemberships([])
+    setSessionCode(null)
+    setShowMembers(false)
+    setShowSettings(false)
   }
 
   function handleMembershipSelect(membership: SessionMembership) {
@@ -250,6 +279,7 @@ export default function App() {
           {canManageMembers && (
             <button type="button" style={signOutButton} onClick={() => setShowMembers(true)}>Members</button>
           )}
+          <button type="button" style={signOutButton} onClick={() => setShowSettings(true)}>Settings</button>
           <button type="button" style={signOutButton} onClick={handleSignOut}>Sign out</button>
         </div>
       )}
@@ -298,6 +328,13 @@ export default function App() {
           accessToken={accessToken}
           membership={activeMembership}
           onClose={() => setShowMembers(false)}
+        />
+      )}
+      {auth && showSettings && (
+        <AccountSettings
+          displayName={auth.user.displayName || auth.user.username}
+          onClose={() => setShowSettings(false)}
+          onDeleteAccount={handleDeleteAccount}
         />
       )}
     </>

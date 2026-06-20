@@ -307,6 +307,7 @@ struct AuthSheet: View {
     @State private var displayName: String = ""
     @State private var error: String?
     @State private var isBusy = false
+    @State private var showDeleteConfirmation = false
     @Environment(\.dismiss) private var dismiss
 
     enum AuthMode: Hashable {
@@ -323,6 +324,10 @@ struct AuthSheet: View {
                         Button("Sign out", role: .destructive) {
                             Task { await location.signOut() }
                         }
+                        Button("Delete account", role: .destructive) {
+                            showDeleteConfirmation = true
+                        }
+                        .disabled(isBusy)
                     }
                     legalSection
                 } else {
@@ -345,13 +350,6 @@ struct AuthSheet: View {
                             .textContentType(mode == .signIn ? .password : .newPassword)
                     }
 
-                    if let error {
-                        Section {
-                            Text(error)
-                                .foregroundStyle(.red)
-                        }
-                    }
-
                     Section {
                         Button(mode == .signIn ? "Sign In" : "Create Account") {
                             Task { await submit() }
@@ -359,6 +357,13 @@ struct AuthSheet: View {
                         .disabled(isBusy || username.trimmingCharacters(in: .whitespaces).isEmpty || password.count < 8 || (mode == .register && displayName.trimmingCharacters(in: .whitespaces).isEmpty))
                     }
                     legalSection
+                }
+
+                if let error {
+                    Section {
+                        Text(error)
+                            .foregroundStyle(.red)
+                    }
                 }
             }
             .navigationTitle("Account")
@@ -368,6 +373,14 @@ struct AuthSheet: View {
                         Button("Done") { dismiss() }
                     }
                 }
+            }
+            .alert("Delete account?", isPresented: $showDeleteConfirmation) {
+                Button("Delete", role: .destructive) {
+                    Task { await deleteAccount() }
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("This removes your account, memberships, owned sessions, and stored location rows linked to your account. This cannot be undone.")
             }
         }
     }
@@ -391,6 +404,18 @@ struct AuthSheet: View {
             case .register:
                 try await location.register(username: username, password: password, displayName: displayName)
             }
+            dismiss()
+        } catch {
+            self.error = error.localizedDescription
+        }
+        isBusy = false
+    }
+
+    private func deleteAccount() async {
+        isBusy = true
+        error = nil
+        do {
+            try await location.deleteAccount()
             dismiss()
         } catch {
             self.error = error.localizedDescription

@@ -76,6 +76,17 @@ public class AuthController(
         return NoContent();
     }
 
+    [HttpDelete("/me")]
+    public IActionResult DeleteAccount()
+    {
+        if (!tokenAuth.TryAuthenticate(Request, out var user, out var token))
+            return Unauthorized();
+
+        store.DeleteUserAccount(user.UserId);
+        store.RevokeUserToken(token.TokenId, token.AcceptedUntil);
+        return NoContent();
+    }
+
     private AuthResponse ToResponse(UserAccount account)
     {
         var token = tokenAuth.CreateToken(account);

@@ -150,6 +150,14 @@ final class LocationManager {
         clearAuthState(status: nextStatus)
     }
 
+    func deleteAccount() async throws {
+        stop()
+        guard let token = accessToken else { throw DotWatcherAPIError.missingToken }
+        status = "Deleting account..."
+        try await sendEmpty(path: "/me", method: "DELETE", token: token)
+        clearAuthState(status: "Account deleted")
+    }
+
     private func clearAuthState(status nextStatus: String) {
         accessToken = nil
         currentUser = nil
@@ -391,6 +399,29 @@ final class LocationManager {
         request.httpMethod = "POST"
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         _ = try? await URLSession.shared.data(for: request)
+    }
+
+    private func sendEmpty(path: String, method: String, token: String) async throws {
+        let normalizedPath = path.hasPrefix("/") ? path : "/\(path)"
+        guard let url = URL(string: serverBaseURL.absoluteString + normalizedPath) else {
+            throw DotWatcherAPIError.network
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = method
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+
+        do {
+            let (_, response) = try await URLSession.shared.data(for: request)
+            let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
+            guard (200..<300).contains(statusCode) else {
+                throw DotWatcherAPIError.badResponse(statusCode)
+            }
+        } catch let error as DotWatcherAPIError {
+            throw error
+        } catch {
+            throw DotWatcherAPIError.network
+        }
     }
 
     private func upsertMembership(_ membership: SessionMembership) {

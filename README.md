@@ -139,7 +139,7 @@ A native Swift app.
 
 | Actor      | Method                         | Auth                                   |
 | ---------- | ------------------------------ | -------------------------------------- |
-| App user   | `POST /auth/register`, `POST /auth/login`, `POST /auth/logout` | Username/password, returns revocable user access token |
+| App user   | `POST /auth/register`, `POST /auth/login`, `POST /auth/logout`, `DELETE /me` | Username/password, returns revocable user access token |
 | Runner     | `POST /location`               | User access token plus owner/runner session membership |
 | Viewer     | `GET /locations/{sessionCode}` | User access token plus session membership |
 | Admin/debug dashboard | `GET /sessions`, `GET /log`, recording mutations | Admin bearer token in `Authorization` header |
@@ -196,10 +196,11 @@ Invite joins create `viewer` membership for new members and preserve any existin
         |   members/{userId}/role     |
         +-----------------------------+
 
-        logout revokes current token jti
+        logout/deletion revoke access
         +-----------------------------+
         | POST /auth/logout           |
-        | revoked_user_tokens         |
+        | DELETE /me removes user row |
+        | token auth checks both      |
         +-----------------------------+
 
         separate admin/debug credential

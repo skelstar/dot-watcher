@@ -34,7 +34,7 @@ public class LocationsController(
         if (!LocationUpdateValidation.TryValidate(storedUpdate, out var validatedUpdate, out var errors))
             return BadRequest(new { error = "Invalid location update.", details = errors });
 
-        store.AddPosition(validatedUpdate);
+        store.AddPosition(validatedUpdate, user.UserId);
         logger.LogInformation("[{Session}] {Runner} → {Lat:F6}, {Lon:F6}  heading={Heading}  t={Timestamp:HH:mm:ss}",
             validatedUpdate.SessionCode, validatedUpdate.RunnerName,
             validatedUpdate.Latitude, validatedUpdate.Longitude,

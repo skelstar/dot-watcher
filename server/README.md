@@ -16,6 +16,7 @@
   - [`GET /sessions`](#get-sessions)
   - [`GET /sessions/{sessionCode}/recording`](#get-sessionssessioncoderecording)
   - [`DELETE /sessions/{sessionCode}`](#delete-sessionssessioncode)
+  - [`DELETE /me`](#delete-me)
 - [Deployment](#deployment-tatooine--home-k3s-cluster)
 - [Notes](#notes)
 
@@ -267,6 +268,24 @@ Revokes the current user access token until its expiry time plus configured cloc
 **Auth:** User access token required.
 
 **Responses:** `204` after revocation, `401` for missing, invalid, expired, or already revoked tokens.
+
+---
+
+### `DELETE /me`
+
+Deletes the authenticated app user account.
+
+**Auth:** User access token required.
+
+**Deletion behavior:**
+
+- Removes the user account row and all session memberships for that user.
+- Deletes sessions owned by the user, including their memberships, live state, and persisted location rows/recordings.
+- Deletes persisted location rows written by that authenticated user in sessions owned by someone else.
+- Invalidates outstanding user access tokens because token validation requires the account row to still exist.
+- Historical rows without account attribution, admin-uploaded recordings, and operational logs may not be attributable to a user account and may require operator deletion.
+
+**Responses:** `204` after deletion, `401` for missing, invalid, expired, revoked, or deleted-account tokens.
 
 ---
 
@@ -553,7 +572,7 @@ JwtSigningKey=your-long-random-jwt-signing-key
 - Full position history is stored in SQLite per runner per session. The `GET /locations/{sessionCode}` endpoint returns only each runner's latest live position.
 - CORS is open (`AllowAnyOrigin`) — appropriate for a private home lab deployment.
 - Session codes identify sessions but no longer grant access by themselves. Authenticated users must be stored as session members before they can read live locations or recordings.
-- User access tokens are short-lived, include a token ID, and are revoked server-side by `POST /auth/logout` until expiry plus configured clock skew.
+- User access tokens are short-lived, include a token ID, and are revoked server-side by `POST /auth/logout` until expiry plus configured clock skew. Token validation also checks that the account row still exists, so `DELETE /me` invalidates other outstanding tokens for the deleted user.
 - The web client keeps app-user access tokens in `sessionStorage` and clears older `localStorage` token keys on sign-in/sign-out.
 - Repeated failed login attempts are temporarily locked out per username/IP. This is process-local throttling and should be backed by edge or identity-provider rate limits before public launch.
 - Session listing and debug logs require bearer auth so public callers cannot enumerate all recorded sessions or recent GPS log lines.

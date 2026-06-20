@@ -73,8 +73,9 @@ const privacyPage = {
     {
       heading: 'Retention and Deletion',
       paragraphs: [
-        'Live in-memory location state may be cleared when the server restarts or when an admin clears a session. Persisted recordings and account/session data may remain until deleted by an operator or a future self-service deletion flow.',
-        `To request deletion of your account, session membership, or stored location data, contact ${contactEmail}. Include enough detail to identify the account or session.`,
+        'Live in-memory location state may be cleared when the server restarts or when an admin clears a session.',
+        'You can delete your account from account settings. Account deletion removes your account, memberships, sessions you own, and stored location rows linked to your authenticated account. Other active tokens for the deleted account stop working after deletion.',
+        `Historical records without account attribution, admin-uploaded recordings, or operational logs may not be linked to your account. For deletion help with those records, contact ${contactEmail} with enough detail to identify the account or session.`,
       ],
     },
     {

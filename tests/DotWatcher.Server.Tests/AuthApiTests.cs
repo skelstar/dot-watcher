@@ -134,4 +134,41 @@ public class AuthApiTests
 
         Assert.Equal(HttpStatusCode.Unauthorized, sessionsResponse.StatusCode);
     }
+
+    [Fact]
+    public async Task DeleteAccount_RemovesAccountOwnedSessionsAndInvalidatesToken()
+    {
+        using var factory = new DotWatcherApiFactory();
+        using var client = factory.CreateClient();
+
+        var token = await AuthTestHelpers.RegisterAsync(client, "alice", "Alice");
+        var session = await AuthTestHelpers.CreateSessionAsync(client, token);
+        await LocationsApiTests.PostLocationAsync(
+            client,
+            LocationsApiTests.TestLocation("Ignored", session.SessionCode),
+            token);
+
+        using var delete = AuthTestHelpers.WithUserToken(HttpMethod.Delete, "/me", token);
+        var deleteResponse = await client.SendAsync(delete);
+
+        Assert.Equal(HttpStatusCode.NoContent, deleteResponse.StatusCode);
+
+        using var sessions = AuthTestHelpers.WithUserToken(HttpMethod.Get, "/me/sessions", token);
+        var sessionsResponse = await client.SendAsync(sessions);
+        Assert.Equal(HttpStatusCode.Unauthorized, sessionsResponse.StatusCode);
+
+        var loginResponse = await client.PostAsJsonAsync("/auth/login", new
+        {
+            username = "alice",
+            password = "correct-horse-password",
+        });
+        Assert.Equal(HttpStatusCode.Unauthorized, loginResponse.StatusCode);
+
+        using var recording = new HttpRequestMessage(
+            HttpMethod.Get,
+            $"/sessions/{session.SessionCode}/recording");
+        recording.Headers.Authorization = new AuthenticationHeaderValue("Bearer", "test-token");
+        var recordingResponse = await client.SendAsync(recording);
+        Assert.Equal(HttpStatusCode.NotFound, recordingResponse.StatusCode);
+    }
 }
