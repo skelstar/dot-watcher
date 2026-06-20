@@ -14,6 +14,7 @@ export interface AuthenticatedUser {
 
 export interface AuthResponse {
   accessToken: string
+  expiresAt: string
   user: AuthenticatedUser
 }
 

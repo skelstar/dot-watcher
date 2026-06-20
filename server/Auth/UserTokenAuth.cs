@@ -8,13 +8,17 @@ public sealed class UserTokenAuth
 {
     private static readonly JsonSerializerOptions _jsonOptions = new(JsonSerializerDefaults.Web);
 
+    private readonly SessionStore _store;
     private readonly byte[] _signingKey;
     private readonly string _issuer;
     private readonly string _audience;
     private readonly TimeSpan _accessTokenLifetime;
+    private readonly TimeSpan _clockSkew;
 
-    public UserTokenAuth(IConfiguration configuration)
+    public UserTokenAuth(IConfiguration configuration, SessionStore store)
     {
+        _store = store;
+
         var signingKey = configuration["JwtSigningKey"]
             ?? throw new InvalidOperationException(
                 "JwtSigningKey is not configured. Set it via appsettings or the JwtSigningKey environment variable.");
@@ -26,12 +30,16 @@ public sealed class UserTokenAuth
         _issuer = configuration.GetValue<string>("JwtIssuer", "dot-watcher")!;
         _audience = configuration.GetValue<string>("JwtAudience", "dot-watcher")!;
         _accessTokenLifetime = TimeSpan.FromMinutes(
-            configuration.GetValue<int>("JwtAccessTokenMinutes", 720));
+            Math.Clamp(configuration.GetValue<int>("JwtAccessTokenMinutes", 60), 1, 1440));
+        _clockSkew = TimeSpan.FromSeconds(
+            Math.Clamp(configuration.GetValue<int>("JwtClockSkewSeconds", 60), 0, 300));
     }
 
-    public string CreateToken(UserAccount account)
+    public IssuedUserToken CreateToken(UserAccount account)
     {
         var now = DateTimeOffset.UtcNow;
+        var expiresAt = now.Add(_accessTokenLifetime);
+        var tokenId = Guid.NewGuid().ToString("N");
         var header = new Dictionary<string, object>
         {
             ["alg"] = "HS256",
@@ -45,19 +53,30 @@ public sealed class UserTokenAuth
             ["username"] = account.Username,
             ["name"] = account.DisplayName,
             ["iat"] = now.ToUnixTimeSeconds(),
-            ["exp"] = now.Add(_accessTokenLifetime).ToUnixTimeSeconds(),
+            ["nbf"] = now.ToUnixTimeSeconds(),
+            ["exp"] = expiresAt.ToUnixTimeSeconds(),
+            ["jti"] = tokenId,
         };
 
         var headerPart = Base64UrlEncode(JsonSerializer.SerializeToUtf8Bytes(header, _jsonOptions));
         var payloadPart = Base64UrlEncode(JsonSerializer.SerializeToUtf8Bytes(payload, _jsonOptions));
         var signingInput = $"{headerPart}.{payloadPart}";
         var signature = Sign(signingInput);
-        return $"{signingInput}.{signature}";
+        return new IssuedUserToken($"{signingInput}.{signature}", expiresAt, tokenId);
     }
 
     public bool TryAuthenticate(HttpRequest request, out AuthenticatedUser user)
     {
+        return TryAuthenticate(request, out user, out _);
+    }
+
+    public bool TryAuthenticate(
+        HttpRequest request,
+        out AuthenticatedUser user,
+        out ValidatedUserToken token)
+    {
         user = default!;
+        token = default!;
 
         if (!request.Headers.TryGetValue("Authorization", out var auth))
             return false;
@@ -67,12 +86,16 @@ public sealed class UserTokenAuth
         if (!value.StartsWith(prefix, StringComparison.Ordinal))
             return false;
 
-        return TryValidateToken(value[prefix.Length..], out user);
+        return TryValidateToken(value[prefix.Length..], out user, out token);
     }
 
-    private bool TryValidateToken(string token, out AuthenticatedUser user)
+    private bool TryValidateToken(
+        string token,
+        out AuthenticatedUser user,
+        out ValidatedUserToken validatedToken)
     {
         user = default!;
+        validatedToken = default!;
         var parts = token.Split('.');
         if (parts.Length != 3)
             return false;
@@ -82,9 +105,13 @@ public sealed class UserTokenAuth
         if (!FixedTimeEquals(parts[2], expectedSignature))
             return false;
 
+        JwtHeader header;
         JwtPayload payload;
         try
         {
+            header = JsonSerializer.Deserialize<JwtHeader>(
+                Base64UrlDecode(parts[0]),
+                _jsonOptions) ?? new();
             payload = JsonSerializer.Deserialize<JwtPayload>(
                 Base64UrlDecode(parts[1]),
                 _jsonOptions) ?? new();
@@ -98,18 +125,31 @@ public sealed class UserTokenAuth
             return false;
         }
 
-        var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-        if (payload.Iss != _issuer ||
+        var now = DateTimeOffset.UtcNow;
+        if (header.Alg != "HS256" ||
+            header.Typ != "JWT" ||
+            payload.Iss != _issuer ||
             payload.Aud != _audience ||
-            payload.Exp <= now ||
+            payload.Nbf > now.Add(_clockSkew).ToUnixTimeSeconds() ||
+            payload.Exp <= now.Subtract(_clockSkew).ToUnixTimeSeconds() ||
+            payload.Iat <= 0 ||
             string.IsNullOrWhiteSpace(payload.Sub) ||
             string.IsNullOrWhiteSpace(payload.Username) ||
-            string.IsNullOrWhiteSpace(payload.Name))
+            string.IsNullOrWhiteSpace(payload.Name) ||
+            string.IsNullOrWhiteSpace(payload.Jti))
         {
             return false;
         }
 
+        if (_store.IsUserTokenRevoked(payload.Jti, now))
+            return false;
+
         user = new AuthenticatedUser(payload.Sub, payload.Username, payload.Name);
+        var expiresAt = DateTimeOffset.FromUnixTimeSeconds(payload.Exp);
+        validatedToken = new ValidatedUserToken(
+            payload.Jti,
+            expiresAt,
+            expiresAt.Add(_clockSkew));
         return true;
     }
 
@@ -146,6 +186,12 @@ public sealed class UserTokenAuth
             CryptographicOperations.FixedTimeEquals(leftBytes, rightBytes);
     }
 
+    private sealed record JwtHeader
+    {
+        public string? Alg { get; init; }
+        public string? Typ { get; init; }
+    }
+
     private sealed record JwtPayload
     {
         public string? Iss { get; init; }
@@ -153,6 +199,9 @@ public sealed class UserTokenAuth
         public string? Sub { get; init; }
         public string? Username { get; init; }
         public string? Name { get; init; }
+        public string? Jti { get; init; }
+        public long Iat { get; init; }
+        public long Nbf { get; init; }
         public long Exp { get; init; }
     }
 }

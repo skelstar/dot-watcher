@@ -26,7 +26,20 @@ public record LoginRequest(
 
 public record AuthResponse(
     string AccessToken,
+    DateTimeOffset ExpiresAt,
     AuthenticatedUser User
+);
+
+public record IssuedUserToken(
+    string Value,
+    DateTimeOffset ExpiresAt,
+    string TokenId
+);
+
+public record ValidatedUserToken(
+    string TokenId,
+    DateTimeOffset ExpiresAt,
+    DateTimeOffset AcceptedUntil
 );
 
 public record CreateSessionRequest(

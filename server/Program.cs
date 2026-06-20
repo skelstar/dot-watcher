@@ -9,6 +9,7 @@ builder.Logging.AddProvider(new LogBufferProvider(logBuffer));
 
 builder.Services.AddSingleton<BearerTokenAuth>();
 builder.Services.AddSingleton<UserTokenAuth>();
+builder.Services.AddSingleton<AuthAttemptLimiter>();
 builder.Services.AddSingleton(sp =>
 {
     var dbPath = sp.GetRequiredService<IConfiguration>().GetValue<string>("DbPath", "dotwatcher.db")!;

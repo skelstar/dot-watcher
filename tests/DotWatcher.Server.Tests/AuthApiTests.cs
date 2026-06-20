@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Xunit;
@@ -24,6 +25,8 @@ public class AuthApiTests
 
         using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
         Assert.False(string.IsNullOrWhiteSpace(body.RootElement.GetProperty("accessToken").GetString()));
+        Assert.True(body.RootElement.TryGetProperty("expiresAt", out var expiresAt));
+        Assert.True(DateTimeOffset.Parse(expiresAt.GetString()!) > DateTimeOffset.UtcNow);
         Assert.Equal("alice", body.RootElement.GetProperty("user").GetProperty("username").GetString());
         Assert.Equal("Alice", body.RootElement.GetProperty("user").GetProperty("displayName").GetString());
     }
@@ -64,6 +67,7 @@ public class AuthApiTests
 
         using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
         Assert.False(string.IsNullOrWhiteSpace(body.RootElement.GetProperty("accessToken").GetString()));
+        Assert.True(body.RootElement.TryGetProperty("expiresAt", out _));
     }
 
     [Fact]
@@ -81,5 +85,53 @@ public class AuthApiTests
         });
 
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Login_AfterRepeatedInvalidCredentials_ReturnsTooManyRequests()
+    {
+        using var factory = new DotWatcherApiFactory();
+        using var client = factory.CreateClient();
+
+        await AuthTestHelpers.RegisterAsync(client, "alice", "Alice");
+
+        for (var i = 0; i < 5; i++)
+        {
+            var failed = await client.PostAsJsonAsync("/auth/login", new
+            {
+                username = "alice",
+                password = "wrong-password",
+            });
+            Assert.Equal(HttpStatusCode.Unauthorized, failed.StatusCode);
+        }
+
+        var locked = await client.PostAsJsonAsync("/auth/login", new
+        {
+            username = "alice",
+            password = "correct-horse-password",
+        });
+
+        Assert.Equal(HttpStatusCode.TooManyRequests, locked.StatusCode);
+        Assert.True(locked.Headers.Contains("Retry-After"));
+    }
+
+    [Fact]
+    public async Task Logout_RevokesCurrentAccessToken()
+    {
+        using var factory = new DotWatcherApiFactory();
+        using var client = factory.CreateClient();
+
+        var token = await AuthTestHelpers.RegisterAsync(client, "alice", "Alice");
+
+        using var logout = new HttpRequestMessage(HttpMethod.Post, "/auth/logout");
+        logout.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        var logoutResponse = await client.SendAsync(logout);
+
+        Assert.Equal(HttpStatusCode.NoContent, logoutResponse.StatusCode);
+
+        using var sessions = AuthTestHelpers.WithUserToken(HttpMethod.Get, "/me/sessions", token);
+        var sessionsResponse = await client.SendAsync(sessions);
+
+        Assert.Equal(HttpStatusCode.Unauthorized, sessionsResponse.StatusCode);
     }
 }

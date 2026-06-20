@@ -29,6 +29,12 @@ export default function AuthPrompt({ serverUrl, onAuth }: Props) {
       })
 
       if (!response.ok) {
+        if (response.status === 429) {
+          const retryAfter = response.headers.get('Retry-After')
+          setError(retryAfter ? `Too many attempts. Try again in ${retryAfter} seconds.` : 'Too many attempts. Try again later.')
+          return
+        }
+
         setError(`Sign ${mode === 'login' ? 'in' : 'up'} failed.`)
         return
       }

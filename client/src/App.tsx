@@ -15,6 +15,9 @@ mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN as string
 
 const POLL_INTERVAL_MS: number = parseInt(import.meta.env.VITE_POLL_INTERVAL_MS ?? '2000', 10)
 const SERVER_URL: string = import.meta.env.VITE_SERVER_URL ?? '/api'
+const AUTH_TOKEN_KEY = 'userAccessToken'
+const AUTH_EXPIRES_KEY = 'userAccessTokenExpiresAt'
+const AUTH_USER_KEY = 'user'
 
 interface RouteState {
   sessionCode: string | null
@@ -32,20 +35,36 @@ function parseUrl(): RouteState {
 }
 
 function readStoredAuth(): AuthResponse | null {
-  const accessToken = localStorage.getItem('userAccessToken')
+  const accessToken = sessionStorage.getItem(AUTH_TOKEN_KEY)
   if (!accessToken) return null
 
-  const storedUser = localStorage.getItem('user')
+  const expiresAt = sessionStorage.getItem(AUTH_EXPIRES_KEY)
+  const expiresAtMs = expiresAt ? Date.parse(expiresAt) : NaN
+  if (!Number.isFinite(expiresAtMs) || expiresAtMs <= Date.now()) {
+    clearStoredAuth()
+    return null
+  }
+
+  const storedUser = sessionStorage.getItem(AUTH_USER_KEY)
   let user: AuthenticatedUser = { userId: '', username: '', displayName: '' }
   if (storedUser) {
     try {
       user = JSON.parse(storedUser) as AuthenticatedUser
     } catch {
-      localStorage.removeItem('user')
+      sessionStorage.removeItem(AUTH_USER_KEY)
     }
   }
 
-  return { accessToken, user }
+  return { accessToken, expiresAt, user }
+}
+
+function clearStoredAuth() {
+  sessionStorage.removeItem(AUTH_TOKEN_KEY)
+  sessionStorage.removeItem(AUTH_EXPIRES_KEY)
+  sessionStorage.removeItem(AUTH_USER_KEY)
+  localStorage.removeItem(AUTH_TOKEN_KEY)
+  localStorage.removeItem(AUTH_EXPIRES_KEY)
+  localStorage.removeItem(AUTH_USER_KEY)
 }
 
 export default function App() {
@@ -158,14 +177,23 @@ export default function App() {
   }
 
   function handleAuth(nextAuth: AuthResponse) {
-    localStorage.setItem('userAccessToken', nextAuth.accessToken)
-    localStorage.setItem('user', JSON.stringify(nextAuth.user))
+    clearStoredAuth()
+    sessionStorage.setItem(AUTH_TOKEN_KEY, nextAuth.accessToken)
+    sessionStorage.setItem(AUTH_EXPIRES_KEY, nextAuth.expiresAt)
+    sessionStorage.setItem(AUTH_USER_KEY, JSON.stringify(nextAuth.user))
     setAuth(nextAuth)
   }
 
   function handleSignOut() {
-    localStorage.removeItem('userAccessToken')
-    localStorage.removeItem('user')
+    const tokenToRevoke = accessToken
+    if (tokenToRevoke) {
+      void fetch(`${SERVER_URL}/auth/logout`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${tokenToRevoke}` },
+      }).catch(() => undefined)
+    }
+
+    clearStoredAuth()
     setAuth(null)
     setMemberships([])
     setSessionCode(null)

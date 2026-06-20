@@ -66,6 +66,13 @@ public class SessionStore(string dbPath)
             CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
             CREATE INDEX IF NOT EXISTS idx_app_sessions_invite ON app_sessions(invite_code);
             CREATE INDEX IF NOT EXISTS idx_session_members_user ON session_members(user_id);
+
+            CREATE TABLE IF NOT EXISTS revoked_user_tokens (
+                token_id   TEXT PRIMARY KEY,
+                expires_at TEXT NOT NULL,
+                revoked_at TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_revoked_user_tokens_expires_at ON revoked_user_tokens(expires_at);
             """;
         cmd.ExecuteNonQuery();
     }
@@ -107,6 +114,38 @@ public class SessionStore(string dbPath)
         return reader.Read()
             ? new UserAccount(reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetString(3))
             : null;
+    }
+
+    public void RevokeUserToken(string tokenId, DateTimeOffset expiresAt)
+    {
+        using var conn = Connect();
+        DeleteExpiredRevokedTokens(conn, DateTimeOffset.UtcNow);
+
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = """
+            INSERT OR IGNORE INTO revoked_user_tokens (token_id, expires_at, revoked_at)
+            VALUES ($tokenId, $expiresAt, $revokedAt)
+            """;
+        cmd.Parameters.AddWithValue("$tokenId", tokenId);
+        cmd.Parameters.AddWithValue("$expiresAt", expiresAt.ToString("O"));
+        cmd.Parameters.AddWithValue("$revokedAt", DateTimeOffset.UtcNow.ToString("O"));
+        cmd.ExecuteNonQuery();
+    }
+
+    public bool IsUserTokenRevoked(string tokenId, DateTimeOffset now)
+    {
+        using var conn = Connect();
+        DeleteExpiredRevokedTokens(conn, now);
+
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = """
+            SELECT COUNT(1)
+            FROM revoked_user_tokens
+            WHERE token_id = $tokenId AND expires_at > $now
+            """;
+        cmd.Parameters.AddWithValue("$tokenId", tokenId);
+        cmd.Parameters.AddWithValue("$now", now.ToString("O"));
+        return (long)(cmd.ExecuteScalar() ?? 0L) > 0;
     }
 
     public SessionMembership CreateSessionForUser(string userId, string displayName, string? requestedCode = null)
@@ -460,6 +499,14 @@ public class SessionStore(string dbPath)
         cmd.Parameters.AddWithValue("$role", role);
         cmd.Parameters.AddWithValue("$displayName", displayName);
         cmd.Parameters.AddWithValue("$joinedAt", joinedAt);
+        cmd.ExecuteNonQuery();
+    }
+
+    private static void DeleteExpiredRevokedTokens(SqliteConnection conn, DateTimeOffset now)
+    {
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "DELETE FROM revoked_user_tokens WHERE expires_at <= $now";
+        cmd.Parameters.AddWithValue("$now", now.ToString("O"));
         cmd.ExecuteNonQuery();
     }
 

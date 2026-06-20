@@ -3,7 +3,10 @@ using Microsoft.AspNetCore.Mvc;
 namespace DotWatcher.Server.Controllers;
 
 [ApiController]
-public class AuthController(SessionStore store, UserTokenAuth tokenAuth) : ControllerBase
+public class AuthController(
+    SessionStore store,
+    UserTokenAuth tokenAuth,
+    AuthAttemptLimiter attemptLimiter) : ControllerBase
 {
     [HttpPost("/auth/register")]
     public IActionResult Register([FromBody] RegisterRequest? request)
@@ -45,17 +48,42 @@ public class AuthController(SessionStore store, UserTokenAuth tokenAuth) : Contr
         if (username is null || request.Password is null)
             return Unauthorized();
 
+        var attemptKey = AuthAttemptLimiter.KeyFor(HttpContext, username);
+        if (attemptLimiter.IsLocked(attemptKey, out var retryAfter))
+        {
+            Response.Headers["Retry-After"] = Math.Ceiling(retryAfter.TotalSeconds).ToString(System.Globalization.CultureInfo.InvariantCulture);
+            return StatusCode(StatusCodes.Status429TooManyRequests, new { error = "Too many failed login attempts." });
+        }
+
         var account = store.GetUserByUsername(username);
         if (account is null || !PasswordHasher.Verify(request.Password, account.PasswordHash))
+        {
+            attemptLimiter.RecordFailure(attemptKey);
             return Unauthorized();
+        }
 
+        attemptLimiter.RecordSuccess(attemptKey);
         return Ok(ToResponse(account));
     }
 
-    private AuthResponse ToResponse(UserAccount account) =>
-        new(
-            tokenAuth.CreateToken(account),
+    [HttpPost("/auth/logout")]
+    public IActionResult Logout()
+    {
+        if (!tokenAuth.TryAuthenticate(Request, out _, out var token))
+            return Unauthorized();
+
+        store.RevokeUserToken(token.TokenId, token.AcceptedUntil);
+        return NoContent();
+    }
+
+    private AuthResponse ToResponse(UserAccount account)
+    {
+        var token = tokenAuth.CreateToken(account);
+        return new AuthResponse(
+            token.Value,
+            token.ExpiresAt,
             new AuthenticatedUser(account.Id, account.Username, account.DisplayName));
+    }
 
     private static string? NormalizeUsername(string? value)
     {

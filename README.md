@@ -135,7 +135,7 @@ A native Swift app.
 
 | Actor      | Method                         | Auth                                   |
 | ---------- | ------------------------------ | -------------------------------------- |
-| App user   | `POST /auth/register`, `POST /auth/login` | Username/password, returns user access token |
+| App user   | `POST /auth/register`, `POST /auth/login`, `POST /auth/logout` | Username/password, returns revocable user access token |
 | Runner     | `POST /location`               | User access token plus owner/runner session membership |
 | Viewer     | `GET /locations/{sessionCode}` | User access token plus session membership |
 | Admin/debug dashboard | `GET /sessions`, `GET /log`, recording mutations | Admin bearer token in `Authorization` header |
@@ -151,6 +151,7 @@ Session codes are identifiers, not credentials. Invite codes/links are used to j
                             v
                   +-------------------+
                   | User access token |
+                  | exp + jti claims  |
                   | Authorization:    |
                   | Bearer <token>    |
                   +---------+---------+
@@ -181,6 +182,12 @@ Session codes are identifiers, not credentials. Invite codes/links are used to j
               | POST /location          |
               | GET /.../recording      |
               +--------------------------+
+
+        logout revokes current token jti
+        +-----------------------------+
+        | POST /auth/logout           |
+        | revoked_user_tokens         |
+        +-----------------------------+
 
         separate admin/debug credential
         +-----------------------------+

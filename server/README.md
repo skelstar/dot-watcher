@@ -71,7 +71,10 @@
 | `JwtSigningKey` | *(required)* | HMAC signing key for user access tokens. Use a high-entropy secret of at least 32 bytes |
 | `JwtIssuer` | `dot-watcher` | Issuer claim used for local user access tokens |
 | `JwtAudience` | `dot-watcher` | Audience claim used for local user access tokens |
-| `JwtAccessTokenMinutes` | `720` | User access token lifetime in minutes |
+| `JwtAccessTokenMinutes` | `60` | User access token lifetime in minutes, clamped to 1-1440 |
+| `JwtClockSkewSeconds` | `60` | Clock skew allowed while validating user access tokens, clamped to 0-300 |
+| `AuthMaxFailedAttempts` | `5` | Failed login attempts allowed per username/IP before temporary lockout |
+| `AuthLockoutMinutes` | `15` | Temporary login lockout duration after repeated failures |
 | `DbPath` | `dotwatcher.db` | SQLite database file used for persisted session recordings |
 | `RecordingsPath` | `recordings` | Directory scanned on startup for legacy NDJSON recordings to import into SQLite |
 
@@ -234,7 +237,7 @@ Creates a local app user account and returns a user access token.
 }
 ```
 
-**Responses:** `200` with `{ "accessToken": "...", "user": { ... } }`, `400` for invalid input, `409` for an existing username.
+**Responses:** `200` with `{ "accessToken": "...", "expiresAt": "...", "user": { ... } }`, `400` for invalid input, `409` for an existing username.
 
 ---
 
@@ -253,7 +256,17 @@ Authenticates a local app user and returns a user access token.
 }
 ```
 
-**Responses:** `200` with `{ "accessToken": "...", "user": { ... } }`, `401` for invalid credentials.
+**Responses:** `200` with `{ "accessToken": "...", "expiresAt": "...", "user": { ... } }`, `401` for invalid credentials, `429` with `Retry-After` after repeated failed login attempts.
+
+---
+
+### `POST /auth/logout`
+
+Revokes the current user access token until its expiry time plus configured clock skew.
+
+**Auth:** User access token required.
+
+**Responses:** `204` after revocation, `401` for missing, invalid, expired, or already revoked tokens.
 
 ---
 
@@ -489,5 +502,9 @@ JwtSigningKey=your-long-random-jwt-signing-key
 - Full position history is stored in SQLite per runner per session. The `GET /locations/{sessionCode}` endpoint returns only each runner's latest live position.
 - CORS is open (`AllowAnyOrigin`) — appropriate for a private home lab deployment.
 - Session codes identify sessions but no longer grant access by themselves. Authenticated users must be stored as session members before they can read live locations or recordings.
+- User access tokens are short-lived, include a token ID, and are revoked server-side by `POST /auth/logout` until expiry plus configured clock skew.
+- The web client keeps app-user access tokens in `sessionStorage` and clears older `localStorage` token keys on sign-in/sign-out.
+- Repeated failed login attempts are temporarily locked out per username/IP. This is process-local throttling and should be backed by edge or identity-provider rate limits before public launch.
 - Session listing and debug logs require bearer auth so public callers cannot enumerate all recorded sessions or recent GPS log lines.
-`runnerName` is accepted for backwards-compatible payload shape, but the server stores the authenticated member display name instead of trusting this client-supplied value.
+- `runnerName` is accepted for backwards-compatible payload shape, but the server stores the authenticated member display name instead of trusting this client-supplied value.
+- The local HMAC token implementation remains a prototype identity layer. For public or semi-public deployment, prefer ASP.NET Core authentication/JWT bearer middleware or an OIDC provider with refresh tokens, key rotation, account recovery, and centralized audit/rate-limit controls.
