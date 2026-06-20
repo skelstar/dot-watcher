@@ -5,6 +5,7 @@ import mapboxgl from 'mapbox-gl'
 import type { RunnerPosition } from './types.ts'
 import Arrow, { ARROW_SIZE } from './components/Arrow.tsx'
 import Dot from './components/Dot.tsx'
+import { livePollingError, shouldPollLivePositions } from './useRunnerMarkersLogic.ts'
 
 interface MarkerEntry {
   marker: mapboxgl.Marker
@@ -118,8 +119,9 @@ export function useRunnerMarkers(
   }
 
   // Live polling effect — skipped when replayPositions is provided
+  // TODO: Add e2e coverage for signed-in member polling, 401/403 handling, and replay mode.
   useEffect(() => {
-    if (!sessionCode || !accessToken || replayPositions !== undefined) {
+    if (!shouldPollLivePositions(sessionCode, accessToken, replayPositions !== undefined)) {
       setError(null)
       return
     }
@@ -134,7 +136,7 @@ export function useRunnerMarkers(
         })
         if (cancelled) return
         if (!res.ok) {
-          setError(res.status === 403 ? 'No membership for this session.' : `Live update failed: HTTP ${res.status}`)
+          setError(livePollingError(res.status))
           return
         }
         const runnerGroups: RunnerPosition[][] = await res.json()
