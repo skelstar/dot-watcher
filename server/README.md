@@ -53,7 +53,7 @@
                           +---------------------+
 ```
 
-`Program.cs` wires startup, static file hosting, CORS, controller routing, logging, and startup migration. `Controllers/*.cs` owns the HTTP endpoints. `SessionStore.cs` owns both the current in-memory session positions and the SQLite-backed recording history.
+`Program.cs` wires startup, static file hosting, CORS, controller routing, logging, and startup migration. `Controllers/*.cs` owns the HTTP endpoints. `Stores/SessionStore.cs` owns both the current in-memory session positions and the SQLite-backed recording history.
 
 ---
 

@@ -171,9 +171,10 @@ Include a short rationale and next steps.
 
 - `server/Program.cs` - startup, DI, static files, CORS, controller routing, and legacy NDJSON migration.
 - `server/Controllers/` - HTTP API endpoints.
-- `server/SessionStore.cs` - in-memory live positions and SQLite-backed recordings.
-- `server/Models.cs` - API payload records.
-- `server/LogBuffer.cs` - debug dashboard log buffer.
+- `server/Auth/` - bearer token authorization helper.
+- `server/Stores/` - in-memory live positions and SQLite-backed recordings.
+- `server/Models/` - API payload records.
+- `server/Logging/` - debug dashboard log buffering and logging provider.
 - `server/wwwroot/index.html` - debug dashboard.
 - `server/DotWatcher.Server.Tests/` - API integration tests.
 - `client/` - web viewer.
