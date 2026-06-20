@@ -8,15 +8,40 @@ namespace DotWatcher.Server.Tests;
 public class LogsApiTests
 {
     [Fact]
-    public async Task GetLog_ReturnsBufferedApplicationLogs()
+    public async Task GetLog_WithoutBearerToken_ReturnsUnauthorized()
     {
         using var factory = new DotWatcherApiFactory();
         using var client = factory.CreateClient();
 
-        await LocationsApiTests.PostLocationAsync(client,
-            LocationsApiTests.TestLocation("Alice", "SUNSET23"));
-
         var response = await client.GetAsync("/log");
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task GetLog_WithInvalidBearerToken_ReturnsUnauthorized()
+    {
+        using var factory = new DotWatcherApiFactory();
+        using var client = factory.CreateClient();
+
+        var response = await SendLogWithBearerAsync(client, HttpMethod.Get, bearerToken: "wrong-token");
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task GetLog_WithBearerToken_ReturnsBufferedApplicationLogs()
+    {
+        using var factory = new DotWatcherApiFactory();
+        using var client = factory.CreateClient();
+        var token = await AuthTestHelpers.RegisterAsync(client, "alice", "Alice");
+        await AuthTestHelpers.CreateSessionAsync(client, token);
+
+        await LocationsApiTests.PostLocationAsync(client,
+            LocationsApiTests.TestLocation("Ignored", "SUNSET23"),
+            token);
+
+        var response = await SendLogWithBearerAsync(client, HttpMethod.Get);
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
@@ -42,7 +67,7 @@ public class LogsApiTests
         using var factory = new DotWatcherApiFactory();
         using var client = factory.CreateClient();
 
-        var response = await DeleteLogWithBearerAsync(client, bearerToken: "wrong-token");
+        var response = await SendLogWithBearerAsync(client, HttpMethod.Delete, bearerToken: "wrong-token");
 
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
@@ -52,24 +77,29 @@ public class LogsApiTests
     {
         using var factory = new DotWatcherApiFactory();
         using var client = factory.CreateClient();
+        var token = await AuthTestHelpers.RegisterAsync(client, "alice", "Alice");
+        await AuthTestHelpers.CreateSessionAsync(client, token);
 
         await LocationsApiTests.PostLocationAsync(client,
-            LocationsApiTests.TestLocation("Alice", "SUNSET23"));
+            LocationsApiTests.TestLocation("Ignored", "SUNSET23"),
+            token);
 
-        var cleared = await DeleteLogWithBearerAsync(client);
+        var cleared = await SendLogWithBearerAsync(client, HttpMethod.Delete);
 
         Assert.Equal(HttpStatusCode.NoContent, cleared.StatusCode);
 
-        var lines = await client.GetFromJsonAsync<List<string>>("/log");
+        var logResponse = await SendLogWithBearerAsync(client, HttpMethod.Get);
+        var lines = await logResponse.Content.ReadFromJsonAsync<List<string>>();
         Assert.NotNull(lines);
         Assert.Empty(lines);
     }
 
-    private static async Task<HttpResponseMessage> DeleteLogWithBearerAsync(
+    private static async Task<HttpResponseMessage> SendLogWithBearerAsync(
         HttpClient client,
+        HttpMethod method,
         string bearerToken = "test-token")
     {
-        using var request = new HttpRequestMessage(HttpMethod.Delete, "/log");
+        using var request = new HttpRequestMessage(method, "/log");
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
 
         return await client.SendAsync(request);

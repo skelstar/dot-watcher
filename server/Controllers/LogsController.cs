@@ -6,8 +6,13 @@ namespace DotWatcher.Server.Controllers;
 public class LogsController(LogBuffer log, BearerTokenAuth auth) : ControllerBase
 {
     [HttpGet("/log")]
-    public IActionResult GetLog() =>
-        Ok(log.GetAll());
+    public IActionResult GetLog()
+    {
+        if (!auth.IsAuthorized(Request))
+            return Unauthorized();
+
+        return Ok(log.GetAll());
+    }
 
     [HttpDelete("/log")]
     public IActionResult ClearLog()

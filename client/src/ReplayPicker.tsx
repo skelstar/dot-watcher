@@ -1,45 +1,32 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 
 interface Props {
-  serverUrl: string
   onSelect: (sessionCode: string) => void
 }
 
-export default function ReplayPicker({ serverUrl, onSelect }: Props) {
-  const [sessions, setSessions] = useState<string[] | null>(null)
-  const [error, setError] = useState(false)
+export default function ReplayPicker({ onSelect }: Props) {
+  const [code, setCode] = useState('')
 
-  useEffect(() => {
-    fetch(`${serverUrl}/sessions`)
-      .then(r => r.json() as Promise<string[]>)
-      .then(setSessions)
-      .catch(() => setError(true))
-  }, [serverUrl])
+  function submit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    const upper = code.trim().toUpperCase()
+    if (upper) onSelect(upper)
+  }
 
   return (
     <div style={overlay}>
       <div style={card}>
         <h1 style={heading}>Replay a Run</h1>
-
-        {error && <p style={errorText}>Could not load sessions.</p>}
-
-        {!error && sessions === null && <p style={sub}>Loading…</p>}
-
-        {sessions !== null && sessions.length === 0 && (
-          <p style={sub}>No recorded sessions found.</p>
-        )}
-
-        {sessions !== null && sessions.length > 0 && (
-          <ul style={list}>
-            {sessions.map(code => (
-              <li key={code}>
-                <button style={item} onClick={() => onSelect(code)}>
-                  {code}
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
+        <form style={form} onSubmit={submit}>
+          <input
+            value={code}
+            onChange={event => setCode(event.target.value)}
+            placeholder="Session code"
+            autoCapitalize="characters"
+            style={input}
+          />
+          <button type="submit" style={item}>Open Replay</button>
+        </form>
       </div>
     </div>
   )
@@ -76,27 +63,22 @@ const heading: React.CSSProperties = {
   margin: 0,
 }
 
-const sub: React.CSSProperties = {
-  fontSize: '0.9rem',
-  color: '#555',
-  textAlign: 'center',
-  fontFamily: 'system-ui, sans-serif',
-  margin: 0,
-}
-
-const errorText: React.CSSProperties = {
-  ...sub,
-  color: '#ef4444',
-}
-
-const list: React.CSSProperties = {
-  listStyle: 'none',
+const form: React.CSSProperties = {
   margin: 0,
   padding: 0,
   display: 'flex',
   flexDirection: 'column',
-  gap: 6,
-  overflowY: 'auto',
+  gap: 8,
+}
+
+const input: React.CSSProperties = {
+  width: '100%',
+  padding: '0.7rem 0.8rem',
+  border: '1px solid #d0d7de',
+  borderRadius: 8,
+  fontFamily: 'system-ui, sans-serif',
+  fontSize: '1rem',
+  textTransform: 'uppercase',
 }
 
 const item: React.CSSProperties = {

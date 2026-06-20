@@ -7,6 +7,7 @@ builder.Services.AddSingleton(logBuffer);
 builder.Logging.AddProvider(new LogBufferProvider(logBuffer));
 
 builder.Services.AddSingleton<BearerTokenAuth>();
+builder.Services.AddSingleton<UserTokenAuth>();
 builder.Services.AddSingleton(sp =>
 {
     var dbPath = sp.GetRequiredService<IConfiguration>().GetValue<string>("DbPath", "dotwatcher.db")!;
@@ -27,6 +28,7 @@ app.UseCors();
 app.MapControllers();
 
 _ = app.Services.GetRequiredService<BearerTokenAuth>();
+_ = app.Services.GetRequiredService<UserTokenAuth>();
 var store = app.Services.GetRequiredService<SessionStore>();
 
 // Migrate any existing NDJSON recordings into SQLite

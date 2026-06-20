@@ -6,6 +6,7 @@ import Legend from './Legend.tsx'
 import MapMenu from './MapMenu.tsx'
 import ReplayControls from './ReplayControls.tsx'
 import ReplayPicker from './ReplayPicker.tsx'
+import AuthPrompt from './AuthPrompt.tsx'
 import { useRunnerMarkers } from './useRunnerMarkers.ts'
 import { useReplay } from './useReplay.ts'
 
@@ -27,6 +28,7 @@ export default function App() {
   const mapRef = useRef<mapboxgl.Map | null>(null)
   const { sessionCode: initialCode, isReplay } = parseUrl()
   const [sessionCode, setSessionCode] = useState<string | null>(initialCode)
+  const [accessToken, setAccessToken] = useState<string | null>(() => localStorage.getItem('userAccessToken'))
   const [menu, setMenu] = useState<{ x: number; y: number; lng: number; lat: number } | null>(null)
 
   useEffect(() => {
@@ -57,24 +59,25 @@ export default function App() {
     }
   }, [])
 
-  const replay = useReplay(isReplay ? sessionCode : null, SERVER_URL)
+  const replay = useReplay(isReplay ? sessionCode : null, SERVER_URL, accessToken)
 
   const { offScreenRunners, centerOnRunner, fitAll } = useRunnerMarkers(
     mapRef,
     sessionCode,
     SERVER_URL,
+    accessToken,
     POLL_INTERVAL_MS,
     isReplay ? replay.positions : undefined,
     isReplay ? replay.virtualNowMs : undefined,
   )
 
   async function sendChester(lng: number, lat: number) {
-    if (!sessionCode) return
+    if (!sessionCode || !accessToken) return
     await fetch(`${SERVER_URL}/location`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${import.meta.env.VITE_BEARER_TOKEN}`,
+        'Authorization': `Bearer ${accessToken}`,
       },
       body: JSON.stringify({
         runnerName: 'Chester',
@@ -112,8 +115,9 @@ export default function App() {
         />
       )}
       {isReplay && sessionCode && <ReplayControls replay={replay} onFitAll={fitAll} />}
-      {isReplay && !sessionCode && <ReplayPicker serverUrl={SERVER_URL} onSelect={handleReplaySelect} />}
-      {!isReplay && !sessionCode && <SessionPrompt onSubmit={handleSessionSubmit} />}
+      {!accessToken && <AuthPrompt serverUrl={SERVER_URL} onAuth={setAccessToken} />}
+      {accessToken && isReplay && !sessionCode && <ReplayPicker onSelect={handleReplaySelect} />}
+      {accessToken && !isReplay && !sessionCode && <SessionPrompt onSubmit={handleSessionSubmit} />}
     </>
   )
 }

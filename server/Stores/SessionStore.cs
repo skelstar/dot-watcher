@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.Data.Sqlite;
@@ -34,6 +35,37 @@ public class SessionStore(string dbPath)
             );
             CREATE INDEX IF NOT EXISTS idx_session        ON location_updates(session_code);
             CREATE INDEX IF NOT EXISTS idx_session_runner ON location_updates(session_code, runner_name);
+
+            CREATE TABLE IF NOT EXISTS users (
+                id            TEXT PRIMARY KEY,
+                username      TEXT NOT NULL UNIQUE,
+                display_name  TEXT NOT NULL,
+                password_hash TEXT NOT NULL,
+                created_at    TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS app_sessions (
+                session_code  TEXT PRIMARY KEY,
+                invite_code   TEXT NOT NULL UNIQUE,
+                owner_user_id TEXT NOT NULL,
+                created_at    TEXT NOT NULL,
+                FOREIGN KEY(owner_user_id) REFERENCES users(id)
+            );
+
+            CREATE TABLE IF NOT EXISTS session_members (
+                session_code TEXT NOT NULL,
+                user_id      TEXT NOT NULL,
+                role         TEXT NOT NULL,
+                display_name TEXT NOT NULL,
+                joined_at    TEXT NOT NULL,
+                PRIMARY KEY(session_code, user_id),
+                FOREIGN KEY(session_code) REFERENCES app_sessions(session_code),
+                FOREIGN KEY(user_id) REFERENCES users(id)
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
+            CREATE INDEX IF NOT EXISTS idx_app_sessions_invite ON app_sessions(invite_code);
+            CREATE INDEX IF NOT EXISTS idx_session_members_user ON session_members(user_id);
             """;
         cmd.ExecuteNonQuery();
     }
@@ -43,6 +75,158 @@ public class SessionStore(string dbPath)
         var conn = new SqliteConnection(_connectionString);
         conn.Open();
         return conn;
+    }
+
+    public bool CreateUser(UserAccount account)
+    {
+        using var conn = Connect();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = """
+            INSERT OR IGNORE INTO users (id, username, display_name, password_hash, created_at)
+            VALUES ($id, $username, $displayName, $passwordHash, $createdAt)
+            """;
+        cmd.Parameters.AddWithValue("$id", account.Id);
+        cmd.Parameters.AddWithValue("$username", account.Username);
+        cmd.Parameters.AddWithValue("$displayName", account.DisplayName);
+        cmd.Parameters.AddWithValue("$passwordHash", account.PasswordHash);
+        cmd.Parameters.AddWithValue("$createdAt", DateTimeOffset.UtcNow.ToString("O"));
+        return cmd.ExecuteNonQuery() == 1;
+    }
+
+    public UserAccount? GetUserByUsername(string username)
+    {
+        using var conn = Connect();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = """
+            SELECT id, username, display_name, password_hash
+            FROM users
+            WHERE username = $username
+            """;
+        cmd.Parameters.AddWithValue("$username", username);
+        using var reader = cmd.ExecuteReader();
+        return reader.Read()
+            ? new UserAccount(reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetString(3))
+            : null;
+    }
+
+    public SessionMembership CreateSessionForUser(string userId, string displayName, string? requestedCode = null)
+    {
+        var sessionCode = NormalizeSessionCode(requestedCode) ?? GenerateCode(8);
+        var inviteCode = GenerateCode(12);
+        var now = DateTimeOffset.UtcNow.ToString("O");
+
+        using var conn = Connect();
+
+        while (true)
+        {
+            using var sessionCmd = conn.CreateCommand();
+            sessionCmd.CommandText = """
+                INSERT OR IGNORE INTO app_sessions (session_code, invite_code, owner_user_id, created_at)
+                VALUES ($sessionCode, $inviteCode, $ownerUserId, $createdAt)
+                """;
+            sessionCmd.Parameters.AddWithValue("$sessionCode", sessionCode);
+            sessionCmd.Parameters.AddWithValue("$inviteCode", inviteCode);
+            sessionCmd.Parameters.AddWithValue("$ownerUserId", userId);
+            sessionCmd.Parameters.AddWithValue("$createdAt", now);
+
+            if (sessionCmd.ExecuteNonQuery() == 1)
+                break;
+
+            if (requestedCode is not null)
+                throw new InvalidOperationException("Session code is already in use.");
+
+            sessionCode = GenerateCode(8);
+            inviteCode = GenerateCode(12);
+        }
+
+        UpsertMembership(conn, sessionCode, userId, "owner", displayName, now);
+
+        return new SessionMembership(sessionCode, inviteCode, "owner", displayName);
+    }
+
+    public SessionMembership? JoinSessionByInvite(string inviteCode, string userId, string role, string displayName)
+    {
+        var normalizedInvite = NormalizeSessionCode(inviteCode);
+        if (normalizedInvite is null)
+            return null;
+
+        using var conn = Connect();
+        using var lookup = conn.CreateCommand();
+        lookup.CommandText = """
+            SELECT session_code, invite_code
+            FROM app_sessions
+            WHERE invite_code = $inviteCode
+            """;
+        lookup.Parameters.AddWithValue("$inviteCode", normalizedInvite);
+        using var reader = lookup.ExecuteReader();
+        if (!reader.Read())
+            return null;
+
+        var sessionCode = reader.GetString(0);
+        var storedInviteCode = reader.GetString(1);
+        reader.Close();
+
+        UpsertMembership(
+            conn,
+            sessionCode,
+            userId,
+            NormalizeRole(role),
+            displayName,
+            DateTimeOffset.UtcNow.ToString("O"));
+
+        return new SessionMembership(sessionCode, storedInviteCode, NormalizeRole(role), displayName);
+    }
+
+    public IReadOnlyList<SessionMembership> GetSessionsForUser(string userId)
+    {
+        using var conn = Connect();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = """
+            SELECT s.session_code, s.invite_code, m.role, m.display_name
+            FROM session_members m
+            JOIN app_sessions s ON s.session_code = m.session_code
+            WHERE m.user_id = $userId
+            ORDER BY m.joined_at DESC
+            """;
+        cmd.Parameters.AddWithValue("$userId", userId);
+        using var reader = cmd.ExecuteReader();
+
+        var sessions = new List<SessionMembership>();
+        while (reader.Read())
+            sessions.Add(new SessionMembership(
+                reader.GetString(0),
+                reader.GetString(1),
+                reader.GetString(2),
+                reader.GetString(3)));
+
+        return sessions;
+    }
+
+    public SessionMembership? GetMembership(string sessionCode, string userId)
+    {
+        using var conn = Connect();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = """
+            SELECT s.session_code, s.invite_code, m.role, m.display_name
+            FROM session_members m
+            JOIN app_sessions s ON s.session_code = m.session_code
+            WHERE m.session_code = $sessionCode AND m.user_id = $userId
+            """;
+        cmd.Parameters.AddWithValue("$sessionCode", sessionCode.ToUpperInvariant());
+        cmd.Parameters.AddWithValue("$userId", userId);
+        using var reader = cmd.ExecuteReader();
+        return reader.Read()
+            ? new SessionMembership(reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetString(3))
+            : null;
+    }
+
+    public bool CanReadSession(string sessionCode, string userId) =>
+        GetMembership(sessionCode, userId) is not null;
+
+    public bool CanWriteLocation(string sessionCode, string userId)
+    {
+        var membership = GetMembership(sessionCode, userId);
+        return membership?.Role is "owner" or "runner";
     }
 
     public void AddPosition(LocationUpdate update)
@@ -232,4 +416,49 @@ public class SessionStore(string dbPath)
 
         return rows;
     }
+
+    private static void UpsertMembership(
+        SqliteConnection conn,
+        string sessionCode,
+        string userId,
+        string role,
+        string displayName,
+        string joinedAt)
+    {
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = """
+            INSERT INTO session_members (session_code, user_id, role, display_name, joined_at)
+            VALUES ($sessionCode, $userId, $role, $displayName, $joinedAt)
+            ON CONFLICT(session_code, user_id)
+            DO UPDATE SET role = excluded.role, display_name = excluded.display_name
+            """;
+        cmd.Parameters.AddWithValue("$sessionCode", sessionCode);
+        cmd.Parameters.AddWithValue("$userId", userId);
+        cmd.Parameters.AddWithValue("$role", role);
+        cmd.Parameters.AddWithValue("$displayName", displayName);
+        cmd.Parameters.AddWithValue("$joinedAt", joinedAt);
+        cmd.ExecuteNonQuery();
+    }
+
+    public static string? NormalizeSessionCode(string? value)
+    {
+        var code = value?.Trim().ToUpperInvariant();
+        if (string.IsNullOrWhiteSpace(code) || code.Length is < 3 or > 32)
+            return null;
+
+        return code.All(c => char.IsAsciiLetterOrDigit(c) || c is '-' or '_')
+            ? code
+            : null;
+    }
+
+    public static string NormalizeRole(string? role) =>
+        role?.Trim().ToLowerInvariant() switch
+        {
+            "owner" => "owner",
+            "runner" => "runner",
+            _ => "viewer",
+        };
+
+    private static string GenerateCode(int bytes) =>
+        Convert.ToHexString(RandomNumberGenerator.GetBytes(bytes / 2)).ToUpperInvariant();
 }

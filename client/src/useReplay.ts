@@ -36,7 +36,7 @@ export interface ReplayState {
 const TRAIL_LENGTH = 1
 const TICK_MS = 100
 
-export function useReplay(sessionCode: string | null, serverUrl: string): ReplayState {
+export function useReplay(sessionCode: string | null, serverUrl: string, accessToken: string | null): ReplayState {
   const [byRunner, setByRunner] = useState<Map<string, LocationUpdate[]> | null>(null)
   const [startEpochMs, setStartEpochMs] = useState(0)
   const [durationMs, setDurationMs] = useState(0)
@@ -49,13 +49,15 @@ export function useReplay(sessionCode: string | null, serverUrl: string): Replay
   const playingRef = useRef(false)
 
   useEffect(() => {
-    if (!sessionCode) return
+    if (!sessionCode || !accessToken) return
     setByRunner(null)
     setCurrentTimeMs(0)
     setPlaying(false)
     setError(null)
 
-    fetch(`${serverUrl}/sessions/${sessionCode}/recording`)
+    fetch(`${serverUrl}/sessions/${sessionCode}/recording`, {
+      headers: { 'Authorization': `Bearer ${accessToken}` },
+    })
       .then(r => {
         if (!r.ok) throw new Error(`HTTP ${r.status} for ${sessionCode}`)
         return r.text()
@@ -87,7 +89,7 @@ export function useReplay(sessionCode: string | null, serverUrl: string): Replay
         console.error('[useReplay]', err)
         setError(err instanceof Error ? err.message : 'Failed to load recording')
       })
-  }, [sessionCode, serverUrl])
+  }, [sessionCode, serverUrl, accessToken])
 
   useEffect(() => {
     if (!playing) return

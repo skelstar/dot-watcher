@@ -43,7 +43,7 @@ Generated review files belong under `.ai/reviews/` and are ignored by git. This 
 1. Each runner opens the iOS app, enters their name and a session code, and starts tracking
 2. The app sends GPS coordinates and compass heading to the server at a configurable interval (default 60s)
 3. The server stores the latest positions for all runners in that session
-4. Anyone with the session code opens the web viewer in a browser
+4. Other users sign in and join the session from an invite code or link
 5. The web viewer polls the server every 10–15 seconds and renders all runners as directional markers on a Mapbox map
 
 ---
@@ -57,14 +57,15 @@ A lightweight .NET Core minimal API.
 **Responsibilities**
 
 - Receive position updates from phone apps (`POST /location`)
-- Store position history for all runners in memory (full history, not just latest)
-- Serve current runner positions to the web viewer (`GET /locations/{sessionCode}`)
+- Store latest live positions in memory and persisted history in SQLite
+- Serve current runner positions to authenticated session members (`GET /locations/{sessionCode}`)
 - No geometry or bearing logic — that is handled by the client
 
 **Auth**
 
-- POST endpoint requires a bearer token in the `Authorization` header (used by phone apps only)
-- GET endpoint requires a valid session code in the URL path (used by web viewers)
+- App endpoints require a signed user access token in the `Authorization` header
+- Admin/debug endpoints require the server admin bearer token
+- Session membership controls who can read or write location data
 
 **Hosting**
 
@@ -74,8 +75,8 @@ A lightweight .NET Core minimal API.
 
 **Data**
 
-- In-memory storage only (no database)
-- Stores full position history per runner per session
+- SQLite persistence for recorded history
+- In-memory live state for latest runner positions
 - Designed for up to 20 concurrent runners
 - Session data can be cleared between runs
 
@@ -116,13 +117,13 @@ A native Swift app.
 
 **Setup screen**
 
-- Runner enters their display name
-- Runner enters the session code
+- Runner signs in
+- Runner creates a session or joins from an invite code
 - Runner starts/stops tracking manually
 
 **Auth**
 
-- Sends a bearer token in the `Authorization` header on every POST
+- Sends a user access token in the `Authorization` header on protected app API calls
 
 **Distribution**
 
@@ -134,10 +135,60 @@ A native Swift app.
 
 | Actor      | Method                         | Auth                                   |
 | ---------- | ------------------------------ | -------------------------------------- |
-| Phone app  | `POST /location`               | Bearer token in `Authorization` header |
-| Web viewer | `GET /locations/{sessionCode}` | Session code in URL path               |
+| App user   | `POST /auth/register`, `POST /auth/login` | Username/password, returns user access token |
+| Runner     | `POST /location`               | User access token plus owner/runner session membership |
+| Viewer     | `GET /locations/{sessionCode}` | User access token plus session membership |
+| Admin/debug dashboard | `GET /sessions`, `GET /log`, recording mutations | Admin bearer token in `Authorization` header |
 
-The bearer token (for phone apps) and the session code (for viewers) are separate credentials. The session code is safe to share publicly — it only grants read access to positions.
+Session codes are identifiers, not credentials. Invite codes/links are used to join a session, then the server stores membership and authorizes future reads/writes from the authenticated user identity.
+
+```text
+                 public account endpoints
+        +--------------------------------------+
+        | POST /auth/register, POST /auth/login |
+        +-------------------+------------------+
+                            |
+                            v
+                  +-------------------+
+                  | User access token |
+                  | Authorization:    |
+                  | Bearer <token>    |
+                  +---------+---------+
+                            |
+          +-----------------+-----------------+
+          |                                   |
+          v                                   v
++-------------------+              +----------------------+
+| Create session    |              | Join from invite     |
+| POST /sessions    |              | POST /session-       |
+|                   |              | invites/{code}/join  |
++---------+---------+              +----------+-----------+
+          |                                   |
+          v                                   v
+ +----------------+                 +----------------+
+ | app_sessions   |                 | session_members|
+ | session_code   |<--------------->| user_id        |
+ | invite_code    |                 | role           |
+ | owner_user_id  |                 | display_name   |
+ +--------+-------+                 +--------+-------+
+          |                                  |
+          +----------------+-----------------+
+                           |
+                           v
+              +--------------------------+
+              | Protected app endpoints |
+              | GET /locations/{code}   |
+              | POST /location          |
+              | GET /.../recording      |
+              +--------------------------+
+
+        separate admin/debug credential
+        +-----------------------------+
+        | Admin BearerToken           |
+        | GET /sessions, GET /log,    |
+        | upload/delete/merge         |
+        +-----------------------------+
+```
 
 ---
 
@@ -145,7 +196,7 @@ The bearer token (for phone apps) and the session code (for viewers) are separat
 
 Each update from the phone includes:
 
-- Runner identifier (name or ID set in the app)
+- Runner identifier (server stores the authenticated member display name)
 - Session code
 - Latitude and longitude
 - Compass heading in degrees (0–360, true north) — optional, omitted if unavailable

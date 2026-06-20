@@ -21,6 +21,7 @@ public sealed class DotWatcherApiFactory : WebApplicationFactory<global::Program
             config.AddInMemoryCollection(new Dictionary<string, string?>
             {
                 ["BearerToken"] = "test-token",
+                ["JwtSigningKey"] = "test-jwt-signing-key-change-me-32-bytes",
                 ["DbPath"] = _dbPath,
                 ["RecordingsPath"] = _recordingsPath,
             });

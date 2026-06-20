@@ -23,6 +23,7 @@ export function useRunnerMarkers(
   mapRef: RefObject<mapboxgl.Map | null>,
   sessionCode: string | null,
   serverUrl: string,
+  accessToken: string | null,
   intervalMs: number,
   replayPositions?: RunnerPosition[][],
   replayNowMs?: number,
@@ -116,14 +117,16 @@ export function useRunnerMarkers(
 
   // Live polling effect — skipped when replayPositions is provided
   useEffect(() => {
-    if (!sessionCode || replayPositions !== undefined) return
+    if (!sessionCode || !accessToken || replayPositions !== undefined) return
     hasLocatedRef.current = false
 
     let cancelled = false
 
     async function fetchAndUpdate() {
       try {
-        const res = await fetch(`${serverUrl}/locations/${sessionCode}`)
+        const res = await fetch(`${serverUrl}/locations/${sessionCode}`, {
+          headers: { 'Authorization': `Bearer ${accessToken}` },
+        })
         if (!res.ok || cancelled) return
         const runnerGroups: RunnerPosition[][] = await res.json()
 
@@ -142,7 +145,7 @@ export function useRunnerMarkers(
       cancelled = true
       clearInterval(id)
     }
-  }, [sessionCode, serverUrl, intervalMs, mapRef, replayPositions]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [sessionCode, serverUrl, accessToken, intervalMs, mapRef, replayPositions]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Replay effect — runs when replayPositions changes
   useEffect(() => {

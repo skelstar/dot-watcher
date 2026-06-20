@@ -24,10 +24,10 @@
 ## Application structure
 
 ```text
-                       +-----------------------+
-                       |      iOS tracker      |
-                       |  POST /location       |
-                       |  Bearer token auth    |
+	                       +-----------------------+
+	                       |      iOS tracker      |
+	                       |  POST /location       |
+	                       |  User token auth      |
                        +-----------+-----------+
                                    |
                                    v
@@ -35,8 +35,8 @@
 | Web viewer / browser |-->| ASP.NET Core   |-->| SessionStore         |
 |                      |   | controllers    |   |                      |
 | GET /locations/{id}  |   | Program.cs     |   | In-memory live state |
-| GET /sessions        |   | Controllers/*  |   | SQLite recordings    |
-| GET /.../recording   |   | CORS enabled   |   | dotwatcher.db        |
+| GET /locations/{id}  |   | Controllers/*  |   | SQLite recordings    |
+| GET /.../recording   |   | CORS enabled   |   | Users + membership   |
 +----------+-----------+   +-------+--------+   +----------+-----------+
            ^                       |                       ^
            |                       v                       |
@@ -67,27 +67,38 @@
 
 | Key | Default | Description |
 | --- | --- | --- |
-| `BearerToken` | *(required)* | Token used to authenticate `POST` and `DELETE` requests |
+| `BearerToken` | *(required)* | Token used to authenticate protected write/delete endpoints and admin/debug reads |
+| `JwtSigningKey` | *(required)* | HMAC signing key for user access tokens. Use a high-entropy secret of at least 32 bytes |
+| `JwtIssuer` | `dot-watcher` | Issuer claim used for local user access tokens |
+| `JwtAudience` | `dot-watcher` | Audience claim used for local user access tokens |
+| `JwtAccessTokenMinutes` | `720` | User access token lifetime in minutes |
 | `DbPath` | `dotwatcher.db` | SQLite database file used for persisted session recordings |
 | `RecordingsPath` | `recordings` | Directory scanned on startup for legacy NDJSON recordings to import into SQLite |
 
-The server requires a bearer token used to authenticate `POST` and `DELETE` requests from phone apps. Set it via:
+The server requires two separate secrets:
+
+- `BearerToken` for admin/debug operations such as log access, upload/delete/merge, and full session listing.
+- `JwtSigningKey` for signing app-user access tokens returned by register/login.
+
+Set them via:
 
 **Environment variable (recommended for production):**
 
 ```
 BearerToken=your-secret-token
+JwtSigningKey=your-long-random-jwt-signing-key
 ```
 
 **`appsettings.Development.json` (local only — already set to `dev-token`):**
 
 ```json
 {
-  "BearerToken": "dev-token"
+  "BearerToken": "dev-token",
+  "JwtSigningKey": "dev-jwt-signing-key-change-me-32-bytes"
 }
 ```
 
-The server will throw on startup if `BearerToken` is not configured.
+The server will throw on startup if `BearerToken` or `JwtSigningKey` is not configured.
 
 > Do not commit a production token to source control.
 
@@ -125,7 +136,7 @@ The API routes are implemented as ASP.NET Core controllers under `Controllers/`.
 
 Receives a position update from a phone app.
 
-**Auth:** `Authorization: Bearer <token>` header required.
+**Auth:** User access token required. The authenticated user must be an `owner` or `runner` member of the session.
 
 **Request body:**
 
@@ -162,7 +173,7 @@ Receives a position update from a phone app.
 
 Returns the latest live position for every runner in a session. Called by the web viewer.
 
-**Auth:** None. The session code in the URL path is the only access control for read operations.
+**Auth:** User access token required. The authenticated user must be a member of the session.
 
 **Response body:**
 
@@ -198,14 +209,112 @@ Returns `[]` for an unknown session code.
 | Status | Meaning                      |
 | ------ | ---------------------------- |
 | 200    | Success (array may be empty) |
+| 401    | Missing or invalid user token |
+| 403    | Authenticated user is not a session member |
+
+---
+
+### `POST /auth/register`
+
+Creates a local app user account and returns a user access token.
+
+**Auth:** None.
+
+**Request body:**
+
+```json
+{
+  "username": "alice",
+  "password": "long-enough-password",
+  "displayName": "Alice"
+}
+```
+
+**Responses:** `200` with `{ "accessToken": "...", "user": { ... } }`, `400` for invalid input, `409` for an existing username.
+
+---
+
+### `POST /auth/login`
+
+Authenticates a local app user and returns a user access token.
+
+**Auth:** None.
+
+**Request body:**
+
+```json
+{
+  "username": "alice",
+  "password": "long-enough-password"
+}
+```
+
+**Responses:** `200` with `{ "accessToken": "...", "user": { ... } }`, `401` for invalid credentials.
+
+---
+
+### `POST /sessions`
+
+Creates a new app session for the authenticated user. The creator is stored as an `owner` member and receives an invite code to share.
+
+**Auth:** User access token required.
+
+**Request body:**
+
+```json
+{
+  "sessionCode": "SUNSET23",
+  "displayName": "Alice"
+}
+```
+
+Both fields are optional. If `sessionCode` is omitted, the server generates one.
+
+**Response body:**
+
+```json
+{
+  "sessionCode": "SUNSET23",
+  "inviteCode": "A1B2C3D4E5F6",
+  "role": "owner",
+  "displayName": "Alice"
+}
+```
+
+---
+
+### `POST /session-invites/{inviteCode}/join`
+
+Joins the authenticated user to a session from an invite code. Invite codes are onboarding credentials only; ongoing access is based on stored membership.
+
+**Auth:** User access token required.
+
+**Request body:**
+
+```json
+{
+  "role": "runner",
+  "displayName": "Alice"
+}
+```
+
+`role` defaults to `viewer`; accepted values are `viewer`, `runner`, and `owner`.
+
+---
+
+### `GET /me/sessions`
+
+Returns the authenticated user's session memberships.
+
+**Auth:** User access token required.
 
 ---
 
 ### `GET /sessions`
 
-Lists all session codes that have a recording on disk, ordered newest first.
+Lists all session codes that have a recording on disk, ordered newest first. This is an admin/debug endpoint.
 
-**Auth:** None.
+**Auth:** `Authorization: Bearer <token>` header required.
 
 **Response body:**
 
@@ -215,9 +324,10 @@ Lists all session codes that have a recording on disk, ordered newest first.
 
 **Responses:**
 
-| Status | Meaning |
-| ------ | ------- |
-| 200    | Success (array may be empty) |
+| Status | Meaning                         |
+| ------ | ------------------------------- |
+| 200    | Success (array may be empty)    |
+| 401    | Missing or invalid bearer token |
 
 ---
 
@@ -225,7 +335,7 @@ Lists all session codes that have a recording on disk, ordered newest first.
 
 Downloads the full NDJSON recording for a session. Each line is one `LocationUpdate` JSON object in the order it was received.
 
-**Auth:** None.
+**Auth:** User access token with session membership, or admin bearer token.
 
 **Response:** `application/x-ndjson` file download named `{sessionCode}.ndjson`.
 
@@ -239,6 +349,8 @@ Downloads the full NDJSON recording for a session. Each line is one `LocationUpd
 | Status | Meaning |
 | ------ | ------- |
 | 200    | File download |
+| 401    | Missing or invalid token |
+| 403    | Authenticated user is not a session member |
 | 404    | No recording exists for this session code |
 
 ---
@@ -322,7 +434,7 @@ Run in Claude Code:
 /deploy https://github.com/skelstar/dot-watcher.git but just deploy the app from the /server folder
 ```
 
-After the deploy completes, create the k8s secret for the bearer token (the value lives in `server/.env`, which is gitignored):
+After the deploy completes, create the k8s secret for the admin bearer token and JWT signing key (the values live in `server/.env`, which is gitignored):
 
 ```bash
 kubectl create secret generic dot-watcher-server-secrets \
@@ -345,9 +457,9 @@ Push changes to `main`, then run in Claude Code:
 
 This re-clones the repo, rebuilds the image, pushes it to the local registry, and restarts the pod.
 
-### BearerToken secret
+### Runtime secrets
 
-The `BearerToken` is injected into the container via a k8s secret rather than committed to the repo. The secret is named `dot-watcher-server-secrets` in the `dot-watcher-server` namespace. To recreate it (e.g. after a namespace teardown):
+`BearerToken` and `JwtSigningKey` are injected into the container via a k8s secret rather than committed to the repo. The secret is named `dot-watcher-server-secrets` in the `dot-watcher-server` namespace. To recreate it (e.g. after a namespace teardown):
 
 ```bash
 kubectl create secret generic dot-watcher-server-secrets \
@@ -359,15 +471,18 @@ kubectl create secret generic dot-watcher-server-secrets \
 
 ```
 BearerToken=your-secret-token
+JwtSigningKey=your-long-random-jwt-signing-key
 ```
 
 ---
 
 ## Notes
 
-- Restarting the server clears live session state (in-memory), but recordings on disk survive. After a restart, `GET /sessions` will still list past sessions and their recordings will still be downloadable.
+- Restarting the server clears live session state (in-memory), but recordings on disk survive. After a restart, authenticated `GET /sessions` calls will still list past sessions and their recordings will still be downloadable.
 - Recordings are **not** persisted across container redeployments by default — `dotwatcher.db` lives inside the container. Mount a volume for `DbPath` if you need recordings to survive deploys.
 - The `timestamp` field in a `POST /location` request should be the **GPS capture time**, not the time the request was sent. Phone apps record the timestamp when the position fix is taken; the POST may be delayed or retried. Storing the capture time means the viewer always reflects where runners actually were at a given moment.
 - Full position history is stored in SQLite per runner per session. The `GET /locations/{sessionCode}` endpoint returns only each runner's latest live position.
 - CORS is open (`AllowAnyOrigin`) — appropriate for a private home lab deployment.
-- Session codes are not validated beyond being present in the URL. An unknown code returns an empty array rather than a 404.
+- Session codes identify sessions but no longer grant access by themselves. Authenticated users must be stored as session members before they can read live locations or recordings.
+- Session listing and debug logs require bearer auth so public callers cannot enumerate all recorded sessions or recent GPS log lines.
+`runnerName` is accepted for backwards-compatible payload shape, but the server stores the authenticated member display name instead of trusting this client-supplied value.
