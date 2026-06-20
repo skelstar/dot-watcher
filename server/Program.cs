@@ -6,12 +6,14 @@ var logBuffer = new LogBuffer();
 builder.Services.AddSingleton(logBuffer);
 builder.Logging.AddProvider(new LogBufferProvider(logBuffer));
 
-builder.Services.AddSingleton(new BearerTokenAuth(builder.Configuration));
-
-var dbPath = builder.Configuration.GetValue<string>("DbPath", "dotwatcher.db")!;
-var store = new SessionStore(dbPath);
-store.Initialize();
-builder.Services.AddSingleton(store);
+builder.Services.AddSingleton<BearerTokenAuth>();
+builder.Services.AddSingleton(sp =>
+{
+    var dbPath = sp.GetRequiredService<IConfiguration>().GetValue<string>("DbPath", "dotwatcher.db")!;
+    var store = new SessionStore(dbPath);
+    store.Initialize();
+    return store;
+});
 
 builder.Services.AddControllers();
 builder.Services.AddCors(options =>
@@ -23,6 +25,9 @@ app.UseDefaultFiles();
 app.UseStaticFiles();
 app.UseCors();
 app.MapControllers();
+
+_ = app.Services.GetRequiredService<BearerTokenAuth>();
+var store = app.Services.GetRequiredService<SessionStore>();
 
 // Migrate any existing NDJSON recordings into SQLite
 var recordingsPath = app.Configuration.GetValue<string>("RecordingsPath", "recordings")!;
@@ -40,3 +45,5 @@ if (Directory.Exists(recordingsPath))
 }
 
 app.Run();
+
+public partial class Program;
