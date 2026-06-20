@@ -161,7 +161,7 @@ Include a short rationale and next steps.
 - .NET 9 ASP.NET Core server
 - ASP.NET Core controllers under `server/Controllers/`
 - SQLite persistence via `Microsoft.Data.Sqlite`
-- xUnit integration tests under `server/DotWatcher.Server.Tests/`
+- xUnit integration tests under `tests/DotWatcher.Server.Tests/`
 - GitHub Actions CI for restore, build, publish, and tests
 - React web client with Mapbox
 - Swift iOS tracker app
@@ -176,7 +176,7 @@ Include a short rationale and next steps.
 - `server/Models/` - API payload records.
 - `server/Logging/` - debug dashboard log buffering and logging provider.
 - `server/wwwroot/index.html` - debug dashboard.
-- `server/DotWatcher.Server.Tests/` - API integration tests.
+- `tests/DotWatcher.Server.Tests/` - API integration tests.
 - `client/` - web viewer.
 - `ios/` - iOS GPS tracker.
 

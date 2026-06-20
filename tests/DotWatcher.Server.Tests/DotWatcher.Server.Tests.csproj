@@ -17,6 +17,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="../DotWatcher.Server.csproj" />
+    <ProjectReference Include="../../server/DotWatcher.Server.csproj" />
   </ItemGroup>
 </Project>

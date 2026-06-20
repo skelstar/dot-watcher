@@ -10,6 +10,7 @@ Real-time GPS tracking for running groups. Runners share their position during a
 dot-watcher/
   .ai/         AI-assisted PR review template and helper prompt script
   server/      .NET Core minimal API
+  tests/       .NET integration tests
   client/      React web app (Mapbox)
   ios/         Swift iOS app
   android/     Kotlin Android app (not started)
