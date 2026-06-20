@@ -43,6 +43,19 @@ The app will be available at `http://localhost:5173` by default.
 
 Open the app, sign in, then select an existing session, create one, or join from an invite code. Direct links such as `http://localhost:5173/SESSIONCODE` work after the signed-in user has membership for that session. Invite links use `/join/INVITECODE`.
 
+## Auth and sessions
+
+- Sign-in and account creation call `POST /auth/login` and `POST /auth/register`.
+- The server returns `{ accessToken, expiresAt, user }`; the app keeps the access token in `sessionStorage`, clears older `localStorage` token keys, and calls `POST /auth/logout` on sign-out.
+- After sign-in, the app loads `GET /me/sessions`. Users can open live or replay views only for returned memberships.
+- Creating a session calls `POST /sessions` and stores the creator as `owner`.
+- Joining from an invite calls `POST /session-invites/{inviteCode}/join`. Invite joins always create `viewer` membership; invite codes do not grant runner or owner privileges.
+- A raw session code in the URL is only an identifier. If the user lacks membership, protected server endpoints return `403`.
+
+## CI
+
+GitHub Actions runs the `Client Node` workflow for client changes. It installs dependencies with `npm ci`, runs `npm run test`, and builds the Vite app with a placeholder Mapbox token. Local agents should not run those commands unless explicitly asked.
+
 ---
 
 ## Deployment (Tatooine — home k3s cluster)

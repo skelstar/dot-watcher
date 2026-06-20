@@ -209,15 +209,15 @@ Array of arrays — one inner array per runner, each containing that runner's la
 ]
 ```
 
-Returns `[]` for an unknown session code.
+Returns `200 []` only when the authenticated user is a member of the session and no live positions are currently available. Unknown session codes and valid-shaped codes without membership return `403` so callers cannot use this endpoint to enumerate sessions.
 
 **Responses:**
 
 | Status | Meaning                      |
 | ------ | ---------------------------- |
-| 200    | Success (array may be empty) |
+| 200    | Success for a session member (array may be empty) |
 | 401    | Missing or invalid user token |
-| 403    | Authenticated user is not a session member |
+| 403    | Authenticated user is not a session member, including unknown/non-joinable codes |
 
 ---
 
@@ -316,6 +316,8 @@ Joins the authenticated user to a session from an invite code. Invite codes are 
 
 Invite joins always create `viewer` membership. Invite codes are not role grants; runner/owner privileges must be assigned by a trusted server-side flow.
 
+**Responses:** `200` with viewer membership, `400` for invalid display name, `401` for missing or invalid user token, `404` for an unknown invite code.
+
 ---
 
 ### `GET /me/sessions`
@@ -323,6 +325,8 @@ Invite joins always create `viewer` membership. Invite codes are not role grants
 Returns the authenticated user's session memberships.
 
 **Auth:** User access token required.
+
+Clients should call this after sign-in and after create/join actions, then navigate to live or replay views only for sessions returned by this endpoint. A raw session code in the URL is an identifier; it is not proof of access.
 
 ---
 
@@ -496,7 +500,7 @@ JwtSigningKey=your-long-random-jwt-signing-key
 
 ## Notes
 
-- Restarting the server clears live session state (in-memory), but recordings on disk survive. After a restart, authenticated `GET /sessions` calls will still list past sessions and their recordings will still be downloadable.
+- Restarting the server clears live session state (in-memory), but recordings on disk survive. After a restart, admin-authenticated `GET /sessions` calls will still list past sessions and their recordings will still be downloadable.
 - Recordings are **not** persisted across container redeployments by default — `dotwatcher.db` lives inside the container. Mount a volume for `DbPath` if you need recordings to survive deploys.
 - The `timestamp` field in a `POST /location` request should be the **GPS capture time**, not the time the request was sent. Phone apps record the timestamp when the position fix is taken; the POST may be delayed or retried. Storing the capture time means the viewer always reflects where runners actually were at a given moment.
 - Full position history is stored in SQLite per runner per session. The `GET /locations/{sessionCode}` endpoint returns only each runner's latest live position.

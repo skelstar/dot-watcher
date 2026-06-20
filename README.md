@@ -27,6 +27,7 @@ This repo uses a small, practical split for AI-assisted work:
 - `AGENTS.md` contains standing Codex/agent instructions. The main rule is that agents should not run local build, publish, or test commands because GitHub Actions CI owns that verification.
 - `.ai/pr-review-template.md` contains the reusable static PR review template. It is intentionally separate from `AGENTS.md` so the always-on agent rules stay short.
 - `.ai/review-pr.sh` prints a ready-to-copy PR review prompt for the current branch.
+- GitHub Actions owns runtime verification. The server workflow restores/builds/publishes/tests .NET changes, and the client workflow installs dependencies, runs client unit tests, and builds the Vite app. iOS simulator/device verification is currently manual because it depends on local Xcode signing and device/simulator availability.
 
 Run the helper from the repo root:
 
@@ -141,6 +142,7 @@ A native Swift app.
 | Admin/debug dashboard | `GET /sessions`, `GET /log`, recording mutations | Admin bearer token in `Authorization` header |
 
 Session codes are identifiers, not credentials. Invite codes/links are used to join a session, then the server stores membership and authorizes future reads/writes from the authenticated user identity.
+Invite joins always create `viewer` membership; runner/owner privileges are not granted by invite code. `GET /locations/{sessionCode}` returns `403` for authenticated users without membership, including unknown session codes, and returns `200 []` only for a member session with no live positions yet.
 
 ```text
                  public account endpoints
@@ -205,11 +207,11 @@ Each update from the phone includes:
 
 - Runner identifier (server stores the authenticated member display name)
 - Session code
-- Latitude and longitude
+- Latitude and longitude (`latitude` must be `-90..90`, `longitude` must be `-180..180`)
 - Compass heading in degrees (0–360, true north) — optional, omitted if unavailable
-- Timestamp
+- Timestamp as ISO 8601 GPS capture time
 
-Exact field names and payload structure to be defined during implementation.
+The server validates live posts and recording uploads with the same GPS payload rules. `runnerName` remains in the payload for compatibility, but the server uses the authenticated membership display name for identity.
 
 ---
 
@@ -232,12 +234,21 @@ No server-side changes are needed — the server already stores and returns the 
 
 ---
 
+## CI and verification
+
+- `Server .NET` runs for server, tests, workflow, and common root .NET metadata changes.
+- `Client Node` runs for web client changes and covers `npm ci`, `npm run test`, and `npm run build`.
+- iOS build, simulator, TestFlight, Keychain, background-location, and real-device GPS behavior are manually verified outside GitHub Actions for now.
+- Local agents and contributors should not run local build/publish/test commands unless explicitly asked; PR verification belongs to GitHub Actions.
+
+---
+
 ## Out of scope (for now)
 
 - Android app
-- Persistent storage or run history
 - Trail lines on the map (history of each runner's path)
-- User accounts or login
+- Production OIDC/identity-provider integration
+- Owner-managed role promotion UI for turning viewers into runners
 - Push notifications
 - Offline map tiles
 - Public App Store or Play Store distribution
