@@ -1,0 +1,45 @@
+name: Server .NET
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - "server/**"
+      - ".github/workflows/server-dotnet.yml"
+
+jobs:
+  build-publish-test:
+    name: Build, publish, and test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "9.0.x"
+
+      - name: Restore
+        run: dotnet restore server/DotWatcher.Server.csproj
+
+      - name: Build
+        run: dotnet build server/DotWatcher.Server.csproj --configuration Release --no-restore
+
+      - name: Publish
+        run: dotnet publish server/DotWatcher.Server.csproj --configuration Release --no-build --output ./server/publish
+
+      - name: Test
+        shell: bash
+        run: |
+          mapfile -t test_projects < <(find . -type f \( -name "*Tests.csproj" -o -name "*Test.csproj" \))
+
+          if [ ${#test_projects[@]} -eq 0 ]; then
+            echo "No .NET test projects found."
+            exit 0
+          fi
+
+          for project in "${test_projects[@]}"; do
+            dotnet test "$project" --configuration Release --verbosity normal
+          done
