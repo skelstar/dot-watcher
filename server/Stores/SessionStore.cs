@@ -144,7 +144,7 @@ public class SessionStore(string dbPath)
         return new SessionMembership(sessionCode, inviteCode, "owner", displayName);
     }
 
-    public SessionMembership? JoinSessionByInvite(string inviteCode, string userId, string role, string displayName)
+    public SessionMembership? JoinSessionByInvite(string inviteCode, string userId, string displayName)
     {
         var normalizedInvite = NormalizeSessionCode(inviteCode);
         if (normalizedInvite is null)
@@ -170,11 +170,11 @@ public class SessionStore(string dbPath)
             conn,
             sessionCode,
             userId,
-            NormalizeRole(role),
+            "viewer",
             displayName,
             DateTimeOffset.UtcNow.ToString("O"));
 
-        return new SessionMembership(sessionCode, storedInviteCode, NormalizeRole(role), displayName);
+        return new SessionMembership(sessionCode, storedInviteCode, "viewer", displayName);
     }
 
     public IReadOnlyList<SessionMembership> GetSessionsForUser(string userId)
@@ -450,14 +450,6 @@ public class SessionStore(string dbPath)
             ? code
             : null;
     }
-
-    public static string NormalizeRole(string? role) =>
-        role?.Trim().ToLowerInvariant() switch
-        {
-            "owner" => "owner",
-            "runner" => "runner",
-            _ => "viewer",
-        };
 
     private static string GenerateCode(int bytes) =>
         Convert.ToHexString(RandomNumberGenerator.GetBytes(bytes / 2)).ToUpperInvariant();

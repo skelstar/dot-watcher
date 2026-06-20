@@ -42,7 +42,7 @@ internal static class AuthTestHelpers
         HttpClient client,
         string accessToken,
         string inviteCode,
-        string role = "runner",
+        string role = "viewer",
         string? displayName = null)
     {
         using var request = new HttpRequestMessage(HttpMethod.Post, $"/session-invites/{inviteCode}/join")

@@ -115,18 +115,15 @@ public class LocationsApiTests
     }
 
     [Fact]
-    public async Task GetLocations_ReturnsLatestLivePositionPerRunnerForMembers()
+    public async Task GetLocations_ReturnsLatestLivePositionForMember()
     {
         using var factory = new DotWatcherApiFactory();
         using var client = factory.CreateClient();
         var aliceToken = await AuthTestHelpers.RegisterAsync(client, "alice", "Alice");
         var session = await AuthTestHelpers.CreateSessionAsync(client, aliceToken);
-        var bobToken = await AuthTestHelpers.RegisterAsync(client, "bob", "Bob");
-        await AuthTestHelpers.JoinSessionAsync(client, bobToken, session.InviteCode, role: "runner");
 
         await PostLocationAsync(client, TestLocation("Ignored", "sunset23", latitude: -33.8680, timestampSeconds: 1), aliceToken);
         await PostLocationAsync(client, TestLocation("Ignored", "sunset23", latitude: -33.8688, timestampSeconds: 2), aliceToken);
-        await PostLocationAsync(client, TestLocation("Ignored", "sunset23", latitude: -33.8695, timestampSeconds: 3), bobToken);
 
         var response = await SendWithUserTokenAsync(client, HttpMethod.Get, "/locations/SUNSET23", aliceToken);
 
@@ -139,9 +136,8 @@ public class LocationsApiTests
             .SelectMany(runnerPositions => runnerPositions)
             .ToDictionary(position => position.RunnerName);
 
-        Assert.Equal(2, positionsByRunner.Count);
+        Assert.Single(positionsByRunner);
         Assert.Equal(-33.8688, positionsByRunner["Alice"].Latitude);
-        Assert.Equal(-33.8695, positionsByRunner["Bob"].Latitude);
     }
 
     internal static async Task<HttpResponseMessage> PostLocationAsync(

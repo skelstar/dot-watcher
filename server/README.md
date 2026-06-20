@@ -293,12 +293,11 @@ Joins the authenticated user to a session from an invite code. Invite codes are 
 
 ```json
 {
-  "role": "runner",
   "displayName": "Alice"
 }
 ```
 
-`role` defaults to `viewer`; accepted values are `viewer`, `runner`, and `owner`.
+Invite joins always create `viewer` membership. Invite codes are not role grants; runner/owner privileges must be assigned by a trusted server-side flow.
 
 ---
 

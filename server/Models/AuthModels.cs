@@ -35,7 +35,6 @@ public record CreateSessionRequest(
 );
 
 public record JoinSessionRequest(
-    string? Role = null,
     string? DisplayName = null
 );
 

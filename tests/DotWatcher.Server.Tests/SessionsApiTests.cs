@@ -34,7 +34,7 @@ public class SessionsApiTests
     }
 
     [Fact]
-    public async Task JoinSession_WithInvite_AddsViewerOrRunnerMembership()
+    public async Task JoinSession_WithInvite_AddsViewerMembership()
     {
         using var factory = new DotWatcherApiFactory();
         using var client = factory.CreateClient();
@@ -52,6 +52,36 @@ public class SessionsApiTests
         Assert.Equal(session.SessionCode, joined.SessionCode);
         Assert.Equal("viewer", joined.Role);
         Assert.Equal("Roadside Viewer", joined.DisplayName);
+    }
+
+    [Theory]
+    [InlineData("runner")]
+    [InlineData("owner")]
+    public async Task JoinSession_WithRequestedPrivilegedRole_StillAddsViewerMembership(string requestedRole)
+    {
+        using var factory = new DotWatcherApiFactory();
+        using var client = factory.CreateClient();
+        var ownerToken = await AuthTestHelpers.RegisterAsync(client, "owner", "Owner");
+        var session = await AuthTestHelpers.CreateSessionAsync(client, ownerToken);
+        var inviteeToken = await AuthTestHelpers.RegisterAsync(client, "invitee", "Invitee");
+
+        var joined = await AuthTestHelpers.JoinSessionAsync(
+            client,
+            inviteeToken,
+            session.InviteCode,
+            role: requestedRole,
+            displayName: "Not The Owner");
+
+        Assert.Equal(session.SessionCode, joined.SessionCode);
+        Assert.Equal("viewer", joined.Role);
+        Assert.Equal("Not The Owner", joined.DisplayName);
+
+        var writeAttempt = await LocationsApiTests.PostLocationAsync(
+            client,
+            LocationsApiTests.TestLocation("Ignored", session.SessionCode),
+            inviteeToken);
+
+        Assert.Equal(HttpStatusCode.Forbidden, writeAttempt.StatusCode);
     }
 
     [Fact]

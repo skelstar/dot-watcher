@@ -74,7 +74,6 @@ public class SessionsController(
         var membership = store.JoinSessionByInvite(
             inviteCode,
             user.UserId,
-            request.Role ?? "viewer",
             displayName);
 
         return membership is null
