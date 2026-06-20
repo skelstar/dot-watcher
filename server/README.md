@@ -1,6 +1,59 @@
 # Server
 
-.NET 9 minimal API for Dot Watcher. Receives GPS positions from the iOS app and serves them to web viewers. Live data is held in memory; every incoming position is also appended to an NDJSON file on disk so sessions can be replayed later.
+.NET 9 minimal API for Dot Watcher. Receives GPS positions from the iOS app and serves them to web viewers. Latest live positions are held in memory; incoming positions and uploaded recordings are persisted to SQLite so sessions can be replayed later.
+
+---
+
+## Table of contents
+
+- [Application structure](#application-structure)
+- [Prerequisites](#prerequisites)
+- [Configuration](#configuration)
+- [Running locally](#running-locally)
+- [API](#api)
+  - [`POST /location`](#post-location)
+  - [`GET /locations/{sessionCode}`](#get-locationssessioncode)
+  - [`GET /sessions`](#get-sessions)
+  - [`GET /sessions/{sessionCode}/recording`](#get-sessionssessioncoderecording)
+  - [`DELETE /sessions/{sessionCode}`](#delete-sessionssessioncode)
+- [Deployment](#deployment-tatooine--home-k3s-cluster)
+- [Notes](#notes)
+
+---
+
+## Application structure
+
+```text
+                       +-----------------------+
+                       |      iOS tracker      |
+                       |  POST /location       |
+                       |  Bearer token auth    |
+                       +-----------+-----------+
+                                   |
+                                   v
++----------------------+   +-------+--------+   +----------------------+
+| Web viewer / browser |-->| ASP.NET Core   |-->| SessionStore         |
+|                      |   | minimal API    |   |                      |
+| GET /locations/{id}  |   | Program.cs     |   | In-memory live state |
+| GET /sessions        |   | Static files   |   | SQLite recordings    |
+| GET /.../recording   |   | CORS enabled   |   | dotwatcher.db        |
++----------+-----------+   +-------+--------+   +----------+-----------+
+           ^                       |                       ^
+           |                       v                       |
+           |              +---------------------+          |
+           |              | wwwroot/index.html  |          |
+           |              | Debug dashboard     |          |
+           |              | /log + recordings   |          |
+           |              +---------------------+          |
+           |                                               |
+           |              +---------------------+          |
+           +--------------| Legacy migration    |----------+
+                          | recordings/*.ndjson |
+                          | imported on startup |
+                          +---------------------+
+```
+
+`Program.cs` wires the HTTP endpoints, static file hosting, CORS, bearer-token checks, logging, and startup migration. `SessionStore.cs` owns both the current in-memory session positions and the SQLite-backed recording history.
 
 ---
 
@@ -15,8 +68,8 @@
 | Key | Default | Description |
 | --- | --- | --- |
 | `BearerToken` | *(required)* | Token used to authenticate `POST` and `DELETE` requests |
-| `PositionHistoryCount` | `3` | How many recent positions to return per runner in `GET /locations/{sessionCode}` |
-| `RecordingsPath` | `recordings` | Directory where NDJSON session recordings are written |
+| `DbPath` | `dotwatcher.db` | SQLite database file used for persisted session recordings |
+| `RecordingsPath` | `recordings` | Directory scanned on startup for legacy NDJSON recordings to import into SQLite |
 
 The server requires a bearer token used to authenticate `POST` and `DELETE` requests from phone apps. Set it via:
 
@@ -105,31 +158,17 @@ Receives a position update from a phone app.
 
 ### `GET /locations/{sessionCode}`
 
-Returns the last `n` positions for every runner in a session (configurable via `PositionHistoryCount` in `appsettings.json`, default 3). Called by the web viewer.
+Returns the latest live position for every runner in a session. Called by the web viewer.
 
 **Auth:** None. The session code in the URL path is the only access control for read operations.
 
 **Response body:**
 
-Array of arrays — one inner array per runner, each containing up to `PositionHistoryCount` positions ordered oldest-to-newest.
+Array of arrays — one inner array per runner, each containing that runner's latest live position.
 
 ```json
 [
   [
-    {
-      "runnerName": "Alice",
-      "latitude": -33.868,
-      "longitude": 151.209,
-      "heading": 268.0,
-      "timestamp": "2024-11-15T09:23:25Z"
-    },
-    {
-      "runnerName": "Alice",
-      "latitude": -33.8684,
-      "longitude": 151.2091,
-      "heading": 269.5,
-      "timestamp": "2024-11-15T09:23:35Z"
-    },
     {
       "runnerName": "Alice",
       "latitude": -33.8688,
@@ -325,8 +364,8 @@ BearerToken=your-secret-token
 ## Notes
 
 - Restarting the server clears live session state (in-memory), but recordings on disk survive. After a restart, `GET /sessions` will still list past sessions and their recordings will still be downloadable.
-- Recordings are **not** persisted across container redeployments — the `recordings/` directory lives inside the container. Mount a volume at `RecordingsPath` if you need recordings to survive deploys.
+- Recordings are **not** persisted across container redeployments by default — `dotwatcher.db` lives inside the container. Mount a volume for `DbPath` if you need recordings to survive deploys.
 - The `timestamp` field in a `POST /location` request should be the **GPS capture time**, not the time the request was sent. Phone apps record the timestamp when the position fix is taken; the POST may be delayed or retried. Storing the capture time means the viewer always reflects where runners actually were at a given moment.
-- Full position history is stored per runner per session. The `GET /locations/{sessionCode}` endpoint returns the last `n` positions per runner (controlled by `PositionHistoryCount` in `appsettings.json`).
+- Full position history is stored in SQLite per runner per session. The `GET /locations/{sessionCode}` endpoint returns only each runner's latest live position.
 - CORS is open (`AllowAnyOrigin`) — appropriate for a private home lab deployment.
 - Session codes are not validated beyond being present in the URL. An unknown code returns an empty array rather than a 404.
