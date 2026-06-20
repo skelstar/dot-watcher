@@ -205,6 +205,76 @@ public class LocationsApiTests
         Assert.Equal(-33.8688, positionsByRunner["Alice"].Latitude);
     }
 
+    [Fact]
+    public async Task GetLocations_AfterMemberDisplayNameChangeAndAccountDeletion_DoesNotReturnStaleLivePosition()
+    {
+        using var factory = new DotWatcherApiFactory();
+        using var client = factory.CreateClient();
+        var owner = await AuthTestHelpers.RegisterWithResponseAsync(client, "owner", "Owner");
+        var runner = await AuthTestHelpers.RegisterWithResponseAsync(client, "runner", "Runner");
+        var session = await AuthTestHelpers.CreateSessionAsync(client, owner.AccessToken);
+
+        await AuthTestHelpers.JoinSessionAsync(
+            client,
+            runner.AccessToken,
+            session.InviteCode,
+            displayName: "First Name");
+        using (var promote = AuthTestHelpers.WithUserToken(
+            HttpMethod.Post,
+            $"/sessions/{session.SessionCode}/members/{runner.User.UserId}/role",
+            owner.AccessToken))
+        {
+            promote.Content = JsonContent.Create(new { role = "runner" });
+            var promoteResponse = await client.SendAsync(promote);
+            Assert.Equal(HttpStatusCode.OK, promoteResponse.StatusCode);
+        }
+
+        await PostLocationAsync(
+            client,
+            TestLocation("Ignored", session.SessionCode, latitude: -33.8680, timestampSeconds: 1),
+            runner.AccessToken);
+
+        await AuthTestHelpers.JoinSessionAsync(
+            client,
+            runner.AccessToken,
+            session.InviteCode,
+            displayName: "Second Name");
+
+        await PostLocationAsync(
+            client,
+            TestLocation("Ignored", session.SessionCode, latitude: -33.8688, timestampSeconds: 2),
+            runner.AccessToken);
+
+        var renamedResponse = await SendWithUserTokenAsync(
+            client,
+            HttpMethod.Get,
+            $"/locations/{session.SessionCode}",
+            owner.AccessToken);
+        Assert.Equal(HttpStatusCode.OK, renamedResponse.StatusCode);
+        var renamedLocations = await renamedResponse.Content.ReadFromJsonAsync<List<List<RunnerPosition>>>();
+        Assert.NotNull(renamedLocations);
+        var renamedPositions = renamedLocations.SelectMany(runnerPositions => runnerPositions).ToList();
+        var renamedPosition = Assert.Single(renamedPositions);
+        Assert.Equal("Second Name", renamedPosition.RunnerName);
+        Assert.Equal(-33.8688, renamedPosition.Latitude);
+
+        using (var deleteRunner = AuthTestHelpers.WithUserToken(HttpMethod.Delete, "/me", runner.AccessToken))
+        {
+            var deleteResponse = await client.SendAsync(deleteRunner);
+            Assert.Equal(HttpStatusCode.NoContent, deleteResponse.StatusCode);
+        }
+
+        var afterDeleteResponse = await SendWithUserTokenAsync(
+            client,
+            HttpMethod.Get,
+            $"/locations/{session.SessionCode}",
+            owner.AccessToken);
+        Assert.Equal(HttpStatusCode.OK, afterDeleteResponse.StatusCode);
+        var afterDeleteLocations = await afterDeleteResponse.Content.ReadFromJsonAsync<List<List<RunnerPosition>>>();
+        Assert.NotNull(afterDeleteLocations);
+        Assert.Empty(afterDeleteLocations.SelectMany(runnerPositions => runnerPositions));
+    }
+
     internal static async Task<HttpResponseMessage> PostLocationAsync(
         HttpClient client,
         LocationUpdate update,

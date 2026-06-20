@@ -15,6 +15,7 @@ public class SessionStore(string dbPath)
         DefaultIgnoreCondition = JsonIgnoreCondition.Never,
     };
 
+    // session code -> user id -> live position history
     private readonly ConcurrentDictionary<string, ConcurrentDictionary<string, List<RunnerPosition>>> _sessions = new();
     private readonly string _connectionString = $"Data Source={dbPath}";
 
@@ -237,7 +238,7 @@ public class SessionStore(string dbPath)
         foreach (var membership in memberships.Where(membership => !ownedSessionCodes.Contains(membership.SessionCode)))
         {
             if (_sessions.TryGetValue(membership.SessionCode, out var session))
-                session.TryRemove(membership.DisplayName, out _);
+                session.TryRemove(userId, out _);
         }
 
         return deletedUsers > 0;
@@ -436,7 +437,7 @@ public class SessionStore(string dbPath)
         var code = update.SessionCode;
 
         var session = _sessions.GetOrAdd(code, _ => new());
-        var history = session.GetOrAdd(update.RunnerName, _ => []);
+        var history = session.GetOrAdd(userId, _ => []);
         lock (history)
             history.Add(new RunnerPosition(
                 update.RunnerName,
@@ -465,7 +466,17 @@ public class SessionStore(string dbPath)
     {
         if (!_sessions.TryGetValue(sessionCode.ToUpperInvariant(), out var session))
             return [];
-        return session.Keys.ToList();
+        var participants = new List<string>(session.Count);
+        foreach (var (_, history) in session)
+        {
+            lock (history)
+            {
+                if (history.Count > 0)
+                    participants.Add(history[^1].RunnerName);
+            }
+        }
+
+        return participants;
     }
 
     public IReadOnlyList<RunnerPosition[]> GetLatestPositions(string sessionCode)
@@ -629,9 +640,9 @@ public class SessionStore(string dbPath)
         if (_sessions.TryRemove(src, out var srcSession))
         {
             var tgtSession = _sessions.GetOrAdd(tgt, _ => new());
-            foreach (var (runner, srcHistory) in srcSession)
+            foreach (var (userId, srcHistory) in srcSession)
             {
-                var tgtHistory = tgtSession.GetOrAdd(runner, _ => []);
+                var tgtHistory = tgtSession.GetOrAdd(userId, _ => []);
                 lock (srcHistory) lock (tgtHistory)
                 {
                     tgtHistory.AddRange(srcHistory);
@@ -694,7 +705,7 @@ public class SessionStore(string dbPath)
     {
         using var cmd = conn.CreateCommand();
         cmd.CommandText = """
-            SELECT session_code, display_name
+            SELECT session_code
             FROM session_members
             WHERE user_id = $userId
             """;
@@ -702,7 +713,7 @@ public class SessionStore(string dbPath)
         using var reader = cmd.ExecuteReader();
         var memberships = new List<SessionMemberForAccountDeletion>();
         while (reader.Read())
-            memberships.Add(new SessionMemberForAccountDeletion(reader.GetString(0), reader.GetString(1)));
+            memberships.Add(new SessionMemberForAccountDeletion(reader.GetString(0)));
         return memberships;
     }
 
@@ -799,6 +810,5 @@ public class SessionStore(string dbPath)
         Convert.ToHexString(RandomNumberGenerator.GetBytes(bytes / 2)).ToUpperInvariant();
 
     private sealed record SessionMemberForAccountDeletion(
-        string SessionCode,
-        string DisplayName);
+        string SessionCode);
 }
