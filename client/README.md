@@ -38,6 +38,10 @@ The app will be available at `http://localhost:5173` by default.
 | `VITE_MAPBOX_TOKEN`    | Yes      | —                       | Mapbox public access token for rendering the map         |
 | `VITE_SERVER_URL`      | No       | `/api`                  | Base URL of the dot-watcher server                       |
 | `VITE_POLL_INTERVAL_MS`| No       | `2000`                  | How often (ms) to poll the server for updated positions  |
+| `VITE_APP_VERSION`    | No       | `v-{git-sha}-beta`      | Version label shown in the client footer                 |
+| `VITE_APP_UPDATED_AT` | No       | `Updated {NZ datetime}` | Build/update timestamp shown in the client footer        |
+
+The Vite build stamps the client footer as `v-{latestCommitId}-beta · Updated {NZ datetime}`. The timestamp is generated in the `Pacific/Auckland` time zone, for example `v-c82bf5-beta · Updated 20 Jun 2026 20:52 NZST`.
 
 ## Usage
 

@@ -17,6 +17,9 @@ mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN as string
 
 const POLL_INTERVAL_MS: number = parseInt(import.meta.env.VITE_POLL_INTERVAL_MS ?? '2000', 10)
 const SERVER_URL: string = import.meta.env.VITE_SERVER_URL ?? '/api'
+const APP_VERSION = import.meta.env.VITE_APP_VERSION ?? 'v-local-beta'
+const APP_UPDATED_AT = import.meta.env.VITE_APP_UPDATED_AT ?? 'Updated local'
+const VERSION_LABEL = `${APP_VERSION} · ${APP_UPDATED_AT}`
 const AUTH_TOKEN_KEY = 'userAccessToken'
 const AUTH_EXPIRES_KEY = 'userAccessTokenExpiresAt'
 const AUTH_USER_KEY = 'user'
@@ -226,6 +229,7 @@ export default function App() {
   return (
     <>
       <div ref={containerRef} style={{ width: '100%', height: '100%' }} />
+      <div style={versionBadge}>{VERSION_LABEL}</div>
       {auth && (
         <div style={accountBar}>
           <span>{auth.user.displayName || auth.user.username}</span>
@@ -320,6 +324,24 @@ const accountBar: React.CSSProperties = {
   padding: '6px 8px',
   fontFamily: 'system-ui, sans-serif',
   fontSize: '0.85rem',
+}
+
+const versionBadge: React.CSSProperties = {
+  position: 'absolute',
+  left: 12,
+  bottom: 12,
+  zIndex: 7,
+  maxWidth: 'min(460px, calc(100vw - 96px))',
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap',
+  background: 'rgba(255,255,255,0.92)',
+  color: '#57606a',
+  borderRadius: 4,
+  boxShadow: '0 0 0 1px rgba(0,0,0,0.1)',
+  padding: '4px 7px',
+  fontFamily: 'system-ui, sans-serif',
+  fontSize: '0.75rem',
 }
 
 const signOutButton: React.CSSProperties = {
