@@ -267,7 +267,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 5;
 				DEVELOPMENT_TEAM = 8A9JZATC8G;
-				DOTWATCHER_API_BASE_URL = "https://dot-watcher.skelstar.io/api";
+				DOTWATCHER_API_BASE_URL = "http://localhost:8080";
 				ENABLE_PREVIEWS = YES;
 				INFOPLIST_FILE = DotWatcher/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.6;

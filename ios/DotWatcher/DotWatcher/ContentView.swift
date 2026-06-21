@@ -347,7 +347,7 @@ struct AuthSheet: View {
                             .autocorrectionDisabled()
                             .textContentType(.username)
                         SecureField("Password", text: $password)
-                            .textContentType(mode == .signIn ? .password : .newPassword)
+                            .textContentType(.password)
                     }
 
                     Section {

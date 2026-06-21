@@ -34,17 +34,21 @@ private struct LocationPostResponse: Codable {
     let participants: [String]
 }
 
+private struct ServerErrorBody: Decodable {
+    let error: String
+}
+
 enum DotWatcherAPIError: LocalizedError {
     case missingToken
-    case badResponse(Int)
+    case badResponse(Int, String?)
     case network
 
     var errorDescription: String? {
         switch self {
         case .missingToken:
             return "Sign in required."
-        case .badResponse(let status):
-            return "HTTP \(status)"
+        case .badResponse(_, let message):
+            return message ?? "Something went wrong. Please try again."
         case .network:
             return "Network error."
         }
@@ -181,7 +185,7 @@ final class LocationManager {
             } else {
                 selectedSessionMembers = []
             }
-        } catch DotWatcherAPIError.badResponse(401) {
+        } catch DotWatcherAPIError.badResponse(401, _) {
             await signOut(status: "Sign in required")
         } catch {
             status = error.localizedDescription
@@ -230,7 +234,7 @@ final class LocationManager {
 
         do {
             selectedSessionMembers = try await send(path: "/sessions/\(membership.sessionCode)/members")
-        } catch DotWatcherAPIError.badResponse(401) {
+        } catch DotWatcherAPIError.badResponse(401, _) {
             await signOut(status: "Sign in required")
         } catch {
             status = error.localizedDescription
@@ -239,7 +243,7 @@ final class LocationManager {
 
     func updateMemberRole(_ member: SessionMember, role: String) async throws {
         guard let membership = activeMembership, membership.role == "owner" else {
-            throw DotWatcherAPIError.badResponse(403)
+            throw DotWatcherAPIError.badResponse(403, nil)
         }
 
         let updated: SessionMember = try await send(
@@ -380,7 +384,8 @@ final class LocationManager {
             let (data, response) = try await URLSession.shared.data(for: request)
             let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
             guard (200..<300).contains(statusCode) else {
-                throw DotWatcherAPIError.badResponse(statusCode)
+                let message = try? JSONDecoder().decode(ServerErrorBody.self, from: data)
+                throw DotWatcherAPIError.badResponse(statusCode, message?.error)
             }
             return try JSONDecoder().decode(T.self, from: data)
         } catch let error as DotWatcherAPIError {
@@ -415,7 +420,7 @@ final class LocationManager {
             let (_, response) = try await URLSession.shared.data(for: request)
             let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
             guard (200..<300).contains(statusCode) else {
-                throw DotWatcherAPIError.badResponse(statusCode)
+                throw DotWatcherAPIError.badResponse(statusCode, nil)
             }
         } catch let error as DotWatcherAPIError {
             throw error
@@ -483,7 +488,7 @@ final class LocationManager {
         }
 
         #if DEBUG
-        if scheme == "http", host == "localhost" || host == "127.0.0.1" || host == "::1" {
+        if scheme == "http" {
             return url
         }
         #endif
