@@ -4,7 +4,7 @@ import { execSync } from 'node:child_process'
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
-  const appVersion = env.VITE_APP_VERSION ?? `v-${shortCommitId()}-beta`
+  const appVersion = env.VITE_APP_VERSION ?? `v-${shortCommitId()}`
   const appUpdatedAt = env.VITE_APP_UPDATED_AT ?? `Updated ${formatNzBuildTime(new Date())}`
 
   return {
