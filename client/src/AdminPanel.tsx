@@ -16,7 +16,7 @@ interface AdminSession {
 
 const BEARER_TOKEN_KEY = 'adminBearerToken'
 
-export default function AdminPanel() {
+export default function AdminPanel({ serverUrl }: { serverUrl: string }) {
   const [token, setToken] = useState(() => sessionStorage.getItem(BEARER_TOKEN_KEY) ?? (import.meta.env.VITE_BEARER_TOKEN as string | undefined) ?? '')
   const [tokenInput, setTokenInput] = useState(token)
   const [users, setUsers] = useState<AdminUser[]>([])
@@ -30,8 +30,8 @@ export default function AdminPanel() {
     setError(null)
     try {
       const [usersRes, sessionsRes] = await Promise.all([
-        fetch('/admin/users', { headers: { Authorization: `Bearer ${bearerToken}` } }),
-        fetch('/admin/sessions', { headers: { Authorization: `Bearer ${bearerToken}` } }),
+        fetch(`${serverUrl}/admin/users`, { headers: { Authorization: `Bearer ${bearerToken}` } }),
+        fetch(`${serverUrl}/admin/sessions`, { headers: { Authorization: `Bearer ${bearerToken}` } }),
       ])
       if (usersRes.status === 401 || sessionsRes.status === 401) {
         setError('Invalid bearer token.')
@@ -66,7 +66,7 @@ export default function AdminPanel() {
     if (!window.confirm(`Delete user "${user.username}"? This cannot be undone.`)) return
     setDeletingId(user.id)
     try {
-      const response = await fetch(`/admin/users/${user.id}`, {
+      const response = await fetch(`${serverUrl}/admin/users/${user.id}`, {
         method: 'DELETE',
         headers: { Authorization: `Bearer ${token}` },
       })

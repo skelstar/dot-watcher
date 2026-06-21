@@ -265,7 +265,7 @@ export default function App() {
   }
 
   if (isAdmin) {
-    return <AdminPanel />
+    return <AdminPanel serverUrl={SERVER_URL} />
   }
 
   if (legalPage) {
