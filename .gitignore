@@ -42,3 +42,9 @@ local.properties
 *.aab
 android/build/
 android/captures/
+
+# ─── AI review artifacts ─────────────────────────────────────────────────────
+.ai/reviews/*.md
+!.ai/reviews/.gitkeep
+.ai/pr-descriptions/*.md
+!.ai/pr-descriptions/.gitkeep

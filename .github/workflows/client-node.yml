@@ -1,0 +1,40 @@
+name: Client Node
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - "client/**"
+      - ".github/workflows/client-node.yml"
+
+jobs:
+  test-build:
+    name: Test and build
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: client
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Test
+        run: npm run test
+
+      - name: Build
+        env:
+          VITE_MAPBOX_TOKEN: ci-mapbox-token-placeholder
+          VITE_SERVER_URL: /api
+        run: npm run build

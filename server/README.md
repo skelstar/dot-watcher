@@ -1,6 +1,60 @@
 # Server
 
-.NET 9 minimal API for Dot Watcher. Receives GPS positions from the iOS app and serves them to web viewers. Live data is held in memory; every incoming position is also appended to an NDJSON file on disk so sessions can be replayed later.
+.NET 9 minimal API for Dot Watcher. Receives GPS positions from the iOS app and serves them to web viewers. Latest live positions are held in memory; incoming positions and uploaded recordings are persisted to SQLite so sessions can be replayed later.
+
+---
+
+## Table of contents
+
+- [Application structure](#application-structure)
+- [Prerequisites](#prerequisites)
+- [Configuration](#configuration)
+- [Running locally](#running-locally)
+- [API](#api)
+  - [`POST /location`](#post-location)
+  - [`GET /locations/{sessionCode}`](#get-locationssessioncode)
+  - [`GET /sessions`](#get-sessions)
+  - [`GET /sessions/{sessionCode}/recording`](#get-sessionssessioncoderecording)
+  - [`DELETE /sessions/{sessionCode}`](#delete-sessionssessioncode)
+  - [`DELETE /me`](#delete-me)
+- [Deployment](#deployment-tatooine--home-k3s-cluster)
+- [Notes](#notes)
+
+---
+
+## Application structure
+
+```text
+	                       +-----------------------+
+	                       |      iOS tracker      |
+	                       |  POST /location       |
+	                       |  User token auth      |
+                       +-----------+-----------+
+                                   |
+                                   v
++----------------------+   +-------+--------+   +----------------------+
+| Web viewer / browser |-->| ASP.NET Core   |-->| SessionStore         |
+|                      |   | controllers    |   |                      |
+| GET /locations/{id}  |   | Program.cs     |   | In-memory live state |
+| GET /locations/{id}  |   | Controllers/*  |   | SQLite recordings    |
+| GET /.../recording   |   | CORS enabled   |   | Users + membership   |
++----------+-----------+   +-------+--------+   +----------+-----------+
+           ^                       |                       ^
+           |                       v                       |
+           |              +---------------------+          |
+           |              | wwwroot/index.html  |          |
+           |              | Debug dashboard     |          |
+           |              | /log + recordings   |          |
+           |              +---------------------+          |
+           |                                               |
+           |              +---------------------+          |
+           +--------------| Legacy migration    |----------+
+                          | recordings/*.ndjson |
+                          | imported on startup |
+                          +---------------------+
+```
+
+`Program.cs` wires startup, static file hosting, CORS, controller routing, logging, and startup migration. `Controllers/*.cs` owns the HTTP endpoints. `Stores/SessionStore.cs` owns both the current in-memory session positions and the SQLite-backed recording history.
 
 ---
 
@@ -14,27 +68,43 @@
 
 | Key | Default | Description |
 | --- | --- | --- |
-| `BearerToken` | *(required)* | Token used to authenticate `POST` and `DELETE` requests |
-| `PositionHistoryCount` | `3` | How many recent positions to return per runner in `GET /locations/{sessionCode}` |
-| `RecordingsPath` | `recordings` | Directory where NDJSON session recordings are written |
+| `BearerToken` | *(required)* | Token used to authenticate protected write/delete endpoints and admin/debug reads |
+| `JwtSigningKey` | *(required)* | HMAC signing key for user access tokens. Use a high-entropy secret of at least 32 bytes |
+| `JwtIssuer` | `dot-watcher` | Issuer claim used for local user access tokens |
+| `JwtAudience` | `dot-watcher` | Audience claim used for local user access tokens |
+| `JwtAccessTokenMinutes` | `60` | User access token lifetime in minutes, clamped to 1-1440 |
+| `JwtClockSkewSeconds` | `60` | Clock skew allowed while validating user access tokens, clamped to 0-300 |
+| `AuthMaxFailedAttempts` | `5` | Failed login attempts allowed per username/IP before temporary lockout |
+| `AuthLockoutMinutes` | `15` | Temporary login lockout duration after repeated failures |
+| `AuthAttemptWindowMinutes` | `15` | Idle failed-login attempt window lifetime before process-local limiter state is pruned |
+| `AuthMaxTrackedAttempts` | `10000` | Maximum username/IP failed-login keys retained by the process-local limiter |
+| `DbPath` | `dotwatcher.db` | SQLite database file used for persisted session recordings |
+| `RecordingsPath` | `recordings` | Directory scanned on startup for legacy NDJSON recordings to import into SQLite |
 
-The server requires a bearer token used to authenticate `POST` and `DELETE` requests from phone apps. Set it via:
+The server requires two separate secrets:
+
+- `BearerToken` for admin/debug operations such as log access, upload/delete/merge, and full session listing.
+- `JwtSigningKey` for signing app-user access tokens returned by register/login.
+
+Set them via:
 
 **Environment variable (recommended for production):**
 
 ```
 BearerToken=your-secret-token
+JwtSigningKey=your-long-random-jwt-signing-key
 ```
 
 **`appsettings.Development.json` (local only — already set to `dev-token`):**
 
 ```json
 {
-  "BearerToken": "dev-token"
+  "BearerToken": "dev-token",
+  "JwtSigningKey": "dev-jwt-signing-key-change-me-32-bytes"
 }
 ```
 
-The server will throw on startup if `BearerToken` is not configured.
+The server will throw on startup if `BearerToken` or `JwtSigningKey` is not configured.
 
 > Do not commit a production token to source control.
 
@@ -66,11 +136,13 @@ Or set `ASPNETCORE_URLS=http://localhost:8080` as an environment variable.
 
 ## API
 
+The API routes are implemented as ASP.NET Core controllers under `Controllers/`. Routes use absolute attributes so existing client URIs remain unchanged.
+
 ### `POST /location`
 
 Receives a position update from a phone app.
 
-**Auth:** `Authorization: Bearer <token>` header required.
+**Auth:** User access token required. The authenticated user must be an `owner` or `runner` member of the session.
 
 **Request body:**
 
@@ -89,47 +161,37 @@ Receives a position update from a phone app.
 | ------------- | ------ | -------- | --------------------------------------------------------- |
 | `runnerName`  | string | Yes      | Display name shown on the map                             |
 | `sessionCode` | string | Yes      | Session identifier shared with viewers                    |
-| `latitude`    | number | Yes      | WGS84 latitude                                            |
-| `longitude`   | number | Yes      | WGS84 longitude                                           |
+| `latitude`    | number | Yes      | WGS84 latitude, `-90` to `90`                             |
+| `longitude`   | number | Yes      | WGS84 longitude, `-180` to `180`                          |
 | `heading`     | number | No       | Compass bearing 0–360°, true north. Omit when unavailable |
-| `timestamp`   | string | Yes      | ISO 8601 UTC timestamp                                    |
+| `timestamp`   | string | Yes      | ISO 8601 UTC timestamp, using GPS capture time            |
+
+Live posts and uploaded NDJSON recordings share the same payload validation. The server rejects missing/default timestamps, invalid session codes, empty stored runner names, non-finite coordinates, out-of-range coordinates, and out-of-range headings. For live posts, the server stores the authenticated member display name instead of trusting `runnerName`.
 
 **Responses:**
 
-| Status | Meaning                         |
-| ------ | ------------------------------- |
-| 200    | Position recorded               |
-| 401    | Missing or invalid bearer token |
+| Status | Meaning |
+| ------ | ------- |
+| 200    | Position recorded |
+| 400    | Invalid JSON, session code, or GPS payload |
+| 401    | Missing or invalid user token |
+| 403    | Authenticated user is not an owner/runner member |
 
 ---
 
 ### `GET /locations/{sessionCode}`
 
-Returns the last `n` positions for every runner in a session (configurable via `PositionHistoryCount` in `appsettings.json`, default 3). Called by the web viewer.
+Returns the latest live position for every runner in a session. Called by the web viewer.
 
-**Auth:** None. The session code in the URL path is the only access control for read operations.
+**Auth:** User access token required. The authenticated user must be a member of the session.
 
 **Response body:**
 
-Array of arrays — one inner array per runner, each containing up to `PositionHistoryCount` positions ordered oldest-to-newest.
+Array of arrays — one inner array per runner, each containing that runner's latest live position.
 
 ```json
 [
   [
-    {
-      "runnerName": "Alice",
-      "latitude": -33.868,
-      "longitude": 151.209,
-      "heading": 268.0,
-      "timestamp": "2024-11-15T09:23:25Z"
-    },
-    {
-      "runnerName": "Alice",
-      "latitude": -33.8684,
-      "longitude": 151.2091,
-      "heading": 269.5,
-      "timestamp": "2024-11-15T09:23:35Z"
-    },
     {
       "runnerName": "Alice",
       "latitude": -33.8688,
@@ -150,21 +212,197 @@ Array of arrays — one inner array per runner, each containing up to `PositionH
 ]
 ```
 
-Returns `[]` for an unknown session code.
+Returns `200 []` only when the authenticated user is a member of the session and no live positions are currently available. Unknown session codes and valid-shaped codes without membership return `403` so callers cannot use this endpoint to enumerate sessions.
 
 **Responses:**
 
 | Status | Meaning                      |
 | ------ | ---------------------------- |
-| 200    | Success (array may be empty) |
+| 200    | Success for a session member (array may be empty) |
+| 401    | Missing or invalid user token |
+| 403    | Authenticated user is not a session member, including unknown/non-joinable codes |
+
+---
+
+### `POST /auth/register`
+
+Creates a local app user account and returns a user access token.
+
+**Auth:** None.
+
+**Request body:**
+
+```json
+{
+  "username": "alice",
+  "password": "long-enough-password",
+  "displayName": "Alice"
+}
+```
+
+**Responses:** `200` with `{ "accessToken": "...", "expiresAt": "...", "user": { ... } }`, `400` for invalid input, `409` for an existing username.
+
+---
+
+### `POST /auth/login`
+
+Authenticates a local app user and returns a user access token.
+
+**Auth:** None.
+
+**Request body:**
+
+```json
+{
+  "username": "alice",
+  "password": "long-enough-password"
+}
+```
+
+**Responses:** `200` with `{ "accessToken": "...", "expiresAt": "...", "user": { ... } }`, `401` for invalid credentials, `429` with `Retry-After` after repeated failed login attempts.
+
+---
+
+### `POST /auth/logout`
+
+Revokes the current user access token until its expiry time plus configured clock skew.
+
+**Auth:** User access token required.
+
+**Responses:** `204` after revocation, `401` for missing, invalid, expired, or already revoked tokens.
+
+---
+
+### `DELETE /me`
+
+Deletes the authenticated app user account.
+
+**Auth:** User access token required.
+
+**Deletion behavior:**
+
+- Removes the user account row and all session memberships for that user.
+- Deletes sessions owned by the user, including their memberships, live state, and persisted location rows/recordings.
+- Deletes persisted location rows written by that authenticated user in sessions owned by someone else.
+- Invalidates outstanding user access tokens because token validation requires the account row to still exist.
+- Historical rows without account attribution, admin-uploaded recordings, and operational logs may not be attributable to a user account and may require operator deletion.
+
+**Responses:** `204` after deletion, `401` for missing, invalid, expired, revoked, or deleted-account tokens.
+
+---
+
+### `POST /sessions`
+
+Creates a new app session for the authenticated user. The creator is stored as an `owner` member and receives an invite code to share.
+
+**Auth:** User access token required.
+
+**Request body:**
+
+```json
+{
+  "sessionCode": "SUNSET23",
+  "displayName": "Alice"
+}
+```
+
+Both fields are optional. If `sessionCode` is omitted, the server generates one.
+
+**Response body:**
+
+```json
+{
+  "sessionCode": "SUNSET23",
+  "inviteCode": "A1B2C3D4E5F6",
+  "role": "owner",
+  "displayName": "Alice"
+}
+```
+
+---
+
+### `POST /session-invites/{inviteCode}/join`
+
+Joins the authenticated user to a session from an invite code. Invite codes are onboarding credentials only; ongoing access is based on stored membership.
+
+**Auth:** User access token required.
+
+**Request body:**
+
+```json
+{
+  "displayName": "Alice"
+}
+```
+
+Invite joins create `viewer` membership for new members and preserve any existing role for current members. Invite codes are not role grants; runner/owner privileges must be assigned by a trusted server-side flow.
+
+**Responses:** `200` with the resulting membership, `400` for invalid display name, `401` for missing or invalid user token, `404` for an unknown invite code.
+
+---
+
+### `GET /sessions/{sessionCode}/members`
+
+Returns the stored members for a session so owners can manage runner access.
+
+**Auth:** Session owner user access token, or admin bearer token.
+
+**Response body:**
+
+```json
+[
+  {
+    "userId": "9b3d...",
+    "role": "owner",
+    "displayName": "Alice"
+  },
+  {
+    "userId": "2a8f...",
+    "role": "viewer",
+    "displayName": "Bob"
+  }
+]
+```
+
+**Responses:** `200` with members, `400` for invalid session code, `401` for missing or invalid credentials, `403` when the signed-in user is not the owner, `404` when an admin requests an unknown session.
+
+---
+
+### `POST /sessions/{sessionCode}/members/{userId}/role`
+
+Promotes or demotes a non-owner member between `runner` and `viewer`.
+
+**Auth:** Session owner user access token, or admin bearer token.
+
+**Request body:**
+
+```json
+{
+  "role": "runner"
+}
+```
+
+Only `runner` and `viewer` are accepted. `owner` is created by `POST /sessions` and cannot be assigned or removed through this endpoint.
+
+**Responses:** `200` with the updated member, `400` for invalid session code, invalid role, or attempts to change the owner role, `401` for missing or invalid credentials, `403` when the signed-in user is not the owner, `404` for unknown sessions or members.
+
+---
+
+### `GET /me/sessions`
+
+Returns the authenticated user's session memberships.
+
+**Auth:** User access token required.
+
+Clients should call this after sign-in and after create/join actions, then navigate to live or replay views only for sessions returned by this endpoint. A raw session code in the URL is an identifier; it is not proof of access.
 
 ---
 
 ### `GET /sessions`
 
-Lists all session codes that have a recording on disk, ordered newest first.
+Lists all session codes that have a recording on disk, ordered newest first. This is an admin/debug endpoint.
 
-**Auth:** None.
+**Auth:** `Authorization: Bearer <token>` header required.
 
 **Response body:**
 
@@ -174,9 +412,10 @@ Lists all session codes that have a recording on disk, ordered newest first.
 
 **Responses:**
 
-| Status | Meaning |
-| ------ | ------- |
-| 200    | Success (array may be empty) |
+| Status | Meaning                         |
+| ------ | ------------------------------- |
+| 200    | Success (array may be empty)    |
+| 401    | Missing or invalid bearer token |
 
 ---
 
@@ -184,7 +423,9 @@ Lists all session codes that have a recording on disk, ordered newest first.
 
 Downloads the full NDJSON recording for a session. Each line is one `LocationUpdate` JSON object in the order it was received.
 
-**Auth:** None.
+**Auth:** User access token with session membership, or admin bearer token.
+
+Admin recording uploads use the same `LocationUpdate` validation as live posts. The URL session code overrides any session code inside each NDJSON row, and failed validation preserves the previous recording.
 
 **Response:** `application/x-ndjson` file download named `{sessionCode}.ndjson`.
 
@@ -198,6 +439,8 @@ Downloads the full NDJSON recording for a session. Each line is one `LocationUpd
 | Status | Meaning |
 | ------ | ------- |
 | 200    | File download |
+| 401    | Missing or invalid token |
+| 403    | Authenticated user is not a session member |
 | 404    | No recording exists for this session code |
 
 ---
@@ -281,7 +524,7 @@ Run in Claude Code:
 /deploy https://github.com/skelstar/dot-watcher.git but just deploy the app from the /server folder
 ```
 
-After the deploy completes, create the k8s secret for the bearer token (the value lives in `server/.env`, which is gitignored):
+After the deploy completes, create the k8s secret for the admin bearer token and JWT signing key (the values live in `server/.env`, which is gitignored):
 
 ```bash
 kubectl create secret generic dot-watcher-server-secrets \
@@ -304,9 +547,9 @@ Push changes to `main`, then run in Claude Code:
 
 This re-clones the repo, rebuilds the image, pushes it to the local registry, and restarts the pod.
 
-### BearerToken secret
+### Runtime secrets
 
-The `BearerToken` is injected into the container via a k8s secret rather than committed to the repo. The secret is named `dot-watcher-server-secrets` in the `dot-watcher-server` namespace. To recreate it (e.g. after a namespace teardown):
+`BearerToken` and `JwtSigningKey` are injected into the container via a k8s secret rather than committed to the repo. The secret is named `dot-watcher-server-secrets` in the `dot-watcher-server` namespace. To recreate it (e.g. after a namespace teardown):
 
 ```bash
 kubectl create secret generic dot-watcher-server-secrets \
@@ -318,15 +561,22 @@ kubectl create secret generic dot-watcher-server-secrets \
 
 ```
 BearerToken=your-secret-token
+JwtSigningKey=your-long-random-jwt-signing-key
 ```
 
 ---
 
 ## Notes
 
-- Restarting the server clears live session state (in-memory), but recordings on disk survive. After a restart, `GET /sessions` will still list past sessions and their recordings will still be downloadable.
-- Recordings are **not** persisted across container redeployments — the `recordings/` directory lives inside the container. Mount a volume at `RecordingsPath` if you need recordings to survive deploys.
+- Restarting the server clears live session state (in-memory), but recordings on disk survive. After a restart, admin-authenticated `GET /sessions` calls will still list past sessions and their recordings will still be downloadable.
+- Recordings are **not** persisted across container redeployments by default — `dotwatcher.db` lives inside the container. Mount a volume for `DbPath` if you need recordings to survive deploys.
 - The `timestamp` field in a `POST /location` request should be the **GPS capture time**, not the time the request was sent. Phone apps record the timestamp when the position fix is taken; the POST may be delayed or retried. Storing the capture time means the viewer always reflects where runners actually were at a given moment.
-- Full position history is stored per runner per session. The `GET /locations/{sessionCode}` endpoint returns the last `n` positions per runner (controlled by `PositionHistoryCount` in `appsettings.json`).
+- Full position history is stored in SQLite per runner per session. The `GET /locations/{sessionCode}` endpoint returns only each runner's latest live position.
 - CORS is open (`AllowAnyOrigin`) — appropriate for a private home lab deployment.
-- Session codes are not validated beyond being present in the URL. An unknown code returns an empty array rather than a 404.
+- Session codes identify sessions but no longer grant access by themselves. Authenticated users must be stored as session members before they can read live locations or recordings.
+- User access tokens are short-lived, include a token ID, and are revoked server-side by `POST /auth/logout` until expiry plus configured clock skew. Token validation also checks that the account row still exists, so `DELETE /me` invalidates other outstanding tokens for the deleted user.
+- The web client keeps app-user access tokens in `sessionStorage` and clears older `localStorage` token keys on sign-in/sign-out.
+- Repeated failed login attempts are temporarily locked out per username/IP. This is process-local throttling and should be backed by edge or identity-provider rate limits before public launch.
+- Session listing and debug logs require bearer auth so public callers cannot enumerate all recorded sessions or recent GPS log lines.
+- `runnerName` is accepted for backwards-compatible payload shape, but the server stores the authenticated member display name instead of trusting this client-supplied value.
+- The local HMAC token implementation remains a prototype identity layer. For public or semi-public deployment, prefer ASP.NET Core authentication/JWT bearer middleware or an OIDC provider with refresh tokens, key rotation, account recovery, and centralized audit/rate-limit controls.

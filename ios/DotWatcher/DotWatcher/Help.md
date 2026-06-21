@@ -4,9 +4,9 @@ DotWatcher shares your location in real time so other runners in the session kno
 
 ## Setup
 
-**Enter your name** — tap the runner field and type your name. Limited to 8 chars, this is how you'll appear on the map.
+**Sign in** — use your DotWatcher account so the server can check which sessions you can read or write.
 
-**Enter a session code** — type the 6-character code shared by the event organiser. Everyone using the same code will appear on the same map. The "session name" will have the date appended to the end to make the event unique.
+**Choose a session** — create a session to track as the owner, or join from an invite code to become a viewer. Tracking requires an owner or runner membership; owners can promote invited viewers to runners.
 
 ## Tracking
 
@@ -14,13 +14,21 @@ Tap **Start Tracking** to begin sharing your location. Your position is sent eve
 
 Tap **Stop** when you're done. You can resume the tracking.
 
-Use **Force Update** to send your location immediately without waiting for the next interval.
-
 ## Viewing the map
 
-Once you've entered a valid session code, a link appears below the code boxes. Tap **Open map in browser** to view the live map.
+Once you've selected a session, a link appears below it. Tap **Open map in browser** to view the live map.
 
 Share the same link with spectators so they can watch from any device.
+
+## Privacy and Terms
+
+Privacy Policy: https://dot-watcher.skelstar.io/privacy
+
+Terms of Use: https://dot-watcher.skelstar.io/terms
+
+Use **Account > Delete account** to delete your DotWatcher account, memberships, owned sessions, and stored location rows linked to your account. Historical records without account attribution, admin uploads, or operational logs may need manual deletion.
+
+DotWatcher is a beta service. Do not use it for emergency response, rescue, medical, safety-critical tracking, or any situation where delayed or missing location data could cause harm.
 
 ## Battery
 

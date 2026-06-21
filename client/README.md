@@ -13,8 +13,8 @@ Create a `.env` file in this directory:
 
 ```
 VITE_MAPBOX_TOKEN=your_mapbox_public_token_here
-VITE_SERVER_URL=http://localhost:5000
-VITE_POLL_INTERVAL_MS=10000
+VITE_SERVER_URL=/api
+VITE_POLL_INTERVAL_MS=2000
 ```
 
 Install dependencies (first time only):
@@ -36,12 +36,35 @@ The app will be available at `http://localhost:5173` by default.
 | Variable               | Required | Default                 | Description                                              |
 | ---------------------- | -------- | ----------------------- | -------------------------------------------------------- |
 | `VITE_MAPBOX_TOKEN`    | Yes      | —                       | Mapbox public access token for rendering the map         |
-| `VITE_SERVER_URL`      | No       | `http://localhost:5000` | Base URL of the dot-watcher server                       |
-| `VITE_POLL_INTERVAL_MS`| No       | `10000`                 | How often (ms) to poll the server for updated positions  |
+| `VITE_SERVER_URL`      | No       | `/api`                  | Base URL of the dot-watcher server                       |
+| `VITE_POLL_INTERVAL_MS`| No       | `2000`                  | How often (ms) to poll the server for updated positions  |
+| `VITE_APP_VERSION`    | No       | `v-{git-sha}-beta`      | Version label shown in the client footer                 |
+| `VITE_APP_UPDATED_AT` | No       | `Updated {NZ datetime}` | Build/update timestamp shown in the client footer        |
+
+The Vite build stamps the client footer as `v-{latestCommitId}-beta · Updated {NZ datetime}`. The timestamp is generated in the `Pacific/Auckland` time zone, for example `v-c82bf5-beta · Updated 20 Jun 2026 20:52 NZST`.
 
 ## Usage
 
-Open the app and enter a session code when prompted, or navigate directly to `http://localhost:5173/SESSIONCODE` to skip the prompt. The map will poll the server and render all runners in that session as directional markers.
+Open the app, sign in, then select an existing session, create one, or join from an invite code. Direct links such as `http://localhost:5173/SESSIONCODE` work after the signed-in user has membership for that session. Invite links use `/join/INVITECODE`.
+
+For local development against a server on another origin, override `VITE_SERVER_URL` in `.env`, for example `http://localhost:5000`.
+
+Public legal pages are available at `/privacy` and `/terms`. These should be reviewed before public App Store release and can be used as App Store Connect metadata URLs once deployed.
+
+## Auth and sessions
+
+- Sign-in and account creation call `POST /auth/login` and `POST /auth/register`.
+- The server returns `{ accessToken, expiresAt, user }`; the app keeps the access token in `sessionStorage`, clears older `localStorage` token keys, and calls `POST /auth/logout` on sign-out.
+- The account settings dialog links Privacy/Terms and calls `DELETE /me` for self-service account deletion.
+- After sign-in, the app loads `GET /me/sessions`. Users can open live or replay views only for returned memberships.
+- Creating a session calls `POST /sessions` and stores the creator as `owner`.
+- Joining from an invite calls `POST /session-invites/{inviteCode}/join`. Invite joins create `viewer` membership for new members and preserve existing roles; invite codes do not grant runner or owner privileges.
+- Owners can open the member manager, load `GET /sessions/{sessionCode}/members`, and call `POST /sessions/{sessionCode}/members/{userId}/role` to promote viewers to runners or demote runners to viewers.
+- A raw session code in the URL is only an identifier. If the user lacks membership, protected server endpoints return `403`.
+
+## CI
+
+GitHub Actions runs the `Client Node` workflow for client changes. It installs dependencies with `npm ci`, runs all `src/*.test.ts` unit tests through `npm run test`, and builds the Vite app with a placeholder Mapbox token. Local agents should not run those commands unless explicitly asked.
 
 ---
 
@@ -49,7 +72,7 @@ Open the app and enter a session code when prompted, or navigate directly to `ht
 
 The client runs on Tatooine, a home lab k3s cluster. It is deployed via the `/deploy` skill in Claude Code, which builds a Docker image (nginx serving the Vite static build), pushes it to the local registry at `localhost:5000`, and applies k8s manifests.
 
-- **URL:** `http://dot-watcher.skelstar.io`
+- **URL:** `https://dot-watcher.skelstar.io`
 - **Namespace:** `dot-watcher-client`
 - **Image:** `localhost:5000/dot-watcher-client:latest`
 - **Manifests:** `/home/skelstar/deployments/dot-watcher-client/k8s/manifests.yaml`

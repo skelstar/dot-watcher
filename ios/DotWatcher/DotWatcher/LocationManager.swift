@@ -1,12 +1,72 @@
 import CoreLocation
 import Foundation
+import Security
+
+struct AppUser: Codable {
+    let userId: String
+    let username: String
+    let displayName: String
+}
+
+struct AuthSession: Codable {
+    let accessToken: String
+    let user: AppUser
+}
+
+struct SessionMembership: Codable, Identifiable {
+    var id: String { sessionCode }
+
+    let sessionCode: String
+    let inviteCode: String
+    let role: String
+    let displayName: String
+}
+
+struct SessionMember: Codable, Identifiable {
+    var id: String { userId }
+
+    let userId: String
+    let role: String
+    let displayName: String
+}
+
+private struct LocationPostResponse: Codable {
+    let participants: [String]
+}
+
+private struct ServerErrorBody: Decodable {
+    let error: String
+}
+
+enum DotWatcherAPIError: LocalizedError {
+    case missingToken
+    case badResponse(Int, String?)
+    case network
+
+    var errorDescription: String? {
+        switch self {
+        case .missingToken:
+            return "Sign in required."
+        case .badResponse(_, let message):
+            return message ?? "Something went wrong. Please try again."
+        case .network:
+            return "Network error."
+        }
+    }
+}
 
 @Observable
 @MainActor
 final class LocationManager {
+    private static let tokenAccount = "DotWatcherUserAccessToken"
+
     private(set) var status = "Idle"
     private(set) var lastSent: Date?
     private(set) var isTracking = false
+    private(set) var currentUser: AppUser?
+    private(set) var memberships: [SessionMembership] = []
+    private(set) var selectedSessionMembers: [SessionMember] = []
+
     var participants: [String] = []
     private var lastParticipantCount = 0
     fileprivate var latestLocation: CLLocation?
@@ -14,15 +74,32 @@ final class LocationManager {
     private let clManager = CLLocationManager()
     private let locationDelegate = LocationDelegate()
     private var trackingTask: Task<Void, Never>?
+    private var accessToken: String?
 
-    let serverURL = URL(string: "http://dot-watcher.skelstar.io/api/location")!
-    let bearerToken = "dev-token"
-    var sessionCode = "" {
+    let serverBaseURL = LocationManager.configuredServerBaseURL()
+    var sessionCode = UserDefaults.standard.string(forKey: "sessionCode") ?? "" {
         didSet {
+            UserDefaults.standard.set(sessionCode, forKey: "sessionCode")
             participants = []
             lastParticipantCount = 0
             if isTracking { captureAndPost() }
         }
+    }
+
+    var runnerName: String = UserDefaults.standard.string(forKey: "runnerName") ?? "" {
+        didSet { UserDefaults.standard.set(runnerName, forKey: "runnerName") }
+    }
+
+    let interval: TimeInterval = 15
+
+    var isAuthenticated: Bool { accessToken != nil }
+
+    var activeMembership: SessionMembership? {
+        memberships.first { $0.sessionCode == sessionCode }
+    }
+
+    var canTrackSelectedSession: Bool {
+        activeMembership?.role == "owner" || activeMembership?.role == "runner"
     }
 
     var dateSuffix: String {
@@ -33,25 +110,166 @@ final class LocationManager {
         return String(format: "-%02d%02d", day, month)
     }
 
-    var fullSessionName: String { sessionCode + dateSuffix }
-    var runnerName: String = UserDefaults.standard.string(forKey: "runnerName") ?? "" {
-        didSet { UserDefaults.standard.set(runnerName, forKey: "runnerName") }
-    }
-    let interval: TimeInterval = 15
+    var fullSessionName: String { sessionCode }
 
     init() {
+        accessToken = Self.readToken()
+        if let data = UserDefaults.standard.data(forKey: "currentUser"),
+           let user = try? JSONDecoder().decode(AppUser.self, from: data) {
+            currentUser = user
+        }
+
         locationDelegate.owner = self
         clManager.delegate = locationDelegate
         clManager.desiredAccuracy = kCLLocationAccuracyNearestTenMeters
-        clManager.distanceFilter = 25.0
+        clManager.distanceFilter = 10.0
         clManager.activityType = .fitness
-        clManager.pausesLocationUpdatesAutomatically = true
+        clManager.pausesLocationUpdatesAutomatically = false
         clManager.allowsBackgroundLocationUpdates = true
         clManager.showsBackgroundLocationIndicator = true
     }
 
+    func signIn(username: String, password: String) async throws {
+        try await authenticate(path: "/auth/login", body: [
+            "username": username,
+            "password": password,
+        ])
+    }
+
+    func register(username: String, password: String, displayName: String) async throws {
+        try await authenticate(path: "/auth/register", body: [
+            "username": username,
+            "password": password,
+            "displayName": displayName,
+        ])
+    }
+
+    func signOut(status nextStatus: String = "Signed out") async {
+        stop()
+        let tokenToRevoke = accessToken
+        status = "Signing out..."
+        if let tokenToRevoke {
+            await revokeToken(tokenToRevoke)
+        }
+        clearAuthState(status: nextStatus)
+    }
+
+    func deleteAccount() async throws {
+        stop()
+        guard let token = accessToken else { throw DotWatcherAPIError.missingToken }
+        status = "Deleting account..."
+        try await sendEmpty(path: "/me", method: "DELETE", token: token)
+        clearAuthState(status: "Account deleted")
+    }
+
+    private func clearAuthState(status nextStatus: String) {
+        accessToken = nil
+        currentUser = nil
+        memberships = []
+        selectedSessionMembers = []
+        sessionCode = ""
+        Self.storeToken(nil)
+        UserDefaults.standard.removeObject(forKey: "currentUser")
+        status = nextStatus
+    }
+
+    func loadSessions() async {
+        guard isAuthenticated else { return }
+        do {
+            memberships = try await send(path: "/me/sessions")
+            if !sessionCode.isEmpty && activeMembership == nil {
+                sessionCode = ""
+            }
+            if activeMembership?.role == "owner" {
+                await loadSelectedSessionMembers()
+            } else {
+                selectedSessionMembers = []
+            }
+        } catch DotWatcherAPIError.badResponse(401, _) {
+            await signOut(status: "Sign in required")
+        } catch {
+            status = error.localizedDescription
+        }
+    }
+
+    func createSession(code: String, displayName: String?) async throws {
+        let requestedCode = code.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        let name = displayName?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let membership: SessionMembership = try await send(
+            path: "/sessions",
+            method: "POST",
+            body: [
+                "sessionCode": requestedCode.isEmpty ? NSNull() : requestedCode,
+                "displayName": (name?.isEmpty ?? true) ? NSNull() : name!,
+            ])
+        upsertMembership(membership)
+        selectSession(membership)
+    }
+
+    func joinInvite(code: String, displayName: String?) async throws {
+        let inviteCode = code.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        let name = displayName?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let membership: SessionMembership = try await send(
+            path: "/session-invites/\(inviteCode)/join",
+            method: "POST",
+            body: [
+                "displayName": (name?.isEmpty ?? true) ? NSNull() : name!,
+            ])
+        upsertMembership(membership)
+        selectSession(membership)
+    }
+
+    func selectSession(_ membership: SessionMembership) {
+        sessionCode = membership.sessionCode
+        status = membership.role == "viewer" ? "Viewer only" : "Ready"
+        Task { participants = await previewSession(membership.sessionCode) }
+        Task { await loadSelectedSessionMembers() }
+    }
+
+    func loadSelectedSessionMembers() async {
+        guard let membership = activeMembership, membership.role == "owner" else {
+            selectedSessionMembers = []
+            return
+        }
+
+        do {
+            selectedSessionMembers = try await send(path: "/sessions/\(membership.sessionCode)/members")
+        } catch DotWatcherAPIError.badResponse(401, _) {
+            await signOut(status: "Sign in required")
+        } catch {
+            status = error.localizedDescription
+        }
+    }
+
+    func updateMemberRole(_ member: SessionMember, role: String) async throws {
+        guard let membership = activeMembership, membership.role == "owner" else {
+            throw DotWatcherAPIError.badResponse(403, nil)
+        }
+
+        let updated: SessionMember = try await send(
+            path: "/sessions/\(membership.sessionCode)/members/\(member.userId)/role",
+            method: "POST",
+            body: ["role": role])
+        if let index = selectedSessionMembers.firstIndex(where: { $0.userId == updated.userId }) {
+            selectedSessionMembers[index] = updated
+        }
+    }
+
     func start() {
         guard !isTracking else { return }
+        guard isAuthenticated else {
+            status = "Sign in required"
+            return
+        }
+        guard !sessionCode.isEmpty else {
+            status = "Choose session"
+            return
+        }
+        guard canTrackSelectedSession else {
+            status = "Owner/runner required"
+            return
+        }
+
         clManager.requestAlwaysAuthorization()
         clManager.startUpdatingLocation()
         isTracking = true
@@ -78,60 +296,213 @@ final class LocationManager {
         }
     }
 
-func previewSession(_ sessionName: String) async -> [String] {
-        guard let url = URL(string: "http://dot-watcher.skelstar.io/api/locations/\(sessionName)") else { return [] }
-        var req = URLRequest(url: url)
-        req.setValue("Bearer \(bearerToken)", forHTTPHeaderField: "Authorization")
-        guard let (data, response) = try? await URLSession.shared.data(for: req),
-              (response as? HTTPURLResponse)?.statusCode == 200,
-              let groups = try? JSONSerialization.jsonObject(with: data) as? [[[String: Any]]] else { return [] }
-        return groups.compactMap { $0.first?["runnerName"] as? String }
+    func previewSession(_ sessionName: String) async -> [String] {
+        do {
+            let groups: [[RunnerPositionResponse]] = try await send(path: "/locations/\(sessionName)")
+            return groups.compactMap { $0.first?.runnerName }
+        } catch {
+            return []
+        }
     }
 
     private func captureAndPost() {
-        if let loc = latestLocation {
-            let heading: Double? = loc.course >= 0 ? loc.course : nil
-            Task { await post(lat: loc.coordinate.latitude, lon: loc.coordinate.longitude, heading: heading, timestamp: loc.timestamp) }
-        } else {
-            Task { await post(lat: nil, lon: nil, heading: nil, timestamp: nil) }
+        guard let loc = latestLocation else {
+            status = "Waiting for GPS"
+            return
+        }
+
+        let heading: Double? = loc.course >= 0 ? loc.course : nil
+        Task {
+            await post(
+                lat: loc.coordinate.latitude,
+                lon: loc.coordinate.longitude,
+                heading: heading,
+                timestamp: loc.timestamp)
         }
     }
 
-    private func post(lat: Double?, lon: Double?, heading: Double?, timestamp: Date?) async {
-        var req = URLRequest(url: serverURL)
-        req.httpMethod = "POST"
-        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        req.setValue("Bearer \(bearerToken)", forHTTPHeaderField: "Authorization")
-        var body: [String: Any] = [
-            "runnerName": runnerName,
-            "sessionCode": fullSessionName,
-            "timestamp": ISO8601DateFormatter().string(from: timestamp ?? Date())
-        ]
-        if let lat, let lon {
-            body["latitude"] = lat
-            body["longitude"] = lon
-        }
-        if let h = heading { body["heading"] = h }
+    private func post(lat: Double, lon: Double, heading: Double?, timestamp: Date) async {
         do {
-            req.httpBody = try JSONSerialization.data(withJSONObject: body)
-            let (data, response) = try await URLSession.shared.data(for: req)
-            let code = (response as? HTTPURLResponse)?.statusCode ?? 0
-            if code == 200 {
-                status = "Sent ✓"
-                lastSent = Date()
-                if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                   let names = json["participants"] as? [String],
-                   names.count != lastParticipantCount {
-                    lastParticipantCount = names.count
-                    participants = names
-                }
-            } else {
-                status = "HTTP \(code)"
+            var body: [String: Any] = [
+                "runnerName": runnerName,
+                "sessionCode": fullSessionName,
+                "latitude": lat,
+                "longitude": lon,
+                "timestamp": ISO8601DateFormatter().string(from: timestamp),
+            ]
+            if let heading { body["heading"] = heading }
+
+            let response: LocationPostResponse = try await send(path: "/location", method: "POST", body: body)
+            status = "Sent"
+            lastSent = Date()
+            if response.participants.count != lastParticipantCount {
+                lastParticipantCount = response.participants.count
+                participants = response.participants
             }
         } catch {
-            status = "Error: \(error.localizedDescription)"
+            status = error.localizedDescription
         }
     }
+
+    private func authenticate(path: String, body: [String: Any]) async throws {
+        let session: AuthSession = try await send(path: path, method: "POST", body: body, authorized: false)
+        accessToken = session.accessToken
+        currentUser = session.user
+        Self.storeToken(session.accessToken)
+        if let data = try? JSONEncoder().encode(session.user) {
+            UserDefaults.standard.set(data, forKey: "currentUser")
+        }
+        if runnerName.trimmingCharacters(in: .whitespaces).isEmpty {
+            runnerName = String(session.user.displayName.uppercased().prefix(3))
+        }
+        status = "Signed in"
+        await loadSessions()
+    }
+
+    private func send<T: Decodable>(
+        path: String,
+        method: String = "GET",
+        body: [String: Any]? = nil,
+        authorized: Bool = true
+    ) async throws -> T {
+        let normalizedPath = path.hasPrefix("/") ? path : "/\(path)"
+        guard let url = URL(string: serverBaseURL.absoluteString + normalizedPath) else {
+            throw DotWatcherAPIError.network
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = method
+        if authorized {
+            guard let accessToken else { throw DotWatcherAPIError.missingToken }
+            request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        }
+        if let body {
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        }
+
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+            let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
+            guard (200..<300).contains(statusCode) else {
+                let message = try? JSONDecoder().decode(ServerErrorBody.self, from: data)
+                throw DotWatcherAPIError.badResponse(statusCode, message?.error)
+            }
+            return try JSONDecoder().decode(T.self, from: data)
+        } catch let error as DotWatcherAPIError {
+            throw error
+        } catch {
+            throw DotWatcherAPIError.network
+        }
+    }
+
+    private func revokeToken(_ token: String) async {
+        guard let url = URL(string: serverBaseURL.absoluteString + "/auth/logout") else {
+            return
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        _ = try? await URLSession.shared.data(for: request)
+    }
+
+    private func sendEmpty(path: String, method: String, token: String) async throws {
+        let normalizedPath = path.hasPrefix("/") ? path : "/\(path)"
+        guard let url = URL(string: serverBaseURL.absoluteString + normalizedPath) else {
+            throw DotWatcherAPIError.network
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = method
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+
+        do {
+            let (_, response) = try await URLSession.shared.data(for: request)
+            let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
+            guard (200..<300).contains(statusCode) else {
+                throw DotWatcherAPIError.badResponse(statusCode, nil)
+            }
+        } catch let error as DotWatcherAPIError {
+            throw error
+        } catch {
+            throw DotWatcherAPIError.network
+        }
+    }
+
+    private func upsertMembership(_ membership: SessionMembership) {
+        memberships.removeAll { $0.sessionCode == membership.sessionCode }
+        memberships.insert(membership, at: 0)
+    }
+
+    private static func readToken() -> String? {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrAccount as String: tokenAccount,
+            kSecReturnData as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne,
+        ]
+        var item: CFTypeRef?
+        guard SecItemCopyMatching(query as CFDictionary, &item) == errSecSuccess,
+              let data = item as? Data
+        else { return nil }
+        return String(data: data, encoding: .utf8)
+    }
+
+    private static func storeToken(_ token: String?) {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrAccount as String: tokenAccount,
+        ]
+        SecItemDelete(query as CFDictionary)
+        guard let token,
+              let data = token.data(using: .utf8)
+        else { return }
+        let item: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrAccount as String: tokenAccount,
+            kSecValueData as String: data,
+        ]
+        SecItemAdd(item as CFDictionary, nil)
+    }
+
+    private static func configuredServerBaseURL() -> URL {
+        let configured = Bundle.main.object(forInfoDictionaryKey: "DotWatcherAPIBaseURL") as? String
+        let rawValue = configured?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let fallback = "https://dot-watcher.skelstar.io/api"
+        let urlString: String
+        if let rawValue, !rawValue.isEmpty {
+            urlString = rawValue
+        } else {
+            urlString = fallback
+        }
+
+        guard let url = URL(string: urlString),
+              let scheme = url.scheme?.lowercased(),
+              let host = url.host?.lowercased()
+        else {
+            preconditionFailure("DotWatcherAPIBaseURL must be a valid absolute URL.")
+        }
+
+        if scheme == "https" {
+            return url
+        }
+
+        #if DEBUG
+        if scheme == "http" {
+            return url
+        }
+        #endif
+
+        preconditionFailure("DotWatcherAPIBaseURL must use HTTPS outside local development.")
+    }
+}
+
+private struct RunnerPositionResponse: Codable {
+    let runnerName: String
+    let latitude: Double
+    let longitude: Double
+    let heading: Double?
+    let timestamp: String
 }
 
 private final class LocationDelegate: NSObject, CLLocationManagerDelegate {

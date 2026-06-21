@@ -5,6 +5,7 @@ import mapboxgl from 'mapbox-gl'
 import type { RunnerPosition } from './types.ts'
 import Arrow, { ARROW_SIZE } from './components/Arrow.tsx'
 import Dot from './components/Dot.tsx'
+import { livePollingError, shouldPollLivePositions } from './useRunnerMarkersLogic.ts'
 
 interface MarkerEntry {
   marker: mapboxgl.Marker
@@ -15,6 +16,7 @@ interface MarkerEntry {
 interface RunnerMarkersResult {
   visibleRunners: string[]
   offScreenRunners: string[]
+  error: string | null
   centerOnRunner: (name: string) => void
   fitAll: () => void
 }
@@ -23,6 +25,7 @@ export function useRunnerMarkers(
   mapRef: RefObject<mapboxgl.Map | null>,
   sessionCode: string | null,
   serverUrl: string,
+  accessToken: string | null,
   intervalMs: number,
   replayPositions?: RunnerPosition[][],
   replayNowMs?: number,
@@ -34,6 +37,7 @@ export function useRunnerMarkers(
   const virtualNowRef = useRef<number | null>(null)
   const [visibleRunners, setVisibleRunners] = useState<string[]>([])
   const [offScreenRunners, setOffScreenRunners] = useState<string[]>([])
+  const [error, setError] = useState<string | null>(null)
 
   function applyPositions(runnerGroups: RunnerPosition[][], map: mapboxgl.Map, virtualNow?: number) {
     if (virtualNow !== undefined) virtualNowRef.current = virtualNow
@@ -115,24 +119,35 @@ export function useRunnerMarkers(
   }
 
   // Live polling effect — skipped when replayPositions is provided
+  // TODO: Add e2e coverage for signed-in member polling, 401/403 handling, and replay mode.
   useEffect(() => {
-    if (!sessionCode || replayPositions !== undefined) return
+    if (!shouldPollLivePositions(sessionCode, accessToken, replayPositions !== undefined)) {
+      setError(null)
+      return
+    }
     hasLocatedRef.current = false
 
     let cancelled = false
 
     async function fetchAndUpdate() {
       try {
-        const res = await fetch(`${serverUrl}/locations/${sessionCode}`)
-        if (!res.ok || cancelled) return
+        const res = await fetch(`${serverUrl}/locations/${sessionCode}`, {
+          headers: { 'Authorization': `Bearer ${accessToken}` },
+        })
+        if (cancelled) return
+        if (!res.ok) {
+          setError(livePollingError(res.status))
+          return
+        }
         const runnerGroups: RunnerPosition[][] = await res.json()
+        setError(null)
 
         const map = mapRef.current
         if (!map || cancelled) return
 
         applyPositions(runnerGroups, map)
       } catch {
-        // network errors are silent — we'll retry on the next interval
+        setError('Network error while loading live positions.')
       }
     }
 
@@ -142,7 +157,7 @@ export function useRunnerMarkers(
       cancelled = true
       clearInterval(id)
     }
-  }, [sessionCode, serverUrl, intervalMs, mapRef, replayPositions]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [sessionCode, serverUrl, accessToken, intervalMs, mapRef, replayPositions]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Replay effect — runs when replayPositions changes
   useEffect(() => {
@@ -253,7 +268,7 @@ export function useRunnerMarkers(
     }
   }
 
-  return { visibleRunners, offScreenRunners, centerOnRunner, fitAll }
+  return { visibleRunners, offScreenRunners, error, centerOnRunner, fitAll }
 }
 
 export { ARROW_SIZE }

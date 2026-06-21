@@ -4,34 +4,97 @@ import 'mapbox-gl/dist/mapbox-gl.css'
 import SessionPrompt from './SessionPrompt.tsx'
 import Legend from './Legend.tsx'
 import MapMenu from './MapMenu.tsx'
+import MemberManager from './MemberManager.tsx'
 import ReplayControls from './ReplayControls.tsx'
 import ReplayPicker from './ReplayPicker.tsx'
+import AuthPrompt from './AuthPrompt.tsx'
+import LegalPage from './LegalPage.tsx'
+import AccountSettings from './AccountSettings.tsx'
 import { useRunnerMarkers } from './useRunnerMarkers.ts'
 import { useReplay } from './useReplay.ts'
+import { canManageMembersForRole, canWriteLocationForRole, shouldShowAuthPrompt, shouldShowSessionPrompt } from './sessionState.ts'
+import type { AuthResponse, AuthenticatedUser, SessionMembership } from './types.ts'
 
 mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN as string
 
 const POLL_INTERVAL_MS: number = parseInt(import.meta.env.VITE_POLL_INTERVAL_MS ?? '2000', 10)
 const SERVER_URL: string = import.meta.env.VITE_SERVER_URL ?? '/api'
+const APP_VERSION = import.meta.env.VITE_APP_VERSION ?? 'v-local-beta'
+const APP_UPDATED_AT = import.meta.env.VITE_APP_UPDATED_AT ?? 'Updated local'
+const VERSION_LABEL = `${APP_VERSION} · ${APP_UPDATED_AT}`
+const AUTH_TOKEN_KEY = 'userAccessToken'
+const AUTH_EXPIRES_KEY = 'userAccessTokenExpiresAt'
+const AUTH_USER_KEY = 'user'
 
-function parseUrl(): { sessionCode: string | null; isReplay: boolean } {
+interface RouteState {
+  sessionCode: string | null
+  isReplay: boolean
+  inviteCode: string | null
+  legalPage: 'privacy' | 'terms' | null
+}
+
+function parseUrl(): RouteState {
   const parts = window.location.pathname.replace(/^\//, '').split('/')
   const norm = (s: string) => s.toUpperCase() || null
-  if (parts[0] === 'replay') return { sessionCode: null, isReplay: true }
-  if (parts[1] === 'replay') return { sessionCode: norm(parts[0]), isReplay: true }
-  return { sessionCode: norm(parts[0]), isReplay: false }
+  if (parts[0] === 'privacy') return { sessionCode: null, isReplay: false, inviteCode: null, legalPage: 'privacy' }
+  if (parts[0] === 'terms') return { sessionCode: null, isReplay: false, inviteCode: null, legalPage: 'terms' }
+  if (parts[0] === 'join') return { sessionCode: null, isReplay: false, inviteCode: norm(parts[1] ?? ''), legalPage: null }
+  if (parts[0] === 'replay') return { sessionCode: null, isReplay: true, inviteCode: null, legalPage: null }
+  if (parts[1] === 'replay') return { sessionCode: norm(parts[0]), isReplay: true, inviteCode: null, legalPage: null }
+  return { sessionCode: norm(parts[0]), isReplay: false, inviteCode: null, legalPage: null }
+}
+
+function readStoredAuth(): AuthResponse | null {
+  const accessToken = sessionStorage.getItem(AUTH_TOKEN_KEY)
+  if (!accessToken) return null
+
+  const expiresAt = sessionStorage.getItem(AUTH_EXPIRES_KEY)
+  const expiresAtMs = expiresAt ? Date.parse(expiresAt) : NaN
+  if (!Number.isFinite(expiresAtMs) || expiresAtMs <= Date.now()) {
+    clearStoredAuth()
+    return null
+  }
+
+  const storedUser = sessionStorage.getItem(AUTH_USER_KEY)
+  let user: AuthenticatedUser = { userId: '', username: '', displayName: '' }
+  if (storedUser) {
+    try {
+      user = JSON.parse(storedUser) as AuthenticatedUser
+    } catch {
+      sessionStorage.removeItem(AUTH_USER_KEY)
+    }
+  }
+
+  return { accessToken, expiresAt, user }
+}
+
+function clearStoredAuth() {
+  sessionStorage.removeItem(AUTH_TOKEN_KEY)
+  sessionStorage.removeItem(AUTH_EXPIRES_KEY)
+  sessionStorage.removeItem(AUTH_USER_KEY)
+  localStorage.removeItem(AUTH_TOKEN_KEY)
+  localStorage.removeItem(AUTH_EXPIRES_KEY)
+  localStorage.removeItem(AUTH_USER_KEY)
 }
 
 export default function App() {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<mapboxgl.Map | null>(null)
-  const { sessionCode: initialCode, isReplay } = parseUrl()
+  const { sessionCode: initialCode, isReplay, inviteCode, legalPage } = parseUrl()
   const [sessionCode, setSessionCode] = useState<string | null>(initialCode)
+  const [auth, setAuth] = useState<AuthResponse | null>(() => readStoredAuth())
+  const [memberships, setMemberships] = useState<SessionMembership[]>([])
+  const [membershipsLoaded, setMembershipsLoaded] = useState(false)
   const [menu, setMenu] = useState<{ x: number; y: number; lng: number; lat: number } | null>(null)
+  const [showMembers, setShowMembers] = useState(false)
+  const [showSettings, setShowSettings] = useState(false)
+  const accessToken = auth?.accessToken ?? null
 
   useEffect(() => {
+    if (legalPage || !containerRef.current) return
+
     const map = new mapboxgl.Map({
-      container: containerRef.current!,
+      container: containerRef.current,
       style: 'mapbox://styles/mapbox/streets-v12',
       center: [151.2093, -33.8688],
       zoom: 13,
@@ -55,26 +118,75 @@ export default function App() {
       map.remove()
       mapRef.current = null
     }
-  }, [])
+  }, [isReplay, legalPage])
 
-  const replay = useReplay(isReplay ? sessionCode : null, SERVER_URL)
+  useEffect(() => {
+    if (!accessToken) {
+      setMemberships([])
+      setMembershipsLoaded(false)
+      return
+    }
 
-  const { offScreenRunners, centerOnRunner, fitAll } = useRunnerMarkers(
-    mapRef,
+    let cancelled = false
+    setMembershipsLoaded(false)
+
+    async function loadMemberships() {
+      try {
+        const response = await fetch(`${SERVER_URL}/me/sessions`, {
+          headers: { 'Authorization': `Bearer ${accessToken}` },
+        })
+
+        if (cancelled) return
+
+        if (response.status === 401) {
+          handleSignOut()
+          return
+        }
+
+        if (response.ok) {
+          setMemberships(await response.json() as SessionMembership[])
+        }
+      } finally {
+        if (!cancelled) setMembershipsLoaded(true)
+      }
+    }
+
+    void loadMemberships()
+    return () => { cancelled = true }
+  }, [accessToken])
+
+  const activeMembership = memberships.find(membership => membership.sessionCode === sessionCode) ?? null
+  const hasSessionMembership = sessionCode ? activeMembership !== null : false
+  const canWriteLocation = canWriteLocationForRole(activeMembership?.role)
+  const canManageMembers = canManageMembersForRole(activeMembership?.role)
+  const showSessionPrompt = shouldShowSessionPrompt({
+    accessToken,
+    membershipsLoaded,
+    isReplay,
+    inviteCode,
     sessionCode,
+    hasSessionMembership,
+  })
+
+  const replay = useReplay(isReplay && hasSessionMembership ? sessionCode : null, SERVER_URL, accessToken)
+
+  const { offScreenRunners, error: liveError, centerOnRunner, fitAll } = useRunnerMarkers(
+    mapRef,
+    !isReplay && hasSessionMembership ? sessionCode : null,
     SERVER_URL,
+    accessToken,
     POLL_INTERVAL_MS,
     isReplay ? replay.positions : undefined,
     isReplay ? replay.virtualNowMs : undefined,
   )
 
   async function sendChester(lng: number, lat: number) {
-    if (!sessionCode) return
+    if (!sessionCode || !accessToken || !canWriteLocation) return
     await fetch(`${SERVER_URL}/location`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${import.meta.env.VITE_BEARER_TOKEN}`,
+        'Authorization': `Bearer ${accessToken}`,
       },
       body: JSON.stringify({
         runnerName: 'Chester',
@@ -87,10 +199,61 @@ export default function App() {
     })
   }
 
-  function handleSessionSubmit(code: string) {
-    const upper = code.trim().toUpperCase()
-    window.history.replaceState(null, '', isReplay ? `/${upper}/replay` : `/${upper}`)
-    setSessionCode(upper)
+  function handleAuth(nextAuth: AuthResponse) {
+    clearStoredAuth()
+    sessionStorage.setItem(AUTH_TOKEN_KEY, nextAuth.accessToken)
+    sessionStorage.setItem(AUTH_EXPIRES_KEY, nextAuth.expiresAt)
+    sessionStorage.setItem(AUTH_USER_KEY, JSON.stringify(nextAuth.user))
+    setAuth(nextAuth)
+  }
+
+  function handleSignOut() {
+    const tokenToRevoke = accessToken
+    if (tokenToRevoke) {
+      void fetch(`${SERVER_URL}/auth/logout`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${tokenToRevoke}` },
+      }).catch(() => undefined)
+    }
+
+    clearStoredAuth()
+    setAuth(null)
+    setMemberships([])
+    setSessionCode(null)
+    setShowMembers(false)
+    setShowSettings(false)
+  }
+
+  async function handleDeleteAccount() {
+    if (!accessToken) return
+    let response: Response
+    try {
+      response = await fetch(`${SERVER_URL}/me`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${accessToken}` },
+      })
+    } catch {
+      window.alert('Delete account failed: network error')
+      throw new Error('Delete account failed: network error')
+    }
+
+    if (!response.ok) {
+      window.alert(`Delete account failed: HTTP ${response.status}`)
+      throw new Error(`Delete account failed: HTTP ${response.status}`)
+    }
+
+    clearStoredAuth()
+    setAuth(null)
+    setMemberships([])
+    setSessionCode(null)
+    setShowMembers(false)
+    setShowSettings(false)
+  }
+
+  function handleMembershipSelect(membership: SessionMembership) {
+    window.history.replaceState(null, '', isReplay ? `/${membership.sessionCode}/replay` : `/${membership.sessionCode}`)
+    setSessionCode(membership.sessionCode)
+    setShowMembers(false)
   }
 
   function handleReplaySelect(code: string) {
@@ -98,12 +261,31 @@ export default function App() {
     setSessionCode(code)
   }
 
+  if (legalPage) {
+    return <LegalPage kind={legalPage} />
+  }
+
   return (
     <>
       <div ref={containerRef} style={{ width: '100%', height: '100%' }} />
+      <div style={versionBadge}>
+        <span>{VERSION_LABEL}</span>
+        <a href="/privacy" style={legalLink}>Privacy</a>
+        <a href="/terms" style={legalLink}>Terms</a>
+      </div>
+      {auth && (
+        <div style={accountBar}>
+          <span>{auth.user.displayName || auth.user.username}</span>
+          {canManageMembers && (
+            <button type="button" style={signOutButton} onClick={() => setShowMembers(true)}>Members</button>
+          )}
+          <button type="button" style={signOutButton} onClick={() => setShowSettings(true)}>Settings</button>
+          <button type="button" style={signOutButton} onClick={handleSignOut}>Sign out</button>
+        </div>
+      )}
       {!isReplay && <button onClick={fitAll} style={fitAllBtn} title="Fit all">⤢</button>}
       <Legend runners={offScreenRunners} onRunnerClick={centerOnRunner} />
-      {menu && (
+      {menu && canWriteLocation && (
         <MapMenu
           x={menu.x}
           y={menu.y}
@@ -112,8 +294,49 @@ export default function App() {
         />
       )}
       {isReplay && sessionCode && <ReplayControls replay={replay} onFitAll={fitAll} />}
-      {isReplay && !sessionCode && <ReplayPicker serverUrl={SERVER_URL} onSelect={handleReplaySelect} />}
-      {!isReplay && !sessionCode && <SessionPrompt onSubmit={handleSessionSubmit} />}
+      {liveError && !isReplay && hasSessionMembership && <div style={statusToast}>{liveError}</div>}
+      {replay.error && isReplay && hasSessionMembership && <div style={statusToast}>{replay.error}</div>}
+      {shouldShowAuthPrompt(accessToken) && <AuthPrompt serverUrl={SERVER_URL} onAuth={handleAuth} />}
+      {accessToken && membershipsLoaded && isReplay && !sessionCode && (
+        <ReplayPicker memberships={memberships} onSelect={handleReplaySelect} />
+      )}
+      {accessToken && showSessionPrompt && (
+        <SessionPrompt
+          serverUrl={SERVER_URL}
+          accessToken={accessToken}
+          memberships={memberships}
+          requestedSessionCode={inviteCode ? undefined : sessionCode}
+          initialInviteCode={inviteCode}
+          onSelect={handleMembershipSelect}
+          onMembershipsChanged={setMemberships}
+        />
+      )}
+      {accessToken && membershipsLoaded && isReplay && sessionCode && !hasSessionMembership && !inviteCode && (
+        <SessionPrompt
+          serverUrl={SERVER_URL}
+          accessToken={accessToken}
+          memberships={memberships}
+          requestedSessionCode={sessionCode}
+          isReplay
+          onSelect={handleMembershipSelect}
+          onMembershipsChanged={setMemberships}
+        />
+      )}
+      {accessToken && canManageMembers && activeMembership && showMembers && (
+        <MemberManager
+          serverUrl={SERVER_URL}
+          accessToken={accessToken}
+          membership={activeMembership}
+          onClose={() => setShowMembers(false)}
+        />
+      )}
+      {auth && showSettings && (
+        <AccountSettings
+          displayName={auth.user.displayName || auth.user.username}
+          onClose={() => setShowSettings(false)}
+          onDeleteAccount={handleDeleteAccount}
+        />
+      )}
     </>
   )
 }
@@ -135,4 +358,75 @@ const fitAllBtn: React.CSSProperties = {
   fontSize: '1.1rem',
   color: '#333',
   padding: 0,
+}
+
+const accountBar: React.CSSProperties = {
+  position: 'absolute',
+  top: 12,
+  left: 12,
+  zIndex: 8,
+  display: 'flex',
+  alignItems: 'center',
+  gap: 8,
+  background: '#fff',
+  color: '#24292f',
+  borderRadius: 6,
+  boxShadow: '0 0 0 2px rgba(0,0,0,0.1)',
+  padding: '6px 8px',
+  fontFamily: 'system-ui, sans-serif',
+  fontSize: '0.85rem',
+}
+
+const versionBadge: React.CSSProperties = {
+  position: 'absolute',
+  left: 12,
+  bottom: 12,
+  zIndex: 7,
+  maxWidth: 'min(620px, calc(100vw - 96px))',
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap',
+  display: 'flex',
+  alignItems: 'center',
+  gap: 8,
+  background: 'rgba(255,255,255,0.92)',
+  color: '#57606a',
+  borderRadius: 4,
+  boxShadow: '0 0 0 1px rgba(0,0,0,0.1)',
+  padding: '4px 7px',
+  fontFamily: 'system-ui, sans-serif',
+  fontSize: '0.75rem',
+}
+
+const legalLink: React.CSSProperties = {
+  flex: '0 0 auto',
+  color: '#1f6feb',
+  textDecoration: 'none',
+}
+
+const signOutButton: React.CSSProperties = {
+  border: '1px solid #d0d7de',
+  borderRadius: 4,
+  background: '#f6f8fa',
+  color: '#24292f',
+  cursor: 'pointer',
+  fontFamily: 'system-ui, sans-serif',
+  fontSize: '0.8rem',
+  padding: '3px 6px',
+}
+
+const statusToast: React.CSSProperties = {
+  position: 'absolute',
+  left: '50%',
+  bottom: 88,
+  transform: 'translateX(-50%)',
+  zIndex: 8,
+  maxWidth: 'min(420px, 92vw)',
+  background: '#fff',
+  color: '#92400e',
+  borderRadius: 6,
+  boxShadow: '0 0 0 2px rgba(0,0,0,0.1)',
+  padding: '8px 12px',
+  fontFamily: 'system-ui, sans-serif',
+  fontSize: '0.9rem',
 }

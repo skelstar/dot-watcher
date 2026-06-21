@@ -1,6 +1,9 @@
 import SwiftUI
 import UIKit
 
+private let privacyURL = URL(string: "https://dot-watcher.skelstar.io/privacy")!
+private let termsURL = URL(string: "https://dot-watcher.skelstar.io/terms")!
+
 struct ContentView: View {
     @State private var location = LocationManager()
     @State private var batteryLevel: Float = UIDevice.current.batteryLevel
@@ -8,6 +11,8 @@ struct ContentView: View {
     @State private var nameInput: String = ""
     @State private var showHelp: Bool = false
     @State private var showSessionEntry: Bool = false
+    @State private var showAuth: Bool = false
+    @State private var showMembers: Bool = false
 
     var body: some View {
         ScrollView {
@@ -30,8 +35,13 @@ struct ContentView: View {
         .onAppear {
             UIDevice.current.isBatteryMonitoringEnabled = true
             batteryLevel = UIDevice.current.batteryLevel
-            if location.runnerName.trimmingCharacters(in: .whitespaces).isEmpty {
-                showNameEntry = true
+            if location.isAuthenticated {
+                if location.runnerName.trimmingCharacters(in: .whitespaces).isEmpty {
+                    showNameEntry = true
+                }
+                Task { await location.loadSessions() }
+            } else {
+                showAuth = true
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: UIDevice.batteryLevelDidChangeNotification)) { _ in
@@ -53,6 +63,13 @@ struct ContentView: View {
         .sheet(isPresented: $showSessionEntry) {
             SessionEntrySheet(location: location)
         }
+        .sheet(isPresented: $showAuth) {
+            AuthSheet(location: location)
+                .interactiveDismissDisabled(!location.isAuthenticated)
+        }
+        .sheet(isPresented: $showMembers) {
+            MemberManagementSheet(location: location)
+        }
     }
 
     // MARK: - Header
@@ -71,6 +88,13 @@ struct ContentView: View {
                 }
             }
             Spacer()
+            if location.isAuthenticated {
+                Button { showAuth = true } label: {
+                    Image(systemName: "person.crop.circle")
+                        .font(.title2)
+                        .foregroundStyle(.secondary)
+                }
+            }
             Button { showHelp = true } label: {
                 Image(systemName: "questionmark.circle")
                     .font(.title2)
@@ -110,14 +134,17 @@ struct ContentView: View {
                     Text(location.sessionCode)
                         .font(.title3.bold().monospaced())
                         .foregroundStyle(.primary)
-                    Text(location.dateSuffix)
-                        .font(.title3.bold().monospaced())
-                        .foregroundStyle(.secondary)
                 }
                 Spacer()
-                Image(systemName: "lock")
-                    .font(.subheadline)
-                    .foregroundStyle(.tertiary)
+                if let role = location.activeMembership?.role {
+                    Text(role.uppercased())
+                        .font(.caption2.bold())
+                        .foregroundStyle(.secondary)
+                } else {
+                    Image(systemName: "lock")
+                        .font(.subheadline)
+                        .foregroundStyle(.tertiary)
+                }
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 14)
@@ -126,11 +153,22 @@ struct ContentView: View {
             .contentShape(RoundedRectangle(cornerRadius: 10))
             .onTapGesture { showSessionEntry = true }
 
-            if location.sessionCode.count == 6,
-               let url = URL(string: "http://dot-watcher.skelstar.io/\(location.fullSessionName)") {
-                Link("Open map in browser →", destination: url)
+            if !location.sessionCode.isEmpty,
+               let url = URL(string: "https://dot-watcher.skelstar.io/\(location.fullSessionName)") {
+                Link("Open map in browser", destination: url)
                     .font(.subheadline)
                     .foregroundStyle(Color.accentColor)
+            }
+
+            if location.activeMembership?.role == "owner",
+               let inviteCode = location.activeMembership?.inviteCode {
+                Text("Invite \(inviteCode)")
+                    .font(.caption.monospaced())
+                    .foregroundStyle(.secondary)
+                Button("Manage members") {
+                    showMembers = true
+                }
+                .font(.subheadline)
             }
         }
         .padding(16)
@@ -215,15 +253,22 @@ struct ContentView: View {
             .buttonStyle(.borderedProminent)
             .tint(.red)
             .controlSize(.large)
+        } else if !location.isAuthenticated {
+            Button { showAuth = true } label: {
+                Text("Sign in").frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.large)
         } else {
             Button {
-                if location.sessionCode.count == 6 {
+                if location.canTrackSelectedSession {
                     location.start()
                 } else {
                     showSessionEntry = true
                 }
             } label: {
-                Text("Start tracking").frame(maxWidth: .infinity)
+                Text(location.canTrackSelectedSession ? "Start tracking" : "Choose tracking session")
+                    .frame(maxWidth: .infinity)
             }
             .buttonStyle(.borderedProminent)
             .tint(.green)
@@ -251,138 +296,341 @@ struct ContentView: View {
     }
 }
 
+// MARK: - Auth Sheet
+
+struct AuthSheet: View {
+    var location: LocationManager
+
+    @State private var mode: AuthMode = .signIn
+    @State private var username: String = ""
+    @State private var password: String = ""
+    @State private var displayName: String = ""
+    @State private var error: String?
+    @State private var isBusy = false
+    @State private var showDeleteConfirmation = false
+    @Environment(\.dismiss) private var dismiss
+
+    enum AuthMode: Hashable {
+        case signIn
+        case register
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                if location.isAuthenticated {
+                    Section {
+                        LabeledContent("User", value: location.currentUser?.displayName ?? location.currentUser?.username ?? "")
+                        Button("Sign out", role: .destructive) {
+                            Task { await location.signOut() }
+                        }
+                        Button("Delete account", role: .destructive) {
+                            showDeleteConfirmation = true
+                        }
+                        .disabled(isBusy)
+                    }
+                    legalSection
+                } else {
+                    Section {
+                        Picker("Mode", selection: $mode) {
+                            Text("Sign In").tag(AuthMode.signIn)
+                            Text("Create").tag(AuthMode.register)
+                        }
+                        .pickerStyle(.segmented)
+
+                        if mode == .register {
+                            TextField("Display name", text: $displayName)
+                                .textContentType(.name)
+                        }
+                        TextField("Username", text: $username)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                            .textContentType(.username)
+                        SecureField("Password", text: $password)
+                            .textContentType(.password)
+                    }
+
+                    Section {
+                        Button(mode == .signIn ? "Sign In" : "Create Account") {
+                            Task { await submit() }
+                        }
+                        .disabled(isBusy || username.trimmingCharacters(in: .whitespaces).isEmpty || password.count < 8 || (mode == .register && displayName.trimmingCharacters(in: .whitespaces).isEmpty))
+                    }
+                    legalSection
+                }
+
+                if let error {
+                    Section {
+                        Text(error)
+                            .foregroundStyle(.red)
+                    }
+                }
+            }
+            .navigationTitle("Account")
+            .toolbar {
+                if location.isAuthenticated {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Done") { dismiss() }
+                    }
+                }
+            }
+            .alert("Delete account?", isPresented: $showDeleteConfirmation) {
+                Button("Delete", role: .destructive) {
+                    Task { await deleteAccount() }
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("This removes your account, memberships, owned sessions, and stored location rows linked to your account. This cannot be undone.")
+            }
+        }
+    }
+
+    private var legalSection: some View {
+        Section {
+            Link("Privacy Policy", destination: privacyURL)
+            Link("Terms of Use", destination: termsURL)
+        } footer: {
+            Text("Dot Watcher is a beta service. Location data can be delayed, inaccurate, or unavailable.")
+        }
+    }
+
+    private func submit() async {
+        isBusy = true
+        error = nil
+        do {
+            switch mode {
+            case .signIn:
+                try await location.signIn(username: username, password: password)
+            case .register:
+                try await location.register(username: username, password: password, displayName: displayName)
+            }
+            dismiss()
+        } catch {
+            self.error = error.localizedDescription
+        }
+        isBusy = false
+    }
+
+    private func deleteAccount() async {
+        isBusy = true
+        error = nil
+        do {
+            try await location.deleteAccount()
+            dismiss()
+        } catch {
+            self.error = error.localizedDescription
+        }
+        isBusy = false
+    }
+}
+
 // MARK: - Session Entry Sheet
 
 struct SessionEntrySheet: View {
     var location: LocationManager
 
-    @State private var localCode: String = ""
-    @State private var sessionParticipants: [String]? = nil
-    @State private var isChecking: Bool = false
-    @FocusState private var focused: Bool
+    @State private var createCode: String = ""
+    @State private var inviteCode: String = ""
+    @State private var displayName: String = ""
+    @State private var error: String?
+    @State private var isBusy = false
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
-        VStack(spacing: 24) {
-            Text("Edit session name")
-                .font(.title2.bold())
-                .padding(.top, 8)
-
-            Text("Friends search for this name to find and follow you. Starting will share your live location with them.")
-                .multilineTextAlignment(.center)
-                .foregroundStyle(.secondary)
-
-            tileInput
-
-            participantStatusView
-
-            Spacer()
-
-            Button(location.isTracking ? "Done" : "Start") {
-                location.sessionCode = localCode
-                if !location.isTracking {
-                    location.start()
+        NavigationStack {
+            Form {
+                if !location.memberships.isEmpty {
+                    Section("Sessions") {
+                        ForEach(location.memberships) { membership in
+                            Button {
+                                location.selectSession(membership)
+                                dismiss()
+                            } label: {
+                                HStack {
+                                    VStack(alignment: .leading, spacing: 3) {
+                                        Text(membership.sessionCode)
+                                            .font(.body.monospaced().bold())
+                                        Text(membership.displayName)
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                        if membership.role == "owner" {
+                                            Text("Invite \(membership.inviteCode)")
+                                                .font(.caption2.monospaced())
+                                                .foregroundStyle(.tertiary)
+                                        }
+                                    }
+                                    Spacer()
+                                    Text(membership.role.uppercased())
+                                        .font(.caption2.bold())
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                        }
+                    }
                 }
-                dismiss()
-            }
-            .buttonStyle(.borderedProminent)
-            .tint(.green)
-            .controlSize(.large)
-            .frame(maxWidth: .infinity)
-            .disabled(localCode.count < 6)
 
-            Button("Cancel", role: .cancel) {
-                dismiss()
-            }
-            .foregroundStyle(Color.accentColor)
-        }
-        .padding(24)
-        .onAppear {
-            localCode = location.sessionCode
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                focused = true
-            }
-        }
-        .task(id: localCode) {
-            guard localCode.count == 6 else {
-                sessionParticipants = nil
-                isChecking = false
-                return
-            }
-            isChecking = true
-            sessionParticipants = nil
-            try? await Task.sleep(for: .milliseconds(500))
-            guard !Task.isCancelled else { return }
-            let names = await location.previewSession(localCode + location.dateSuffix)
-            guard !Task.isCancelled else { return }
-            sessionParticipants = names
-            isChecking = false
-        }
-        .presentationDetents([.height(480), .large])
-        .presentationDragIndicator(.visible)
-    }
-
-    private var tileInput: some View {
-        HStack(spacing: 6) {
-            HStack(spacing: 6) {
-                ForEach(0..<6, id: \.self) { i in
-                    CodeBox(
-                        character: character(at: i),
-                        isActive: focused && localCode.count == i
-                    )
+                Section("Create") {
+                    TextField("Session code", text: $createCode)
+                        .textInputAutocapitalization(.characters)
+                        .autocorrectionDisabled()
+                        .onChange(of: createCode) { _, new in
+                            let filtered = String(new.uppercased().filter { $0.isLetter || $0.isNumber || $0 == "-" || $0 == "_" }.prefix(32))
+                            if filtered != new { createCode = filtered }
+                        }
+                    TextField("Display name", text: $displayName)
+                        .textContentType(.name)
+                    Button("Create Session") {
+                        Task { await createSession() }
+                    }
+                    .disabled(isBusy)
                 }
-            }
-            .onTapGesture { focused = true }
 
-            Text(location.dateSuffix)
-                .font(.title3.bold().monospaced())
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-                .padding(.leading, 2)
-        }
-        .overlay {
-            TextField("", text: $localCode)
-                .focused($focused)
-                .keyboardType(.alphabet)
-                .autocorrectionDisabled()
-                .textInputAutocapitalization(.characters)
-                .opacity(0)
-                .frame(width: 1, height: 1)
-                .onChange(of: localCode) { _, new in
-                    let filtered = String(new.uppercased().filter { $0.isLetter || $0.isNumber }.prefix(6))
-                    if filtered != new { localCode = filtered }
+                Section("Join") {
+                    TextField("Invite code", text: $inviteCode)
+                        .textInputAutocapitalization(.characters)
+                        .autocorrectionDisabled()
+                        .onChange(of: inviteCode) { _, new in
+                            let filtered = String(new.uppercased().filter { $0.isLetter || $0.isNumber || $0 == "-" || $0 == "_" }.prefix(32))
+                            if filtered != new { inviteCode = filtered }
+                        }
+                    TextField("Display name", text: $displayName)
+                        .textContentType(.name)
+                    Button("Join Session") {
+                        Task { await joinSession() }
+                    }
+                    .disabled(isBusy || inviteCode.trimmingCharacters(in: .whitespaces).isEmpty)
                 }
-        }
-    }
 
-    @ViewBuilder
-    private var participantStatusView: some View {
-        if isChecking {
-            HStack(spacing: 6) {
-                ProgressView()
-                    .scaleEffect(0.8)
-                Text("Checking...")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-        } else if let participants = sessionParticipants {
-            if participants.isEmpty {
-                Text("No one else here yet")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            } else {
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 48))], spacing: 8) {
-                    ForEach(participants, id: \.self) { name in
-                        RunnerCircle(name: name, size: 48, isHighlighted: name == location.runnerName)
+                if let error {
+                    Section {
+                        Text(error)
+                            .foregroundStyle(.red)
                     }
                 }
             }
+            .navigationTitle("Session")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+            }
+            .task {
+                await location.loadSessions()
+                if createCode.isEmpty {
+                    createCode = suggestedCode
+                }
+                if displayName.isEmpty {
+                    displayName = location.runnerName
+                }
+            }
         }
     }
 
-    private func character(at index: Int) -> Character? {
-        guard index < localCode.count else { return nil }
-        return localCode[localCode.index(localCode.startIndex, offsetBy: index)]
+    private var suggestedCode: String {
+        let trimmed = location.runnerName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let base = trimmed.isEmpty ? "RUN" : trimmed.uppercased()
+        return base + location.dateSuffix
+    }
+
+    private func createSession() async {
+        isBusy = true
+        error = nil
+        do {
+            try await location.createSession(code: createCode, displayName: displayName)
+            dismiss()
+        } catch {
+            self.error = error.localizedDescription
+        }
+        isBusy = false
+    }
+
+    private func joinSession() async {
+        isBusy = true
+        error = nil
+        do {
+            try await location.joinInvite(code: inviteCode, displayName: displayName)
+            dismiss()
+        } catch {
+            self.error = error.localizedDescription
+        }
+        isBusy = false
+    }
+}
+
+// MARK: - Member Management Sheet
+
+struct MemberManagementSheet: View {
+    var location: LocationManager
+
+    @State private var error: String?
+    @State private var busyUserId: String?
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                if let membership = location.activeMembership {
+                    Section("Session") {
+                        LabeledContent("Code", value: membership.sessionCode)
+                        LabeledContent("Invite", value: membership.inviteCode)
+                    }
+                }
+
+                Section("Members") {
+                    if location.selectedSessionMembers.isEmpty {
+                        Text("No members yet")
+                            .foregroundStyle(.secondary)
+                    } else {
+                        ForEach(location.selectedSessionMembers) { member in
+                            HStack {
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text(member.displayName)
+                                    Text(member.role.uppercased())
+                                        .font(.caption2.bold())
+                                        .foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                                if member.role != "owner" {
+                                    Button(member.role == "runner" ? "Make Viewer" : "Make Runner") {
+                                        Task { await update(member) }
+                                    }
+                                    .disabled(busyUserId == member.userId)
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if let error {
+                    Section {
+                        Text(error)
+                            .foregroundStyle(.red)
+                    }
+                }
+            }
+            .navigationTitle("Members")
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { dismiss() }
+                }
+            }
+            .task {
+                await location.loadSelectedSessionMembers()
+            }
+        }
+    }
+
+    private func update(_ member: SessionMember) async {
+        busyUserId = member.userId
+        error = nil
+        do {
+            try await location.updateMemberRole(
+                member,
+                role: member.role == "runner" ? "viewer" : "runner")
+        } catch {
+            self.error = error.localizedDescription
+        }
+        busyUserId = nil
     }
 }
 
