@@ -110,7 +110,6 @@ struct ContentView: View {
             .frame(maxWidth: .infinity)
             .contentShape(Rectangle())
             .onTapGesture {
-                guard !location.isTracking else { return }
                 nameInput = location.runnerName
                 showNameEntry = true
             }
@@ -431,7 +430,6 @@ struct SessionEntrySheet: View {
 
     @State private var createCode: String = ""
     @State private var inviteCode: String = ""
-    @State private var displayName: String = ""
     @State private var error: String?
     @State private var isBusy = false
     @Environment(\.dismiss) private var dismiss
@@ -470,15 +468,12 @@ struct SessionEntrySheet: View {
                 }
 
                 Section("Create") {
-                    TextField("Session code", text: $createCode)
-                        .textInputAutocapitalization(.characters)
-                        .autocorrectionDisabled()
-                        .onChange(of: createCode) { _, new in
-                            let filtered = String(new.uppercased().filter { $0.isLetter || $0.isNumber || $0 == "-" || $0 == "_" }.prefix(32))
-                            if filtered != new { createCode = filtered }
-                        }
-                    TextField("Display name", text: $displayName)
-                        .textContentType(.name)
+                    HStack(spacing: 6) {
+                        CodeBoxField(text: $createCode)
+                        Text(location.dateSuffix)
+                            .font(.title2.bold().monospaced())
+                            .foregroundStyle(.secondary)
+                    }
                     Button("Create Session") {
                         Task { await createSession() }
                     }
@@ -493,8 +488,6 @@ struct SessionEntrySheet: View {
                             let filtered = String(new.uppercased().filter { $0.isLetter || $0.isNumber || $0 == "-" || $0 == "_" }.prefix(32))
                             if filtered != new { inviteCode = filtered }
                         }
-                    TextField("Display name", text: $displayName)
-                        .textContentType(.name)
                     Button("Join Session") {
                         Task { await joinSession() }
                     }
@@ -519,24 +512,21 @@ struct SessionEntrySheet: View {
                 if createCode.isEmpty {
                     createCode = suggestedCode
                 }
-                if displayName.isEmpty {
-                    displayName = location.runnerName
-                }
             }
         }
     }
 
     private var suggestedCode: String {
         let trimmed = location.runnerName.trimmingCharacters(in: .whitespacesAndNewlines)
-        let base = trimmed.isEmpty ? "RUN" : trimmed.uppercased()
-        return base + location.dateSuffix
+        return String((trimmed.isEmpty ? "RUN" : trimmed.uppercased()).prefix(6))
     }
 
     private func createSession() async {
         isBusy = true
         error = nil
         do {
-            try await location.createSession(code: createCode, displayName: displayName)
+            let fullCode = createCode.isEmpty ? "" : createCode + location.dateSuffix
+            try await location.createSession(code: fullCode, displayName: location.runnerName)
             dismiss()
         } catch {
             self.error = error.localizedDescription
@@ -548,12 +538,55 @@ struct SessionEntrySheet: View {
         isBusy = true
         error = nil
         do {
-            try await location.joinInvite(code: inviteCode, displayName: displayName)
+            try await location.joinInvite(code: inviteCode, displayName: location.runnerName)
             dismiss()
         } catch {
             self.error = error.localizedDescription
         }
         isBusy = false
+    }
+}
+
+// MARK: - Code Box Field
+
+private struct CodeBoxField: View {
+    @Binding var text: String
+    @FocusState private var isFocused: Bool
+
+    var body: some View {
+        HStack(spacing: 6) {
+            ForEach(0..<6, id: \.self) { i in
+                let chars = Array(text)
+                let char = chars.count > i ? String(chars[i]) : ""
+                let isActive = isFocused && chars.count == i
+                ZStack {
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(Color(.tertiarySystemBackground))
+                    RoundedRectangle(cornerRadius: 8)
+                        .strokeBorder(
+                            isActive ? Color.accentColor : Color(.separator),
+                            lineWidth: isActive ? 2 : 1
+                        )
+                    Text(char)
+                        .font(.title2.bold().monospaced())
+                }
+                .frame(width: 36, height: 44)
+            }
+        }
+        .overlay(
+            TextField("", text: $text)
+                .focused($isFocused)
+                .opacity(0.01)
+                .keyboardType(.asciiCapable)
+                .textInputAutocapitalization(.characters)
+                .autocorrectionDisabled()
+                .onChange(of: text) { _, new in
+                    let filtered = String(new.uppercased().filter { $0.isLetter || $0.isNumber }.prefix(6))
+                    if filtered != new { text = filtered }
+                }
+        )
+        .contentShape(Rectangle())
+        .onTapGesture { isFocused = true }
     }
 }
 

@@ -478,7 +478,7 @@ final class LocationManager {
 
         guard let url = URL(string: urlString),
               let scheme = url.scheme?.lowercased(),
-              let host = url.host?.lowercased()
+              url.host != nil
         else {
             preconditionFailure("DotWatcherAPIBaseURL must be a valid absolute URL.")
         }
