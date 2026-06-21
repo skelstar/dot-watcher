@@ -80,3 +80,17 @@ public record UpdateSessionMemberRoleResult(
     UpdateSessionMemberRoleStatus Status,
     SessionMember? Member
 );
+
+public record AdminUserSummary(
+    string Id,
+    string Username,
+    string DisplayName,
+    string CreatedAt
+);
+
+public record AdminSessionSummary(
+    string SessionCode,
+    string OwnerUsername,
+    int MemberCount,
+    string CreatedAt
+);

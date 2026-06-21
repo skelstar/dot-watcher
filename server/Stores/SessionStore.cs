@@ -125,6 +125,22 @@ public class SessionStore(string dbPath)
             : null;
     }
 
+    public IReadOnlyList<AdminUserSummary> GetAllUsers()
+    {
+        using var conn = Connect();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = """
+            SELECT id, username, display_name, created_at
+            FROM users
+            ORDER BY created_at DESC
+            """;
+        using var reader = cmd.ExecuteReader();
+        var users = new List<AdminUserSummary>();
+        while (reader.Read())
+            users.Add(new AdminUserSummary(reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetString(3)));
+        return users;
+    }
+
     public bool UserExists(string userId)
     {
         using var conn = Connect();
@@ -494,6 +510,25 @@ public class SessionStore(string dbPath)
             }
         }
         return result;
+    }
+
+    public IReadOnlyList<AdminSessionSummary> GetAllSessions()
+    {
+        using var conn = Connect();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = """
+            SELECT s.session_code, u.username, COUNT(m.user_id) AS member_count, s.created_at
+            FROM app_sessions s
+            JOIN users u ON u.id = s.owner_user_id
+            LEFT JOIN session_members m ON m.session_code = s.session_code
+            GROUP BY s.session_code
+            ORDER BY s.created_at DESC
+            """;
+        using var reader = cmd.ExecuteReader();
+        var sessions = new List<AdminSessionSummary>();
+        while (reader.Read())
+            sessions.Add(new AdminSessionSummary(reader.GetString(0), reader.GetString(1), reader.GetInt32(2), reader.GetString(3)));
+        return sessions;
     }
 
     public IEnumerable<string> GetRecordedSessions()
