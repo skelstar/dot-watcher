@@ -15,9 +15,10 @@ export default defineConfig(({ mode }) => {
     },
     server: {
       proxy: {
-        '^/(auth|me|sessions|session-invites|location|locations|log)(/|$)': {
+        '/api': {
           target: 'http://localhost:8080',
           changeOrigin: true,
+          rewrite: (path) => path.replace(/^\/api/, ''),
         },
       },
     },
