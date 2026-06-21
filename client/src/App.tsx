@@ -18,7 +18,7 @@ import type { AuthResponse, AuthenticatedUser, SessionMembership } from './types
 mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN as string
 
 const POLL_INTERVAL_MS: number = parseInt(import.meta.env.VITE_POLL_INTERVAL_MS ?? '2000', 10)
-const SERVER_URL: string = import.meta.env.VITE_SERVER_URL ?? '/api'
+const SERVER_URL: string = import.meta.env.VITE_SERVER_URL ?? ''
 const APP_VERSION = import.meta.env.VITE_APP_VERSION ?? 'v-local-beta'
 const APP_UPDATED_AT = import.meta.env.VITE_APP_UPDATED_AT ?? 'Updated local'
 const VERSION_LABEL = `${APP_VERSION} · ${APP_UPDATED_AT}`
