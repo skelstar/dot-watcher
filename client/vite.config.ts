@@ -15,8 +15,8 @@ export default defineConfig(({ mode }) => {
     },
     server: {
       proxy: {
-        '/api': {
-          target: 'http://dot-watcher.skelstar.io',
+        '^/(auth|me|sessions|session-invites|location|locations|log)(/|$)': {
+          target: 'http://localhost:8080',
           changeOrigin: true,
         },
       },
