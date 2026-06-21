@@ -9,6 +9,7 @@ import ReplayControls from './ReplayControls.tsx'
 import ReplayPicker from './ReplayPicker.tsx'
 import AuthPrompt from './AuthPrompt.tsx'
 import LegalPage from './LegalPage.tsx'
+import AdminPanel from './AdminPanel.tsx'
 import AccountSettings from './AccountSettings.tsx'
 import { useRunnerMarkers } from './useRunnerMarkers.ts'
 import { useReplay } from './useReplay.ts'
@@ -31,17 +32,19 @@ interface RouteState {
   isReplay: boolean
   inviteCode: string | null
   legalPage: 'privacy' | 'terms' | null
+  isAdmin: boolean
 }
 
 function parseUrl(): RouteState {
   const parts = window.location.pathname.replace(/^\//, '').split('/')
   const norm = (s: string) => s.toUpperCase() || null
-  if (parts[0] === 'privacy') return { sessionCode: null, isReplay: false, inviteCode: null, legalPage: 'privacy' }
-  if (parts[0] === 'terms') return { sessionCode: null, isReplay: false, inviteCode: null, legalPage: 'terms' }
-  if (parts[0] === 'join') return { sessionCode: null, isReplay: false, inviteCode: norm(parts[1] ?? ''), legalPage: null }
-  if (parts[0] === 'replay') return { sessionCode: null, isReplay: true, inviteCode: null, legalPage: null }
-  if (parts[1] === 'replay') return { sessionCode: norm(parts[0]), isReplay: true, inviteCode: null, legalPage: null }
-  return { sessionCode: norm(parts[0]), isReplay: false, inviteCode: null, legalPage: null }
+  if (parts[0] === 'admin') return { sessionCode: null, isReplay: false, inviteCode: null, legalPage: null, isAdmin: true }
+  if (parts[0] === 'privacy') return { sessionCode: null, isReplay: false, inviteCode: null, legalPage: 'privacy', isAdmin: false }
+  if (parts[0] === 'terms') return { sessionCode: null, isReplay: false, inviteCode: null, legalPage: 'terms', isAdmin: false }
+  if (parts[0] === 'join') return { sessionCode: null, isReplay: false, inviteCode: norm(parts[1] ?? ''), legalPage: null, isAdmin: false }
+  if (parts[0] === 'replay') return { sessionCode: null, isReplay: true, inviteCode: null, legalPage: null, isAdmin: false }
+  if (parts[1] === 'replay') return { sessionCode: norm(parts[0]), isReplay: true, inviteCode: null, legalPage: null, isAdmin: false }
+  return { sessionCode: norm(parts[0]), isReplay: false, inviteCode: null, legalPage: null, isAdmin: false }
 }
 
 function readStoredAuth(): AuthResponse | null {
@@ -80,7 +83,7 @@ function clearStoredAuth() {
 export default function App() {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<mapboxgl.Map | null>(null)
-  const { sessionCode: initialCode, isReplay, inviteCode, legalPage } = parseUrl()
+  const { sessionCode: initialCode, isReplay, inviteCode, legalPage, isAdmin } = parseUrl()
   const [sessionCode, setSessionCode] = useState<string | null>(initialCode)
   const [auth, setAuth] = useState<AuthResponse | null>(() => readStoredAuth())
   const [memberships, setMemberships] = useState<SessionMembership[]>([])
@@ -259,6 +262,10 @@ export default function App() {
   function handleReplaySelect(code: string) {
     window.history.replaceState(null, '', `/${code}/replay`)
     setSessionCode(code)
+  }
+
+  if (isAdmin) {
+    return <AdminPanel />
   }
 
   if (legalPage) {
