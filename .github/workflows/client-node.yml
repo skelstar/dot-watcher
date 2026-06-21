@@ -36,4 +36,5 @@ jobs:
       - name: Build
         env:
           VITE_MAPBOX_TOKEN: ci-mapbox-token-placeholder
+          VITE_SERVER_URL: /api
         run: npm run build
