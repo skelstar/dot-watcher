@@ -4,7 +4,12 @@ hostname: dot-watcher-server.skelstar.io
 env:
   - name: RecordingsPath
     value: /data/recordings
+  - name: DbPath
+    value: /data/db/dotwatcher.db
 volumes:
   - name: recordings
     mountPath: /data/recordings
     size: 1Gi
+  - name: db
+    mountPath: /data/db
+    size: 100Mi
