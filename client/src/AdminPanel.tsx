@@ -15,6 +15,7 @@ interface AdminSession {
 }
 
 const BEARER_TOKEN_KEY = 'adminBearerToken'
+const APP_VERSION = import.meta.env.VITE_APP_VERSION ?? 'v-local'
 
 export default function AdminPanel({ serverUrl }: { serverUrl: string }) {
   const [token, setToken] = useState(() => sessionStorage.getItem(BEARER_TOKEN_KEY) ?? (import.meta.env.VITE_BEARER_TOKEN as string | undefined) ?? '')
@@ -85,6 +86,7 @@ export default function AdminPanel({ serverUrl }: { serverUrl: string }) {
   return (
     <div style={page}>
       <h1 style={heading}>Admin — Users</h1>
+      <p style={versionText}>{APP_VERSION}</p>
 
       {!token && (
         <form onSubmit={handleTokenSubmit} style={tokenForm}>
@@ -278,4 +280,10 @@ const tr: React.CSSProperties = {
 const td: React.CSSProperties = {
   padding: '0.5rem 0.75rem',
   verticalAlign: 'middle',
+}
+
+const versionText: React.CSSProperties = {
+  color: '#94a3b8',
+  fontSize: '0.75rem',
+  marginBottom: '1rem',
 }
