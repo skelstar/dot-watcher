@@ -288,6 +288,20 @@ final class LocationManager {
         }
     }
 
+    func deleteSession(sessionCode code: String) async throws {
+        guard let token = accessToken else { throw DotWatcherAPIError.missingToken }
+        try await sendEmpty(path: "/me/sessions/\(code)", method: "DELETE", token: token)
+        memberships.removeAll { $0.sessionCode == code }
+        if sessionCode == code {
+            sessionCode = ""
+            participants = []
+            selectedSessionMembers = []
+            pendingJoinRequests = []
+            pendingJoinRequestCount = 0
+            status = "Idle"
+        }
+    }
+
     func browseSessions() async throws -> [BrowsableSession] {
         try await send(path: "/sessions/browse")
     }

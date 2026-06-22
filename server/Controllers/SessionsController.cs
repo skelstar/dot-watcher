@@ -219,6 +219,22 @@ public class SessionsController(
             : NotFound(new { error = "Join request not found." });
     }
 
+    [HttpDelete("/me/sessions/{sessionCode}")]
+    public IActionResult DeleteMySession(string sessionCode)
+    {
+        if (!userAuth.TryAuthenticate(Request, out var user))
+            return Unauthorized();
+
+        var code = SessionStore.NormalizeSessionCode(sessionCode);
+        if (code is null)
+            return BadRequest(new { error = "Invalid session code." });
+
+        if (!store.IsSessionOwner(code, user.UserId))
+            return StatusCode(StatusCodes.Status403Forbidden);
+
+        return store.DeleteSession(code) ? NoContent() : NotFound();
+    }
+
     [HttpPost("/sessions/{sessionCode}/recording")]
     public async Task<IActionResult> UploadRecording(string sessionCode)
     {

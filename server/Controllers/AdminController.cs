@@ -32,6 +32,19 @@ public class AdminController(SessionStore store, BearerTokenAuth auth) : Control
         return Ok(store.GetAllSessions());
     }
 
+    [HttpDelete("/admin/sessions/{sessionCode}")]
+    public IActionResult DeleteSession(string sessionCode)
+    {
+        if (!auth.IsAuthorized(Request))
+            return Unauthorized();
+
+        var code = SessionStore.NormalizeSessionCode(sessionCode);
+        if (code is null)
+            return BadRequest(new { error = "Invalid session code." });
+
+        return store.DeleteSession(code) ? NoContent() : NotFound();
+    }
+
     [HttpGet("/admin/join-requests")]
     public IActionResult GetJoinRequests()
     {

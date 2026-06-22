@@ -446,6 +446,7 @@ struct SessionEntrySheet: View {
     @State private var browsableSessions: [BrowsableSession] = []
     @State private var isBrowseLoading = false
     @State private var requestedSessionCodes: Set<String> = []
+    @State private var sessionToDelete: SessionMembership?
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -475,6 +476,15 @@ struct SessionEntrySheet: View {
                                     Text(membership.role.uppercased())
                                         .font(.caption2.bold())
                                         .foregroundStyle(.secondary)
+                                }
+                            }
+                            .swipeActions(edge: .trailing) {
+                                if membership.role == "owner" {
+                                    Button(role: .destructive) {
+                                        sessionToDelete = membership
+                                    } label: {
+                                        Label("Delete", systemImage: "trash")
+                                    }
                                 }
                             }
                         }
@@ -568,6 +578,21 @@ struct SessionEntrySheet: View {
                     Button("Cancel") { dismiss() }
                 }
             }
+            .alert("Delete session?", isPresented: .init(
+                get: { sessionToDelete != nil },
+                set: { if !$0 { sessionToDelete = nil } }
+            )) {
+                Button("Delete", role: .destructive) {
+                    if let s = sessionToDelete {
+                        Task { await deleteSession(s) }
+                    }
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                if let s = sessionToDelete {
+                    Text("This permanently deletes \(s.sessionCode) and all its members, location data, and join requests. This cannot be undone.")
+                }
+            }
             .task {
                 await location.loadSessions()
                 if createCode.isEmpty {
@@ -612,6 +637,18 @@ struct SessionEntrySheet: View {
         do {
             try await location.joinInvite(code: inviteCode, displayName: location.runnerName)
             dismiss()
+        } catch {
+            self.error = error.localizedDescription
+        }
+        isBusy = false
+    }
+
+    private func deleteSession(_ membership: SessionMembership) async {
+        isBusy = true
+        error = nil
+        sessionToDelete = nil
+        do {
+            try await location.deleteSession(sessionCode: membership.sessionCode)
         } catch {
             self.error = error.localizedDescription
         }
