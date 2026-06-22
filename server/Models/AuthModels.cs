@@ -88,9 +88,51 @@ public record AdminUserSummary(
     string CreatedAt
 );
 
+public record AdminJoinRequestSummary(
+    string RequestId,
+    string SessionCode,
+    string Username,
+    string DisplayName,
+    string Status,
+    string CreatedAt
+);
+
 public record AdminSessionSummary(
     string SessionCode,
     string OwnerUsername,
     int MemberCount,
     string CreatedAt
+);
+
+public record BrowsableSession(
+    string SessionCode,
+    string OwnerDisplayName,
+    int MemberCount,
+    DateTimeOffset LastActivity
+);
+
+public record JoinRequestRecord(
+    string RequestId,
+    string SessionCode,
+    string UserId,
+    string DisplayName,
+    DateTimeOffset CreatedAt
+);
+
+public record CreateJoinRequestRequest(
+    string? DisplayName = null
+);
+
+public enum CreateJoinRequestStatus
+{
+    Created,
+    AlreadyMember,
+    AlreadyPending,
+    OwnSession,
+    SessionNotFound,
+}
+
+public record CreateJoinRequestResult(
+    CreateJoinRequestStatus Status,
+    JoinRequestRecord? Request
 );

@@ -75,6 +75,16 @@ public class SessionStore(string dbPath)
                 revoked_at TEXT NOT NULL
             );
             CREATE INDEX IF NOT EXISTS idx_revoked_user_tokens_expires_at ON revoked_user_tokens(expires_at);
+
+            CREATE TABLE IF NOT EXISTS join_requests (
+                id           TEXT PRIMARY KEY,
+                session_code TEXT NOT NULL,
+                user_id      TEXT NOT NULL,
+                display_name TEXT NOT NULL,
+                status       TEXT NOT NULL DEFAULT 'pending',
+                created_at   TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_join_requests_session ON join_requests(session_code, status);
             """;
         cmd.ExecuteNonQuery();
         AddColumnIfMissing(conn, "location_updates", "runner_user_id", "TEXT");
@@ -529,6 +539,219 @@ public class SessionStore(string dbPath)
         while (reader.Read())
             sessions.Add(new AdminSessionSummary(reader.GetString(0), reader.GetString(1), reader.GetInt32(2), reader.GetString(3)));
         return sessions;
+    }
+
+    public IReadOnlyList<AdminJoinRequestSummary> GetAllJoinRequests()
+    {
+        using var conn = Connect();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = """
+            SELECT jr.id, jr.session_code, u.username, jr.display_name, jr.status, jr.created_at
+            FROM join_requests jr
+            JOIN users u ON u.id = jr.user_id
+            ORDER BY jr.created_at DESC
+            """;
+        using var reader = cmd.ExecuteReader();
+        var requests = new List<AdminJoinRequestSummary>();
+        while (reader.Read())
+            requests.Add(new AdminJoinRequestSummary(
+                reader.GetString(0),
+                reader.GetString(1),
+                reader.GetString(2),
+                reader.GetString(3),
+                reader.GetString(4),
+                reader.GetString(5)));
+        return requests;
+    }
+
+    public IReadOnlyList<BrowsableSession> GetBrowsableSessions()
+    {
+        var cutoff = DateTimeOffset.UtcNow.AddHours(-24).ToString("O");
+        using var conn = Connect();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = """
+            SELECT s.session_code, u.display_name, COUNT(DISTINCT m.user_id) AS member_count,
+                COALESCE(
+                    (SELECT MAX(l.timestamp) FROM location_updates l WHERE l.session_code = s.session_code),
+                    s.created_at
+                ) AS last_activity
+            FROM app_sessions s
+            JOIN users u ON u.id = s.owner_user_id
+            LEFT JOIN session_members m ON m.session_code = s.session_code
+            WHERE s.created_at > $cutoff
+               OR EXISTS (SELECT 1 FROM location_updates l WHERE l.session_code = s.session_code AND l.timestamp > $cutoff)
+            GROUP BY s.session_code
+            ORDER BY last_activity DESC
+            """;
+        cmd.Parameters.AddWithValue("$cutoff", cutoff);
+        using var reader = cmd.ExecuteReader();
+        var sessions = new List<BrowsableSession>();
+        while (reader.Read())
+            sessions.Add(new BrowsableSession(
+                reader.GetString(0),
+                reader.GetString(1),
+                reader.GetInt32(2),
+                DateTimeOffset.Parse(reader.GetString(3))));
+        return sessions;
+    }
+
+    public CreateJoinRequestResult CreateJoinRequest(string sessionCode, string userId, string displayName)
+    {
+        using var conn = Connect();
+
+        if (!SessionExists(conn, sessionCode))
+            return new CreateJoinRequestResult(CreateJoinRequestStatus.SessionNotFound, null);
+
+        var membership = GetMembership(conn, sessionCode, userId);
+        if (membership?.Role == "owner")
+            return new CreateJoinRequestResult(CreateJoinRequestStatus.OwnSession, null);
+        if (membership is not null)
+            return new CreateJoinRequestResult(CreateJoinRequestStatus.AlreadyMember, null);
+
+        using var checkCmd = conn.CreateCommand();
+        checkCmd.CommandText = """
+            SELECT id, session_code, user_id, display_name, created_at
+            FROM join_requests
+            WHERE session_code = $sessionCode AND user_id = $userId AND status = 'pending'
+            """;
+        checkCmd.Parameters.AddWithValue("$sessionCode", sessionCode);
+        checkCmd.Parameters.AddWithValue("$userId", userId);
+        using var checkReader = checkCmd.ExecuteReader();
+        if (checkReader.Read())
+        {
+            var existing = new JoinRequestRecord(
+                checkReader.GetString(0),
+                checkReader.GetString(1),
+                checkReader.GetString(2),
+                checkReader.GetString(3),
+                DateTimeOffset.Parse(checkReader.GetString(4)));
+            return new CreateJoinRequestResult(CreateJoinRequestStatus.AlreadyPending, existing);
+        }
+        checkReader.Close();
+
+        var requestId = GenerateCode(8);
+        var createdAt = DateTimeOffset.UtcNow;
+
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = """
+            INSERT INTO join_requests (id, session_code, user_id, display_name, status, created_at)
+            VALUES ($id, $sessionCode, $userId, $displayName, 'pending', $createdAt)
+            """;
+        cmd.Parameters.AddWithValue("$id", requestId);
+        cmd.Parameters.AddWithValue("$sessionCode", sessionCode);
+        cmd.Parameters.AddWithValue("$userId", userId);
+        cmd.Parameters.AddWithValue("$displayName", displayName);
+        cmd.Parameters.AddWithValue("$createdAt", createdAt.ToString("O"));
+        cmd.ExecuteNonQuery();
+
+        return new CreateJoinRequestResult(
+            CreateJoinRequestStatus.Created,
+            new JoinRequestRecord(requestId, sessionCode, userId, displayName, createdAt));
+    }
+
+    public IReadOnlyList<JoinRequestRecord>? GetJoinRequests(string sessionCode)
+    {
+        using var conn = Connect();
+        if (!SessionExists(conn, sessionCode))
+            return null;
+
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = """
+            SELECT id, session_code, user_id, display_name, created_at
+            FROM join_requests
+            WHERE session_code = $sessionCode AND status = 'pending'
+            ORDER BY created_at ASC
+            """;
+        cmd.Parameters.AddWithValue("$sessionCode", sessionCode);
+        using var reader = cmd.ExecuteReader();
+
+        var requests = new List<JoinRequestRecord>();
+        while (reader.Read())
+            requests.Add(new JoinRequestRecord(
+                reader.GetString(0),
+                reader.GetString(1),
+                reader.GetString(2),
+                reader.GetString(3),
+                DateTimeOffset.Parse(reader.GetString(4))));
+        return requests;
+    }
+
+    public int GetPendingJoinRequestCount(string sessionCode)
+    {
+        using var conn = Connect();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = """
+            SELECT COUNT(1)
+            FROM join_requests
+            WHERE session_code = $sessionCode AND status = 'pending'
+            """;
+        cmd.Parameters.AddWithValue("$sessionCode", sessionCode);
+        return (int)(long)(cmd.ExecuteScalar() ?? 0L);
+    }
+
+    public SessionMembership? ApproveJoinRequest(string requestId, string sessionCode)
+    {
+        using var conn = Connect();
+
+        string userId, displayName;
+        using (var findCmd = conn.CreateCommand())
+        {
+            findCmd.CommandText = """
+                SELECT user_id, display_name
+                FROM join_requests
+                WHERE id = $requestId AND session_code = $sessionCode AND status = 'pending'
+                """;
+            findCmd.Parameters.AddWithValue("$requestId", requestId);
+            findCmd.Parameters.AddWithValue("$sessionCode", sessionCode);
+            using var reader = findCmd.ExecuteReader();
+            if (!reader.Read())
+                return null;
+            userId = reader.GetString(0);
+            displayName = reader.GetString(1);
+        }
+
+        using var tx = conn.BeginTransaction();
+
+        using (var updateCmd = conn.CreateCommand())
+        {
+            updateCmd.Transaction = tx;
+            updateCmd.CommandText = "UPDATE join_requests SET status = 'approved' WHERE id = $requestId";
+            updateCmd.Parameters.AddWithValue("$requestId", requestId);
+            updateCmd.ExecuteNonQuery();
+        }
+
+        var joinedAt = DateTimeOffset.UtcNow.ToString("O");
+        using (var memberCmd = conn.CreateCommand())
+        {
+            memberCmd.Transaction = tx;
+            memberCmd.CommandText = """
+                INSERT INTO session_members (session_code, user_id, role, display_name, joined_at)
+                VALUES ($sessionCode, $userId, 'viewer', $displayName, $joinedAt)
+                ON CONFLICT(session_code, user_id) DO UPDATE SET display_name = excluded.display_name
+                """;
+            memberCmd.Parameters.AddWithValue("$sessionCode", sessionCode);
+            memberCmd.Parameters.AddWithValue("$userId", userId);
+            memberCmd.Parameters.AddWithValue("$displayName", displayName);
+            memberCmd.Parameters.AddWithValue("$joinedAt", joinedAt);
+            memberCmd.ExecuteNonQuery();
+        }
+
+        tx.Commit();
+
+        return GetMembership(conn, sessionCode, userId);
+    }
+
+    public bool DenyJoinRequest(string requestId, string sessionCode)
+    {
+        using var conn = Connect();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = """
+            UPDATE join_requests SET status = 'denied'
+            WHERE id = $requestId AND session_code = $sessionCode AND status = 'pending'
+            """;
+        cmd.Parameters.AddWithValue("$requestId", requestId);
+        cmd.Parameters.AddWithValue("$sessionCode", sessionCode);
+        return cmd.ExecuteNonQuery() > 0;
     }
 
     public IEnumerable<string> GetRecordedSessions()

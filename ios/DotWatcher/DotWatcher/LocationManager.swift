@@ -30,8 +30,34 @@ struct SessionMember: Codable, Identifiable {
     let displayName: String
 }
 
+struct BrowsableSession: Codable, Identifiable {
+    var id: String { sessionCode }
+    let sessionCode: String
+    let ownerDisplayName: String
+    let memberCount: Int
+    let lastActivity: String
+}
+
+struct JoinRequest: Codable, Identifiable {
+    var id: String { requestId }
+    let requestId: String
+    let sessionCode: String
+    let userId: String
+    let displayName: String
+    let createdAt: String
+
+    var formattedDate: String {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let d = f.date(from: createdAt) { return d.formatted(date: .abbreviated, time: .shortened) }
+        f.formatOptions = [.withInternetDateTime]
+        return f.date(from: createdAt)?.formatted(date: .abbreviated, time: .shortened) ?? createdAt
+    }
+}
+
 private struct LocationPostResponse: Codable {
     let participants: [String]
+    let pendingJoinRequests: Int?
 }
 
 private struct ServerErrorBody: Decodable {
@@ -66,6 +92,8 @@ final class LocationManager {
     private(set) var currentUser: AppUser?
     private(set) var memberships: [SessionMembership] = []
     private(set) var selectedSessionMembers: [SessionMember] = []
+    private(set) var pendingJoinRequestCount = 0
+    private(set) var pendingJoinRequests: [JoinRequest] = []
 
     var participants: [String] = []
     private var lastParticipantCount = 0
@@ -167,6 +195,8 @@ final class LocationManager {
         currentUser = nil
         memberships = []
         selectedSessionMembers = []
+        pendingJoinRequests = []
+        pendingJoinRequestCount = 0
         sessionCode = ""
         Self.storeToken(nil)
         UserDefaults.standard.removeObject(forKey: "currentUser")
@@ -229,6 +259,8 @@ final class LocationManager {
     func loadSelectedSessionMembers() async {
         guard let membership = activeMembership, membership.role == "owner" else {
             selectedSessionMembers = []
+            pendingJoinRequests = []
+            pendingJoinRequestCount = 0
             return
         }
 
@@ -239,6 +271,7 @@ final class LocationManager {
         } catch {
             status = error.localizedDescription
         }
+        await loadJoinRequests()
     }
 
     func updateMemberRole(_ member: SessionMember, role: String) async throws {
@@ -253,6 +286,51 @@ final class LocationManager {
         if let index = selectedSessionMembers.firstIndex(where: { $0.userId == updated.userId }) {
             selectedSessionMembers[index] = updated
         }
+    }
+
+    func browseSessions() async throws -> [BrowsableSession] {
+        try await send(path: "/sessions/browse")
+    }
+
+    func requestToJoin(sessionCode code: String, displayName: String?) async throws -> JoinRequest {
+        let name = displayName?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return try await send(
+            path: "/sessions/\(code)/join-requests",
+            method: "POST",
+            body: ["displayName": (name?.isEmpty ?? true) ? NSNull() : name!])
+    }
+
+    func loadJoinRequests() async {
+        guard let membership = activeMembership, membership.role == "owner" else {
+            pendingJoinRequests = []
+            return
+        }
+        do {
+            pendingJoinRequests = try await send(path: "/sessions/\(membership.sessionCode)/join-requests")
+        } catch DotWatcherAPIError.badResponse(401, _) {
+            await signOut(status: "Sign in required")
+        } catch {
+            // silently ignore — badge count from POST response is the primary signal
+        }
+    }
+
+    func approveJoinRequest(_ request: JoinRequest) async throws {
+        guard let membership = activeMembership else { return }
+        let _: SessionMembership = try await send(
+            path: "/sessions/\(membership.sessionCode)/join-requests/\(request.requestId)/approve",
+            method: "POST")
+        pendingJoinRequestCount = max(0, pendingJoinRequestCount - 1)
+        await loadSelectedSessionMembers()
+    }
+
+    func denyJoinRequest(_ request: JoinRequest) async throws {
+        guard let membership = activeMembership, let token = accessToken else { return }
+        try await sendEmpty(
+            path: "/sessions/\(membership.sessionCode)/join-requests/\(request.requestId)/deny",
+            method: "POST",
+            token: token)
+        pendingJoinRequests.removeAll { $0.requestId == request.requestId }
+        pendingJoinRequestCount = max(0, pendingJoinRequestCount - 1)
     }
 
     func start() {
@@ -338,6 +416,9 @@ final class LocationManager {
             if response.participants.count != lastParticipantCount {
                 lastParticipantCount = response.participants.count
                 participants = response.participants
+            }
+            if let count = response.pendingJoinRequests {
+                pendingJoinRequestCount = count
             }
         } catch {
             status = error.localizedDescription

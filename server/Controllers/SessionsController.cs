@@ -125,6 +125,100 @@ public class SessionsController(
         };
     }
 
+    [HttpGet("/sessions/browse")]
+    public IActionResult BrowseSessions()
+    {
+        if (!userAuth.TryAuthenticate(Request, out _))
+            return Unauthorized();
+
+        return Ok(store.GetBrowsableSessions());
+    }
+
+    [HttpPost("/sessions/{sessionCode}/join-requests")]
+    public IActionResult CreateJoinRequest(string sessionCode, [FromBody] CreateJoinRequestRequest? request)
+    {
+        if (!userAuth.TryAuthenticate(Request, out var user))
+            return Unauthorized();
+
+        var code = SessionStore.NormalizeSessionCode(sessionCode);
+        if (code is null)
+            return BadRequest(new { error = "Invalid session code." });
+
+        var displayName = string.IsNullOrWhiteSpace(request?.DisplayName)
+            ? user.DisplayName
+            : request.DisplayName.Trim();
+
+        if (displayName.Length is < 1 or > 80)
+            return BadRequest(new { error = "Display name must be 1-80 characters." });
+
+        var result = store.CreateJoinRequest(code, user.UserId, displayName);
+        return result.Status switch
+        {
+            CreateJoinRequestStatus.Created => Ok(result.Request),
+            CreateJoinRequestStatus.AlreadyPending => Ok(result.Request),
+            CreateJoinRequestStatus.AlreadyMember => Conflict(new { error = "Already a member of this session." }),
+            CreateJoinRequestStatus.OwnSession => BadRequest(new { error = "Cannot request to join your own session." }),
+            CreateJoinRequestStatus.SessionNotFound => NotFound(new { error = "Session not found." }),
+            _ => StatusCode(StatusCodes.Status500InternalServerError),
+        };
+    }
+
+    [HttpGet("/sessions/{sessionCode}/join-requests")]
+    public IActionResult GetJoinRequests(string sessionCode)
+    {
+        if (!userAuth.TryAuthenticate(Request, out var user))
+            return Unauthorized();
+
+        var code = SessionStore.NormalizeSessionCode(sessionCode);
+        if (code is null)
+            return BadRequest(new { error = "Invalid session code." });
+
+        if (!store.IsSessionOwner(code, user.UserId))
+            return StatusCode(StatusCodes.Status403Forbidden);
+
+        var requests = store.GetJoinRequests(code);
+        return requests is null
+            ? NotFound(new { error = "Session not found." })
+            : Ok(requests);
+    }
+
+    [HttpPost("/sessions/{sessionCode}/join-requests/{requestId}/approve")]
+    public IActionResult ApproveJoinRequest(string sessionCode, string requestId)
+    {
+        if (!userAuth.TryAuthenticate(Request, out var user))
+            return Unauthorized();
+
+        var code = SessionStore.NormalizeSessionCode(sessionCode);
+        if (code is null)
+            return BadRequest(new { error = "Invalid session code." });
+
+        if (!store.IsSessionOwner(code, user.UserId))
+            return StatusCode(StatusCodes.Status403Forbidden);
+
+        var membership = store.ApproveJoinRequest(requestId, code);
+        return membership is null
+            ? NotFound(new { error = "Join request not found." })
+            : Ok(membership);
+    }
+
+    [HttpPost("/sessions/{sessionCode}/join-requests/{requestId}/deny")]
+    public IActionResult DenyJoinRequest(string sessionCode, string requestId)
+    {
+        if (!userAuth.TryAuthenticate(Request, out var user))
+            return Unauthorized();
+
+        var code = SessionStore.NormalizeSessionCode(sessionCode);
+        if (code is null)
+            return BadRequest(new { error = "Invalid session code." });
+
+        if (!store.IsSessionOwner(code, user.UserId))
+            return StatusCode(StatusCodes.Status403Forbidden);
+
+        return store.DenyJoinRequest(requestId, code)
+            ? NoContent()
+            : NotFound(new { error = "Join request not found." });
+    }
+
     [HttpPost("/sessions/{sessionCode}/recording")]
     public async Task<IActionResult> UploadRecording(string sessionCode)
     {

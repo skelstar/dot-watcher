@@ -168,6 +168,17 @@ struct ContentView: View {
                     showMembers = true
                 }
                 .font(.subheadline)
+                .overlay(alignment: .topTrailing) {
+                    if location.pendingJoinRequestCount > 0 {
+                        Text("\(location.pendingJoinRequestCount)")
+                            .font(.caption2.bold())
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 2)
+                            .background(.red, in: Capsule())
+                            .offset(x: 16, y: -10)
+                    }
+                }
             }
         }
         .padding(16)
@@ -432,6 +443,9 @@ struct SessionEntrySheet: View {
     @State private var inviteCode: String = ""
     @State private var error: String?
     @State private var isBusy = false
+    @State private var browsableSessions: [BrowsableSession] = []
+    @State private var isBrowseLoading = false
+    @State private var requestedSessionCodes: Set<String> = []
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -494,6 +508,53 @@ struct SessionEntrySheet: View {
                     .disabled(isBusy || inviteCode.trimmingCharacters(in: .whitespaces).isEmpty)
                 }
 
+                Section {
+                    HStack {
+                        Text("Browse Active Sessions")
+                            .font(.headline)
+                        Spacer()
+                        if isBrowseLoading {
+                            ProgressView()
+                        } else {
+                            Button("Refresh") {
+                                Task { await loadBrowseSessions() }
+                            }
+                            .font(.subheadline)
+                        }
+                    }
+                    let nonMemberSessions = browsableSessions.filter { s in
+                        !location.memberships.contains { $0.sessionCode == s.sessionCode }
+                    }
+                    if nonMemberSessions.isEmpty && !isBrowseLoading {
+                        Text("No active sessions found")
+                            .foregroundStyle(.secondary)
+                            .font(.subheadline)
+                    } else {
+                        ForEach(nonMemberSessions) { session in
+                            HStack {
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text(session.sessionCode)
+                                        .font(.body.monospaced().bold())
+                                    Text("\(session.ownerDisplayName) · \(session.memberCount) member\(session.memberCount == 1 ? "" : "s")")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                                if requestedSessionCodes.contains(session.sessionCode) {
+                                    Text("Requested")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                } else {
+                                    Button("Request") {
+                                        Task { await requestJoin(session) }
+                                    }
+                                    .disabled(isBusy)
+                                }
+                            }
+                        }
+                    }
+                }
+
                 if let error {
                     Section {
                         Text(error)
@@ -511,6 +572,17 @@ struct SessionEntrySheet: View {
                 await location.loadSessions()
                 if createCode.isEmpty {
                     createCode = suggestedCode
+                }
+                if displayName.isEmpty {
+                    displayName = location.runnerName
+                }
+                await loadBrowseSessions()
+            }
+            .task {
+                while !Task.isCancelled {
+                    try? await Task.sleep(for: .seconds(10))
+                    guard !Task.isCancelled else { break }
+                    await location.loadSessions()
                 }
             }
         }
@@ -540,6 +612,29 @@ struct SessionEntrySheet: View {
         do {
             try await location.joinInvite(code: inviteCode, displayName: location.runnerName)
             dismiss()
+        } catch {
+            self.error = error.localizedDescription
+        }
+        isBusy = false
+    }
+
+    private func loadBrowseSessions() async {
+        isBrowseLoading = true
+        do {
+            browsableSessions = try await location.browseSessions()
+        } catch {
+            // ignore browse errors silently
+        }
+        isBrowseLoading = false
+    }
+
+    private func requestJoin(_ session: BrowsableSession) async {
+        isBusy = true
+        error = nil
+        let name = displayName.trimmingCharacters(in: .whitespacesAndNewlines)
+        do {
+            _ = try await location.requestToJoin(sessionCode: session.sessionCode, displayName: name.isEmpty ? nil : name)
+            requestedSessionCodes.insert(session.sessionCode)
         } catch {
             self.error = error.localizedDescription
         }
@@ -597,6 +692,7 @@ struct MemberManagementSheet: View {
 
     @State private var error: String?
     @State private var busyUserId: String?
+    @State private var busyRequestId: String?
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -606,6 +702,33 @@ struct MemberManagementSheet: View {
                     Section("Session") {
                         LabeledContent("Code", value: membership.sessionCode)
                         LabeledContent("Invite", value: membership.inviteCode)
+                    }
+                }
+
+                if !location.pendingJoinRequests.isEmpty {
+                    Section("Join Requests") {
+                        ForEach(location.pendingJoinRequests) { request in
+                            HStack {
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text(request.displayName)
+                                        .font(.body)
+                                    Text("Requested \(request.formattedDate)")
+                                        .font(.caption2)
+                                        .foregroundStyle(.tertiary)
+                                }
+                                Spacer()
+                                Button("Approve") {
+                                    Task { await approve(request) }
+                                }
+                                .disabled(busyRequestId == request.requestId)
+                                .tint(.green)
+                                Button("Deny") {
+                                    Task { await deny(request) }
+                                }
+                                .disabled(busyRequestId == request.requestId)
+                                .tint(.red)
+                            }
+                        }
                     }
                 }
 
@@ -664,6 +787,28 @@ struct MemberManagementSheet: View {
             self.error = error.localizedDescription
         }
         busyUserId = nil
+    }
+
+    private func approve(_ request: JoinRequest) async {
+        busyRequestId = request.requestId
+        error = nil
+        do {
+            try await location.approveJoinRequest(request)
+        } catch {
+            self.error = error.localizedDescription
+        }
+        busyRequestId = nil
+    }
+
+    private func deny(_ request: JoinRequest) async {
+        busyRequestId = request.requestId
+        error = nil
+        do {
+            try await location.denyJoinRequest(request)
+        } catch {
+            self.error = error.localizedDescription
+        }
+        busyRequestId = nil
     }
 }
 
