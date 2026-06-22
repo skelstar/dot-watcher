@@ -273,7 +273,7 @@ public class SessionStore(string dbPath)
     public SessionMembership CreateSessionForUser(string userId, string displayName, string? requestedCode = null)
     {
         var sessionCode = NormalizeSessionCode(requestedCode) ?? GenerateCode(8);
-        var inviteCode = GenerateCode(12);
+        var inviteCode = GenerateCode(6);
         var now = DateTimeOffset.UtcNow.ToString("O");
 
         using var conn = Connect();
@@ -297,7 +297,7 @@ public class SessionStore(string dbPath)
                 throw new InvalidOperationException("Session code is already in use.");
 
             sessionCode = GenerateCode(8);
-            inviteCode = GenerateCode(12);
+            inviteCode = GenerateCode(6);
         }
 
         UpsertMembership(conn, sessionCode, userId, "owner", displayName, now);
