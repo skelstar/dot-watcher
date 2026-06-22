@@ -726,6 +726,7 @@ struct MemberManagementSheet: View {
     @State private var error: String?
     @State private var busyUserId: String?
     @State private var busyRequestId: String?
+    @State private var requestPendingDeny: JoinRequest?
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -753,13 +754,15 @@ struct MemberManagementSheet: View {
                                 Button("Approve") {
                                     Task { await approve(request) }
                                 }
-                                .disabled(busyRequestId == request.requestId)
+                                .buttonStyle(.borderedProminent)
                                 .tint(.green)
-                                Button("Deny") {
-                                    Task { await deny(request) }
-                                }
                                 .disabled(busyRequestId == request.requestId)
+                                Button("Deny") {
+                                    requestPendingDeny = request
+                                }
+                                .buttonStyle(.borderedProminent)
                                 .tint(.red)
+                                .disabled(busyRequestId == request.requestId)
                             }
                         }
                     }
@@ -805,6 +808,22 @@ struct MemberManagementSheet: View {
             }
             .task {
                 await location.loadSelectedSessionMembers()
+            }
+            .alert("Deny request?", isPresented: Binding(
+                get: { requestPendingDeny != nil },
+                set: { if !$0 { requestPendingDeny = nil } }
+            )) {
+                Button("Deny", role: .destructive) {
+                    if let request = requestPendingDeny {
+                        Task { await deny(request) }
+                    }
+                    requestPendingDeny = nil
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                if let request = requestPendingDeny {
+                    Text("Deny \(request.displayName)'s request to join?")
+                }
             }
         }
     }
