@@ -35,6 +35,7 @@ export default function AdminPanel({ serverUrl }: { serverUrl: string }) {
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [deletingSessionCode, setDeletingSessionCode] = useState<string | null>(null)
 
   async function loadAll(bearerToken: string) {
     setLoading(true)
@@ -74,6 +75,26 @@ export default function AdminPanel({ serverUrl }: { serverUrl: string }) {
     sessionStorage.setItem(BEARER_TOKEN_KEY, t)
     setToken(t)
     void loadAll(t)
+  }
+
+  async function handleDeleteSession(session: AdminSession) {
+    if (!window.confirm(`Delete session "${session.sessionCode}"? This removes all members, location data, and join requests. This cannot be undone.`)) return
+    setDeletingSessionCode(session.sessionCode)
+    try {
+      const response = await fetch(`${serverUrl}/admin/sessions/${session.sessionCode}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      if (response.ok) {
+        setSessions(prev => prev.filter(s => s.sessionCode !== session.sessionCode))
+      } else {
+        setError(`Delete failed (HTTP ${response.status}).`)
+      }
+    } catch {
+      setError('Network error.')
+    } finally {
+      setDeletingSessionCode(null)
+    }
   }
 
   async function handleDelete(user: AdminUser) {
@@ -177,6 +198,7 @@ export default function AdminPanel({ serverUrl }: { serverUrl: string }) {
               <th style={th}>Owner</th>
               <th style={th}>Members</th>
               <th style={th}>Created</th>
+              <th style={th}></th>
             </tr>
           </thead>
           <tbody>
@@ -186,6 +208,15 @@ export default function AdminPanel({ serverUrl }: { serverUrl: string }) {
                 <td style={td}>{session.ownerUsername}</td>
                 <td style={td}>{session.memberCount}</td>
                 <td style={td}>{new Date(session.createdAt).toLocaleString()}</td>
+                <td style={td}>
+                  <button
+                    style={deleteBtn}
+                    onClick={() => void handleDeleteSession(session)}
+                    disabled={deletingSessionCode === session.sessionCode}
+                  >
+                    {deletingSessionCode === session.sessionCode ? '…' : 'Delete'}
+                  </button>
+                </td>
               </tr>
             ))}
           </tbody>

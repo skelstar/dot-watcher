@@ -754,6 +754,34 @@ public class SessionStore(string dbPath)
         return cmd.ExecuteNonQuery() > 0;
     }
 
+    public bool DeleteSession(string sessionCode)
+    {
+        using var conn = Connect();
+        using var tx = conn.BeginTransaction();
+
+        foreach (var table in new[] { "join_requests", "location_updates", "session_members" })
+        {
+            using var cmd = conn.CreateCommand();
+            cmd.Transaction = tx;
+            cmd.CommandText = $"DELETE FROM {table} WHERE session_code = $code";
+            cmd.Parameters.AddWithValue("$code", sessionCode);
+            cmd.ExecuteNonQuery();
+        }
+
+        int rows;
+        using (var cmd = conn.CreateCommand())
+        {
+            cmd.Transaction = tx;
+            cmd.CommandText = "DELETE FROM app_sessions WHERE session_code = $code";
+            cmd.Parameters.AddWithValue("$code", sessionCode);
+            rows = cmd.ExecuteNonQuery();
+        }
+
+        tx.Commit();
+        _sessions.TryRemove(sessionCode, out _);
+        return rows > 0;
+    }
+
     public IEnumerable<string> GetRecordedSessions()
     {
         using var conn = Connect();
