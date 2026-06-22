@@ -598,9 +598,6 @@ struct SessionEntrySheet: View {
                 if createCode.isEmpty {
                     createCode = suggestedCode
                 }
-                if displayName.isEmpty {
-                    displayName = location.runnerName
-                }
                 await loadBrowseSessions()
             }
             .task {
@@ -668,9 +665,8 @@ struct SessionEntrySheet: View {
     private func requestJoin(_ session: BrowsableSession) async {
         isBusy = true
         error = nil
-        let name = displayName.trimmingCharacters(in: .whitespacesAndNewlines)
         do {
-            _ = try await location.requestToJoin(sessionCode: session.sessionCode, displayName: name.isEmpty ? nil : name)
+            _ = try await location.requestToJoin(sessionCode: session.sessionCode, displayName: nil)
             requestedSessionCodes.insert(session.sessionCode)
         } catch {
             self.error = error.localizedDescription
