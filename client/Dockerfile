@@ -3,6 +3,8 @@ WORKDIR /app
 COPY package.json ./
 RUN yarn install
 COPY . .
+ARG VITE_APP_VERSION
+ENV VITE_APP_VERSION=$VITE_APP_VERSION
 RUN yarn build
 
 FROM nginx:alpine
