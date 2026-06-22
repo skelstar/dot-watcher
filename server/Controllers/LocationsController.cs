@@ -40,7 +40,10 @@ public class LocationsController(
             validatedUpdate.Heading.HasValue ? $"{validatedUpdate.Heading:F1}°" : "n/a",
             validatedUpdate.Timestamp);
         var participants = store.GetParticipants(validatedUpdate.SessionCode);
-        return Ok(new { participants });
+        var pendingJoinRequests = store.IsSessionOwner(validatedUpdate.SessionCode, user.UserId)
+            ? store.GetPendingJoinRequestCount(validatedUpdate.SessionCode)
+            : 0;
+        return Ok(new { participants, pendingJoinRequests });
     }
 
     [HttpGet("/locations/{sessionCode}")]

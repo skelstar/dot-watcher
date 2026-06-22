@@ -14,6 +14,15 @@ interface AdminSession {
   createdAt: string
 }
 
+interface AdminJoinRequest {
+  requestId: string
+  sessionCode: string
+  username: string
+  displayName: string
+  status: 'pending' | 'approved' | 'denied'
+  createdAt: string
+}
+
 const BEARER_TOKEN_KEY = 'adminBearerToken'
 const APP_VERSION = import.meta.env.VITE_APP_VERSION ?? 'v-local'
 
@@ -22,6 +31,7 @@ export default function AdminPanel({ serverUrl }: { serverUrl: string }) {
   const [tokenInput, setTokenInput] = useState(token)
   const [users, setUsers] = useState<AdminUser[]>([])
   const [sessions, setSessions] = useState<AdminSession[]>([])
+  const [joinRequests, setJoinRequests] = useState<AdminJoinRequest[]>([])
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [deletingId, setDeletingId] = useState<string | null>(null)
@@ -30,20 +40,23 @@ export default function AdminPanel({ serverUrl }: { serverUrl: string }) {
     setLoading(true)
     setError(null)
     try {
-      const [usersRes, sessionsRes] = await Promise.all([
-        fetch(`${serverUrl}/admin/users`, { headers: { Authorization: `Bearer ${bearerToken}` } }),
-        fetch(`${serverUrl}/admin/sessions`, { headers: { Authorization: `Bearer ${bearerToken}` } }),
+      const headers = { Authorization: `Bearer ${bearerToken}` }
+      const [usersRes, sessionsRes, requestsRes] = await Promise.all([
+        fetch(`${serverUrl}/admin/users`, { headers }),
+        fetch(`${serverUrl}/admin/sessions`, { headers }),
+        fetch(`${serverUrl}/admin/join-requests`, { headers }),
       ])
-      if (usersRes.status === 401 || sessionsRes.status === 401) {
+      if (usersRes.status === 401 || sessionsRes.status === 401 || requestsRes.status === 401) {
         setError('Invalid bearer token.')
         return
       }
-      if (!usersRes.ok || !sessionsRes.ok) {
+      if (!usersRes.ok || !sessionsRes.ok || !requestsRes.ok) {
         setError('Failed to load data.')
         return
       }
       setUsers(await usersRes.json() as AdminUser[])
       setSessions(await sessionsRes.json() as AdminSession[])
+      setJoinRequests(await requestsRes.json() as AdminJoinRequest[])
     } catch {
       setError('Network error.')
     } finally {
@@ -181,6 +194,37 @@ export default function AdminPanel({ serverUrl }: { serverUrl: string }) {
       {token && !loading && sessions.length === 0 && !error && (
         <p style={emptyText}>No sessions.</p>
       )}
+
+      <h2 style={subheading}>Join Requests</h2>
+      {joinRequests.length > 0 && (
+        <table style={table}>
+          <thead>
+            <tr>
+              <th style={th}>Session</th>
+              <th style={th}>User</th>
+              <th style={th}>Display name</th>
+              <th style={th}>Status</th>
+              <th style={th}>Requested</th>
+            </tr>
+          </thead>
+          <tbody>
+            {joinRequests.map(req => (
+              <tr key={req.requestId} style={tr}>
+                <td style={td}><code>{req.sessionCode}</code></td>
+                <td style={td}>{req.username}</td>
+                <td style={td}>{req.displayName}</td>
+                <td style={td}>
+                  <span style={statusBadge(req.status)}>{req.status}</span>
+                </td>
+                <td style={td}>{new Date(req.createdAt).toLocaleString()}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      {token && !loading && joinRequests.length === 0 && !error && (
+        <p style={emptyText}>No join requests.</p>
+      )}
     </div>
   )
 }
@@ -286,4 +330,21 @@ const versionText: React.CSSProperties = {
   color: '#94a3b8',
   fontSize: '0.75rem',
   marginBottom: '1rem',
+}
+
+function statusBadge(status: string): React.CSSProperties {
+  const colors: Record<string, string> = {
+    pending: '#f59e0b',
+    approved: '#22c55e',
+    denied: '#ef4444',
+  }
+  return {
+    display: 'inline-block',
+    padding: '0.15rem 0.5rem',
+    borderRadius: 999,
+    fontSize: '0.75rem',
+    fontWeight: 600,
+    background: colors[status] ?? '#94a3b8',
+    color: '#fff',
+  }
 }

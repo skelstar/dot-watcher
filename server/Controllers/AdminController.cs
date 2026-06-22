@@ -31,4 +31,13 @@ public class AdminController(SessionStore store, BearerTokenAuth auth) : Control
 
         return Ok(store.GetAllSessions());
     }
+
+    [HttpGet("/admin/join-requests")]
+    public IActionResult GetJoinRequests()
+    {
+        if (!auth.IsAuthorized(Request))
+            return Unauthorized();
+
+        return Ok(store.GetAllJoinRequests());
+    }
 }
