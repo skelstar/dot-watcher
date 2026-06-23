@@ -495,10 +495,15 @@ struct SessionEntrySheet: View {
                     HStack(spacing: 6) {
                         CodeBoxField(text: $createCode)
                     }
+                    if !createCode.isEmpty && createCode.count < 3 {
+                        Text("Session name must be at least 3 characters")
+                            .font(.caption)
+                            .foregroundStyle(.orange)
+                    }
                     Button("Create Session") {
                         Task { await createSession() }
                     }
-                    .disabled(isBusy)
+                    .disabled(isBusy || createCode.count < 3)
                 }
 
                 Section("Join") {
