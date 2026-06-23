@@ -494,9 +494,6 @@ struct SessionEntrySheet: View {
                 Section("Create") {
                     HStack(spacing: 6) {
                         CodeBoxField(text: $createCode)
-                        Text(location.dateSuffix)
-                            .font(.title2.bold().monospaced())
-                            .foregroundStyle(.secondary)
                     }
                     Button("Create Session") {
                         Task { await createSession() }
@@ -619,8 +616,7 @@ struct SessionEntrySheet: View {
         isBusy = true
         error = nil
         do {
-            let fullCode = createCode.isEmpty ? "" : createCode + location.dateSuffix
-            try await location.createSession(code: fullCode, displayName: location.runnerName)
+            try await location.createSession(code: createCode, displayName: location.runnerName)
             dismiss()
         } catch {
             self.error = error.localizedDescription

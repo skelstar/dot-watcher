@@ -130,14 +130,6 @@ final class LocationManager {
         activeMembership?.role == "owner" || activeMembership?.role == "runner"
     }
 
-    var dateSuffix: String {
-        let cal = Calendar.current
-        let now = Date()
-        let day = cal.component(.day, from: now)
-        let month = cal.component(.month, from: now)
-        return String(format: "-%02d%02d", day, month)
-    }
-
     var fullSessionName: String { sessionCode }
 
     init() {
