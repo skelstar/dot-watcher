@@ -19,7 +19,8 @@ export interface AuthResponse {
 }
 
 export interface SessionMembership {
-  sessionCode: string
+  sessionId: string
+  sessionName: string
   inviteCode: string
   role: 'owner' | 'runner' | 'viewer'
   displayName: string

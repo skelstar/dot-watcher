@@ -21,13 +21,14 @@ public class SessionsApiTests
             HttpMethod.Post,
             "/sessions",
             token,
-            new { sessionCode = "sunset23", displayName = "Trail Alice" });
+            new { sessionName = "sunset23", displayName = "Trail Alice" });
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
         var session = await response.Content.ReadFromJsonAsync<SessionMembership>();
         Assert.NotNull(session);
-        Assert.Equal("SUNSET23", session.SessionCode);
+        Assert.Equal("SUNSET23", session.SessionName);
+        Assert.False(string.IsNullOrWhiteSpace(session.SessionId));
         Assert.Equal("owner", session.Role);
         Assert.Equal("Trail Alice", session.DisplayName);
         Assert.False(string.IsNullOrWhiteSpace(session.InviteCode));
@@ -49,7 +50,7 @@ public class SessionsApiTests
             role: "viewer",
             displayName: "Roadside Viewer");
 
-        Assert.Equal(session.SessionCode, joined.SessionCode);
+        Assert.Equal(session.SessionId, joined.SessionId);
         Assert.Equal("viewer", joined.Role);
         Assert.Equal("Roadside Viewer", joined.DisplayName);
     }
@@ -72,13 +73,13 @@ public class SessionsApiTests
             role: requestedRole,
             displayName: "Not The Owner");
 
-        Assert.Equal(session.SessionCode, joined.SessionCode);
+        Assert.Equal(session.SessionId, joined.SessionId);
         Assert.Equal("viewer", joined.Role);
         Assert.Equal("Not The Owner", joined.DisplayName);
 
         var writeAttempt = await LocationsApiTests.PostLocationAsync(
             client,
-            LocationsApiTests.TestLocation("Ignored", session.SessionCode),
+            LocationsApiTests.TestLocation("Ignored", session.SessionId),
             inviteeToken);
 
         Assert.Equal(HttpStatusCode.Forbidden, writeAttempt.StatusCode);
@@ -98,13 +99,13 @@ public class SessionsApiTests
             session.InviteCode,
             displayName: "Still The Owner");
 
-        Assert.Equal(session.SessionCode, joined.SessionCode);
+        Assert.Equal(session.SessionId, joined.SessionId);
         Assert.Equal("owner", joined.Role);
         Assert.Equal("Still The Owner", joined.DisplayName);
 
         var writeAttempt = await LocationsApiTests.PostLocationAsync(
             client,
-            LocationsApiTests.TestLocation("Ignored", session.SessionCode),
+            LocationsApiTests.TestLocation("Ignored", session.SessionId),
             ownerToken);
 
         Assert.Equal(HttpStatusCode.OK, writeAttempt.StatusCode);
@@ -123,7 +124,7 @@ public class SessionsApiTests
         var listResponse = await SendWithUserTokenAsync(
             client,
             HttpMethod.Get,
-            $"/sessions/{session.SessionCode}/members",
+            $"/sessions/{session.SessionId}/members",
             owner.AccessToken);
 
         Assert.Equal(HttpStatusCode.OK, listResponse.StatusCode);
@@ -135,7 +136,7 @@ public class SessionsApiTests
         var response = await SendWithUserTokenAsync(
             client,
             HttpMethod.Post,
-            $"/sessions/{session.SessionCode}/members/{viewer.User.UserId}/role",
+            $"/sessions/{session.SessionId}/members/{viewer.User.UserId}/role",
             owner.AccessToken,
             new { role = "runner" });
 
@@ -148,7 +149,7 @@ public class SessionsApiTests
 
         var writeAttempt = await LocationsApiTests.PostLocationAsync(
             client,
-            LocationsApiTests.TestLocation("Ignored", session.SessionCode),
+            LocationsApiTests.TestLocation("Ignored", session.SessionId),
             viewer.AccessToken);
 
         Assert.Equal(HttpStatusCode.OK, writeAttempt.StatusCode);
@@ -167,7 +168,7 @@ public class SessionsApiTests
         var response = await SendWithUserTokenAsync(
             client,
             HttpMethod.Post,
-            $"/sessions/{session.SessionCode}/members/{viewer.User.UserId}/role",
+            $"/sessions/{session.SessionId}/members/{viewer.User.UserId}/role",
             viewer.AccessToken,
             new { role = "runner" });
 
@@ -186,7 +187,7 @@ public class SessionsApiTests
 
         using var request = new HttpRequestMessage(
             HttpMethod.Post,
-            $"/sessions/{session.SessionCode}/members/{viewer.User.UserId}/role")
+            $"/sessions/{session.SessionId}/members/{viewer.User.UserId}/role")
         {
             Content = JsonContent.Create(new { role = "runner" }),
         };
@@ -212,7 +213,7 @@ public class SessionsApiTests
         await SendWithUserTokenAsync(
             client,
             HttpMethod.Post,
-            $"/sessions/{session.SessionCode}/members/{runner.User.UserId}/role",
+            $"/sessions/{session.SessionId}/members/{runner.User.UserId}/role",
             owner.AccessToken,
             new { role = "runner" });
 
@@ -239,7 +240,7 @@ public class SessionsApiTests
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var sessions = await response.Content.ReadFromJsonAsync<List<SessionMembership>>();
         Assert.NotNull(sessions);
-        Assert.Contains(sessions, session => session.SessionCode == "SUNSET23");
+        Assert.Contains(sessions, session => session.SessionName == "SUNSET23");
     }
 
     [Fact]
@@ -274,10 +275,10 @@ public class SessionsApiTests
         using var factory = new DotWatcherApiFactory();
         using var client = factory.CreateClient();
 
-        await SendWithAdminBearerAsync(client, HttpMethod.Post, "/sessions/older/recording",
-            NdjsonLine("Alice", "older", timestampSeconds: 1));
-        await SendWithAdminBearerAsync(client, HttpMethod.Post, "/sessions/newer/recording",
-            NdjsonLine("Bob", "newer", timestampSeconds: 2));
+        await SendWithAdminBearerAsync(client, HttpMethod.Post, "/sessions/older-session-id/recording",
+            NdjsonLine("Alice", "older-session-id", timestampSeconds: 1));
+        await SendWithAdminBearerAsync(client, HttpMethod.Post, "/sessions/newer-session-id/recording",
+            NdjsonLine("Bob", "newer-session-id", timestampSeconds: 2));
 
         var response = await SendWithAdminBearerAsync(client, HttpMethod.Get, "/sessions");
 
@@ -285,7 +286,7 @@ public class SessionsApiTests
 
         var sessions = await response.Content.ReadFromJsonAsync<List<string>>();
         Assert.NotNull(sessions);
-        Assert.Equal(new[] { "NEWER", "OLDER" }, sessions);
+        Assert.Equal(new[] { "newer-session-id", "older-session-id" }, sessions);
     }
 
     [Fact]
@@ -294,7 +295,7 @@ public class SessionsApiTests
         using var factory = new DotWatcherApiFactory();
         using var client = factory.CreateClient();
 
-        var response = await client.GetAsync("/sessions/MISSING/recording");
+        var response = await client.GetAsync("/sessions/missing-session-id/recording");
 
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
@@ -308,13 +309,13 @@ public class SessionsApiTests
         var session = await AuthTestHelpers.CreateSessionAsync(client, token);
 
         await LocationsApiTests.PostLocationAsync(client,
-            LocationsApiTests.TestLocation("Ignored", session.SessionCode, latitude: -33.8688),
+            LocationsApiTests.TestLocation("Ignored", session.SessionId, latitude: -33.8688),
             token);
 
         var response = await SendWithUserTokenAsync(
             client,
             HttpMethod.Get,
-            $"/sessions/{session.SessionCode}/recording",
+            $"/sessions/{session.SessionId}/recording",
             token);
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
@@ -325,7 +326,7 @@ public class SessionsApiTests
 
         using var json = JsonDocument.Parse(line);
         Assert.Equal("Alice", json.RootElement.GetProperty("runnerName").GetString());
-        Assert.Equal("SUNSET23", json.RootElement.GetProperty("sessionCode").GetString());
+        Assert.Equal(session.SessionId, json.RootElement.GetProperty("sessionId").GetString());
         Assert.Equal(-33.8688, json.RootElement.GetProperty("latitude").GetDouble());
     }
 
@@ -335,27 +336,27 @@ public class SessionsApiTests
         using var factory = new DotWatcherApiFactory();
         using var client = factory.CreateClient();
         var ownerToken = await AuthTestHelpers.RegisterAsync(client, "owner", "Owner");
-        await AuthTestHelpers.CreateSessionAsync(client, ownerToken);
+        var session = await AuthTestHelpers.CreateSessionAsync(client, ownerToken);
         var outsiderToken = await AuthTestHelpers.RegisterAsync(client, "outsider", "Outsider");
 
         var response = await SendWithUserTokenAsync(
             client,
             HttpMethod.Get,
-            "/sessions/SUNSET23/recording",
+            $"/sessions/{session.SessionId}/recording",
             outsiderToken);
 
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
 
     [Fact]
-    public async Task DownloadRecording_WithInvalidAdminSessionCode_ReturnsBadRequest()
+    public async Task DownloadRecording_WithInvalidAdminSessionId_ReturnsBadRequest()
     {
         using var factory = new DotWatcherApiFactory();
         using var client = factory.CreateClient();
 
-        var response = await SendWithAdminBearerAsync(client, HttpMethod.Get, "/sessions/NO.DOTS/recording");
+        var response = await SendWithAdminBearerAsync(client, HttpMethod.Get, "/sessions//recording");
 
-        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
 
     [Fact]
@@ -365,8 +366,8 @@ public class SessionsApiTests
         using var client = factory.CreateClient();
 
         var response = await client.PostAsync(
-            "/sessions/SUNSET23/recording",
-            new StringContent(NdjsonLine("Alice", "SUNSET23"), Encoding.UTF8, "application/x-ndjson"));
+            "/sessions/some-session-id/recording",
+            new StringContent(NdjsonLine("Alice", "some-session-id"), Encoding.UTF8, "application/x-ndjson"));
 
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
@@ -380,8 +381,8 @@ public class SessionsApiTests
         var response = await SendWithAdminBearerAsync(
             client,
             HttpMethod.Post,
-            "/sessions/SUNSET23/recording",
-            NdjsonLine("Alice", "SUNSET23"),
+            "/sessions/some-session-id/recording",
+            NdjsonLine("Alice", "some-session-id"),
             bearerToken: "wrong-token");
 
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
@@ -396,7 +397,7 @@ public class SessionsApiTests
         var response = await SendWithAdminBearerAsync(
             client,
             HttpMethod.Post,
-            "/sessions/SUNSET23/recording",
+            "/sessions/some-session-id/recording",
             "{");
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
@@ -408,21 +409,21 @@ public class SessionsApiTests
         using var factory = new DotWatcherApiFactory();
         using var client = factory.CreateClient();
 
-        await SendWithAdminBearerAsync(client, HttpMethod.Post, "/sessions/SUNSET23/recording",
-            NdjsonLine("Bob", "SUNSET23"));
+        await SendWithAdminBearerAsync(client, HttpMethod.Post, "/sessions/some-session-id/recording",
+            NdjsonLine("Bob", "some-session-id"));
 
         var invalid = JsonSerializer.Serialize(
-            LocationsApiTests.TestLocation("Alice", "SUNSET23") with { Latitude = 91 });
+            LocationsApiTests.TestLocation("Alice", "some-session-id") with { Latitude = 91 });
 
         var response = await SendWithAdminBearerAsync(
             client,
             HttpMethod.Post,
-            "/sessions/SUNSET23/recording",
+            "/sessions/some-session-id/recording",
             invalid);
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
 
-        var recording = await SendWithAdminBearerAsync(client, HttpMethod.Get, "/sessions/SUNSET23/recording");
+        var recording = await SendWithAdminBearerAsync(client, HttpMethod.Get, "/sessions/some-session-id/recording");
         Assert.Equal(HttpStatusCode.OK, recording.StatusCode);
         var line = Assert.Single((await recording.Content.ReadAsStringAsync()).Split('\n', StringSplitOptions.RemoveEmptyEntries));
         using var uploaded = JsonDocument.Parse(line);
@@ -438,7 +439,7 @@ public class SessionsApiTests
         var missingTimestamp = JsonSerializer.Serialize(new
         {
             runnerName = "Alice",
-            sessionCode = "SUNSET23",
+            sessionId = "some-session-id",
             latitude = -41.17,
             longitude = 174.7762,
             heading = 270.5,
@@ -447,7 +448,7 @@ public class SessionsApiTests
         var response = await SendWithAdminBearerAsync(
             client,
             HttpMethod.Post,
-            "/sessions/SUNSET23/recording",
+            "/sessions/some-session-id/recording",
             missingTimestamp);
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
@@ -462,7 +463,7 @@ public class SessionsApiTests
         var response = await SendWithAdminBearerAsync(
             client,
             HttpMethod.Post,
-            "/sessions/SUNSET23/recording",
+            "/sessions/some-session-id/recording",
             "");
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
@@ -474,26 +475,26 @@ public class SessionsApiTests
         using var factory = new DotWatcherApiFactory();
         using var client = factory.CreateClient();
 
-        await SendWithAdminBearerAsync(client, HttpMethod.Post, "/sessions/SUNSET23/recording",
-            NdjsonLine("Bob", "SUNSET23"));
+        await SendWithAdminBearerAsync(client, HttpMethod.Post, "/sessions/target-session-id/recording",
+            NdjsonLine("Bob", "target-session-id"));
 
         var response = await SendWithAdminBearerAsync(
             client,
             HttpMethod.Post,
-            "/sessions/sunset23/recording",
-            NdjsonLine("Alice", "ignored-session-code"));
+            "/sessions/target-session-id/recording",
+            NdjsonLine("Alice", "ignored-session-id"));
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
         using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
-        Assert.Equal("SUNSET23", body.RootElement.GetProperty("sessionCode").GetString());
+        Assert.Equal("target-session-id", body.RootElement.GetProperty("sessionId").GetString());
 
         var sessionsResponse = await SendWithAdminBearerAsync(client, HttpMethod.Get, "/sessions");
         var sessions = await sessionsResponse.Content.ReadFromJsonAsync<List<string>>();
         Assert.NotNull(sessions);
-        Assert.Contains("SUNSET23", sessions);
+        Assert.Contains("target-session-id", sessions);
 
-        var recording = await SendWithAdminBearerAsync(client, HttpMethod.Get, "/sessions/SUNSET23/recording");
+        var recording = await SendWithAdminBearerAsync(client, HttpMethod.Get, "/sessions/target-session-id/recording");
         var line = Assert.Single((await recording.Content.ReadAsStringAsync()).Split('\n', StringSplitOptions.RemoveEmptyEntries));
         using var uploaded = JsonDocument.Parse(line);
         Assert.Equal("Alice", uploaded.RootElement.GetProperty("runnerName").GetString());
@@ -505,16 +506,16 @@ public class SessionsApiTests
         using var factory = new DotWatcherApiFactory();
         using var client = factory.CreateClient();
 
-        await SendWithAdminBearerAsync(client, HttpMethod.Post, "/sessions/SUNSET23/recording",
-            NdjsonLine("Alice", "SUNSET23"));
+        await SendWithAdminBearerAsync(client, HttpMethod.Post, "/sessions/some-session-id/recording",
+            NdjsonLine("Alice", "some-session-id"));
 
-        var unauthorized = await client.DeleteAsync("/sessions/SUNSET23/recording");
+        var unauthorized = await client.DeleteAsync("/sessions/some-session-id/recording");
         Assert.Equal(HttpStatusCode.Unauthorized, unauthorized.StatusCode);
 
-        var deleted = await SendWithAdminBearerAsync(client, HttpMethod.Delete, "/sessions/SUNSET23/recording");
+        var deleted = await SendWithAdminBearerAsync(client, HttpMethod.Delete, "/sessions/some-session-id/recording");
         Assert.Equal(HttpStatusCode.NoContent, deleted.StatusCode);
 
-        var download = await SendWithAdminBearerAsync(client, HttpMethod.Get, "/sessions/SUNSET23/recording");
+        var download = await SendWithAdminBearerAsync(client, HttpMethod.Get, "/sessions/some-session-id/recording");
         Assert.Equal(HttpStatusCode.NotFound, download.StatusCode);
     }
 
@@ -524,20 +525,9 @@ public class SessionsApiTests
         using var factory = new DotWatcherApiFactory();
         using var client = factory.CreateClient();
 
-        var response = await SendWithAdminBearerAsync(client, HttpMethod.Delete, "/sessions/MISSING/recording");
+        var response = await SendWithAdminBearerAsync(client, HttpMethod.Delete, "/sessions/missing-session-id/recording");
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
-    }
-
-    [Fact]
-    public async Task DeleteRecording_WithInvalidAdminSessionCode_ReturnsBadRequest()
-    {
-        using var factory = new DotWatcherApiFactory();
-        using var client = factory.CreateClient();
-
-        var response = await SendWithAdminBearerAsync(client, HttpMethod.Delete, "/sessions/NO.DOTS/recording");
-
-        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
     [Fact]
@@ -546,36 +536,28 @@ public class SessionsApiTests
         using var factory = new DotWatcherApiFactory();
         using var client = factory.CreateClient();
         var token = await AuthTestHelpers.RegisterAsync(client, "alice", "Alice");
-        await AuthTestHelpers.CreateSessionAsync(client, token);
+        var session = await AuthTestHelpers.CreateSessionAsync(client, token);
 
         await LocationsApiTests.PostLocationAsync(client,
-            LocationsApiTests.TestLocation("Ignored", "SUNSET23"),
+            LocationsApiTests.TestLocation("Ignored", session.SessionId),
             token);
 
-        var unauthorized = await client.DeleteAsync("/sessions/SUNSET23");
+        await SendWithAdminBearerAsync(client, HttpMethod.Post, $"/sessions/{session.SessionId}/recording",
+            NdjsonLine("Ignored", session.SessionId));
+
+        var unauthorized = await client.DeleteAsync($"/sessions/{session.SessionId}");
         Assert.Equal(HttpStatusCode.Unauthorized, unauthorized.StatusCode);
 
-        var cleared = await SendWithAdminBearerAsync(client, HttpMethod.Delete, "/sessions/SUNSET23");
+        var cleared = await SendWithAdminBearerAsync(client, HttpMethod.Delete, $"/sessions/{session.SessionId}");
         Assert.Equal(HttpStatusCode.NoContent, cleared.StatusCode);
 
-        var livePositions = await LocationsApiTests.SendWithUserTokenAsync(client, HttpMethod.Get, "/locations/SUNSET23", token);
+        var livePositions = await LocationsApiTests.SendWithUserTokenAsync(client, HttpMethod.Get, $"/locations/{session.SessionId}", token);
         var body = await livePositions.Content.ReadFromJsonAsync<List<List<RunnerPosition>>>();
         Assert.NotNull(body);
         Assert.Empty(body);
 
-        var recording = await SendWithAdminBearerAsync(client, HttpMethod.Get, "/sessions/SUNSET23/recording");
+        var recording = await SendWithAdminBearerAsync(client, HttpMethod.Get, $"/sessions/{session.SessionId}/recording");
         Assert.Equal(HttpStatusCode.OK, recording.StatusCode);
-    }
-
-    [Fact]
-    public async Task ClearSession_WithInvalidAdminSessionCode_ReturnsBadRequest()
-    {
-        using var factory = new DotWatcherApiFactory();
-        using var client = factory.CreateClient();
-
-        var response = await SendWithAdminBearerAsync(client, HttpMethod.Delete, "/sessions/NO.DOTS");
-
-        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
     [Fact]
@@ -584,25 +566,25 @@ public class SessionsApiTests
         using var factory = new DotWatcherApiFactory();
         using var client = factory.CreateClient();
 
-        await SendWithAdminBearerAsync(client, HttpMethod.Post, "/sessions/SOURCE1/recording",
-            NdjsonLine("Alice", "SOURCE1"));
+        await SendWithAdminBearerAsync(client, HttpMethod.Post, "/sessions/source-session-id/recording",
+            NdjsonLine("Alice", "source-session-id"));
 
         var response = await SendWithAdminBearerAsync(
             client,
             HttpMethod.Post,
-            "/sessions/target1/merge-from/source1");
+            "/sessions/target-session-id/merge-from/source-session-id");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
         using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
-        Assert.Equal("SOURCE1", body.RootElement.GetProperty("sourceCode").GetString());
-        Assert.Equal("TARGET1", body.RootElement.GetProperty("targetCode").GetString());
+        Assert.Equal("source-session-id", body.RootElement.GetProperty("sourceId").GetString());
+        Assert.Equal("target-session-id", body.RootElement.GetProperty("targetId").GetString());
         Assert.Equal(1, body.RootElement.GetProperty("recordsMerged").GetInt32());
 
-        var sourceRecording = await SendWithAdminBearerAsync(client, HttpMethod.Get, "/sessions/SOURCE1/recording");
+        var sourceRecording = await SendWithAdminBearerAsync(client, HttpMethod.Get, "/sessions/source-session-id/recording");
         Assert.Equal(HttpStatusCode.NotFound, sourceRecording.StatusCode);
 
-        var targetRecording = await SendWithAdminBearerAsync(client, HttpMethod.Get, "/sessions/TARGET1/recording");
+        var targetRecording = await SendWithAdminBearerAsync(client, HttpMethod.Get, "/sessions/target-session-id/recording");
         Assert.Equal(HttpStatusCode.OK, targetRecording.StatusCode);
     }
 
@@ -615,48 +597,9 @@ public class SessionsApiTests
         var response = await SendWithAdminBearerAsync(
             client,
             HttpMethod.Post,
-            "/sessions/TARGET1/merge-from/MISSING");
+            "/sessions/target-session-id/merge-from/missing-session-id");
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
-    }
-
-    [Fact]
-    public async Task MergeSession_WithInvalidTargetCode_ReturnsBadRequestAndLeavesSourceRecording()
-    {
-        using var factory = new DotWatcherApiFactory();
-        using var client = factory.CreateClient();
-
-        await SendWithAdminBearerAsync(client, HttpMethod.Post, "/sessions/SOURCE1/recording",
-            NdjsonLine("Alice", "SOURCE1"));
-
-        var response = await SendWithAdminBearerAsync(
-            client,
-            HttpMethod.Post,
-            "/sessions/NO.DOTS/merge-from/SOURCE1");
-
-        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
-
-        var sourceRecording = await SendWithAdminBearerAsync(client, HttpMethod.Get, "/sessions/SOURCE1/recording");
-        Assert.Equal(HttpStatusCode.OK, sourceRecording.StatusCode);
-
-        var sessionsResponse = await SendWithAdminBearerAsync(client, HttpMethod.Get, "/sessions");
-        var sessions = await sessionsResponse.Content.ReadFromJsonAsync<List<string>>();
-        Assert.NotNull(sessions);
-        Assert.DoesNotContain("NO.DOTS", sessions);
-    }
-
-    [Fact]
-    public async Task MergeSession_WithInvalidSourceCode_ReturnsBadRequest()
-    {
-        using var factory = new DotWatcherApiFactory();
-        using var client = factory.CreateClient();
-
-        var response = await SendWithAdminBearerAsync(
-            client,
-            HttpMethod.Post,
-            "/sessions/TARGET1/merge-from/NO.DOTS");
-
-        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
     private static async Task<HttpResponseMessage> SendWithAdminBearerAsync(
@@ -689,9 +632,9 @@ public class SessionsApiTests
         return await client.SendAsync(request);
     }
 
-    private static string NdjsonLine(string runnerName, string sessionCode, int timestampSeconds = 0) =>
+    private static string NdjsonLine(string runnerName, string sessionId, int timestampSeconds = 0) =>
         JsonSerializer.Serialize(LocationsApiTests.TestLocation(
             runnerName,
-            sessionCode,
+            sessionId,
             timestampSeconds: timestampSeconds));
 }

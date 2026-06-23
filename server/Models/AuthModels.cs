@@ -43,7 +43,7 @@ public record ValidatedUserToken(
 );
 
 public record CreateSessionRequest(
-    string? SessionCode = null,
+    string? SessionName = null,
     string? DisplayName = null
 );
 
@@ -56,7 +56,8 @@ public record UpdateSessionMemberRoleRequest(
 );
 
 public record SessionMembership(
-    string SessionCode,
+    string SessionId,
+    string SessionName,
     string InviteCode,
     string Role,
     string DisplayName
@@ -90,7 +91,7 @@ public record AdminUserSummary(
 
 public record AdminJoinRequestSummary(
     string RequestId,
-    string SessionCode,
+    string SessionId,
     string Username,
     string DisplayName,
     string Status,
@@ -98,22 +99,24 @@ public record AdminJoinRequestSummary(
 );
 
 public record AdminSessionSummary(
-    string SessionCode,
+    string SessionId,
+    string SessionName,
     string OwnerUsername,
     int MemberCount,
     string CreatedAt
 );
 
 public record BrowsableSession(
-    string SessionCode,
+    string SessionId,
+    string SessionName,
     string OwnerDisplayName,
     int MemberCount,
-    DateTimeOffset LastActivity
+    DateTimeOffset CreatedAt
 );
 
 public record JoinRequestRecord(
     string RequestId,
-    string SessionCode,
+    string SessionId,
     string UserId,
     string DisplayName,
     DateTimeOffset CreatedAt

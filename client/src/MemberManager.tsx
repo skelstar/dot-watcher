@@ -19,7 +19,7 @@ export default function MemberManager({ serverUrl, accessToken, membership, onCl
     async function loadMembers() {
       setError(null)
       try {
-        const response = await fetch(`${serverUrl}/sessions/${membership.sessionCode}/members`, {
+        const response = await fetch(`${serverUrl}/sessions/${membership.sessionId}/members`, {
           headers: { 'Authorization': `Bearer ${accessToken}` },
         })
         if (cancelled) return
@@ -35,14 +35,14 @@ export default function MemberManager({ serverUrl, accessToken, membership, onCl
 
     void loadMembers()
     return () => { cancelled = true }
-  }, [accessToken, membership.sessionCode, serverUrl])
+  }, [accessToken, membership.sessionId, serverUrl])
 
   async function updateRole(member: SessionMember, role: 'runner' | 'viewer') {
     setBusyUserId(member.userId)
     setError(null)
     try {
       const response = await fetch(
-        `${serverUrl}/sessions/${membership.sessionCode}/members/${member.userId}/role`,
+        `${serverUrl}/sessions/${membership.sessionId}/members/${member.userId}/role`,
         {
           method: 'POST',
           headers: {
@@ -72,7 +72,7 @@ export default function MemberManager({ serverUrl, accessToken, membership, onCl
       <div style={dialog}>
         <div style={header}>
           <div>
-            <h2 style={title}>{membership.sessionCode}</h2>
+            <h2 style={title}>{membership.sessionName}</h2>
             <p style={subtitle}>Invite {membership.inviteCode}</p>
           </div>
           <button type="button" style={closeButton} onClick={onClose}>Close</button>

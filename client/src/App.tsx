@@ -28,7 +28,7 @@ const AUTH_EXPIRES_KEY = 'userAccessTokenExpiresAt'
 const AUTH_USER_KEY = 'user'
 
 interface RouteState {
-  sessionCode: string | null
+  sessionName: string | null
   isReplay: boolean
   inviteCode: string | null
   legalPage: 'privacy' | 'terms' | null
@@ -38,13 +38,13 @@ interface RouteState {
 function parseUrl(): RouteState {
   const parts = window.location.pathname.replace(/^\//, '').split('/')
   const norm = (s: string) => s.toUpperCase() || null
-  if (parts[0] === 'admin') return { sessionCode: null, isReplay: false, inviteCode: null, legalPage: null, isAdmin: true }
-  if (parts[0] === 'privacy') return { sessionCode: null, isReplay: false, inviteCode: null, legalPage: 'privacy', isAdmin: false }
-  if (parts[0] === 'terms') return { sessionCode: null, isReplay: false, inviteCode: null, legalPage: 'terms', isAdmin: false }
-  if (parts[0] === 'join') return { sessionCode: null, isReplay: false, inviteCode: norm(parts[1] ?? ''), legalPage: null, isAdmin: false }
-  if (parts[0] === 'replay') return { sessionCode: null, isReplay: true, inviteCode: null, legalPage: null, isAdmin: false }
-  if (parts[1] === 'replay') return { sessionCode: norm(parts[0]), isReplay: true, inviteCode: null, legalPage: null, isAdmin: false }
-  return { sessionCode: norm(parts[0]), isReplay: false, inviteCode: null, legalPage: null, isAdmin: false }
+  if (parts[0] === 'admin') return { sessionName: null, isReplay: false, inviteCode: null, legalPage: null, isAdmin: true }
+  if (parts[0] === 'privacy') return { sessionName: null, isReplay: false, inviteCode: null, legalPage: 'privacy', isAdmin: false }
+  if (parts[0] === 'terms') return { sessionName: null, isReplay: false, inviteCode: null, legalPage: 'terms', isAdmin: false }
+  if (parts[0] === 'join') return { sessionName: null, isReplay: false, inviteCode: norm(parts[1] ?? ''), legalPage: null, isAdmin: false }
+  if (parts[0] === 'replay') return { sessionName: null, isReplay: true, inviteCode: null, legalPage: null, isAdmin: false }
+  if (parts[1] === 'replay') return { sessionName: norm(parts[0]), isReplay: true, inviteCode: null, legalPage: null, isAdmin: false }
+  return { sessionName: norm(parts[0]), isReplay: false, inviteCode: null, legalPage: null, isAdmin: false }
 }
 
 function readStoredAuth(): AuthResponse | null {
@@ -83,8 +83,8 @@ function clearStoredAuth() {
 export default function App() {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<mapboxgl.Map | null>(null)
-  const { sessionCode: initialCode, isReplay, inviteCode, legalPage, isAdmin } = parseUrl()
-  const [sessionCode, setSessionCode] = useState<string | null>(initialCode)
+  const { sessionName: initialName, isReplay, inviteCode, legalPage, isAdmin } = parseUrl()
+  const [sessionName, setSessionName] = useState<string | null>(initialName)
   const [auth, setAuth] = useState<AuthResponse | null>(() => readStoredAuth())
   const [memberships, setMemberships] = useState<SessionMembership[]>([])
   const [membershipsLoaded, setMembershipsLoaded] = useState(false)
@@ -158,8 +158,9 @@ export default function App() {
     return () => { cancelled = true }
   }, [accessToken])
 
-  const activeMembership = memberships.find(membership => membership.sessionCode === sessionCode) ?? null
-  const hasSessionMembership = sessionCode ? activeMembership !== null : false
+  const activeMembership = memberships.find(membership => membership.sessionName === sessionName) ?? null
+  const sessionId = activeMembership?.sessionId ?? null
+  const hasSessionMembership = sessionName ? activeMembership !== null : false
   const canWriteLocation = canWriteLocationForRole(activeMembership?.role)
   const canManageMembers = canManageMembersForRole(activeMembership?.role)
   const showSessionPrompt = shouldShowSessionPrompt({
@@ -167,15 +168,15 @@ export default function App() {
     membershipsLoaded,
     isReplay,
     inviteCode,
-    sessionCode,
+    sessionName,
     hasSessionMembership,
   })
 
-  const replay = useReplay(isReplay && hasSessionMembership ? sessionCode : null, SERVER_URL, accessToken)
+  const replay = useReplay(isReplay && hasSessionMembership ? sessionId : null, SERVER_URL, accessToken)
 
   const { offScreenRunners, error: liveError, centerOnRunner, fitAll } = useRunnerMarkers(
     mapRef,
-    !isReplay && hasSessionMembership ? sessionCode : null,
+    !isReplay && hasSessionMembership ? sessionId : null,
     SERVER_URL,
     accessToken,
     POLL_INTERVAL_MS,
@@ -184,7 +185,7 @@ export default function App() {
   )
 
   async function sendChester(lng: number, lat: number) {
-    if (!sessionCode || !accessToken || !canWriteLocation) return
+    if (!sessionId || !accessToken || !canWriteLocation) return
     await fetch(`${SERVER_URL}/location`, {
       method: 'POST',
       headers: {
@@ -193,7 +194,7 @@ export default function App() {
       },
       body: JSON.stringify({
         runnerName: 'Chester',
-        sessionCode,
+        sessionId,
         latitude: lat,
         longitude: lng,
         heading: null,
@@ -222,7 +223,7 @@ export default function App() {
     clearStoredAuth()
     setAuth(null)
     setMemberships([])
-    setSessionCode(null)
+    setSessionName(null)
     setShowMembers(false)
     setShowSettings(false)
   }
@@ -248,20 +249,20 @@ export default function App() {
     clearStoredAuth()
     setAuth(null)
     setMemberships([])
-    setSessionCode(null)
+    setSessionName(null)
     setShowMembers(false)
     setShowSettings(false)
   }
 
   function handleMembershipSelect(membership: SessionMembership) {
-    window.history.replaceState(null, '', isReplay ? `/${membership.sessionCode}/replay` : `/${membership.sessionCode}`)
-    setSessionCode(membership.sessionCode)
+    window.history.replaceState(null, '', isReplay ? `/${membership.sessionName}/replay` : `/${membership.sessionName}`)
+    setSessionName(membership.sessionName)
     setShowMembers(false)
   }
 
-  function handleReplaySelect(code: string) {
-    window.history.replaceState(null, '', `/${code}/replay`)
-    setSessionCode(code)
+  function handleReplaySelect(membership: SessionMembership) {
+    window.history.replaceState(null, '', `/${membership.sessionName}/replay`)
+    setSessionName(membership.sessionName)
   }
 
   if (isAdmin) {
@@ -300,11 +301,11 @@ export default function App() {
           onClose={() => setMenu(null)}
         />
       )}
-      {isReplay && sessionCode && <ReplayControls replay={replay} onFitAll={fitAll} />}
+      {isReplay && sessionName && <ReplayControls replay={replay} onFitAll={fitAll} />}
       {liveError && !isReplay && hasSessionMembership && <div style={statusToast}>{liveError}</div>}
       {replay.error && isReplay && hasSessionMembership && <div style={statusToast}>{replay.error}</div>}
       {shouldShowAuthPrompt(accessToken) && <AuthPrompt serverUrl={SERVER_URL} onAuth={handleAuth} />}
-      {accessToken && membershipsLoaded && isReplay && !sessionCode && (
+      {accessToken && membershipsLoaded && isReplay && !sessionName && (
         <ReplayPicker memberships={memberships} onSelect={handleReplaySelect} />
       )}
       {accessToken && showSessionPrompt && (
@@ -312,18 +313,18 @@ export default function App() {
           serverUrl={SERVER_URL}
           accessToken={accessToken}
           memberships={memberships}
-          requestedSessionCode={inviteCode ? undefined : sessionCode}
+          requestedSessionName={inviteCode ? undefined : sessionName}
           initialInviteCode={inviteCode}
           onSelect={handleMembershipSelect}
           onMembershipsChanged={setMemberships}
         />
       )}
-      {accessToken && membershipsLoaded && isReplay && sessionCode && !hasSessionMembership && !inviteCode && (
+      {accessToken && membershipsLoaded && isReplay && sessionName && !hasSessionMembership && !inviteCode && (
         <SessionPrompt
           serverUrl={SERVER_URL}
           accessToken={accessToken}
           memberships={memberships}
-          requestedSessionCode={sessionCode}
+          requestedSessionName={sessionName}
           isReplay
           onSelect={handleMembershipSelect}
           onMembershipsChanged={setMemberships}

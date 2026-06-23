@@ -2,7 +2,7 @@ namespace DotWatcher.Server;
 
 public record LocationUpdate(
     string? RunnerName,
-    string? SessionCode,
+    string? SessionId,
     double? Latitude,
     double? Longitude,
     double? Heading,

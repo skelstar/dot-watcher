@@ -14,8 +14,10 @@ public class LocationsApiTests
     {
         using var factory = new DotWatcherApiFactory();
         using var client = factory.CreateClient();
+        var token = await AuthTestHelpers.RegisterAsync(client, "alice", "Alice");
+        var session = await AuthTestHelpers.CreateSessionAsync(client, token);
 
-        var response = await client.PostAsJsonAsync("/location", TestLocation("Alice", "SUNSET23"));
+        var response = await client.PostAsJsonAsync("/location", TestLocation("Alice", session.SessionId));
 
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
@@ -25,10 +27,12 @@ public class LocationsApiTests
     {
         using var factory = new DotWatcherApiFactory();
         using var client = factory.CreateClient();
+        var token = await AuthTestHelpers.RegisterAsync(client, "alice", "Alice");
+        var session = await AuthTestHelpers.CreateSessionAsync(client, token);
 
         var response = await PostLocationAsync(
             client,
-            TestLocation("Alice", "SUNSET23"),
+            TestLocation("Alice", session.SessionId),
             accessToken: "wrong-token");
 
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
@@ -44,7 +48,7 @@ public class LocationsApiTests
         var viewerToken = await AuthTestHelpers.RegisterAsync(client, "viewer", "Viewer");
         await AuthTestHelpers.JoinSessionAsync(client, viewerToken, session.InviteCode, role: "viewer");
 
-        var response = await PostLocationAsync(client, TestLocation("Viewer", session.SessionCode), viewerToken);
+        var response = await PostLocationAsync(client, TestLocation("Viewer", session.SessionId), viewerToken);
 
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
@@ -74,7 +78,7 @@ public class LocationsApiTests
         var token = await AuthTestHelpers.RegisterAsync(client, "alice", "Alice");
         var session = await AuthTestHelpers.CreateSessionAsync(client, token);
 
-        var response = await PostLocationAsync(client, TestLocation("Ignored", session.SessionCode), token);
+        var response = await PostLocationAsync(client, TestLocation("Ignored", session.SessionId), token);
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
@@ -105,7 +109,7 @@ public class LocationsApiTests
 
         var response = await PostLocationAsync(
             client,
-            TestLocation("Ignored", session.SessionCode) with
+            TestLocation("Ignored", session.SessionId) with
             {
                 Latitude = latitude,
                 Longitude = longitude,
@@ -126,7 +130,7 @@ public class LocationsApiTests
 
         var response = await PostLocationAsync(
             client,
-            TestLocation("Ignored", session.SessionCode) with { Timestamp = default },
+            TestLocation("Ignored", session.SessionId) with { Timestamp = default },
             token);
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
@@ -143,7 +147,7 @@ public class LocationsApiTests
         var body = JsonSerializer.Serialize(new
         {
             runnerName = "Ignored",
-            sessionCode = session.SessionCode,
+            sessionId = session.SessionId,
             longitude = 174.7762,
             heading = 270.5,
             timestamp = "2024-11-15T09:23:00Z",
@@ -159,8 +163,10 @@ public class LocationsApiTests
     {
         using var factory = new DotWatcherApiFactory();
         using var client = factory.CreateClient();
+        var token = await AuthTestHelpers.RegisterAsync(client, "alice", "Alice");
+        var session = await AuthTestHelpers.CreateSessionAsync(client, token);
 
-        var response = await client.GetAsync("/locations/SUNSET23");
+        var response = await client.GetAsync($"/locations/{session.SessionId}");
 
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
@@ -171,10 +177,10 @@ public class LocationsApiTests
         using var factory = new DotWatcherApiFactory();
         using var client = factory.CreateClient();
         var ownerToken = await AuthTestHelpers.RegisterAsync(client, "owner", "Owner");
-        await AuthTestHelpers.CreateSessionAsync(client, ownerToken);
+        var session = await AuthTestHelpers.CreateSessionAsync(client, ownerToken);
         var outsiderToken = await AuthTestHelpers.RegisterAsync(client, "outsider", "Outsider");
 
-        var response = await SendWithUserTokenAsync(client, HttpMethod.Get, "/locations/SUNSET23", outsiderToken);
+        var response = await SendWithUserTokenAsync(client, HttpMethod.Get, $"/locations/{session.SessionId}", outsiderToken);
 
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
@@ -187,10 +193,10 @@ public class LocationsApiTests
         var aliceToken = await AuthTestHelpers.RegisterAsync(client, "alice", "Alice");
         var session = await AuthTestHelpers.CreateSessionAsync(client, aliceToken);
 
-        await PostLocationAsync(client, TestLocation("Ignored", "sunset23", latitude: -33.8680, timestampSeconds: 1), aliceToken);
-        await PostLocationAsync(client, TestLocation("Ignored", "sunset23", latitude: -33.8688, timestampSeconds: 2), aliceToken);
+        await PostLocationAsync(client, TestLocation("Ignored", session.SessionId, latitude: -33.8680, timestampSeconds: 1), aliceToken);
+        await PostLocationAsync(client, TestLocation("Ignored", session.SessionId, latitude: -33.8688, timestampSeconds: 2), aliceToken);
 
-        var response = await SendWithUserTokenAsync(client, HttpMethod.Get, "/locations/SUNSET23", aliceToken);
+        var response = await SendWithUserTokenAsync(client, HttpMethod.Get, $"/locations/{session.SessionId}", aliceToken);
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
@@ -221,7 +227,7 @@ public class LocationsApiTests
             displayName: "First Name");
         using (var promote = AuthTestHelpers.WithUserToken(
             HttpMethod.Post,
-            $"/sessions/{session.SessionCode}/members/{runner.User.UserId}/role",
+            $"/sessions/{session.SessionId}/members/{runner.User.UserId}/role",
             owner.AccessToken))
         {
             promote.Content = JsonContent.Create(new { role = "runner" });
@@ -231,7 +237,7 @@ public class LocationsApiTests
 
         await PostLocationAsync(
             client,
-            TestLocation("Ignored", session.SessionCode, latitude: -33.8680, timestampSeconds: 1),
+            TestLocation("Ignored", session.SessionId, latitude: -33.8680, timestampSeconds: 1),
             runner.AccessToken);
 
         await AuthTestHelpers.JoinSessionAsync(
@@ -242,13 +248,13 @@ public class LocationsApiTests
 
         await PostLocationAsync(
             client,
-            TestLocation("Ignored", session.SessionCode, latitude: -33.8688, timestampSeconds: 2),
+            TestLocation("Ignored", session.SessionId, latitude: -33.8688, timestampSeconds: 2),
             runner.AccessToken);
 
         var renamedResponse = await SendWithUserTokenAsync(
             client,
             HttpMethod.Get,
-            $"/locations/{session.SessionCode}",
+            $"/locations/{session.SessionId}",
             owner.AccessToken);
         Assert.Equal(HttpStatusCode.OK, renamedResponse.StatusCode);
         var renamedLocations = await renamedResponse.Content.ReadFromJsonAsync<List<List<RunnerPosition>>>();
@@ -267,7 +273,7 @@ public class LocationsApiTests
         var afterDeleteResponse = await SendWithUserTokenAsync(
             client,
             HttpMethod.Get,
-            $"/locations/{session.SessionCode}",
+            $"/locations/{session.SessionId}",
             owner.AccessToken);
         Assert.Equal(HttpStatusCode.OK, afterDeleteResponse.StatusCode);
         var afterDeleteLocations = await afterDeleteResponse.Content.ReadFromJsonAsync<List<List<RunnerPosition>>>();
@@ -315,12 +321,12 @@ public class LocationsApiTests
 
     internal static LocationUpdate TestLocation(
         string runnerName,
-        string sessionCode,
+        string sessionId,
         double latitude = -41.17,
         int timestampSeconds = 0) =>
         new(
             RunnerName: runnerName,
-            SessionCode: sessionCode,
+            SessionId: sessionId,
             Latitude: latitude,
             Longitude: 174.7762,
             Heading: 270.5,

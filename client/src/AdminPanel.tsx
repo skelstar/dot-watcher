@@ -8,7 +8,8 @@ interface AdminUser {
 }
 
 interface AdminSession {
-  sessionCode: string
+  sessionId: string
+  sessionName: string
   ownerUsername: string
   memberCount: number
   createdAt: string
@@ -16,7 +17,7 @@ interface AdminSession {
 
 interface AdminJoinRequest {
   requestId: string
-  sessionCode: string
+  sessionId: string
   username: string
   displayName: string
   status: 'pending' | 'approved' | 'denied'
@@ -35,7 +36,7 @@ export default function AdminPanel({ serverUrl }: { serverUrl: string }) {
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [deletingId, setDeletingId] = useState<string | null>(null)
-  const [deletingSessionCode, setDeletingSessionCode] = useState<string | null>(null)
+  const [deletingSessionId, setDeletingSessionId] = useState<string | null>(null)
 
   async function loadAll(bearerToken: string) {
     setLoading(true)
@@ -78,22 +79,22 @@ export default function AdminPanel({ serverUrl }: { serverUrl: string }) {
   }
 
   async function handleDeleteSession(session: AdminSession) {
-    if (!window.confirm(`Delete session "${session.sessionCode}"? This removes all members, location data, and join requests. This cannot be undone.`)) return
-    setDeletingSessionCode(session.sessionCode)
+    if (!window.confirm(`Delete session "${session.sessionName}"? This removes all members, location data, and join requests. This cannot be undone.`)) return
+    setDeletingSessionId(session.sessionId)
     try {
-      const response = await fetch(`${serverUrl}/admin/sessions/${session.sessionCode}`, {
+      const response = await fetch(`${serverUrl}/admin/sessions/${session.sessionId}`, {
         method: 'DELETE',
         headers: { Authorization: `Bearer ${token}` },
       })
       if (response.ok) {
-        setSessions(prev => prev.filter(s => s.sessionCode !== session.sessionCode))
+        setSessions(prev => prev.filter(s => s.sessionId !== session.sessionId))
       } else {
         setError(`Delete failed (HTTP ${response.status}).`)
       }
     } catch {
       setError('Network error.')
     } finally {
-      setDeletingSessionCode(null)
+      setDeletingSessionId(null)
     }
   }
 
@@ -194,7 +195,7 @@ export default function AdminPanel({ serverUrl }: { serverUrl: string }) {
         <table style={table}>
           <thead>
             <tr>
-              <th style={th}>Code</th>
+              <th style={th}>Name</th>
               <th style={th}>Owner</th>
               <th style={th}>Members</th>
               <th style={th}>Created</th>
@@ -203,8 +204,8 @@ export default function AdminPanel({ serverUrl }: { serverUrl: string }) {
           </thead>
           <tbody>
             {sessions.map(session => (
-              <tr key={session.sessionCode} style={tr}>
-                <td style={td}>{session.sessionCode}</td>
+              <tr key={session.sessionId} style={tr}>
+                <td style={td}>{session.sessionName}</td>
                 <td style={td}>{session.ownerUsername}</td>
                 <td style={td}>{session.memberCount}</td>
                 <td style={td}>{new Date(session.createdAt).toLocaleString()}</td>
@@ -212,9 +213,9 @@ export default function AdminPanel({ serverUrl }: { serverUrl: string }) {
                   <button
                     style={deleteBtn}
                     onClick={() => void handleDeleteSession(session)}
-                    disabled={deletingSessionCode === session.sessionCode}
+                    disabled={deletingSessionId === session.sessionId}
                   >
-                    {deletingSessionCode === session.sessionCode ? '…' : 'Delete'}
+                    {deletingSessionId === session.sessionId ? '…' : 'Delete'}
                   </button>
                 </td>
               </tr>
@@ -231,7 +232,7 @@ export default function AdminPanel({ serverUrl }: { serverUrl: string }) {
         <table style={table}>
           <thead>
             <tr>
-              <th style={th}>Session</th>
+              <th style={th}>Session ID</th>
               <th style={th}>User</th>
               <th style={th}>Display name</th>
               <th style={th}>Status</th>
@@ -241,7 +242,7 @@ export default function AdminPanel({ serverUrl }: { serverUrl: string }) {
           <tbody>
             {joinRequests.map(req => (
               <tr key={req.requestId} style={tr}>
-                <td style={td}><code>{req.sessionCode}</code></td>
+                <td style={td}><code>{req.sessionId}</code></td>
                 <td style={td}>{req.username}</td>
                 <td style={td}>{req.displayName}</td>
                 <td style={td}>

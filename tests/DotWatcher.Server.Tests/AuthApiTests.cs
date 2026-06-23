@@ -145,7 +145,7 @@ public class AuthApiTests
         var session = await AuthTestHelpers.CreateSessionAsync(client, token);
         await LocationsApiTests.PostLocationAsync(
             client,
-            LocationsApiTests.TestLocation("Ignored", session.SessionCode),
+            LocationsApiTests.TestLocation("Ignored", session.SessionId),
             token);
 
         using var delete = AuthTestHelpers.WithUserToken(HttpMethod.Delete, "/me", token);
@@ -166,7 +166,7 @@ public class AuthApiTests
 
         using var recording = new HttpRequestMessage(
             HttpMethod.Get,
-            $"/sessions/{session.SessionCode}/recording");
+            $"/sessions/{session.SessionId}/recording");
         recording.Headers.Authorization = new AuthenticationHeaderValue("Bearer", "test-token");
         var recordingResponse = await client.SendAsync(recording);
         Assert.Equal(HttpStatusCode.NotFound, recordingResponse.StatusCode);

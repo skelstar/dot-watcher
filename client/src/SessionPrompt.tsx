@@ -5,7 +5,7 @@ interface Props {
   serverUrl: string
   accessToken: string
   memberships: SessionMembership[]
-  requestedSessionCode?: string | null
+  requestedSessionName?: string | null
   initialInviteCode?: string | null
   isReplay?: boolean
   onSelect: (membership: SessionMembership) => void
@@ -18,14 +18,14 @@ export default function SessionPrompt({
   serverUrl,
   accessToken,
   memberships,
-  requestedSessionCode,
+  requestedSessionName,
   initialInviteCode,
   isReplay = false,
   onSelect,
   onMembershipsChanged,
 }: Props) {
   const [mode, setMode] = useState<Mode>(initialInviteCode ? 'join' : memberships.length ? 'sessions' : 'create')
-  const [createCode, setCreateCode] = useState(requestedSessionCode ?? '')
+  const [createCode, setCreateCode] = useState(requestedSessionName ?? '')
   const [createName, setCreateName] = useState('')
   const [inviteCode, setInviteCode] = useState(initialInviteCode ?? '')
   const [joinName, setJoinName] = useState('')
@@ -40,7 +40,7 @@ export default function SessionPrompt({
   }, [initialInviteCode])
 
   const sortedMemberships = useMemo(
-    () => [...memberships].sort((a, b) => a.sessionCode.localeCompare(b.sessionCode)),
+    () => [...memberships].sort((a, b) => a.sessionName.localeCompare(b.sessionName)),
     [memberships],
   )
 
@@ -57,7 +57,7 @@ export default function SessionPrompt({
     setBusy(true)
     setError(null)
     const body = {
-      sessionCode: cleanSessionCode(createCode) || null,
+      sessionName: cleanInput(createCode) || null,
       displayName: createName.trim() || null,
     }
 
@@ -72,7 +72,7 @@ export default function SessionPrompt({
       })
 
       if (!response.ok) {
-        setError(response.status === 409 ? 'Session already exists.' : `Create failed: HTTP ${response.status}`)
+        setError(`Create failed: HTTP ${response.status}`)
         return
       }
 
@@ -88,7 +88,7 @@ export default function SessionPrompt({
 
   async function joinSession(event: FormEvent) {
     event.preventDefault()
-    const code = cleanSessionCode(inviteCode)
+    const code = cleanInput(inviteCode)
     if (!code) return
 
     setBusy(true)
@@ -122,8 +122,8 @@ export default function SessionPrompt({
     <div style={overlay}>
       <div style={card}>
         <h1 style={heading}>{isReplay ? 'Replay Session' : 'Dot Watcher'}</h1>
-        {requestedSessionCode && !memberships.some(m => m.sessionCode === requestedSessionCode) && (
-          <p style={notice}>No membership for {requestedSessionCode}.</p>
+        {requestedSessionName && !memberships.some(m => m.sessionName === requestedSessionName) && (
+          <p style={notice}>No membership for {requestedSessionName}.</p>
         )}
 
         <div style={tabs}>
@@ -137,9 +137,9 @@ export default function SessionPrompt({
             {sortedMemberships.length === 0 ? (
               <p style={empty}>No sessions yet.</p>
             ) : sortedMemberships.map(membership => (
-              <button key={membership.sessionCode} type="button" style={sessionButton} onClick={() => onSelect(membership)}>
+              <button key={membership.sessionId} type="button" style={sessionButton} onClick={() => onSelect(membership)}>
                 <span>
-                  <span style={sessionCode}>{membership.sessionCode}</span>
+                  <span style={sessionNameStyle}>{membership.sessionName}</span>
                   {membership.role === 'owner' && <span style={inviteCodeText}>Invite {membership.inviteCode}</span>}
                 </span>
                 <span style={role}>{membership.role}</span>
@@ -154,7 +154,7 @@ export default function SessionPrompt({
               style={input}
               value={createCode}
               onChange={event => setCreateCode(event.target.value.toUpperCase())}
-              placeholder="Session code"
+              placeholder="Session name"
               autoCapitalize="characters"
               autoCorrect="off"
               spellCheck={false}
@@ -190,7 +190,7 @@ export default function SessionPrompt({
               placeholder="Display name"
               autoComplete="name"
             />
-            <button style={button} type="submit" disabled={busy || !cleanSessionCode(inviteCode)}>
+            <button style={button} type="submit" disabled={busy || !cleanInput(inviteCode)}>
               Join
             </button>
           </form>
@@ -202,14 +202,14 @@ export default function SessionPrompt({
   )
 }
 
-function cleanSessionCode(value: string): string {
+function cleanInput(value: string): string {
   return value.trim().toUpperCase()
 }
 
 function upsertMembership(memberships: SessionMembership[], membership: SessionMembership): SessionMembership[] {
   return [
     membership,
-    ...memberships.filter(existing => existing.sessionCode !== membership.sessionCode),
+    ...memberships.filter(existing => existing.sessionId !== membership.sessionId),
   ]
 }
 
@@ -320,7 +320,7 @@ const sessionButton: React.CSSProperties = {
   cursor: 'pointer',
 }
 
-const sessionCode: React.CSSProperties = {
+const sessionNameStyle: React.CSSProperties = {
   display: 'block',
   fontFamily: 'monospace',
   fontWeight: 700,

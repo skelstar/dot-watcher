@@ -7,7 +7,7 @@ interface PromptState {
   membershipsLoaded: boolean
   isReplay: boolean
   inviteCode: string | null
-  sessionCode: string | null
+  sessionName: string | null
   hasSessionMembership: boolean
 }
 
@@ -26,5 +26,5 @@ export function shouldShowAuthPrompt(accessToken: string | null): boolean {
 export function shouldShowSessionPrompt(state: PromptState): boolean {
   if (!state.accessToken || !state.membershipsLoaded || state.isReplay) return false
   if (state.inviteCode) return !state.hasSessionMembership
-  return !state.sessionCode || !state.hasSessionMembership
+  return !state.sessionName || !state.hasSessionMembership
 }

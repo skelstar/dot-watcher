@@ -32,12 +32,12 @@ internal static class AuthTestHelpers
     internal static async Task<SessionMembership> CreateSessionAsync(
         HttpClient client,
         string accessToken,
-        string? sessionCode = "SUNSET23",
+        string? sessionName = "SUNSET23",
         string? displayName = null)
     {
         using var request = new HttpRequestMessage(HttpMethod.Post, "/sessions")
         {
-            Content = JsonContent.Create(new { sessionCode, displayName }),
+            Content = JsonContent.Create(new { sessionName, displayName }),
         };
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
 

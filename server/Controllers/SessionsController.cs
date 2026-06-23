@@ -36,8 +36,8 @@ public class SessionsController(
 
         request ??= new CreateSessionRequest();
 
-        if (request.SessionCode is not null && SessionStore.NormalizeSessionCode(request.SessionCode) is null)
-            return BadRequest(new { error = "Session code must be 3-32 letters, numbers, dashes, or underscores." });
+        if (request.SessionName is not null && SessionStore.NormalizeSessionName(request.SessionName) is null)
+            return BadRequest(new { error = "Session name must be 3-32 letters, numbers, dashes, or underscores." });
 
         var displayName = string.IsNullOrWhiteSpace(request.DisplayName)
             ? user.DisplayName
@@ -46,14 +46,7 @@ public class SessionsController(
         if (displayName.Length is < 1 or > 80)
             return BadRequest(new { error = "Display name must be 1-80 characters." });
 
-        try
-        {
-            return Ok(store.CreateSessionForUser(user.UserId, displayName, request.SessionCode));
-        }
-        catch (InvalidOperationException)
-        {
-            return Conflict(new { error = "A session with that name already exists. Try a different name." });
-        }
+        return Ok(store.CreateSessionForUser(user.UserId, displayName, request.SessionName));
     }
 
     [HttpPost("/session-invites/{inviteCode}/join")]
@@ -81,40 +74,32 @@ public class SessionsController(
             : Ok(membership);
     }
 
-    [HttpGet("/sessions/{sessionCode}/members")]
-    public IActionResult GetSessionMembers(string sessionCode)
+    [HttpGet("/sessions/{sessionId}/members")]
+    public IActionResult GetSessionMembers(string sessionId)
     {
-        var code = SessionStore.NormalizeSessionCode(sessionCode);
-        if (code is null)
-            return BadRequest(new { error = "Invalid session code." });
-
-        if (!TryAuthorizeSessionOwnerOrAdmin(code, out var error))
+        if (!TryAuthorizeSessionOwnerOrAdmin(sessionId, out var error))
             return error!;
 
-        var members = store.GetSessionMembers(code);
+        var members = store.GetSessionMembers(sessionId);
         return members is null
             ? NotFound(new { error = "Session not found." })
             : Ok(members);
     }
 
-    [HttpPost("/sessions/{sessionCode}/members/{userId}/role")]
+    [HttpPost("/sessions/{sessionId}/members/{userId}/role")]
     public IActionResult UpdateSessionMemberRole(
-        string sessionCode,
+        string sessionId,
         string userId,
         [FromBody] UpdateSessionMemberRoleRequest? request)
     {
-        var code = SessionStore.NormalizeSessionCode(sessionCode);
-        if (code is null)
-            return BadRequest(new { error = "Invalid session code." });
-
         var role = request?.Role?.Trim().ToLowerInvariant();
         if (role is not ("runner" or "viewer"))
             return BadRequest(new { error = "Role must be runner or viewer." });
 
-        if (!TryAuthorizeSessionOwnerOrAdmin(code, out var error))
+        if (!TryAuthorizeSessionOwnerOrAdmin(sessionId, out var error))
             return error!;
 
-        var result = store.UpdateSessionMemberRole(code, userId, role);
+        var result = store.UpdateSessionMemberRole(sessionId, userId, role);
         return result.Status switch
         {
             UpdateSessionMemberRoleStatus.Updated => Ok(result.Member),
@@ -134,15 +119,11 @@ public class SessionsController(
         return Ok(store.GetBrowsableSessions());
     }
 
-    [HttpPost("/sessions/{sessionCode}/join-requests")]
-    public IActionResult CreateJoinRequest(string sessionCode, [FromBody] CreateJoinRequestRequest? request)
+    [HttpPost("/sessions/{sessionId}/join-requests")]
+    public IActionResult CreateJoinRequest(string sessionId, [FromBody] CreateJoinRequestRequest? request)
     {
         if (!userAuth.TryAuthenticate(Request, out var user))
             return Unauthorized();
-
-        var code = SessionStore.NormalizeSessionCode(sessionCode);
-        if (code is null)
-            return BadRequest(new { error = "Invalid session code." });
 
         var displayName = string.IsNullOrWhiteSpace(request?.DisplayName)
             ? user.DisplayName
@@ -151,7 +132,7 @@ public class SessionsController(
         if (displayName.Length is < 1 or > 80)
             return BadRequest(new { error = "Display name must be 1-80 characters." });
 
-        var result = store.CreateJoinRequest(code, user.UserId, displayName);
+        var result = store.CreateJoinRequest(sessionId, user.UserId, displayName);
         return result.Status switch
         {
             CreateJoinRequestStatus.Created => Ok(result.Request),
@@ -163,94 +144,77 @@ public class SessionsController(
         };
     }
 
-    [HttpGet("/sessions/{sessionCode}/join-requests")]
-    public IActionResult GetJoinRequests(string sessionCode)
+    [HttpGet("/sessions/{sessionId}/join-requests")]
+    public IActionResult GetJoinRequests(string sessionId)
     {
         if (!userAuth.TryAuthenticate(Request, out var user))
             return Unauthorized();
 
-        var code = SessionStore.NormalizeSessionCode(sessionCode);
-        if (code is null)
-            return BadRequest(new { error = "Invalid session code." });
-
-        if (!store.IsSessionOwner(code, user.UserId))
+        if (!store.IsSessionOwner(sessionId, user.UserId))
             return StatusCode(StatusCodes.Status403Forbidden);
 
-        var requests = store.GetJoinRequests(code);
+        var requests = store.GetJoinRequests(sessionId);
         return requests is null
             ? NotFound(new { error = "Session not found." })
             : Ok(requests);
     }
 
-    [HttpPost("/sessions/{sessionCode}/join-requests/{requestId}/approve")]
-    public IActionResult ApproveJoinRequest(string sessionCode, string requestId)
+    [HttpPost("/sessions/{sessionId}/join-requests/{requestId}/approve")]
+    public IActionResult ApproveJoinRequest(string sessionId, string requestId)
     {
         if (!userAuth.TryAuthenticate(Request, out var user))
             return Unauthorized();
 
-        var code = SessionStore.NormalizeSessionCode(sessionCode);
-        if (code is null)
-            return BadRequest(new { error = "Invalid session code." });
-
-        if (!store.IsSessionOwner(code, user.UserId))
+        if (!store.IsSessionOwner(sessionId, user.UserId))
             return StatusCode(StatusCodes.Status403Forbidden);
 
-        var membership = store.ApproveJoinRequest(requestId, code);
+        var membership = store.ApproveJoinRequest(requestId, sessionId);
         return membership is null
             ? NotFound(new { error = "Join request not found." })
             : Ok(membership);
     }
 
-    [HttpPost("/sessions/{sessionCode}/join-requests/{requestId}/deny")]
-    public IActionResult DenyJoinRequest(string sessionCode, string requestId)
+    [HttpPost("/sessions/{sessionId}/join-requests/{requestId}/deny")]
+    public IActionResult DenyJoinRequest(string sessionId, string requestId)
     {
         if (!userAuth.TryAuthenticate(Request, out var user))
             return Unauthorized();
 
-        var code = SessionStore.NormalizeSessionCode(sessionCode);
-        if (code is null)
-            return BadRequest(new { error = "Invalid session code." });
-
-        if (!store.IsSessionOwner(code, user.UserId))
+        if (!store.IsSessionOwner(sessionId, user.UserId))
             return StatusCode(StatusCodes.Status403Forbidden);
 
-        return store.DenyJoinRequest(requestId, code)
+        return store.DenyJoinRequest(requestId, sessionId)
             ? NoContent()
             : NotFound(new { error = "Join request not found." });
     }
 
-    [HttpDelete("/me/sessions/{sessionCode}")]
-    public IActionResult DeleteMySession(string sessionCode)
+    [HttpDelete("/me/sessions/{sessionId}")]
+    public IActionResult DeleteMySession(string sessionId)
     {
         if (!userAuth.TryAuthenticate(Request, out var user))
             return Unauthorized();
 
-        var code = SessionStore.NormalizeSessionCode(sessionCode);
-        if (code is null)
-            return BadRequest(new { error = "Invalid session code." });
-
-        if (!store.IsSessionOwner(code, user.UserId))
+        if (!store.IsSessionOwner(sessionId, user.UserId))
             return StatusCode(StatusCodes.Status403Forbidden);
 
-        return store.DeleteSession(code) ? NoContent() : NotFound();
+        return store.DeleteSession(sessionId) ? NoContent() : NotFound();
     }
 
-    [HttpPost("/sessions/{sessionCode}/recording")]
-    public async Task<IActionResult> UploadRecording(string sessionCode)
+    [HttpPost("/sessions/{sessionId}/recording")]
+    public async Task<IActionResult> UploadRecording(string sessionId)
     {
         if (!auth.IsAuthorized(Request))
             return Unauthorized();
 
-        var code = SessionStore.NormalizeSessionCode(sessionCode);
-        if (code is null)
-            return BadRequest(new { error = "Invalid session code." });
+        if (string.IsNullOrWhiteSpace(sessionId))
+            return BadRequest(new { error = "Invalid session ID." });
 
         using var reader = new StreamReader(Request.Body);
         var content = await reader.ReadToEndAsync();
 
         try
         {
-            store.SaveRecording(code, content);
+            store.SaveRecording(sessionId, content);
         }
         catch (JsonException)
         {
@@ -261,88 +225,83 @@ public class SessionsController(
             return BadRequest(new { error = "Invalid NDJSON recording.", details = ex.Errors });
         }
 
-        logger.LogInformation("Uploaded recording for {Session} ({Bytes} bytes)", code, content.Length);
-        return Ok(new { sessionCode = code });
+        logger.LogInformation("Uploaded recording for {Session} ({Bytes} bytes)", sessionId, content.Length);
+        return Ok(new { sessionId = sessionId });
     }
 
-    [HttpGet("/sessions/{sessionCode}/recording")]
-    public IActionResult DownloadRecording(string sessionCode)
+    [HttpGet("/sessions/{sessionId}/recording")]
+    public IActionResult DownloadRecording(string sessionId)
     {
-        var code = SessionStore.NormalizeSessionCode(sessionCode);
         if (!auth.IsAuthorized(Request))
         {
             if (!userAuth.TryAuthenticate(Request, out var user))
                 return Unauthorized();
 
-            if (code is null)
-                return BadRequest(new { error = "Invalid session code." });
+            if (string.IsNullOrWhiteSpace(sessionId))
+                return BadRequest(new { error = "Invalid session ID." });
 
-            if (!store.CanReadSession(code, user.UserId))
+            if (!store.CanReadSession(sessionId, user.UserId))
                 return StatusCode(StatusCodes.Status403Forbidden);
         }
-        else if (code is null)
+        else if (string.IsNullOrWhiteSpace(sessionId))
         {
-            return BadRequest(new { error = "Invalid session code." });
+            return BadRequest(new { error = "Invalid session ID." });
         }
 
-        if (!store.HasRecording(code))
+        if (!store.HasRecording(sessionId))
             return NotFound();
 
-        var ndjson = store.GetRecordingAsNdjson(code);
+        var ndjson = store.GetRecordingAsNdjson(sessionId);
         return Content(ndjson, "application/x-ndjson");
     }
 
-    [HttpDelete("/sessions/{sessionCode}/recording")]
-    public IActionResult DeleteRecording(string sessionCode)
+    [HttpDelete("/sessions/{sessionId}/recording")]
+    public IActionResult DeleteRecording(string sessionId)
     {
         if (!auth.IsAuthorized(Request))
             return Unauthorized();
 
-        var code = SessionStore.NormalizeSessionCode(sessionCode);
-        if (code is null)
-            return BadRequest(new { error = "Invalid session code." });
+        if (string.IsNullOrWhiteSpace(sessionId))
+            return BadRequest(new { error = "Invalid session ID." });
 
-        if (!store.DeleteRecording(code))
+        if (!store.DeleteRecording(sessionId))
             return NotFound();
 
-        logger.LogInformation("Deleted recording for {Session}", code);
+        logger.LogInformation("Deleted recording for {Session}", sessionId);
         return NoContent();
     }
 
-    [HttpDelete("/sessions/{sessionCode}")]
-    public IActionResult ClearSession(string sessionCode)
+    [HttpDelete("/sessions/{sessionId}")]
+    public IActionResult ClearSession(string sessionId)
     {
         if (!auth.IsAuthorized(Request))
             return Unauthorized();
 
-        var code = SessionStore.NormalizeSessionCode(sessionCode);
-        if (code is null)
-            return BadRequest(new { error = "Invalid session code." });
+        if (string.IsNullOrWhiteSpace(sessionId))
+            return BadRequest(new { error = "Invalid session ID." });
 
-        store.ClearSession(code);
+        store.ClearSession(sessionId);
         return NoContent();
     }
 
-    [HttpPost("/sessions/{targetCode}/merge-from/{sourceCode}")]
-    public IActionResult MergeSession(string targetCode, string sourceCode)
+    [HttpPost("/sessions/{targetId}/merge-from/{sourceId}")]
+    public IActionResult MergeSession(string targetId, string sourceId)
     {
         if (!auth.IsAuthorized(Request))
             return Unauthorized();
 
-        var tgt = SessionStore.NormalizeSessionCode(targetCode);
-        var src = SessionStore.NormalizeSessionCode(sourceCode);
-        if (tgt is null || src is null)
-            return BadRequest(new { error = "Invalid session code." });
+        if (string.IsNullOrWhiteSpace(targetId) || string.IsNullOrWhiteSpace(sourceId))
+            return BadRequest(new { error = "Invalid session ID." });
 
-        if (!store.HasRecording(src))
-            return NotFound(new { error = $"Source session '{src}' not found" });
+        if (!store.HasRecording(sourceId))
+            return NotFound(new { error = $"Source session '{sourceId}' not found" });
 
-        var rows = store.MergeSession(src, tgt);
-        logger.LogInformation("Merged session {Source} into {Target} ({Rows} records)", src, tgt, rows);
-        return Ok(new { sourceCode = src, targetCode = tgt, recordsMerged = rows });
+        var rows = store.MergeSession(sourceId, targetId);
+        logger.LogInformation("Merged session {Source} into {Target} ({Rows} records)", sourceId, targetId, rows);
+        return Ok(new { sourceId = sourceId, targetId = targetId, recordsMerged = rows });
     }
 
-    private bool TryAuthorizeSessionOwnerOrAdmin(string sessionCode, out IActionResult? error)
+    private bool TryAuthorizeSessionOwnerOrAdmin(string sessionId, out IActionResult? error)
     {
         error = null;
         if (auth.IsAuthorized(Request))
@@ -354,7 +313,7 @@ public class SessionsController(
             return false;
         }
 
-        if (!store.IsSessionOwner(sessionCode, user.UserId))
+        if (!store.IsSessionOwner(sessionId, user.UserId))
         {
             error = StatusCode(StatusCodes.Status403Forbidden);
             return false;

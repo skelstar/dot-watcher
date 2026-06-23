@@ -23,7 +23,7 @@ interface RunnerMarkersResult {
 
 export function useRunnerMarkers(
   mapRef: RefObject<mapboxgl.Map | null>,
-  sessionCode: string | null,
+  sessionId: string | null,
   serverUrl: string,
   accessToken: string | null,
   intervalMs: number,
@@ -121,7 +121,7 @@ export function useRunnerMarkers(
   // Live polling effect — skipped when replayPositions is provided
   // TODO: Add e2e coverage for signed-in member polling, 401/403 handling, and replay mode.
   useEffect(() => {
-    if (!shouldPollLivePositions(sessionCode, accessToken, replayPositions !== undefined)) {
+    if (!shouldPollLivePositions(sessionId, accessToken, replayPositions !== undefined)) {
       setError(null)
       return
     }
@@ -131,7 +131,7 @@ export function useRunnerMarkers(
 
     async function fetchAndUpdate() {
       try {
-        const res = await fetch(`${serverUrl}/locations/${sessionCode}`, {
+        const res = await fetch(`${serverUrl}/locations/${sessionId}`, {
           headers: { 'Authorization': `Bearer ${accessToken}` },
         })
         if (cancelled) return
@@ -157,7 +157,7 @@ export function useRunnerMarkers(
       cancelled = true
       clearInterval(id)
     }
-  }, [sessionCode, serverUrl, accessToken, intervalMs, mapRef, replayPositions]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [sessionId, serverUrl, accessToken, intervalMs, mapRef, replayPositions]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Replay effect — runs when replayPositions changes
   useEffect(() => {

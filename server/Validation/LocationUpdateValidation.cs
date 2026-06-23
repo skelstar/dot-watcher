@@ -8,7 +8,7 @@ public sealed class LocationUpdateValidationException(IReadOnlyList<string> erro
 
 public sealed record ValidatedLocationUpdate(
     string RunnerName,
-    string SessionCode,
+    string SessionId,
     double Latitude,
     double Longitude,
     double? Heading,
@@ -23,8 +23,8 @@ public static class LocationUpdateValidation
         if (string.IsNullOrWhiteSpace(update.RunnerName))
             errors.Add("Runner name is required.");
 
-        if (SessionStore.NormalizeSessionCode(update.SessionCode) is null)
-            errors.Add("Session code must be 3-32 letters, numbers, dashes, or underscores.");
+        if (string.IsNullOrWhiteSpace(update.SessionId) || !Guid.TryParse(update.SessionId, out _))
+            errors.Add("Session ID is required.");
 
         if (update.Latitude is not { } latitude || !double.IsFinite(latitude) || latitude is < -90 or > 90)
             errors.Add("Latitude must be between -90 and 90.");
@@ -55,7 +55,7 @@ public static class LocationUpdateValidation
 
         validated = new ValidatedLocationUpdate(
             update.RunnerName!,
-            SessionStore.NormalizeSessionCode(update.SessionCode)!,
+            update.SessionId!,
             update.Latitude!.Value,
             update.Longitude!.Value,
             update.Heading,
