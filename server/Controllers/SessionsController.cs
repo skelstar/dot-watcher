@@ -52,7 +52,7 @@ public class SessionsController(
         }
         catch (InvalidOperationException)
         {
-            return Conflict(new { error = "Session code is already in use." });
+            return Conflict(new { error = "A session with that name already exists. Try a different name." });
         }
     }
 
