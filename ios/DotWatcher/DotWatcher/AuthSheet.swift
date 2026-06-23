@@ -44,13 +44,23 @@ struct AuthSheet: View {
                         .pickerStyle(.segmented)
 
                         if mode == .register {
-                            TextField("Display name", text: $displayName)
-                                .textContentType(.name)
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text("Your initials")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                CodeBoxField(text: $displayName, length: 2, lettersOnly: true)
+                            }
+                            .padding(.vertical, 4)
                         }
                         TextField("Username", text: $username)
                             .textInputAutocapitalization(.never)
                             .autocorrectionDisabled()
                             .textContentType(.username)
+                        if !username.isEmpty && username.count < 3 {
+                            Text("Username must be at least 3 characters")
+                                .font(.caption)
+                                .foregroundStyle(.orange)
+                        }
                         SecureField("Password", text: $password)
                             .textContentType(.password)
                     }
@@ -59,7 +69,7 @@ struct AuthSheet: View {
                         Button(mode == .signIn ? "Sign In" : "Create Account") {
                             Task { await submit() }
                         }
-                        .disabled(isBusy || username.trimmingCharacters(in: .whitespaces).isEmpty || password.count < 8 || (mode == .register && displayName.trimmingCharacters(in: .whitespaces).isEmpty))
+                        .disabled(isBusy || username.trimmingCharacters(in: .whitespaces).isEmpty || password.count < 8 || (mode == .register && displayName.count != 2))
                     }
                     legalSection
                 }
