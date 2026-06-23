@@ -125,12 +125,12 @@ struct ContentView: View {
                 .foregroundStyle(.secondary)
 
             HStack(spacing: 0) {
-                if location.sessionCode.isEmpty {
+                if location.sessionId.isEmpty {
                     Text("Tap to set")
                         .font(.title3.monospaced())
                         .foregroundStyle(.tertiary)
                 } else {
-                    Text(location.sessionCode)
+                    Text(location.activeMembership?.sessionName ?? "")
                         .font(.title3.bold().monospaced())
                         .foregroundStyle(.primary)
                 }
@@ -152,8 +152,8 @@ struct ContentView: View {
             .contentShape(RoundedRectangle(cornerRadius: 10))
             .onTapGesture { showSessionEntry = true }
 
-            if !location.sessionCode.isEmpty,
-               let url = URL(string: "https://dot-watcher.skelstar.io/\(location.fullSessionName)") {
+            if !location.sessionId.isEmpty,
+               let url = URL(string: "https://dot-watcher.skelstar.io/\(location.sessionId)") {
                 Link("Open map in browser", destination: url)
                     .font(.subheadline)
                     .foregroundStyle(Color.accentColor)
@@ -445,7 +445,7 @@ struct SessionEntrySheet: View {
     @State private var isBusy = false
     @State private var browsableSessions: [BrowsableSession] = []
     @State private var isBrowseLoading = false
-    @State private var requestedSessionCodes: Set<String> = []
+    @State private var requestedSessionIds: Set<String> = []
     @State private var sessionToDelete: SessionMembership?
     @Environment(\.dismiss) private var dismiss
 
@@ -461,7 +461,7 @@ struct SessionEntrySheet: View {
                             } label: {
                                 HStack {
                                     VStack(alignment: .leading, spacing: 3) {
-                                        Text(membership.sessionCode)
+                                        Text(membership.sessionName)
                                             .font(.body.monospaced().bold())
                                         Text(membership.displayName)
                                             .font(.caption)
@@ -530,7 +530,7 @@ struct SessionEntrySheet: View {
                         }
                     }
                     let nonMemberSessions = browsableSessions.filter { s in
-                        !location.memberships.contains { $0.sessionCode == s.sessionCode }
+                        !location.memberships.contains { $0.sessionId == s.sessionId }
                     }
                     if nonMemberSessions.isEmpty && !isBrowseLoading {
                         Text("No active sessions found")
@@ -540,14 +540,14 @@ struct SessionEntrySheet: View {
                         ForEach(nonMemberSessions) { session in
                             HStack {
                                 VStack(alignment: .leading, spacing: 3) {
-                                    Text(session.sessionCode)
+                                    Text(session.sessionName)
                                         .font(.body.monospaced().bold())
                                     Text("\(session.ownerDisplayName) · \(session.memberCount) member\(session.memberCount == 1 ? "" : "s")")
                                         .font(.caption)
                                         .foregroundStyle(.secondary)
                                 }
                                 Spacer()
-                                if requestedSessionCodes.contains(session.sessionCode) {
+                                if requestedSessionIds.contains(session.sessionId) {
                                     Text("Requested")
                                         .font(.caption)
                                         .foregroundStyle(.secondary)
@@ -587,7 +587,7 @@ struct SessionEntrySheet: View {
                 Button("Cancel", role: .cancel) {}
             } message: {
                 if let s = sessionToDelete {
-                    Text("This permanently deletes \(s.sessionCode) and all its members, location data, and join requests. This cannot be undone.")
+                    Text("This permanently deletes \(s.sessionName) and all its members, location data, and join requests. This cannot be undone.")
                 }
             }
             .task {
@@ -616,7 +616,7 @@ struct SessionEntrySheet: View {
         isBusy = true
         error = nil
         do {
-            try await location.createSession(code: createCode, displayName: location.runnerName)
+            try await location.createSession(name: createCode, displayName: location.runnerName)
             dismiss()
         } catch {
             self.error = error.localizedDescription
@@ -641,7 +641,7 @@ struct SessionEntrySheet: View {
         error = nil
         sessionToDelete = nil
         do {
-            try await location.deleteSession(sessionCode: membership.sessionCode)
+            try await location.deleteSession(sessionId: membership.sessionId)
         } catch {
             self.error = error.localizedDescription
         }
@@ -662,8 +662,8 @@ struct SessionEntrySheet: View {
         isBusy = true
         error = nil
         do {
-            _ = try await location.requestToJoin(sessionCode: session.sessionCode, displayName: nil)
-            requestedSessionCodes.insert(session.sessionCode)
+            _ = try await location.requestToJoin(sessionId: session.sessionId, displayName: nil)
+            requestedSessionIds.insert(session.sessionId)
         } catch {
             self.error = error.localizedDescription
         }
@@ -730,7 +730,7 @@ struct MemberManagementSheet: View {
             Form {
                 if let membership = location.activeMembership {
                     Section("Session") {
-                        LabeledContent("Code", value: membership.sessionCode)
+                        LabeledContent("Name", value: membership.sessionName)
                         LabeledContent("Invite", value: membership.inviteCode)
                     }
                 }

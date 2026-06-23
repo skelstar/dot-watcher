@@ -3,7 +3,7 @@ import type { SessionMembership } from './types.ts'
 
 interface Props {
   memberships: SessionMembership[]
-  onSelect: (sessionCode: string) => void
+  onSelect: (membership: SessionMembership) => void
 }
 
 export default function ReplayPicker({ memberships, onSelect }: Props) {
@@ -12,7 +12,11 @@ export default function ReplayPicker({ memberships, onSelect }: Props) {
   function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const upper = code.trim().toUpperCase()
-    if (upper) onSelect(upper)
+    if (upper) {
+      // For manual entry, find a matching membership by sessionName or fall back to a synthetic one
+      const found = memberships.find(m => m.sessionName === upper)
+      if (found) onSelect(found)
+    }
   }
 
   return (
@@ -24,12 +28,12 @@ export default function ReplayPicker({ memberships, onSelect }: Props) {
             <p style={empty}>No sessions yet.</p>
           ) : memberships.map(membership => (
             <button
-              key={membership.sessionCode}
+              key={membership.sessionId}
               type="button"
               style={item}
-              onClick={() => onSelect(membership.sessionCode)}
+              onClick={() => onSelect(membership)}
             >
-              <span>{membership.sessionCode}</span>
+              <span>{membership.sessionName}</span>
               <small style={role}>{membership.role}</small>
             </button>
           ))}
@@ -38,7 +42,7 @@ export default function ReplayPicker({ memberships, onSelect }: Props) {
           <input
             value={code}
             onChange={event => setCode(event.target.value)}
-            placeholder="Session code"
+            placeholder="Session name"
             autoCapitalize="characters"
             style={input}
           />

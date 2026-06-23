@@ -32,7 +32,7 @@ test('shouldShowSessionPrompt waits for auth and memberships', () => {
     membershipsLoaded: true,
     isReplay: false,
     inviteCode: null,
-    sessionCode: null,
+    sessionName: null,
     hasSessionMembership: false,
   }), false)
   assert.equal(shouldShowSessionPrompt({
@@ -40,7 +40,7 @@ test('shouldShowSessionPrompt waits for auth and memberships', () => {
     membershipsLoaded: false,
     isReplay: false,
     inviteCode: null,
-    sessionCode: null,
+    sessionName: null,
     hasSessionMembership: false,
   }), false)
 })
@@ -51,7 +51,7 @@ test('shouldShowSessionPrompt covers create, join, and missing-membership states
     membershipsLoaded: true,
     isReplay: false,
     inviteCode: null,
-    sessionCode: null,
+    sessionName: null,
     hasSessionMembership: false,
   }), true)
   assert.equal(shouldShowSessionPrompt({
@@ -59,7 +59,7 @@ test('shouldShowSessionPrompt covers create, join, and missing-membership states
     membershipsLoaded: true,
     isReplay: false,
     inviteCode: 'INVITE123',
-    sessionCode: null,
+    sessionName: null,
     hasSessionMembership: false,
   }), true)
   assert.equal(shouldShowSessionPrompt({
@@ -67,7 +67,7 @@ test('shouldShowSessionPrompt covers create, join, and missing-membership states
     membershipsLoaded: true,
     isReplay: false,
     inviteCode: null,
-    sessionCode: 'SUNSET23',
+    sessionName: 'SUNSET23',
     hasSessionMembership: false,
   }), true)
 })
@@ -78,7 +78,7 @@ test('shouldShowSessionPrompt stays hidden for active sessions and replay flows'
     membershipsLoaded: true,
     isReplay: false,
     inviteCode: null,
-    sessionCode: 'SUNSET23',
+    sessionName: 'SUNSET23',
     hasSessionMembership: true,
   }), false)
   assert.equal(shouldShowSessionPrompt({
@@ -86,7 +86,7 @@ test('shouldShowSessionPrompt stays hidden for active sessions and replay flows'
     membershipsLoaded: true,
     isReplay: true,
     inviteCode: null,
-    sessionCode: 'SUNSET23',
+    sessionName: 'SUNSET23',
     hasSessionMembership: false,
   }), false)
 })

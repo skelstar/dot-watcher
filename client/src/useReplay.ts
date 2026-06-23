@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { RunnerPosition } from './types.ts'
 
 interface LocationUpdate extends RunnerPosition {
-  sessionCode: string
+  sessionId: string
 }
 
 // Normalises both camelCase (future server output) and PascalCase (legacy NDJSON).
@@ -10,7 +10,7 @@ interface LocationUpdate extends RunnerPosition {
 function normalizeUpdate(obj: any): LocationUpdate {
   return {
     runnerName:  obj.runnerName  ?? obj.RunnerName,
-    sessionCode: obj.sessionCode ?? obj.SessionCode,
+    sessionId:   obj.sessionId   ?? obj.SessionId,
     latitude:    obj.latitude    ?? obj.Latitude,
     longitude:   obj.longitude   ?? obj.Longitude,
     heading:     obj.heading     ?? obj.Heading     ?? null,
@@ -36,7 +36,7 @@ export interface ReplayState {
 const TRAIL_LENGTH = 1
 const TICK_MS = 100
 
-export function useReplay(sessionCode: string | null, serverUrl: string, accessToken: string | null): ReplayState {
+export function useReplay(sessionId: string | null, serverUrl: string, accessToken: string | null): ReplayState {
   const [byRunner, setByRunner] = useState<Map<string, LocationUpdate[]> | null>(null)
   const [startEpochMs, setStartEpochMs] = useState(0)
   const [durationMs, setDurationMs] = useState(0)
@@ -49,17 +49,17 @@ export function useReplay(sessionCode: string | null, serverUrl: string, accessT
   const playingRef = useRef(false)
 
   useEffect(() => {
-    if (!sessionCode || !accessToken) return
+    if (!sessionId || !accessToken) return
     setByRunner(null)
     setCurrentTimeMs(0)
     setPlaying(false)
     setError(null)
 
-    fetch(`${serverUrl}/sessions/${sessionCode}/recording`, {
+    fetch(`${serverUrl}/sessions/${sessionId}/recording`, {
       headers: { 'Authorization': `Bearer ${accessToken}` },
     })
       .then(r => {
-        if (!r.ok) throw new Error(`HTTP ${r.status} for ${sessionCode}`)
+        if (!r.ok) throw new Error(`HTTP ${r.status} for ${sessionId}`)
         return r.text()
       })
       .then(text => {
@@ -89,7 +89,7 @@ export function useReplay(sessionCode: string | null, serverUrl: string, accessT
         console.error('[useReplay]', err)
         setError(err instanceof Error ? err.message : 'Failed to load recording')
       })
-  }, [sessionCode, serverUrl, accessToken])
+  }, [sessionId, serverUrl, accessToken])
 
   useEffect(() => {
     if (!playing) return

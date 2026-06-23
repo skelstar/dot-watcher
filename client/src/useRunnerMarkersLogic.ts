@@ -5,9 +5,9 @@ export function livePollingError(status: number): string {
 }
 
 export function shouldPollLivePositions(
-  sessionCode: string | null,
+  sessionId: string | null,
   accessToken: string | null,
   replayPositionsProvided: boolean,
 ): boolean {
-  return Boolean(sessionCode && accessToken && !replayPositionsProvided)
+  return Boolean(sessionId && accessToken && !replayPositionsProvided)
 }

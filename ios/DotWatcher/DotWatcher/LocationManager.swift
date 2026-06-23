@@ -14,9 +14,10 @@ struct AuthSession: Codable {
 }
 
 struct SessionMembership: Codable, Identifiable {
-    var id: String { sessionCode }
+    var id: String { sessionId }
 
-    let sessionCode: String
+    let sessionId: String
+    let sessionName: String
     let inviteCode: String
     let role: String
     let displayName: String
@@ -31,17 +32,18 @@ struct SessionMember: Codable, Identifiable {
 }
 
 struct BrowsableSession: Codable, Identifiable {
-    var id: String { sessionCode }
-    let sessionCode: String
+    var id: String { sessionId }
+    let sessionId: String
+    let sessionName: String
     let ownerDisplayName: String
     let memberCount: Int
-    let lastActivity: String
+    let createdAt: String
 }
 
 struct JoinRequest: Codable, Identifiable {
     var id: String { requestId }
     let requestId: String
-    let sessionCode: String
+    let sessionId: String
     let userId: String
     let displayName: String
     let createdAt: String
@@ -105,9 +107,9 @@ final class LocationManager {
     private var accessToken: String?
 
     let serverBaseURL = LocationManager.configuredServerBaseURL()
-    var sessionCode = UserDefaults.standard.string(forKey: "sessionCode") ?? "" {
+    var sessionId = UserDefaults.standard.string(forKey: "sessionId") ?? "" {
         didSet {
-            UserDefaults.standard.set(sessionCode, forKey: "sessionCode")
+            UserDefaults.standard.set(sessionId, forKey: "sessionId")
             participants = []
             lastParticipantCount = 0
             if isTracking { captureAndPost() }
@@ -123,14 +125,13 @@ final class LocationManager {
     var isAuthenticated: Bool { accessToken != nil }
 
     var activeMembership: SessionMembership? {
-        memberships.first { $0.sessionCode == sessionCode }
+        memberships.first { $0.sessionId == sessionId }
     }
 
     var canTrackSelectedSession: Bool {
         activeMembership?.role == "owner" || activeMembership?.role == "runner"
     }
 
-    var fullSessionName: String { sessionCode }
 
     init() {
         accessToken = Self.readToken()
@@ -189,7 +190,7 @@ final class LocationManager {
         selectedSessionMembers = []
         pendingJoinRequests = []
         pendingJoinRequestCount = 0
-        sessionCode = ""
+        sessionId = ""
         Self.storeToken(nil)
         UserDefaults.standard.removeObject(forKey: "currentUser")
         status = nextStatus
@@ -199,8 +200,8 @@ final class LocationManager {
         guard isAuthenticated else { return }
         do {
             memberships = try await send(path: "/me/sessions")
-            if !sessionCode.isEmpty && activeMembership == nil {
-                sessionCode = ""
+            if !sessionId.isEmpty && activeMembership == nil {
+                sessionId = ""
             }
             if activeMembership?.role == "owner" {
                 await loadSelectedSessionMembers()
@@ -214,15 +215,15 @@ final class LocationManager {
         }
     }
 
-    func createSession(code: String, displayName: String?) async throws {
-        let requestedCode = code.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
-        let name = displayName?.trimmingCharacters(in: .whitespacesAndNewlines)
+    func createSession(name: String, displayName: String?) async throws {
+        let requestedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let dispName = displayName?.trimmingCharacters(in: .whitespacesAndNewlines)
         let membership: SessionMembership = try await send(
             path: "/sessions",
             method: "POST",
             body: [
-                "sessionCode": requestedCode.isEmpty ? NSNull() : requestedCode,
-                "displayName": (name?.isEmpty ?? true) ? NSNull() : name!,
+                "sessionName": requestedName.isEmpty ? NSNull() : requestedName,
+                "displayName": (dispName?.isEmpty ?? true) ? NSNull() : dispName!,
             ])
         upsertMembership(membership)
         selectSession(membership)
@@ -242,9 +243,9 @@ final class LocationManager {
     }
 
     func selectSession(_ membership: SessionMembership) {
-        sessionCode = membership.sessionCode
+        sessionId = membership.sessionId
         status = membership.role == "viewer" ? "Viewer only" : "Ready"
-        Task { participants = await previewSession(membership.sessionCode) }
+        Task { participants = await previewSession(membership.sessionId) }
         Task { await loadSelectedSessionMembers() }
     }
 
@@ -257,7 +258,7 @@ final class LocationManager {
         }
 
         do {
-            selectedSessionMembers = try await send(path: "/sessions/\(membership.sessionCode)/members")
+            selectedSessionMembers = try await send(path: "/sessions/\(membership.sessionId)/members")
         } catch DotWatcherAPIError.badResponse(401, _) {
             await signOut(status: "Sign in required")
         } catch {
@@ -272,7 +273,7 @@ final class LocationManager {
         }
 
         let updated: SessionMember = try await send(
-            path: "/sessions/\(membership.sessionCode)/members/\(member.userId)/role",
+            path: "/sessions/\(membership.sessionId)/members/\(member.userId)/role",
             method: "POST",
             body: ["role": role])
         if let index = selectedSessionMembers.firstIndex(where: { $0.userId == updated.userId }) {
@@ -280,12 +281,12 @@ final class LocationManager {
         }
     }
 
-    func deleteSession(sessionCode code: String) async throws {
+    func deleteSession(sessionId code: String) async throws {
         guard let token = accessToken else { throw DotWatcherAPIError.missingToken }
         try await sendEmpty(path: "/me/sessions/\(code)", method: "DELETE", token: token)
-        memberships.removeAll { $0.sessionCode == code }
-        if sessionCode == code {
-            sessionCode = ""
+        memberships.removeAll { $0.sessionId == code }
+        if sessionId == code {
+            sessionId = ""
             participants = []
             selectedSessionMembers = []
             pendingJoinRequests = []
@@ -298,7 +299,7 @@ final class LocationManager {
         try await send(path: "/sessions/browse")
     }
 
-    func requestToJoin(sessionCode code: String, displayName: String?) async throws -> JoinRequest {
+    func requestToJoin(sessionId code: String, displayName: String?) async throws -> JoinRequest {
         let name = displayName?.trimmingCharacters(in: .whitespacesAndNewlines)
         return try await send(
             path: "/sessions/\(code)/join-requests",
@@ -312,7 +313,7 @@ final class LocationManager {
             return
         }
         do {
-            pendingJoinRequests = try await send(path: "/sessions/\(membership.sessionCode)/join-requests")
+            pendingJoinRequests = try await send(path: "/sessions/\(membership.sessionId)/join-requests")
         } catch DotWatcherAPIError.badResponse(401, _) {
             await signOut(status: "Sign in required")
         } catch {
@@ -323,7 +324,7 @@ final class LocationManager {
     func approveJoinRequest(_ request: JoinRequest) async throws {
         guard let membership = activeMembership else { return }
         let _: SessionMembership = try await send(
-            path: "/sessions/\(membership.sessionCode)/join-requests/\(request.requestId)/approve",
+            path: "/sessions/\(membership.sessionId)/join-requests/\(request.requestId)/approve",
             method: "POST")
         pendingJoinRequestCount = max(0, pendingJoinRequestCount - 1)
         await loadSelectedSessionMembers()
@@ -332,7 +333,7 @@ final class LocationManager {
     func denyJoinRequest(_ request: JoinRequest) async throws {
         guard let membership = activeMembership, let token = accessToken else { return }
         try await sendEmpty(
-            path: "/sessions/\(membership.sessionCode)/join-requests/\(request.requestId)/deny",
+            path: "/sessions/\(membership.sessionId)/join-requests/\(request.requestId)/deny",
             method: "POST",
             token: token)
         pendingJoinRequests.removeAll { $0.requestId == request.requestId }
@@ -345,7 +346,7 @@ final class LocationManager {
             status = "Sign in required"
             return
         }
-        guard !sessionCode.isEmpty else {
+        guard !sessionId.isEmpty else {
             status = "Choose session"
             return
         }
@@ -380,9 +381,9 @@ final class LocationManager {
         }
     }
 
-    func previewSession(_ sessionName: String) async -> [String] {
+    func previewSession(_ sessionId: String) async -> [String] {
         do {
-            let groups: [[RunnerPositionResponse]] = try await send(path: "/locations/\(sessionName)")
+            let groups: [[RunnerPositionResponse]] = try await send(path: "/locations/\(sessionId)")
             return groups.compactMap { $0.first?.runnerName }
         } catch {
             return []
@@ -409,7 +410,7 @@ final class LocationManager {
         do {
             var body: [String: Any] = [
                 "runnerName": runnerName,
-                "sessionCode": fullSessionName,
+                "sessionId": sessionId,
                 "latitude": lat,
                 "longitude": lon,
                 "timestamp": ISO8601DateFormatter().string(from: timestamp),
@@ -517,7 +518,7 @@ final class LocationManager {
     }
 
     private func upsertMembership(_ membership: SessionMembership) {
-        memberships.removeAll { $0.sessionCode == membership.sessionCode }
+        memberships.removeAll { $0.sessionId == membership.sessionId }
         memberships.insert(membership, at: 0)
     }
 
