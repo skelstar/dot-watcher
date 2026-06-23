@@ -35,10 +35,10 @@ public class LogsApiTests
         using var factory = new DotWatcherApiFactory();
         using var client = factory.CreateClient();
         var token = await AuthTestHelpers.RegisterAsync(client, "alice", "Alice");
-        await AuthTestHelpers.CreateSessionAsync(client, token);
+        var session = await AuthTestHelpers.CreateSessionAsync(client, token);
 
         await LocationsApiTests.PostLocationAsync(client,
-            LocationsApiTests.TestLocation("Ignored", "SUNSET23"),
+            LocationsApiTests.TestLocation("Ignored", session.SessionId),
             token);
 
         var response = await SendLogWithBearerAsync(client, HttpMethod.Get);
@@ -47,7 +47,7 @@ public class LogsApiTests
 
         var lines = await response.Content.ReadFromJsonAsync<List<string>>();
         Assert.NotNull(lines);
-        Assert.Contains(lines, line => line.Contains("SUNSET23") && line.Contains("Alice"));
+        Assert.Contains(lines, line => line.Contains(session.SessionId) && line.Contains("Alice"));
         Assert.DoesNotContain(lines, line => line.Contains("-41.17") || line.Contains("174.7762"));
     }
 
@@ -79,10 +79,10 @@ public class LogsApiTests
         using var factory = new DotWatcherApiFactory();
         using var client = factory.CreateClient();
         var token = await AuthTestHelpers.RegisterAsync(client, "alice", "Alice");
-        await AuthTestHelpers.CreateSessionAsync(client, token);
+        var session = await AuthTestHelpers.CreateSessionAsync(client, token);
 
         await LocationsApiTests.PostLocationAsync(client,
-            LocationsApiTests.TestLocation("Ignored", "SUNSET23"),
+            LocationsApiTests.TestLocation("Ignored", session.SessionId),
             token);
 
         var cleared = await SendLogWithBearerAsync(client, HttpMethod.Delete);
