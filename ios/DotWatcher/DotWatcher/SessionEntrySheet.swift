@@ -86,7 +86,7 @@ struct SessionEntrySheet: View {
 
                 Section {
                     HStack {
-                        Text("Browse Active Sessions")
+                        Text("Sessions")
                             .font(.headline)
                         Spacer()
                         if isBrowseLoading {
@@ -98,25 +98,37 @@ struct SessionEntrySheet: View {
                             .font(.subheadline)
                         }
                     }
-                    let nonMemberSessions = browsableSessions.filter { s in
-                        !location.memberships.contains { $0.sessionId == s.sessionId }
+                    let visibleSessions = browsableSessions.filter { s in
+                        !location.memberships.contains { $0.sessionId == s.sessionId && $0.role != "owner" }
                     }
-                    if nonMemberSessions.isEmpty && !isBrowseLoading {
-                        Text("No active sessions found")
+                    if visibleSessions.isEmpty && !isBrowseLoading {
+                        Text("No sessions found")
                             .foregroundStyle(.secondary)
                             .font(.subheadline)
                     } else {
-                        ForEach(nonMemberSessions) { session in
+                        ForEach(visibleSessions) { session in
+                            let isOwned = location.memberships.contains { $0.sessionId == session.sessionId && $0.role == "owner" }
                             HStack {
                                 VStack(alignment: .leading, spacing: 3) {
-                                    Text(session.sessionName)
-                                        .font(.body.monospaced().bold())
+                                    HStack(spacing: 4) {
+                                        Text(session.sessionName)
+                                            .font(.body.monospaced().bold())
+                                        if isOwned {
+                                            Image(systemName: "star.fill")
+                                                .font(.caption)
+                                                .foregroundStyle(.yellow)
+                                        }
+                                    }
                                     Text("\(session.ownerDisplayName) · \(session.memberCount) member\(session.memberCount == 1 ? "" : "s")")
                                         .font(.caption)
                                         .foregroundStyle(.secondary)
                                 }
                                 Spacer()
-                                if requestedSessionIds.contains(session.sessionId) {
+                                if isOwned {
+                                    Text("Owner")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                } else if requestedSessionIds.contains(session.sessionId) {
                                     Text("Requested")
                                         .font(.caption)
                                         .foregroundStyle(.secondary)

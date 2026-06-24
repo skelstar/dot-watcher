@@ -203,6 +203,11 @@ final class LocationManager {
             if !sessionId.isEmpty && activeMembership == nil {
                 sessionId = ""
             }
+            if sessionId.isEmpty, let owned = memberships.first(where: { $0.role == "owner" }) {
+                sessionId = owned.sessionId
+                status = "Ready"
+                Task { participants = await previewSession(owned.sessionId) }
+            }
             if activeMembership?.role == "owner" {
                 await loadSelectedSessionMembers()
             } else {
