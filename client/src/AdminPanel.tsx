@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react'
+import { useEffect, useLayoutEffect, useState, type FormEvent, Fragment } from 'react'
 
 interface AdminUser {
   id: string
@@ -24,6 +24,15 @@ interface AdminJoinRequest {
   createdAt: string
 }
 
+interface AdminMemberStats {
+  displayName: string
+  role: string
+  positionCount: number
+  lastPositionAt: string | null
+}
+
+type MemberStatsState = AdminMemberStats[] | 'loading' | { error: string }
+
 const BEARER_TOKEN_KEY = 'adminBearerToken'
 const APP_VERSION = import.meta.env.VITE_APP_VERSION ?? 'v-local'
 
@@ -37,6 +46,23 @@ export default function AdminPanel({ serverUrl }: { serverUrl: string }) {
   const [loading, setLoading] = useState(false)
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [deletingSessionId, setDeletingSessionId] = useState<string | null>(null)
+  const [expandedSessionId, setExpandedSessionId] = useState<string | null>(null)
+  const [memberStats, setMemberStats] = useState<Record<string, MemberStatsState>>({})
+  const [clearingRecordsId, setClearingRecordsId] = useState<string | null>(null)
+  const [deletingJoinRequestId, setDeletingJoinRequestId] = useState<string | null>(null)
+
+  useLayoutEffect(() => {
+    const root = document.getElementById('root')
+    const prev = { html: document.documentElement.style.overflow, body: document.body.style.overflow, root: root?.style.overflow ?? '' }
+    document.documentElement.style.overflow = 'auto'
+    document.body.style.overflow = 'auto'
+    if (root) { root.style.overflow = 'auto'; root.style.height = 'auto' }
+    return () => {
+      document.documentElement.style.overflow = prev.html
+      document.body.style.overflow = prev.body
+      if (root) { root.style.overflow = prev.root; root.style.height = '' }
+    }
+  }, [])
 
   async function loadAll(bearerToken: string) {
     setLoading(true)
@@ -88,6 +114,7 @@ export default function AdminPanel({ serverUrl }: { serverUrl: string }) {
       })
       if (response.ok) {
         setSessions(prev => prev.filter(s => s.sessionId !== session.sessionId))
+        if (expandedSessionId === session.sessionId) setExpandedSessionId(null)
       } else {
         setError(`Delete failed (HTTP ${response.status}).`)
       }
@@ -99,7 +126,7 @@ export default function AdminPanel({ serverUrl }: { serverUrl: string }) {
   }
 
   async function handleDelete(user: AdminUser) {
-    if (!window.confirm(`Delete user "${user.username}"? This cannot be undone.`)) return
+    if (!window.confirm(`Delete user "${user.username}"? This removes their account, sessions, and all location data. This cannot be undone.`)) return
     setDeletingId(user.id)
     try {
       const response = await fetch(`${serverUrl}/admin/users/${user.id}`, {
@@ -116,6 +143,86 @@ export default function AdminPanel({ serverUrl }: { serverUrl: string }) {
     } finally {
       setDeletingId(null)
     }
+  }
+
+  async function loadMemberStats(sessionId: string) {
+    setMemberStats(prev => ({ ...prev, [sessionId]: 'loading' }))
+    try {
+      const r = await fetch(`${serverUrl}/admin/sessions/${sessionId}/member-stats`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      if (!r.ok) {
+        setMemberStats(prev => ({ ...prev, [sessionId]: { error: `HTTP ${r.status}` } }))
+        return
+      }
+      const stats = await r.json() as AdminMemberStats[]
+      setMemberStats(prev => ({ ...prev, [sessionId]: stats }))
+    } catch (e) {
+      setMemberStats(prev => ({ ...prev, [sessionId]: { error: String(e) } }))
+    }
+  }
+
+  async function handleSessionRowClick(session: AdminSession) {
+    if (expandedSessionId === session.sessionId) {
+      setExpandedSessionId(null)
+      return
+    }
+    setExpandedSessionId(session.sessionId)
+    await loadMemberStats(session.sessionId)
+  }
+
+  async function handleClearRecords(e: React.MouseEvent, sessionId: string) {
+    e.stopPropagation()
+    if (!window.confirm('Clear all location records for this session? This cannot be undone.')) return
+    setClearingRecordsId(sessionId)
+    try {
+      const r = await fetch(`${serverUrl}/sessions/${sessionId}/recording`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      if (r.ok || r.status === 204) {
+        await loadMemberStats(sessionId)
+      } else {
+        setError(`Failed to clear records (HTTP ${r.status}).`)
+      }
+    } catch {
+      setError('Network error.')
+    } finally {
+      setClearingRecordsId(null)
+    }
+  }
+
+  async function handleDeleteJoinRequest(requestId: string) {
+    if (!window.confirm('Delete this join request?')) return
+    setDeletingJoinRequestId(requestId)
+    try {
+      const r = await fetch(`${serverUrl}/admin/join-requests/${requestId}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      if (r.ok || r.status === 204) {
+        setJoinRequests(prev => prev.filter(jr => jr.requestId !== requestId))
+      } else {
+        setError(`Delete failed (HTTP ${r.status}).`)
+      }
+    } catch {
+      setError('Network error.')
+    } finally {
+      setDeletingJoinRequestId(null)
+    }
+  }
+
+  function timeAgo(timestamp: string) {
+    try {
+      const mins = Math.floor((Date.now() - new Date(timestamp).getTime()) / 60000)
+      if (mins < 1) return 'just now'
+      if (mins === 1) return '1 min ago'
+      if (mins < 60) return `${mins} mins ago`
+      const hrs = Math.floor(mins / 60)
+      if (hrs === 1) return '1 hr ago'
+      if (hrs < 24) return `${hrs} hrs ago`
+      return `${Math.floor(hrs / 24)}d ago`
+    } catch { return timestamp }
   }
 
   return (
@@ -170,8 +277,8 @@ export default function AdminPanel({ serverUrl }: { serverUrl: string }) {
               <tr key={user.id} style={tr}>
                 <td style={td}>{user.username}</td>
                 <td style={td}>{user.displayName}</td>
-                <td style={td}>{new Date(user.createdAt).toLocaleString()}</td>
-                <td style={td}>
+                <td style={td}>{timeAgo(user.createdAt)}</td>
+                <td style={actionTd}>
                   <button
                     style={deleteBtn}
                     onClick={() => void handleDelete(user)}
@@ -203,23 +310,90 @@ export default function AdminPanel({ serverUrl }: { serverUrl: string }) {
             </tr>
           </thead>
           <tbody>
-            {sessions.map(session => (
-              <tr key={session.sessionId} style={tr}>
-                <td style={td}>{session.sessionName}</td>
-                <td style={td}>{session.ownerUsername}</td>
-                <td style={td}>{session.memberCount}</td>
-                <td style={td}>{new Date(session.createdAt).toLocaleString()}</td>
-                <td style={td}>
-                  <button
-                    style={deleteBtn}
-                    onClick={() => void handleDeleteSession(session)}
-                    disabled={deletingSessionId === session.sessionId}
+            {sessions.map(session => {
+              const isExpanded = expandedSessionId === session.sessionId
+              return (
+                <Fragment key={session.sessionId}>
+                  <tr
+                    style={{ ...tr, cursor: 'pointer', background: isExpanded ? '#f8fafc' : undefined }}
+                    onClick={() => void handleSessionRowClick(session)}
                   >
-                    {deletingSessionId === session.sessionId ? '…' : 'Delete'}
-                  </button>
-                </td>
-              </tr>
-            ))}
+                    <td style={td}>{session.sessionName}</td>
+                    <td style={td}>{session.ownerUsername}</td>
+                    <td style={td}>{session.memberCount}</td>
+                    <td style={td}>{timeAgo(session.createdAt)}</td>
+                    <td style={actionTd} onClick={e => e.stopPropagation()}>
+                      <button
+                        style={deleteBtn}
+                        onClick={() => void handleDeleteSession(session)}
+                        disabled={deletingSessionId === session.sessionId}
+                      >
+                        {deletingSessionId === session.sessionId ? '…' : 'Delete'}
+                      </button>
+                    </td>
+                  </tr>
+                  {isExpanded && (
+                    <tr>
+                      <td
+                        colSpan={5}
+                        style={{ padding: 0, cursor: 'pointer' }}
+                        onClick={() => setExpandedSessionId(null)}
+                      >
+                        {(() => {
+                          const stats = memberStats[session.sessionId]
+                          return (
+                            <div style={recordsPanel} onClick={e => e.stopPropagation()}>
+                              <div style={recordsHeader}>
+                                <span style={recordsLabel}>
+                                  {stats === 'loading' ? 'Loading…'
+                                    : !Array.isArray(stats) ? `Error: ${(stats as { error: string }).error}`
+                                    : `${stats.length} member${stats.length !== 1 ? 's' : ''}`}
+                                </span>
+                                <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                                  <button
+                                    style={clearBtn}
+                                    onClick={e => void handleClearRecords(e, session.sessionId)}
+                                    disabled={clearingRecordsId === session.sessionId}
+                                  >
+                                    {clearingRecordsId === session.sessionId ? '…' : 'Clear positions'}
+                                  </button>
+                                  <button style={collapseBtn} onClick={() => setExpandedSessionId(null)}>✕</button>
+                                </div>
+                              </div>
+                              {Array.isArray(stats) && stats.length === 0 && (
+                                <p style={{ padding: '0.5rem 0.75rem', color: '#94a3b8', fontSize: '0.85rem' }}>No members.</p>
+                              )}
+                              {Array.isArray(stats) && stats.length > 0 && (
+                                <table style={{ ...table, fontSize: '0.8rem' }}>
+                                  <thead>
+                                    <tr>
+                                      <th style={recTh}>Name</th>
+                                      <th style={recTh}>Role</th>
+                                      <th style={recTh}>Positions</th>
+                                      <th style={recTh}>Last position</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {stats.map((m, i) => (
+                                      <tr key={i} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                                        <td style={{ ...recTd, fontWeight: 600 }}>{m.displayName}</td>
+                                        <td style={{ ...recTd, color: '#64748b' }}>{m.role}</td>
+                                        <td style={recTd}>{m.positionCount}</td>
+                                        <td style={{ ...recTd, color: '#64748b' }}>{m.lastPositionAt ? timeAgo(m.lastPositionAt) : '—'}</td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              )}
+                            </div>
+                          )
+                        })()}
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
+              )
+            })}
           </tbody>
         </table>
       )}
@@ -237,6 +411,7 @@ export default function AdminPanel({ serverUrl }: { serverUrl: string }) {
               <th style={th}>Display name</th>
               <th style={th}>Status</th>
               <th style={th}>Requested</th>
+              <th style={th}></th>
             </tr>
           </thead>
           <tbody>
@@ -248,7 +423,16 @@ export default function AdminPanel({ serverUrl }: { serverUrl: string }) {
                 <td style={td}>
                   <span style={statusBadge(req.status)}>{req.status}</span>
                 </td>
-                <td style={td}>{new Date(req.createdAt).toLocaleString()}</td>
+                <td style={td}>{timeAgo(req.createdAt)}</td>
+                <td style={actionTd}>
+                  <button
+                    style={deleteBtn}
+                    onClick={() => void handleDeleteJoinRequest(req.requestId)}
+                    disabled={deletingJoinRequestId === req.requestId}
+                  >
+                    {deletingJoinRequestId === req.requestId ? '…' : 'Delete'}
+                  </button>
+                </td>
               </tr>
             ))}
           </tbody>
@@ -326,6 +510,23 @@ const deleteBtn: React.CSSProperties = {
   padding: '0.3rem 0.6rem',
 }
 
+const clearBtn: React.CSSProperties = {
+  ...primaryBtn,
+  background: '#f97316',
+  fontSize: '0.75rem',
+  padding: '0.2rem 0.5rem',
+}
+
+const collapseBtn: React.CSSProperties = {
+  background: 'none',
+  border: 'none',
+  cursor: 'pointer',
+  color: '#94a3b8',
+  fontSize: '0.85rem',
+  padding: '0.1rem 0.3rem',
+  lineHeight: 1,
+}
+
 const errorText: React.CSSProperties = {
   color: '#dc2626',
   marginBottom: '1rem',
@@ -358,10 +559,53 @@ const td: React.CSSProperties = {
   verticalAlign: 'middle',
 }
 
+const actionTd: React.CSSProperties = {
+  ...td,
+  textAlign: 'right',
+  width: '1%',
+  whiteSpace: 'nowrap',
+}
+
 const versionText: React.CSSProperties = {
   color: '#94a3b8',
   fontSize: '0.75rem',
   marginBottom: '1rem',
+}
+
+const recordsPanel: React.CSSProperties = {
+  background: '#f8fafc',
+  borderTop: '1px solid #e2e8f0',
+  borderBottom: '2px solid #e2e8f0',
+}
+
+const recordsHeader: React.CSSProperties = {
+  display: 'flex',
+  justifyContent: 'space-between',
+  alignItems: 'center',
+  padding: '0.4rem 0.75rem',
+  borderBottom: '1px solid #e2e8f0',
+}
+
+const recordsLabel: React.CSSProperties = {
+  fontSize: '0.8rem',
+  color: '#64748b',
+  fontWeight: 600,
+}
+
+const recTh: React.CSSProperties = {
+  textAlign: 'left',
+  padding: '0.3rem 0.75rem',
+  borderBottom: '1px solid #e2e8f0',
+  color: '#94a3b8',
+  fontWeight: 600,
+  background: '#f8fafc',
+}
+
+const recTd: React.CSSProperties = {
+  padding: '0.25rem 0.75rem',
+  verticalAlign: 'middle',
+  fontFamily: 'monospace',
+  fontSize: '0.8rem',
 }
 
 function statusBadge(status: string): React.CSSProperties {

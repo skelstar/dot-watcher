@@ -692,12 +692,12 @@ public class SessionStore(string dbPath)
 
         using var tx = conn.BeginTransaction();
 
-        using (var updateCmd = conn.CreateCommand())
+        using (var deleteCmd = conn.CreateCommand())
         {
-            updateCmd.Transaction = tx;
-            updateCmd.CommandText = "UPDATE join_requests SET status = 'approved' WHERE id = $requestId";
-            updateCmd.Parameters.AddWithValue("$requestId", requestId);
-            updateCmd.ExecuteNonQuery();
+            deleteCmd.Transaction = tx;
+            deleteCmd.CommandText = "DELETE FROM join_requests WHERE id = $requestId";
+            deleteCmd.Parameters.AddWithValue("$requestId", requestId);
+            deleteCmd.ExecuteNonQuery();
         }
 
         var joinedAt = DateTimeOffset.UtcNow.ToString("O");
@@ -731,6 +731,15 @@ public class SessionStore(string dbPath)
             """;
         cmd.Parameters.AddWithValue("$requestId", requestId);
         cmd.Parameters.AddWithValue("$sessionId", sessionId);
+        return cmd.ExecuteNonQuery() > 0;
+    }
+
+    public bool DeleteJoinRequest(string requestId)
+    {
+        using var conn = Connect();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "DELETE FROM join_requests WHERE id = $requestId";
+        cmd.Parameters.AddWithValue("$requestId", requestId);
         return cmd.ExecuteNonQuery() > 0;
     }
 
@@ -876,6 +885,57 @@ public class SessionStore(string dbPath)
                 errors.Select(error => $"Line {lineNumber}: {error}").ToList());
 
         return validated;
+    }
+
+    public IReadOnlyList<AdminMemberStats> GetSessionMemberStats(string sessionId)
+    {
+        using var conn = Connect();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = """
+            SELECT m.display_name, m.role,
+                   COUNT(l.id) AS position_count,
+                   MAX(l.timestamp) AS last_position_at
+            FROM session_members m
+            LEFT JOIN location_updates l ON l.session_id = $sessionId AND l.runner_user_id = m.user_id
+            WHERE m.session_id = $sessionId
+            GROUP BY m.user_id, m.display_name, m.role
+            ORDER BY m.joined_at ASC
+            """;
+        cmd.Parameters.AddWithValue("$sessionId", sessionId);
+        using var reader = cmd.ExecuteReader();
+        var stats = new List<AdminMemberStats>();
+        while (reader.Read())
+            stats.Add(new AdminMemberStats(
+                reader.GetString(0),
+                reader.GetString(1),
+                (int)reader.GetInt64(2),
+                reader.IsDBNull(3) ? null : reader.GetString(3)));
+        return stats;
+    }
+
+    public IReadOnlyList<AdminLocationRecord> GetRecentLocationUpdates(string sessionId, int limit = 20)
+    {
+        using var conn = Connect();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = """
+            SELECT runner_name, latitude, longitude, heading, timestamp
+            FROM location_updates
+            WHERE session_id = $sessionId
+            ORDER BY id DESC
+            LIMIT $limit
+            """;
+        cmd.Parameters.AddWithValue("$sessionId", sessionId);
+        cmd.Parameters.AddWithValue("$limit", limit);
+        using var reader = cmd.ExecuteReader();
+        var records = new List<AdminLocationRecord>();
+        while (reader.Read())
+            records.Add(new AdminLocationRecord(
+                reader.GetString(0),
+                reader.GetDouble(1),
+                reader.GetDouble(2),
+                reader.IsDBNull(3) ? null : reader.GetDouble(3),
+                reader.GetString(4)));
+        return records;
     }
 
     public bool DeleteRecording(string sessionId)
