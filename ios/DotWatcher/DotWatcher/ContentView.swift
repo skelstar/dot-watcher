@@ -10,6 +10,7 @@ struct ContentView: View {
     @State private var showSessionEntry: Bool = false
     @State private var showAuth: Bool = false
     @State private var showMembers: Bool = false
+    @State private var pendingSessionEntry: Bool = false
 
     var body: some View {
         ScrollView {
@@ -47,7 +48,12 @@ struct ContentView: View {
         .sheet(isPresented: $showHelp) {
             HelpView()
         }
-        .sheet(isPresented: $showNameEntry) {
+        .sheet(isPresented: $showNameEntry, onDismiss: {
+            if pendingSessionEntry {
+                pendingSessionEntry = false
+                showSessionEntry = true
+            }
+        }) {
             NameEntryView(
                 name: $nameInput,
                 isFirstLaunch: location.runnerName.trimmingCharacters(in: .whitespaces).isEmpty
@@ -63,6 +69,16 @@ struct ContentView: View {
         .sheet(isPresented: $showAuth) {
             AuthSheet(location: location)
                 .interactiveDismissDisabled(!location.isAuthenticated)
+        }
+        .onChange(of: location.isAuthenticated) { _, isAuthenticated in
+            guard isAuthenticated else { return }
+            Task { await location.loadSessions() }
+            if location.runnerName.trimmingCharacters(in: .whitespaces).isEmpty {
+                pendingSessionEntry = true
+                showNameEntry = true
+            } else {
+                showSessionEntry = true
+            }
         }
         .sheet(isPresented: $showMembers) {
             MemberManagementSheet(location: location)
@@ -103,13 +119,12 @@ struct ContentView: View {
     // MARK: - Runner Row
 
     private var runnerRow: some View {
-        RunnerCircle(name: location.runnerName, size: 56, isHighlighted: true)
-            .frame(maxWidth: .infinity)
-            .contentShape(Rectangle())
+        RunnerCircle(name: location.isAuthenticated ? location.runnerName : "??", size: 56, isHighlighted: true)
             .onTapGesture {
                 nameInput = location.runnerName
                 showNameEntry = true
             }
+            .frame(maxWidth: .infinity)
     }
 
     // MARK: - Session Name Card
