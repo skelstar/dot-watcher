@@ -44,6 +44,28 @@ Replays pre-loaded position data for two runners (Sean and David) in a step-by-s
 - Position data is loaded from `src/positions.json` (Sean) and `data/routes/` (David).
 - **Reset** clears the session on the server and resets the UI.
 
+### Location
+
+Sets the simulated GPS location of a booted iOS simulator by clicking on a map.
+
+- Lists all **booted simulators** via `xcrun simctl list devices`.
+- Select a simulator from the dropdown, then **click anywhere on the map** to teleport it to that location.
+- Uses [OpenStreetMap](https://www.openstreetmap.org/) tiles via Leaflet — no API key required.
+
+**First-time setup** — the app must have location permission on the simulator. Grant it without a prompt via:
+
+```bash
+xcrun simctl privacy <udid> grant location io.skelstar.DotWatcher
+```
+
+Or reset all permissions so the app re-prompts on next launch:
+
+```bash
+xcrun simctl privacy <udid> reset all io.skelstar.DotWatcher
+```
+
+---
+
 ### GPX Converter
 
 Converts a GPX file into the JSON position format used by the simulator and server.
@@ -92,14 +114,26 @@ import { type Position, compressToMinutes, computeBearing } from './lib/position
 
 ---
 
-## File-save middleware
+## Dev-server middleware
 
-`vite.config.ts` registers a `POST /api/save-route` endpoint on the Vite dev server that writes JSON files to `data/routes/`. This is dev-only and not included in production builds.
+All endpoints are registered in `vite.config.ts` and are dev-only — not included in production builds.
 
-Request body:
+### `POST /api/save-route`
+
+Writes a JSON file to `data/routes/`. Returns `409` if the file exists and `force` is `false`.
 
 ```json
 { "filename": "my-route.json", "content": "...", "force": false }
 ```
 
-Returns `409` if the file exists and `force` is `false`.
+### `GET /api/simulators`
+
+Returns all booted simulators as `[{ udid, name, runtime }]` by calling `xcrun simctl list devices --json`.
+
+### `POST /api/simulators/:udid/location`
+
+Teleports a simulator to the given coordinates via `xcrun simctl location <udid> set <lat>,<lon>`.
+
+```json
+{ "lat": 37.7749, "lon": -122.4194 }
+```
