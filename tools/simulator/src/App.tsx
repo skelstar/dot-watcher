@@ -1,8 +1,9 @@
 import { useState } from 'react'
 import GpxConverterPage from './GpxConverterPage'
 import RoutesPage from './RoutesPage'
+import LocationPage from './LocationPage'
 
-type Tab = 'gpx' | 'routes'
+type Tab = 'gpx' | 'routes' | 'location'
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<Tab>('routes')
@@ -18,10 +19,14 @@ export default function App() {
           <button style={tabBtn(activeTab === 'routes')} onClick={() => setActiveTab('routes')}>
             Routes
           </button>
+          <button style={tabBtn(activeTab === 'location')} onClick={() => setActiveTab('location')}>
+            Location
+          </button>
         </nav>
       </header>
       {activeTab === 'gpx' && <GpxConverterPage />}
       {activeTab === 'routes' && <RoutesPage />}
+      {activeTab === 'location' && <LocationPage />}
     </div>
   )
 }
