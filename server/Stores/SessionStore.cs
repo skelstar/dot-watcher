@@ -374,11 +374,8 @@ public class SessionStore(string dbPath)
     public bool CanReadSession(string sessionId, string userId) =>
         GetMembership(sessionId, userId) is not null;
 
-    public bool CanWriteLocation(string sessionId, string userId)
-    {
-        var membership = GetMembership(sessionId, userId);
-        return membership?.Role is "owner" or "runner";
-    }
+    public bool CanWriteLocation(string sessionId, string userId) =>
+        CanReadSession(sessionId, userId);
 
     public bool IsSessionOwner(string sessionId, string userId) =>
         GetMembership(sessionId, userId)?.Role == "owner";
@@ -560,6 +557,10 @@ public class SessionStore(string dbPath)
             JOIN users u ON u.id = s.owner_user_id
             LEFT JOIN session_members m ON m.session_id = s.id
             WHERE DATE(s.created_at) = DATE('now')
+            AND EXISTS (
+                SELECT 1 FROM location_updates l
+                WHERE l.session_id = s.id AND l.runner_user_id = s.owner_user_id
+            )
             GROUP BY s.id
             ORDER BY s.created_at DESC
             """;

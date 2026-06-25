@@ -40,9 +40,7 @@ public class LocationsController(
             validatedUpdate.Heading.HasValue ? $"{validatedUpdate.Heading:F1}°" : "n/a",
             validatedUpdate.Timestamp);
         var participants = store.GetParticipants(validatedUpdate.SessionId);
-        var pendingJoinRequests = store.IsSessionOwner(validatedUpdate.SessionId, user.UserId)
-            ? store.GetPendingJoinRequestCount(validatedUpdate.SessionId)
-            : 0;
+        var pendingJoinRequests = store.GetPendingJoinRequestCount(validatedUpdate.SessionId);
         return Ok(new { participants, pendingJoinRequests });
     }
 
