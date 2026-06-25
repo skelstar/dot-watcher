@@ -150,7 +150,7 @@ public class SessionsController(
         if (!userAuth.TryAuthenticate(Request, out var user))
             return Unauthorized();
 
-        if (!store.IsSessionOwner(sessionId, user.UserId))
+        if (!store.CanReadSession(sessionId, user.UserId))
             return StatusCode(StatusCodes.Status403Forbidden);
 
         var requests = store.GetJoinRequests(sessionId);
@@ -165,7 +165,7 @@ public class SessionsController(
         if (!userAuth.TryAuthenticate(Request, out var user))
             return Unauthorized();
 
-        if (!store.IsSessionOwner(sessionId, user.UserId))
+        if (!store.CanReadSession(sessionId, user.UserId))
             return StatusCode(StatusCodes.Status403Forbidden);
 
         var membership = store.ApproveJoinRequest(requestId, sessionId);
@@ -180,7 +180,7 @@ public class SessionsController(
         if (!userAuth.TryAuthenticate(Request, out var user))
             return Unauthorized();
 
-        if (!store.IsSessionOwner(sessionId, user.UserId))
+        if (!store.CanReadSession(sessionId, user.UserId))
             return StatusCode(StatusCodes.Status403Forbidden);
 
         return store.DenyJoinRequest(requestId, sessionId)

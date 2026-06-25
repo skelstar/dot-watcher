@@ -252,6 +252,12 @@ final class LocationManager {
         status = membership.role == "viewer" ? "Viewer only" : "Ready"
         Task { participants = await previewSession(membership.sessionId) }
         Task { await loadSelectedSessionMembers() }
+        postPresence()
+    }
+
+    private func postPresence() {
+        guard !sessionId.isEmpty else { return }
+        Task { await post(lat: 0, lon: 0, heading: nil, timestamp: Date()) }
     }
 
     func loadSelectedSessionMembers() async {
@@ -313,7 +319,7 @@ final class LocationManager {
     }
 
     func loadJoinRequests() async {
-        guard let membership = activeMembership, membership.role == "owner" else {
+        guard let membership = activeMembership else {
             pendingJoinRequests = []
             return
         }

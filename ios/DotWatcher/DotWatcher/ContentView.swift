@@ -171,11 +171,13 @@ struct ContentView: View {
                     .foregroundStyle(Color.accentColor)
             }
 
-            if location.activeMembership?.role == "owner",
-               let inviteCode = location.activeMembership?.inviteCode {
+            if let inviteCode = location.activeMembership?.inviteCode,
+               location.activeMembership?.role == "owner" {
                 Text("Invite \(inviteCode)")
                     .font(.caption.monospaced())
                     .foregroundStyle(.secondary)
+            }
+            if location.activeMembership != nil {
                 Button("Manage members") {
                     showMembers = true
                 }

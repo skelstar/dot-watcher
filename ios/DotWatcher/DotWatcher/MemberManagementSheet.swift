@@ -62,7 +62,7 @@ struct MemberManagementSheet: View {
                                         .foregroundStyle(.secondary)
                                 }
                                 Spacer()
-                                if member.role != "owner" {
+                                if member.role != "owner" && location.activeMembership?.role == "owner" {
                                     Button(member.role == "runner" ? "Make Viewer" : "Make Runner") {
                                         Task { await update(member) }
                                     }
