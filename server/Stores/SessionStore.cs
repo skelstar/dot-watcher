@@ -374,8 +374,11 @@ public class SessionStore(string dbPath)
     public bool CanReadSession(string sessionId, string userId) =>
         GetMembership(sessionId, userId) is not null;
 
-    public bool CanWriteLocation(string sessionId, string userId) =>
-        CanReadSession(sessionId, userId);
+    public bool CanWriteLocation(string sessionId, string userId)
+    {
+        var membership = GetMembership(sessionId, userId);
+        return membership?.Role is "owner" or "runner";
+    }
 
     public bool IsSessionOwner(string sessionId, string userId) =>
         GetMembership(sessionId, userId)?.Role == "owner";
