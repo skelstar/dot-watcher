@@ -13,7 +13,11 @@
      d="M 16,3 A 13,13 0 0 0 3,16 13,13 0 0 0 16,29 13,13 0 0 0 29,16 V 3 Z"
      fill="#5CB84E"
      id="path1"
-     style="fill:#0000ff;stroke:#f9f9f9;stroke-width:1.6;stroke-dasharray:none;stroke-opacity:1" />
+     style="fill:#1a0755;stroke:#f9f9f9;stroke-width:1.6;stroke-dasharray:none;stroke-opacity:1" />
+  <path
+     d="M 16,3 L 29,3 L 29,16 A 13,13 0 0 0 16,3 Z"
+     fill="#ffffff"
+     id="path2" />
   <text
      x="16"
      y="20"
