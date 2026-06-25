@@ -83,6 +83,14 @@ struct ContentView: View {
         .sheet(isPresented: $showMembers) {
             MemberManagementSheet(location: location)
         }
+        .task(id: location.sessionId) {
+            guard location.sessionId.isEmpty, location.isAuthenticated else { return }
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(10))
+                guard !Task.isCancelled else { return }
+                await location.loadSessions()
+            }
+        }
     }
 
     // MARK: - Header

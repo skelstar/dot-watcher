@@ -237,6 +237,7 @@ struct SessionEntrySheet: View {
         do {
             _ = try await location.requestToJoin(sessionId: session.sessionId, displayName: nil)
             requestedSessionIds.insert(session.sessionId)
+            dismiss()
         } catch {
             self.error = error.localizedDescription
         }

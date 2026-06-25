@@ -203,15 +203,14 @@ final class LocationManager {
             if !sessionId.isEmpty && activeMembership == nil {
                 sessionId = ""
             }
-            if sessionId.isEmpty, let owned = memberships.first(where: { $0.role == "owner" }) {
-                sessionId = owned.sessionId
-                status = "Ready"
-                Task { participants = await previewSession(owned.sessionId) }
-            }
-            if activeMembership?.role == "owner" {
-                await loadSelectedSessionMembers()
+            if sessionId.isEmpty {
+                if let owned = memberships.first(where: { $0.role == "owner" }) {
+                    selectSession(owned)
+                } else if let first = memberships.first {
+                    selectSession(first)
+                }
             } else {
-                selectedSessionMembers = []
+                await loadSelectedSessionMembers()
             }
         } catch DotWatcherAPIError.badResponse(401, _) {
             await signOut(status: "Sign in required")
@@ -256,24 +255,39 @@ final class LocationManager {
     }
 
     private func postPresence() {
-        guard !sessionId.isEmpty else { return }
-        Task { await post(lat: 0, lon: 0, heading: nil, timestamp: Date()) }
+        guard !sessionId.isEmpty, activeMembership?.role != "viewer" else { return }
+        let sid = sessionId
+        let name = runnerName
+        Task {
+            let body: [String: Any] = [
+                "runnerName": name,
+                "sessionId": sid,
+                "latitude": 0.0,
+                "longitude": 0.0,
+                "timestamp": ISO8601DateFormatter().string(from: Date()),
+            ]
+            _ = try? await send(path: "/location", method: "POST", body: body) as LocationPostResponse
+        }
     }
 
     func loadSelectedSessionMembers() async {
-        guard let membership = activeMembership, membership.role == "owner" else {
+        guard let membership = activeMembership else {
             selectedSessionMembers = []
             pendingJoinRequests = []
             pendingJoinRequestCount = 0
             return
         }
 
-        do {
-            selectedSessionMembers = try await send(path: "/sessions/\(membership.sessionId)/members")
-        } catch DotWatcherAPIError.badResponse(401, _) {
-            await signOut(status: "Sign in required")
-        } catch {
-            status = error.localizedDescription
+        if membership.role == "owner" {
+            do {
+                selectedSessionMembers = try await send(path: "/sessions/\(membership.sessionId)/members")
+            } catch DotWatcherAPIError.badResponse(401, _) {
+                await signOut(status: "Sign in required")
+            } catch {
+                status = error.localizedDescription
+            }
+        } else {
+            selectedSessionMembers = []
         }
         await loadJoinRequests()
     }
@@ -312,10 +326,12 @@ final class LocationManager {
 
     func requestToJoin(sessionId code: String, displayName: String?) async throws -> JoinRequest {
         let name = displayName?.trimmingCharacters(in: .whitespacesAndNewlines)
-        return try await send(
+        let request: JoinRequest = try await send(
             path: "/sessions/\(code)/join-requests",
             method: "POST",
             body: ["displayName": (name?.isEmpty ?? true) ? NSNull() : name!])
+        status = "Pending request"
+        return request
     }
 
     func loadJoinRequests() async {
