@@ -329,9 +329,9 @@
       const el = document.getElementById('log');
       el.innerHTML = [...lines].reverse().map(line => {
         let cls = 'log-line';
-        if (line.includes(' WARN ')) cls += ' warn';
-        else if (line.includes(' ERROR')) cls += ' error';
-        else if (line.includes(' CRIT ')) cls += ' crit';
+        if (line.includes(' WRN]')) cls += ' warn';
+        else if (line.includes(' ERR]')) cls += ' error';
+        else if (line.includes(' FTL]')) cls += ' crit';
         const sessionCode = getLineSession(line);
         const hasLevel = cls !== 'log-line';
         const colorStyle = (sessionCode && !hasLevel) ? `color:${getSessionColor(sessionCode)}` : '';

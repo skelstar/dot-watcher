@@ -69,10 +69,9 @@ public class AuthController(
     [HttpPost("/auth/logout")]
     public IActionResult Logout()
     {
-        if (!tokenAuth.TryAuthenticate(Request, out _, out var token))
-            return Unauthorized();
+        if (tokenAuth.TryAuthenticate(Request, out _, out var token))
+            store.RevokeUserToken(token.TokenId, token.AcceptedUntil);
 
-        store.RevokeUserToken(token.TokenId, token.AcceptedUntil);
         return NoContent();
     }
 

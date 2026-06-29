@@ -11,6 +11,10 @@ struct ContentView: View {
     @State private var showAuth: Bool = false
     @State private var showMembers: Bool = false
     @State private var pendingSessionEntry: Bool = false
+    @State private var isRefreshing: Bool = false
+    @State private var showStopConfirm: Bool = false
+    @State private var requestPendingDeny: JoinRequest? = nil
+    @State private var busyRequestId: String? = nil
 
     var body: some View {
         ScrollView {
@@ -19,6 +23,9 @@ struct ContentView: View {
                 runnerRow
                 sessionNameCard
                 statusCard
+                if !location.pendingJoinRequests.isEmpty {
+                    joinRequestsCard
+                }
                 participantsCard
             }
             .padding()
@@ -45,6 +52,22 @@ struct ContentView: View {
         .onReceive(NotificationCenter.default.publisher(for: UIDevice.batteryLevelDidChangeNotification)) { _ in
             batteryLevel = UIDevice.current.batteryLevel
         }
+        .alert("Deny request?", isPresented: Binding(
+            get: { requestPendingDeny != nil },
+            set: { if !$0 { requestPendingDeny = nil } }
+        )) {
+            Button("Deny", role: .destructive) {
+                if let request = requestPendingDeny {
+                    Task { try? await location.denyJoinRequest(request) }
+                }
+                requestPendingDeny = nil
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            if let request = requestPendingDeny {
+                Text("Deny \(request.displayName)'s request to join?")
+            }
+        }
         .sheet(isPresented: $showHelp) {
             HelpView()
         }
@@ -66,30 +89,21 @@ struct ContentView: View {
         .sheet(isPresented: $showSessionEntry) {
             SessionEntrySheet(location: location)
         }
-        .sheet(isPresented: $showAuth) {
+        .fullScreenCover(isPresented: $showAuth) {
             AuthSheet(location: location)
-                .interactiveDismissDisabled(!location.isAuthenticated)
         }
         .onChange(of: location.isAuthenticated) { _, isAuthenticated in
-            guard isAuthenticated else { return }
-            Task { await location.loadSessions() }
+            guard isAuthenticated else {
+                showAuth = true
+                return
+            }
             if location.runnerName.trimmingCharacters(in: .whitespaces).isEmpty {
                 pendingSessionEntry = true
                 showNameEntry = true
-            } else {
-                showSessionEntry = true
             }
         }
         .sheet(isPresented: $showMembers) {
             MemberManagementSheet(location: location)
-        }
-        .task(id: location.sessionId) {
-            guard location.sessionId.isEmpty, location.isAuthenticated else { return }
-            while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(10))
-                guard !Task.isCancelled else { return }
-                await location.loadSessions()
-            }
         }
     }
 
@@ -170,7 +184,10 @@ struct ContentView: View {
             .background(Color(.tertiarySystemBackground))
             .clipShape(RoundedRectangle(cornerRadius: 10))
             .contentShape(RoundedRectangle(cornerRadius: 10))
-            .onTapGesture { showSessionEntry = true }
+            .onTapGesture {
+                if location.isAuthenticated { showSessionEntry = true }
+                else { showAuth = true }
+            }
 
             if !location.sessionId.isEmpty,
                let url = URL(string: "https://dot-watcher.skelstar.io/\(location.sessionId)") {
@@ -200,6 +217,48 @@ struct ContentView: View {
                             .background(.red, in: Capsule())
                             .offset(x: 16, y: -10)
                     }
+                }
+            }
+        }
+        .padding(16)
+        .background(Color(.secondarySystemBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 14))
+    }
+
+    // MARK: - Join Requests Card
+
+    private var joinRequestsCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("JOIN REQUESTS")
+                .font(.caption)
+                .fontWeight(.semibold)
+                .foregroundStyle(.secondary)
+            ForEach(location.pendingJoinRequests) { request in
+                HStack {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(request.displayName)
+                            .font(.body)
+                        Text("Requested \(request.formattedDate)")
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                    }
+                    Spacer()
+                    Button("Approve") {
+                        Task {
+                            busyRequestId = request.requestId
+                            try? await location.approveJoinRequest(request)
+                            busyRequestId = nil
+                        }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.green)
+                    .disabled(busyRequestId == request.requestId)
+                    Button("Deny") {
+                        requestPendingDeny = request
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.red)
+                    .disabled(busyRequestId == request.requestId)
                 }
             }
         }
@@ -248,10 +307,34 @@ struct ContentView: View {
 
     private var participantsCard: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("PARTICIPANTS")
-                .font(.caption)
-                .fontWeight(.semibold)
-                .foregroundStyle(.secondary)
+            HStack {
+                Text("PARTICIPANTS")
+                    .font(.caption)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                if location.isAuthenticated {
+                    Button {
+                        Task {
+                            isRefreshing = true
+                            await location.refresh()
+                            isRefreshing = false
+                        }
+                    } label: {
+                        if isRefreshing {
+                            ProgressView()
+                                .frame(width: 36, height: 36)
+                        } else {
+                            Image(systemName: "arrow.clockwise")
+                                .font(.title3.weight(.semibold))
+                                .frame(width: 36, height: 36)
+                                .background(Color.accentColor.opacity(0.15), in: Circle())
+                                .foregroundStyle(Color.accentColor)
+                        }
+                    }
+                    .disabled(isRefreshing)
+                }
+            }
             if location.participants.isEmpty {
                 Text("No participants yet")
                     .font(.caption)
@@ -279,12 +362,21 @@ struct ContentView: View {
     @ViewBuilder
     private var bottomButton: some View {
         if location.isTracking {
-            Button { location.stop() } label: {
+            Button { showStopConfirm = true } label: {
                 Text("Stop").frame(maxWidth: .infinity)
             }
             .buttonStyle(.borderedProminent)
             .tint(.red)
             .controlSize(.large)
+            .alert("Stop tracking?", isPresented: $showStopConfirm) {
+                Button("Stop & Leave Session", role: .destructive) {
+                    Task { await location.stopAndLeave() }
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                let name = location.activeMembership?.sessionName ?? "this session"
+                Text("This will stop tracking and remove you from \(name). You can rejoin later using the invite code.")
+            }
         } else if !location.isAuthenticated {
             Button { showAuth = true } label: {
                 Text("Sign in").frame(maxWidth: .infinity)

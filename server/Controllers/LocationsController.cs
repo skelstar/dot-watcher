@@ -5,8 +5,7 @@ namespace DotWatcher.Server.Controllers;
 [ApiController]
 public class LocationsController(
     SessionStore store,
-    UserTokenAuth userAuth,
-    ILogger<LocationsController> logger) : ControllerBase
+    UserTokenAuth userAuth) : ControllerBase
 {
     [HttpPost("/location")]
     public IActionResult AddLocation([FromBody] LocationUpdate? update)
@@ -35,10 +34,10 @@ public class LocationsController(
             return BadRequest(new { error = "Invalid location update.", details = errors });
 
         store.AddPosition(validatedUpdate, user.UserId);
-        logger.LogInformation("[{Session}] {Runner} position received heading={Heading} t={Timestamp:HH:mm:ss}",
-            validatedUpdate.SessionId, validatedUpdate.RunnerName,
-            validatedUpdate.Heading.HasValue ? $"{validatedUpdate.Heading:F1}°" : "n/a",
-            validatedUpdate.Timestamp);
+        HttpContext.Items["Log:Session"] = validatedUpdate.SessionId;
+        HttpContext.Items["Log:Runner"] = validatedUpdate.RunnerName;
+        HttpContext.Items["Log:Heading"] = validatedUpdate.Heading.HasValue ? $"{validatedUpdate.Heading:F1}°" : "n/a";
+        HttpContext.Items["Log:LocationTimestamp"] = validatedUpdate.Timestamp.ToString("HH:mm:ss");
         var participants = store.GetParticipants(validatedUpdate.SessionId);
         var pendingJoinRequests = store.GetPendingJoinRequestCount(validatedUpdate.SessionId);
         return Ok(new { participants, pendingJoinRequests });
