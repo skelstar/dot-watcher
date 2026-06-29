@@ -83,11 +83,21 @@ public class SessionStore(string dbPath)
                 user_id      TEXT NOT NULL,
                 display_name TEXT NOT NULL,
                 status       TEXT NOT NULL DEFAULT 'pending',
-                created_at   TEXT NOT NULL
+                created_at   TEXT NOT NULL,
+                role         TEXT NOT NULL DEFAULT 'runner'
             );
             CREATE INDEX IF NOT EXISTS idx_join_requests_session ON join_requests(session_id, status);
             """;
         cmd.ExecuteNonQuery();
+
+        // Migration: add role column to existing join_requests tables
+        try
+        {
+            using var alter = conn.CreateCommand();
+            alter.CommandText = "ALTER TABLE join_requests ADD COLUMN role TEXT NOT NULL DEFAULT 'runner'";
+            alter.ExecuteNonQuery();
+        }
+        catch (SqliteException) { /* column already exists */ }
     }
 
     private SqliteConnection Connect()
@@ -383,65 +393,22 @@ public class SessionStore(string dbPath)
     public bool IsSessionOwner(string sessionId, string userId) =>
         GetMembership(sessionId, userId)?.Role == "owner";
 
-    public IReadOnlyList<SessionMember>? GetSessionMembers(string sessionId)
+    public IReadOnlyList<string> GetSessionRunners(string sessionId)
     {
         using var conn = Connect();
-        if (!SessionExists(conn, sessionId))
-            return null;
-
         using var cmd = conn.CreateCommand();
         cmd.CommandText = """
-            SELECT user_id, role, display_name
+            SELECT display_name
             FROM session_members
-            WHERE session_id = $sessionId
-            ORDER BY joined_at ASC, display_name ASC
+            WHERE session_id = $sessionId AND role IN ('owner', 'runner')
+            ORDER BY joined_at ASC
             """;
         cmd.Parameters.AddWithValue("$sessionId", sessionId);
         using var reader = cmd.ExecuteReader();
-
-        var members = new List<SessionMember>();
+        var names = new List<string>();
         while (reader.Read())
-            members.Add(new SessionMember(
-                reader.GetString(0),
-                reader.GetString(1),
-                reader.GetString(2)));
-
-        return members;
-    }
-
-    public UpdateSessionMemberRoleResult UpdateSessionMemberRole(
-        string sessionId,
-        string userId,
-        string role)
-    {
-        if (role is not ("runner" or "viewer"))
-            throw new ArgumentOutOfRangeException(nameof(role), "Role must be runner or viewer.");
-
-        using var conn = Connect();
-        if (!SessionExists(conn, sessionId))
-            return new UpdateSessionMemberRoleResult(UpdateSessionMemberRoleStatus.SessionNotFound, null);
-
-        var existing = GetSessionMember(conn, sessionId, userId);
-        if (existing is null)
-            return new UpdateSessionMemberRoleResult(UpdateSessionMemberRoleStatus.MemberNotFound, null);
-
-        if (existing.Role == "owner")
-            return new UpdateSessionMemberRoleResult(UpdateSessionMemberRoleStatus.OwnerRoleImmutable, existing);
-
-        using var cmd = conn.CreateCommand();
-        cmd.CommandText = """
-            UPDATE session_members
-            SET role = $role
-            WHERE session_id = $sessionId AND user_id = $userId
-            """;
-        cmd.Parameters.AddWithValue("$role", role);
-        cmd.Parameters.AddWithValue("$sessionId", sessionId);
-        cmd.Parameters.AddWithValue("$userId", userId);
-        cmd.ExecuteNonQuery();
-
-        return new UpdateSessionMemberRoleResult(
-            UpdateSessionMemberRoleStatus.Updated,
-            existing with { Role = role });
+            names.Add(reader.GetString(0));
+        return names;
     }
 
     public void AddPosition(ValidatedLocationUpdate update, string userId)
@@ -559,11 +526,7 @@ public class SessionStore(string dbPath)
             FROM app_sessions s
             JOIN users u ON u.id = s.owner_user_id
             LEFT JOIN session_members m ON m.session_id = s.id
-            WHERE DATE(s.created_at) = DATE('now')
-            AND EXISTS (
-                SELECT 1 FROM location_updates l
-                WHERE l.session_id = s.id AND l.runner_user_id = s.owner_user_id
-            )
+            WHERE SUBSTR(s.created_at, 1, 10) = DATE('now')
             GROUP BY s.id
             ORDER BY s.created_at DESC
             """;
@@ -579,7 +542,7 @@ public class SessionStore(string dbPath)
         return sessions;
     }
 
-    public CreateJoinRequestResult CreateJoinRequest(string sessionId, string userId, string displayName)
+    public CreateJoinRequestResult CreateJoinRequest(string sessionId, string userId, string displayName, string role = "runner")
     {
         using var conn = Connect();
 
@@ -594,7 +557,7 @@ public class SessionStore(string dbPath)
 
         using var checkCmd = conn.CreateCommand();
         checkCmd.CommandText = """
-            SELECT id, session_id, user_id, display_name, created_at
+            SELECT id, session_id, user_id, display_name, created_at, role
             FROM join_requests
             WHERE session_id = $sessionId AND user_id = $userId AND status = 'pending'
             """;
@@ -608,7 +571,8 @@ public class SessionStore(string dbPath)
                 checkReader.GetString(1),
                 checkReader.GetString(2),
                 checkReader.GetString(3),
-                DateTimeOffset.Parse(checkReader.GetString(4)));
+                DateTimeOffset.Parse(checkReader.GetString(4)),
+                checkReader.GetString(5));
             return new CreateJoinRequestResult(CreateJoinRequestStatus.AlreadyPending, existing);
         }
         checkReader.Close();
@@ -618,19 +582,20 @@ public class SessionStore(string dbPath)
 
         using var cmd = conn.CreateCommand();
         cmd.CommandText = """
-            INSERT INTO join_requests (id, session_id, user_id, display_name, status, created_at)
-            VALUES ($id, $sessionId, $userId, $displayName, 'pending', $createdAt)
+            INSERT INTO join_requests (id, session_id, user_id, display_name, status, created_at, role)
+            VALUES ($id, $sessionId, $userId, $displayName, 'pending', $createdAt, $role)
             """;
         cmd.Parameters.AddWithValue("$id", requestId);
         cmd.Parameters.AddWithValue("$sessionId", sessionId);
         cmd.Parameters.AddWithValue("$userId", userId);
         cmd.Parameters.AddWithValue("$displayName", displayName);
         cmd.Parameters.AddWithValue("$createdAt", createdAt.ToString("O"));
+        cmd.Parameters.AddWithValue("$role", role);
         cmd.ExecuteNonQuery();
 
         return new CreateJoinRequestResult(
             CreateJoinRequestStatus.Created,
-            new JoinRequestRecord(requestId, sessionId, userId, displayName, createdAt));
+            new JoinRequestRecord(requestId, sessionId, userId, displayName, createdAt, role));
     }
 
     public IReadOnlyList<JoinRequestRecord>? GetJoinRequests(string sessionId)
@@ -641,7 +606,7 @@ public class SessionStore(string dbPath)
 
         using var cmd = conn.CreateCommand();
         cmd.CommandText = """
-            SELECT id, session_id, user_id, display_name, created_at
+            SELECT id, session_id, user_id, display_name, created_at, role
             FROM join_requests
             WHERE session_id = $sessionId AND status = 'pending'
             ORDER BY created_at ASC
@@ -656,7 +621,8 @@ public class SessionStore(string dbPath)
                 reader.GetString(1),
                 reader.GetString(2),
                 reader.GetString(3),
-                DateTimeOffset.Parse(reader.GetString(4))));
+                DateTimeOffset.Parse(reader.GetString(4)),
+                reader.GetString(5)));
         return requests;
     }
 
@@ -677,11 +643,11 @@ public class SessionStore(string dbPath)
     {
         using var conn = Connect();
 
-        string userId, displayName;
+        string userId, displayName, role;
         using (var findCmd = conn.CreateCommand())
         {
             findCmd.CommandText = """
-                SELECT user_id, display_name
+                SELECT user_id, display_name, role
                 FROM join_requests
                 WHERE id = $requestId AND session_id = $sessionId AND status = 'pending'
                 """;
@@ -692,6 +658,7 @@ public class SessionStore(string dbPath)
                 return null;
             userId = reader.GetString(0);
             displayName = reader.GetString(1);
+            role = reader.GetString(2);
         }
 
         using var tx = conn.BeginTransaction();
@@ -710,9 +677,10 @@ public class SessionStore(string dbPath)
             memberCmd.Transaction = tx;
             memberCmd.CommandText = """
                 INSERT INTO session_members (session_id, user_id, role, display_name, joined_at)
-                VALUES ($sessionId, $userId, 'viewer', $displayName, $joinedAt)
+                VALUES ($sessionId, $userId, $role, $displayName, $joinedAt)
                 ON CONFLICT(session_id, user_id) DO UPDATE SET display_name = excluded.display_name
                 """;
+            memberCmd.Parameters.AddWithValue("$role", role);
             memberCmd.Parameters.AddWithValue("$sessionId", sessionId);
             memberCmd.Parameters.AddWithValue("$userId", userId);
             memberCmd.Parameters.AddWithValue("$displayName", displayName);
@@ -735,6 +703,19 @@ public class SessionStore(string dbPath)
             """;
         cmd.Parameters.AddWithValue("$requestId", requestId);
         cmd.Parameters.AddWithValue("$sessionId", sessionId);
+        return cmd.ExecuteNonQuery() > 0;
+    }
+
+    public bool LeaveSession(string sessionId, string userId)
+    {
+        using var conn = Connect();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = """
+            DELETE FROM session_members
+            WHERE session_id = $sessionId AND user_id = $userId AND role != 'owner'
+            """;
+        cmd.Parameters.AddWithValue("$sessionId", sessionId);
+        cmd.Parameters.AddWithValue("$userId", userId);
         return cmd.ExecuteNonQuery() > 0;
     }
 
@@ -1049,25 +1030,6 @@ public class SessionStore(string dbPath)
         return cmd.ExecuteScalar() is not null;
     }
 
-    private static SessionMember? GetSessionMember(
-        SqliteConnection conn,
-        string sessionId,
-        string userId)
-    {
-        using var cmd = conn.CreateCommand();
-        cmd.CommandText = """
-            SELECT user_id, role, display_name
-            FROM session_members
-            WHERE session_id = $sessionId AND user_id = $userId
-            """;
-        cmd.Parameters.AddWithValue("$sessionId", sessionId);
-        cmd.Parameters.AddWithValue("$userId", userId);
-        using var reader = cmd.ExecuteReader();
-        return reader.Read()
-            ? new SessionMember(reader.GetString(0), reader.GetString(1), reader.GetString(2))
-            : null;
-    }
-
     private static void UpsertMembershipPreservingRole(
         SqliteConnection conn,
         string sessionId,
@@ -1102,7 +1064,7 @@ public class SessionStore(string dbPath)
     public static string? NormalizeSessionName(string? value)
     {
         var code = value?.Trim().ToUpperInvariant();
-        if (string.IsNullOrWhiteSpace(code) || code.Length is < 3 or > 32)
+        if (string.IsNullOrWhiteSpace(code) || code.Length is < 4 or > 8)
             return null;
 
         return code.All(c => char.IsAsciiLetterOrDigit(c) || c is '-' or '_')

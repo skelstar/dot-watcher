@@ -23,14 +23,6 @@ struct SessionMembership: Codable, Identifiable {
     let displayName: String
 }
 
-struct SessionMember: Codable, Identifiable {
-    var id: String { userId }
-
-    let userId: String
-    let role: String
-    let displayName: String
-}
-
 struct BrowsableSession: Codable, Identifiable {
     var id: String { sessionId }
     let sessionId: String
@@ -47,6 +39,7 @@ struct JoinRequest: Codable, Identifiable {
     let userId: String
     let displayName: String
     let createdAt: String
+    let role: String
 
     var formattedDate: String {
         let f = ISO8601DateFormatter()
@@ -93,9 +86,9 @@ final class LocationManager {
     private(set) var isTracking = false
     private(set) var currentUser: AppUser?
     private(set) var memberships: [SessionMembership] = []
-    private(set) var selectedSessionMembers: [SessionMember] = []
     private(set) var pendingJoinRequestCount = 0
     private(set) var pendingJoinRequests: [JoinRequest] = []
+    private(set) var sessionRunnerNames: [String] = []
 
     var participants: [String] = []
     private var lastParticipantCount = 0
@@ -189,9 +182,9 @@ final class LocationManager {
         accessToken = nil
         currentUser = nil
         memberships = []
-        selectedSessionMembers = []
         pendingJoinRequests = []
         pendingJoinRequestCount = 0
+        sessionRunnerNames = []
         sessionId = ""
         Self.storeToken(nil)
         UserDefaults.standard.removeObject(forKey: "currentUser")
@@ -214,7 +207,7 @@ final class LocationManager {
                     selectSession(first)
                 }
             } else {
-                await loadSelectedSessionMembers()
+                await loadJoinRequests()
             }
         } catch DotWatcherAPIError.badResponse(401, _) {
             await signOut(status: "Sign in required")
@@ -253,61 +246,9 @@ final class LocationManager {
     func selectSession(_ membership: SessionMembership) {
         sessionId = membership.sessionId
         status = membership.role == "viewer" ? "Viewer only" : "Ready"
-        Task { await loadSelectedSessionMembers() }
-        postPresence()
-    }
-
-    private func postPresence() {
-        guard !sessionId.isEmpty, activeMembership?.role != "viewer" else { return }
-        let sid = sessionId
-        let name = runnerName
-        Task {
-            let body: [String: Any] = [
-                "runnerName": name,
-                "sessionId": sid,
-                "latitude": 0.0,
-                "longitude": 0.0,
-                "timestamp": ISO8601DateFormatter().string(from: Date()),
-            ]
-            _ = try? await send(path: "/location", method: "POST", body: body) as LocationPostResponse
-        }
-    }
-
-    func loadSelectedSessionMembers() async {
-        guard let membership = activeMembership else {
-            selectedSessionMembers = []
-            pendingJoinRequests = []
-            pendingJoinRequestCount = 0
-            return
-        }
-
-        if membership.role == "owner" {
-            do {
-                selectedSessionMembers = try await send(path: "/sessions/\(membership.sessionId)/members")
-            } catch DotWatcherAPIError.badResponse(401, _) {
-                await signOut(status: "Sign in required")
-            } catch {
-                status = error.localizedDescription
-            }
-        } else {
-            selectedSessionMembers = []
-        }
-        participants = selectedSessionMembers.map { $0.displayName }
-        await loadJoinRequests()
-    }
-
-    func updateMemberRole(_ member: SessionMember, role: String) async throws {
-        guard let membership = activeMembership, membership.role == "owner" else {
-            throw DotWatcherAPIError.badResponse(403, nil)
-        }
-
-        let updated: SessionMember = try await send(
-            path: "/sessions/\(membership.sessionId)/members/\(member.userId)/role",
-            method: "POST",
-            body: ["role": role])
-        if let index = selectedSessionMembers.firstIndex(where: { $0.userId == updated.userId }) {
-            selectedSessionMembers[index] = updated
-        }
+        Task { participants = await previewSession(membership.sessionId) }
+        Task { await loadJoinRequests() }
+        Task { await loadSessionRunners() }
     }
 
     func deleteSession(sessionId code: String) async throws {
@@ -317,9 +258,24 @@ final class LocationManager {
         if sessionId == code {
             sessionId = ""
             participants = []
-            selectedSessionMembers = []
             pendingJoinRequests = []
             pendingJoinRequestCount = 0
+            sessionRunnerNames = []
+            status = "Idle"
+        }
+    }
+
+    func leaveSession(sessionId code: String) async throws {
+        if isTracking && sessionId == code { stop() }
+        guard let token = accessToken else { throw DotWatcherAPIError.missingToken }
+        try await sendEmpty(path: "/me/sessions/\(code)/membership", method: "DELETE", token: token)
+        memberships.removeAll { $0.sessionId == code }
+        if sessionId == code {
+            sessionId = ""
+            participants = []
+            pendingJoinRequests = []
+            pendingJoinRequestCount = 0
+            sessionRunnerNames = []
             status = "Idle"
         }
     }
@@ -333,9 +289,24 @@ final class LocationManager {
         let request: JoinRequest = try await send(
             path: "/sessions/\(code)/join-requests",
             method: "POST",
-            body: ["displayName": (name?.isEmpty ?? true) ? NSNull() : name!])
+            body: [
+                "displayName": (name?.isEmpty ?? true) ? NSNull() : name!,
+                "role": "runner",
+            ])
         status = "Pending request"
         return request
+    }
+
+    func loadSessionRunners() async {
+        guard let membership = activeMembership else {
+            sessionRunnerNames = []
+            return
+        }
+        do {
+            sessionRunnerNames = try await send(path: "/sessions/\(membership.sessionId)/runners")
+        } catch {
+            sessionRunnerNames = []
+        }
     }
 
     func loadJoinRequests() async {
@@ -358,7 +329,8 @@ final class LocationManager {
             path: "/sessions/\(membership.sessionId)/join-requests/\(request.requestId)/approve",
             method: "POST")
         pendingJoinRequestCount = max(0, pendingJoinRequestCount - 1)
-        await loadSelectedSessionMembers()
+        await loadJoinRequests()
+        await loadSessionRunners()
     }
 
     func denyJoinRequest(_ request: JoinRequest) async throws {

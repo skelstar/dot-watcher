@@ -37,7 +37,7 @@ public class SessionsController(
         request ??= new CreateSessionRequest();
 
         if (request.SessionName is not null && SessionStore.NormalizeSessionName(request.SessionName) is null)
-            return BadRequest(new { error = "Session name must be 3-32 letters, numbers, dashes, or underscores." });
+            return BadRequest(new { error = "Session name must be 4-8 letters, numbers, dashes, or underscores." });
 
         var displayName = string.IsNullOrWhiteSpace(request.DisplayName)
             ? user.DisplayName
@@ -74,40 +74,16 @@ public class SessionsController(
             : Ok(membership);
     }
 
-    [HttpGet("/sessions/{sessionId}/members")]
-    public IActionResult GetSessionMembers(string sessionId)
+    [HttpGet("/sessions/{sessionId}/runners")]
+    public IActionResult GetSessionRunners(string sessionId)
     {
-        if (!TryAuthorizeSessionOwnerOrAdmin(sessionId, out var error))
-            return error!;
+        if (!userAuth.TryAuthenticate(Request, out var user))
+            return Unauthorized();
 
-        var members = store.GetSessionMembers(sessionId);
-        return members is null
-            ? NotFound(new { error = "Session not found." })
-            : Ok(members);
-    }
+        if (!store.CanReadSession(sessionId, user.UserId))
+            return StatusCode(StatusCodes.Status403Forbidden);
 
-    [HttpPost("/sessions/{sessionId}/members/{userId}/role")]
-    public IActionResult UpdateSessionMemberRole(
-        string sessionId,
-        string userId,
-        [FromBody] UpdateSessionMemberRoleRequest? request)
-    {
-        var role = request?.Role?.Trim().ToLowerInvariant();
-        if (role is not ("runner" or "viewer"))
-            return BadRequest(new { error = "Role must be runner or viewer." });
-
-        if (!TryAuthorizeSessionOwnerOrAdmin(sessionId, out var error))
-            return error!;
-
-        var result = store.UpdateSessionMemberRole(sessionId, userId, role);
-        return result.Status switch
-        {
-            UpdateSessionMemberRoleStatus.Updated => Ok(result.Member),
-            UpdateSessionMemberRoleStatus.SessionNotFound => NotFound(new { error = "Session not found." }),
-            UpdateSessionMemberRoleStatus.MemberNotFound => NotFound(new { error = "Member not found." }),
-            UpdateSessionMemberRoleStatus.OwnerRoleImmutable => BadRequest(new { error = "Owner role cannot be changed." }),
-            _ => StatusCode(StatusCodes.Status500InternalServerError),
-        };
+        return Ok(store.GetSessionRunners(sessionId));
     }
 
     [HttpGet("/sessions/browse")]
@@ -132,7 +108,8 @@ public class SessionsController(
         if (displayName.Length is < 1 or > 80)
             return BadRequest(new { error = "Display name must be 1-80 characters." });
 
-        var result = store.CreateJoinRequest(sessionId, user.UserId, displayName);
+        var role = request?.Role?.Trim().ToLowerInvariant() == "viewer" ? "viewer" : "runner";
+        var result = store.CreateJoinRequest(sessionId, user.UserId, displayName, role);
         return result.Status switch
         {
             CreateJoinRequestStatus.Created => Ok(result.Request),
@@ -186,6 +163,15 @@ public class SessionsController(
         return store.DenyJoinRequest(requestId, sessionId)
             ? NoContent()
             : NotFound(new { error = "Join request not found." });
+    }
+
+    [HttpDelete("/me/sessions/{sessionId}/membership")]
+    public IActionResult LeaveSession(string sessionId)
+    {
+        if (!userAuth.TryAuthenticate(Request, out var user))
+            return Unauthorized();
+
+        return store.LeaveSession(sessionId, user.UserId) ? NoContent() : NotFound();
     }
 
     [HttpDelete("/me/sessions/{sessionId}")]
@@ -301,24 +287,4 @@ public class SessionsController(
         return Ok(new { sourceId = sourceId, targetId = targetId, recordsMerged = rows });
     }
 
-    private bool TryAuthorizeSessionOwnerOrAdmin(string sessionId, out IActionResult? error)
-    {
-        error = null;
-        if (auth.IsAuthorized(Request))
-            return true;
-
-        if (!userAuth.TryAuthenticate(Request, out var user))
-        {
-            error = Unauthorized();
-            return false;
-        }
-
-        if (!store.IsSessionOwner(sessionId, user.UserId))
-        {
-            error = StatusCode(StatusCodes.Status403Forbidden);
-            return false;
-        }
-
-        return true;
-    }
 }
