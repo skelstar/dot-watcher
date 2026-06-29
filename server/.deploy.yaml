@@ -6,6 +6,8 @@ env:
     value: /data/recordings
   - name: DbPath
     value: /data/db/dotwatcher.db
+  - name: SEQ_URL
+    value: http://seq.seq.svc.cluster.local:5341
 volumes:
   - name: recordings
     mountPath: /data/recordings

@@ -89,6 +89,9 @@ struct MemberManagementSheet: View {
             .task {
                 await location.loadSelectedSessionMembers()
             }
+            .onChange(of: location.isAuthenticated) { _, isAuthenticated in
+                if !isAuthenticated { dismiss() }
+            }
             .alert("Deny request?", isPresented: Binding(
                 get: { requestPendingDeny != nil },
                 set: { if !$0 { requestPendingDeny = nil } }

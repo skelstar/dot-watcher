@@ -89,14 +89,21 @@ struct SessionEntrySheet: View {
                         Text("Sessions")
                             .font(.headline)
                         Spacer()
-                        if isBrowseLoading {
-                            ProgressView()
-                        } else {
-                            Button("Refresh") {
-                                Task { await loadBrowseSessions() }
+                        Button {
+                            Task {
+                                async let sessions: () = location.loadSessions()
+                                async let browse: () = loadBrowseSessions()
+                                await sessions
+                                await browse
                             }
-                            .font(.subheadline)
+                        } label: {
+                            if isBrowseLoading {
+                                ProgressView()
+                            } else {
+                                Image(systemName: "arrow.clockwise")
+                            }
                         }
+                        .disabled(isBrowseLoading)
                     }
                     let visibleSessions = browsableSessions.filter { s in
                         !location.memberships.contains { $0.sessionId == s.sessionId && $0.role != "owner" }
@@ -172,15 +179,13 @@ struct SessionEntrySheet: View {
                 }
             }
             .task {
-                await location.loadSessions()
-                await loadBrowseSessions()
+                async let sessions: () = location.loadSessions()
+                async let browse: () = loadBrowseSessions()
+                await sessions
+                await browse
             }
-            .task {
-                while !Task.isCancelled {
-                    try? await Task.sleep(for: .seconds(10))
-                    guard !Task.isCancelled else { break }
-                    await location.loadSessions()
-                }
+            .onChange(of: location.isAuthenticated) { _, isAuthenticated in
+                if !isAuthenticated { dismiss() }
             }
         }
     }
@@ -222,6 +227,7 @@ struct SessionEntrySheet: View {
     }
 
     private func loadBrowseSessions() async {
+        guard !isBrowseLoading else { return }
         isBrowseLoading = true
         do {
             browsableSessions = try await location.browseSessions()

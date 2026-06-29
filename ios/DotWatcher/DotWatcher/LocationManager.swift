@@ -99,7 +99,9 @@ final class LocationManager {
 
     var participants: [String] = []
     private var lastParticipantCount = 0
+    private var isLoadingSessions = false
     fileprivate var latestLocation: CLLocation?
+    fileprivate var oneShotLocationContinuation: CheckedContinuation<CLLocation?, Never>?
 
     private let clManager = CLLocationManager()
     private let locationDelegate = LocationDelegate()
@@ -197,7 +199,9 @@ final class LocationManager {
     }
 
     func loadSessions() async {
-        guard isAuthenticated else { return }
+        guard isAuthenticated, !isLoadingSessions else { return }
+        isLoadingSessions = true
+        defer { isLoadingSessions = false }
         do {
             memberships = try await send(path: "/me/sessions")
             if !sessionId.isEmpty && activeMembership == nil {
@@ -249,7 +253,6 @@ final class LocationManager {
     func selectSession(_ membership: SessionMembership) {
         sessionId = membership.sessionId
         status = membership.role == "viewer" ? "Viewer only" : "Ready"
-        Task { participants = await previewSession(membership.sessionId) }
         Task { await loadSelectedSessionMembers() }
         postPresence()
     }
@@ -289,6 +292,7 @@ final class LocationManager {
         } else {
             selectedSessionMembers = []
         }
+        participants = selectedSessionMembers.map { $0.displayName }
         await loadJoinRequests()
     }
 
@@ -398,6 +402,13 @@ final class LocationManager {
         status = "Stopped"
     }
 
+    func stopAndLeave() async {
+        let id = sessionId
+        stop()
+        guard !id.isEmpty else { return }
+        try? await deleteSession(sessionId: id)
+    }
+
     private func trackingLoop() async {
         while !Task.isCancelled {
             let now = Date().timeIntervalSince1970
@@ -405,15 +416,6 @@ final class LocationManager {
             try? await Task.sleep(for: .seconds(delay))
             guard !Task.isCancelled else { break }
             captureAndPost()
-        }
-    }
-
-    func previewSession(_ sessionId: String) async -> [String] {
-        do {
-            let groups: [[RunnerPositionResponse]] = try await send(path: "/locations/\(sessionId)")
-            return groups.compactMap { $0.first?.runnerName }
-        } catch {
-            return []
         }
     }
 
@@ -431,6 +433,23 @@ final class LocationManager {
                 heading: heading,
                 timestamp: loc.timestamp)
         }
+    }
+
+    func refresh() async {
+        let loc: CLLocation?
+        if let existing = latestLocation {
+            loc = existing
+        } else {
+            clManager.requestLocation()
+            loc = await withCheckedContinuation { continuation in
+                oneShotLocationContinuation = continuation
+            }
+        }
+        if let loc {
+            let heading: Double? = loc.course >= 0 ? loc.course : nil
+            await post(lat: loc.coordinate.latitude, lon: loc.coordinate.longitude, heading: heading, timestamp: loc.timestamp)
+        }
+        await loadSessions()
     }
 
     private func post(lat: Double, lon: Double, heading: Double?, timestamp: Date) async {
@@ -625,7 +644,18 @@ private final class LocationDelegate: NSObject, CLLocationManagerDelegate {
 
     func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
         guard let loc = locations.last else { return }
-        Task { @MainActor [weak self] in self?.owner?.latestLocation = loc }
+        Task { @MainActor [weak self] in
+            self?.owner?.latestLocation = loc
+            self?.owner?.oneShotLocationContinuation?.resume(returning: loc)
+            self?.owner?.oneShotLocationContinuation = nil
+        }
+    }
+
+    func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
+        Task { @MainActor [weak self] in
+            self?.owner?.oneShotLocationContinuation?.resume(returning: nil)
+            self?.owner?.oneShotLocationContinuation = nil
+        }
     }
 
     func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {}
