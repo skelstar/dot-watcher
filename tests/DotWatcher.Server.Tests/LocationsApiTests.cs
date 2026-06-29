@@ -220,20 +220,12 @@ public class LocationsApiTests
         var runner = await AuthTestHelpers.RegisterWithResponseAsync(client, "runner", "Runner");
         var session = await AuthTestHelpers.CreateSessionAsync(client, owner.AccessToken);
 
-        await AuthTestHelpers.JoinSessionAsync(
+        await AuthTestHelpers.ApproveAsRunnerAsync(
             client,
+            owner.AccessToken,
             runner.AccessToken,
-            session.InviteCode,
+            session.SessionId,
             displayName: "First Name");
-        using (var promote = AuthTestHelpers.WithUserToken(
-            HttpMethod.Post,
-            $"/sessions/{session.SessionId}/members/{runner.User.UserId}/role",
-            owner.AccessToken))
-        {
-            promote.Content = JsonContent.Create(new { role = "runner" });
-            var promoteResponse = await client.SendAsync(promote);
-            Assert.Equal(HttpStatusCode.OK, promoteResponse.StatusCode);
-        }
 
         await PostLocationAsync(
             client,

@@ -11,6 +11,7 @@ struct SessionEntrySheet: View {
     @State private var isBrowseLoading = false
     @State private var requestedSessionIds: Set<String> = []
     @State private var sessionToDelete: SessionMembership?
+    @State private var sessionToLeave: SessionMembership?
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -40,6 +41,16 @@ struct SessionEntrySheet: View {
                                     Text(membership.role.uppercased())
                                         .font(.caption2.bold())
                                         .foregroundStyle(.secondary)
+                                    if membership.role != "owner" {
+                                        Button {
+                                            sessionToLeave = membership
+                                        } label: {
+                                            Image(systemName: "xmark.circle.fill")
+                                                .font(.system(size: 28))
+                                                .foregroundStyle(.red)
+                                        }
+                                        .buttonStyle(.plain)
+                                    }
                                 }
                             }
                             .swipeActions(edge: .trailing) {
@@ -55,33 +66,35 @@ struct SessionEntrySheet: View {
                     }
                 }
 
-                Section("Create") {
-                    HStack(spacing: 6) {
-                        CodeBoxField(text: $createCode)
-                    }
-                    if !createCode.isEmpty && createCode.count < 3 {
-                        Text("Session name must be at least 3 characters")
-                            .font(.caption)
-                            .foregroundStyle(.orange)
-                    }
-                    Button("Create Session") {
-                        Task { await createSession() }
-                    }
-                    .disabled(isBusy || createCode.count < 3)
-                }
-
-                Section("Join") {
-                    TextField("Invite code", text: $inviteCode)
-                        .textInputAutocapitalization(.characters)
-                        .autocorrectionDisabled()
-                        .onChange(of: inviteCode) { _, new in
-                            let filtered = String(new.uppercased().filter { $0.isLetter || $0.isNumber || $0 == "-" || $0 == "_" }.prefix(32))
-                            if filtered != new { inviteCode = filtered }
+                if location.memberships.isEmpty {
+                    Section("Create") {
+                        HStack(spacing: 6) {
+                            CodeBoxField(text: $createCode, length: 8)
                         }
-                    Button("Join Session") {
-                        Task { await joinSession() }
+                        if !createCode.isEmpty && createCode.count < 4 {
+                            Text("Session name must be at least 4 characters")
+                                .font(.caption)
+                                .foregroundStyle(.orange)
+                        }
+                        Button("Create Session") {
+                            Task { await createSession() }
+                        }
+                        .disabled(isBusy || createCode.count < 4)
                     }
-                    .disabled(isBusy || inviteCode.trimmingCharacters(in: .whitespaces).isEmpty)
+
+                    Section("Join") {
+                        TextField("Invite code", text: $inviteCode)
+                            .textInputAutocapitalization(.characters)
+                            .autocorrectionDisabled()
+                            .onChange(of: inviteCode) { _, new in
+                                let filtered = String(new.uppercased().filter { $0.isLetter || $0.isNumber || $0 == "-" || $0 == "_" }.prefix(32))
+                                if filtered != new { inviteCode = filtered }
+                            }
+                        Button("Join Session") {
+                            Task { await joinSession() }
+                        }
+                        .disabled(isBusy || inviteCode.trimmingCharacters(in: .whitespaces).isEmpty)
+                    }
                 }
 
                 Section {
@@ -178,6 +191,21 @@ struct SessionEntrySheet: View {
                     Text("This permanently deletes \(s.sessionName) and all its members, location data, and join requests. This cannot be undone.")
                 }
             }
+            .alert("Leave session?", isPresented: .init(
+                get: { sessionToLeave != nil },
+                set: { if !$0 { sessionToLeave = nil } }
+            )) {
+                Button("Leave", role: .destructive) {
+                    if let s = sessionToLeave {
+                        Task { await leaveSession(s) }
+                    }
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                if let s = sessionToLeave {
+                    Text("Are you sure you want to leave \(s.sessionName)?")
+                }
+            }
             .task {
                 async let sessions: () = location.loadSessions()
                 async let browse: () = loadBrowseSessions()
@@ -208,6 +236,18 @@ struct SessionEntrySheet: View {
         do {
             try await location.joinInvite(code: inviteCode, displayName: location.runnerName)
             dismiss()
+        } catch {
+            self.error = error.localizedDescription
+        }
+        isBusy = false
+    }
+
+    private func leaveSession(_ membership: SessionMembership) async {
+        isBusy = true
+        error = nil
+        sessionToLeave = nil
+        do {
+            try await location.leaveSession(sessionId: membership.sessionId)
         } catch {
             self.error = error.localizedDescription
         }

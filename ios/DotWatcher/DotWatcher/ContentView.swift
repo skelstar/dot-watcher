@@ -9,12 +9,9 @@ struct ContentView: View {
     @State private var showHelp: Bool = false
     @State private var showSessionEntry: Bool = false
     @State private var showAuth: Bool = false
-    @State private var showMembers: Bool = false
-    @State private var pendingSessionEntry: Bool = false
-    @State private var isRefreshing: Bool = false
-    @State private var showStopConfirm: Bool = false
-    @State private var requestPendingDeny: JoinRequest? = nil
-    @State private var busyRequestId: String? = nil
+    @State private var busyRequestId: String?
+    @State private var requestPendingDeny: JoinRequest?
+    @State private var memberError: String?
 
     var body: some View {
         ScrollView {
@@ -22,6 +19,9 @@ struct ContentView: View {
                 headerSection
                 runnerRow
                 sessionNameCard
+                if location.activeMembership?.role == "owner" && !location.pendingJoinRequests.isEmpty {
+                    joinRequestsCard
+                }
                 statusCard
                 if !location.pendingJoinRequests.isEmpty {
                     joinRequestsCard
@@ -29,6 +29,10 @@ struct ContentView: View {
                 participantsCard
             }
             .padding()
+        }
+        .refreshable {
+            await location.loadSessions()
+            await location.loadSessionRunners()
         }
         .safeAreaInset(edge: .bottom) {
             bottomButton
@@ -102,8 +106,26 @@ struct ContentView: View {
                 showNameEntry = true
             }
         }
-        .sheet(isPresented: $showMembers) {
-            MemberManagementSheet(location: location)
+        .alert("Deny request?", isPresented: Binding(
+            get: { requestPendingDeny != nil },
+            set: { if !$0 { requestPendingDeny = nil } }
+        )) {
+            Button("Deny", role: .destructive) {
+                if let request = requestPendingDeny {
+                    Task { await deny(request) }
+                }
+                requestPendingDeny = nil
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            if let request = requestPendingDeny {
+                Text("Deny \(request.displayName)'s request to join?")
+            }
+        }
+        .onChange(of: location.pendingJoinRequestCount) { _, newCount in
+            if newCount > 0 {
+                Task { await location.loadJoinRequests() }
+            }
         }
     }
 
@@ -191,9 +213,23 @@ struct ContentView: View {
 
             if !location.sessionId.isEmpty,
                let url = URL(string: "https://dot-watcher.skelstar.io/\(location.sessionId)") {
-                Link("Open map in browser", destination: url)
-                    .font(.subheadline)
-                    .foregroundStyle(Color.accentColor)
+                HStack(spacing: 10) {
+                    Spacer()
+                    ShareLink(item: url) {
+                        Image(systemName: "square.and.arrow.up")
+                            .font(.system(size: 20))
+                            .foregroundStyle(.white)
+                            .frame(width: 48, height: 48)
+                            .background(Color(.systemBlue), in: RoundedRectangle(cornerRadius: 12))
+                    }
+                    Link(destination: url) {
+                        Image(systemName: "map.fill")
+                            .font(.system(size: 20))
+                            .foregroundStyle(.white)
+                            .frame(width: 48, height: 48)
+                            .background(Color(red: 0.2, green: 0.78, blue: 0.35), in: RoundedRectangle(cornerRadius: 12))
+                    }
+                }
             }
 
             if let inviteCode = location.activeMembership?.inviteCode,
@@ -201,23 +237,6 @@ struct ContentView: View {
                 Text("Invite \(inviteCode)")
                     .font(.caption.monospaced())
                     .foregroundStyle(.secondary)
-            }
-            if location.activeMembership != nil {
-                Button("Manage members") {
-                    showMembers = true
-                }
-                .font(.subheadline)
-                .overlay(alignment: .topTrailing) {
-                    if location.pendingJoinRequestCount > 0 {
-                        Text("\(location.pendingJoinRequestCount)")
-                            .font(.caption2.bold())
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, 5)
-                            .padding(.vertical, 2)
-                            .background(.red, in: Capsule())
-                            .offset(x: 16, y: -10)
-                    }
-                }
             }
         }
         .padding(16)
@@ -283,6 +302,19 @@ struct ContentView: View {
                 Text("every 15s")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                Button {
+                    Task {
+                        await location.loadSessions()
+                        await location.loadSessionRunners()
+                    }
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 40, height: 40)
+                        .background(Color(.white), in: Circle())
+                }
+                .buttonStyle(.plain)
             }
             HStack {
                 if batteryLevel >= 0 {
@@ -307,45 +339,21 @@ struct ContentView: View {
 
     private var participantsCard: some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Text("PARTICIPANTS")
-                    .font(.caption)
-                    .fontWeight(.semibold)
-                    .foregroundStyle(.secondary)
-                Spacer()
-                if location.isAuthenticated {
-                    Button {
-                        Task {
-                            isRefreshing = true
-                            await location.refresh()
-                            isRefreshing = false
-                        }
-                    } label: {
-                        if isRefreshing {
-                            ProgressView()
-                                .frame(width: 36, height: 36)
-                        } else {
-                            Image(systemName: "arrow.clockwise")
-                                .font(.title3.weight(.semibold))
-                                .frame(width: 36, height: 36)
-                                .background(Color.accentColor.opacity(0.15), in: Circle())
-                                .foregroundStyle(Color.accentColor)
-                        }
-                    }
-                    .disabled(isRefreshing)
-                }
-            }
-            if location.participants.isEmpty {
+            Text("PARTICIPANTS")
+                .font(.caption)
+                .fontWeight(.semibold)
+                .foregroundStyle(.secondary)
+            if location.sessionRunnerNames.isEmpty {
                 Text("No participants yet")
                     .font(.caption)
                     .foregroundStyle(.tertiary)
             } else {
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 56))], spacing: 10) {
-                    ForEach(location.participants, id: \.self) { participant in
+                    ForEach(location.sessionRunnerNames, id: \.self) { name in
                         RunnerCircle(
-                            name: participant,
+                            name: name,
                             size: 56,
-                            isHighlighted: participant == location.runnerName
+                            isHighlighted: location.participants.contains(name) || name == location.runnerName
                         )
                     }
                 }
@@ -398,6 +406,79 @@ struct ContentView: View {
             .tint(.green)
             .controlSize(.large)
         }
+    }
+
+    // MARK: - Join Requests Card
+
+    private var joinRequestsCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("JOIN REQUESTS")
+                .font(.caption)
+                .fontWeight(.semibold)
+                .foregroundStyle(.secondary)
+            ForEach(location.pendingJoinRequests) { request in
+                HStack {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(request.displayName)
+                            .font(.body)
+                        Text("Requested \(request.formattedDate)")
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                    }
+                    Spacer()
+                    HStack(spacing: 4) {
+                        Button {
+                            Task { await approve(request) }
+                        } label: {
+                            Image(systemName: "checkmark.circle.fill")
+                                .font(.system(size: 44))
+                                .foregroundStyle(.green)
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(busyRequestId == request.requestId)
+                        Button {
+                            requestPendingDeny = request
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.system(size: 44))
+                                .foregroundStyle(.red)
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(busyRequestId == request.requestId)
+                    }
+                }
+            }
+            if let memberError {
+                Text(memberError)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+            }
+        }
+        .padding(16)
+        .background(Color(.secondarySystemBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 14))
+    }
+
+    private func approve(_ request: JoinRequest) async {
+        busyRequestId = request.requestId
+        memberError = nil
+        do {
+            try await location.approveJoinRequest(request)
+        } catch {
+            memberError = error.localizedDescription
+        }
+        busyRequestId = nil
+    }
+
+    private func deny(_ request: JoinRequest) async {
+        busyRequestId = request.requestId
+        memberError = nil
+        do {
+            try await location.denyJoinRequest(request)
+        } catch {
+            memberError = error.localizedDescription
+        }
+        busyRequestId = nil
     }
 
     // MARK: - Helpers
