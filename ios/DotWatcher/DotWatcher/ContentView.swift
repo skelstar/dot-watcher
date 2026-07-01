@@ -7,23 +7,252 @@ struct ContentView: View {
     @State private var showNameEntry: Bool = false
     @State private var nameInput: String = ""
     @State private var showHelp: Bool = false
-    @State private var showSessionEntry: Bool = false
     @State private var showAuth: Bool = false
+    @State private var showStopConfirm: Bool = false
+    @State private var showLeaveConfirm: Bool = false
     @State private var busyRequestId: String?
     @State private var requestPendingDeny: JoinRequest?
     @State private var memberError: String?
+    @State private var noSessionCreateCode = ""
+    @State private var noSessionInviteCode = ""
+    @State private var browsableSessions: [BrowsableSession] = []
+    @State private var isBrowseLoading = false
+    @State private var requestedSessionIds: Set<String> = []
+    @State private var isBusy = false
+    @State private var formError: String?
 
     var body: some View {
+        mainContent
+            .onAppear {
+                UIDevice.current.isBatteryMonitoringEnabled = true
+                batteryLevel = UIDevice.current.batteryLevel
+                if location.isAuthenticated {
+                    if location.runnerName.trimmingCharacters(in: .whitespaces).isEmpty {
+                        showNameEntry = true
+                    }
+                    Task { await location.loadSessions() }
+                } else {
+                    showAuth = true
+                }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: UIDevice.batteryLevelDidChangeNotification)) { _ in
+                batteryLevel = UIDevice.current.batteryLevel
+            }
+            .sheet(isPresented: $showHelp) {
+                HelpView()
+            }
+            .sheet(isPresented: $showNameEntry) {
+                NameEntryView(
+                    name: $nameInput,
+                    isFirstLaunch: location.runnerName.trimmingCharacters(in: .whitespaces).isEmpty
+                ) {
+                    location.runnerName = nameInput.trimmingCharacters(in: .whitespaces)
+                    showNameEntry = false
+                }
+                .interactiveDismissDisabled(location.runnerName.trimmingCharacters(in: .whitespaces).isEmpty)
+            }
+            .fullScreenCover(isPresented: $showAuth) {
+                AuthSheet(location: location)
+            }
+            .onChange(of: location.isAuthenticated) { _, isAuthenticated in
+                guard isAuthenticated else {
+                    showAuth = true
+                    return
+                }
+                if location.runnerName.trimmingCharacters(in: .whitespaces).isEmpty {
+                    showNameEntry = true
+                }
+            }
+            .alert("Deny request?", isPresented: Binding(
+                get: { requestPendingDeny != nil },
+                set: { if !$0 { requestPendingDeny = nil } }
+            )) {
+                Button("Deny", role: .destructive) {
+                    if let request = requestPendingDeny {
+                        Task { await deny(request) }
+                    }
+                    requestPendingDeny = nil
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                if let request = requestPendingDeny {
+                    Text("Deny \(request.displayName)'s request to join?")
+                }
+            }
+            .alert("Leave session?", isPresented: $showLeaveConfirm) {
+                Button("Leave", role: .destructive) {
+                    Task { await leaveOrDeleteSession() }
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                if let membership = location.activeMembership {
+                    Text("Are you sure you want to leave \(membership.sessionName)?")
+                }
+            }
+            .onChange(of: location.pendingJoinRequestCount) { _, newCount in
+                if newCount > 0 {
+                    Task { await location.loadJoinRequests() }
+                }
+            }
+    }
+
+    // MARK: - Main Content
+
+    @ViewBuilder
+    private var mainContent: some View {
+        if location.isAuthenticated && location.memberships.isEmpty {
+            noSessionView
+        } else {
+            sessionView
+        }
+    }
+
+    // MARK: - No Session View
+
+    private var noSessionView: some View {
+        ScrollView {
+            VStack(spacing: 16) {
+                headerSection
+                runnerRow
+                noSessionCreateCard
+                noSessionBrowseCard
+                noSessionJoinCard
+                if let formError {
+                    Text(formError)
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 4)
+                }
+            }
+            .padding()
+        }
+        .refreshable {
+            await location.loadSessions()
+            await loadBrowsableSessions()
+        }
+        .task { await loadBrowsableSessions() }
+    }
+
+    private var noSessionCreateCard: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Create")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .padding(.leading, 4)
+            VStack(spacing: 0) {
+                CodeBoxField(text: $noSessionCreateCode, length: 8)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 14)
+                Divider().padding(.leading, 16)
+                Button {
+                    Task { await noSessionCreateSession() }
+                } label: {
+                    Text("Create Session")
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 14)
+                }
+                .disabled(isBusy || noSessionCreateCode.count < 4)
+            }
+            .background(Color(.secondarySystemBackground))
+            .clipShape(RoundedRectangle(cornerRadius: 14))
+        }
+    }
+
+    private var noSessionBrowseCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("Browse Active Sessions")
+                    .font(.headline)
+                Spacer()
+                Button {
+                    Task { await loadBrowsableSessions() }
+                } label: {
+                    if isBrowseLoading {
+                        ProgressView()
+                    } else {
+                        Image(systemName: "arrow.clockwise")
+                            .foregroundStyle(.tint)
+                    }
+                }
+                .disabled(isBrowseLoading)
+            }
+            if browsableSessions.isEmpty && !isBrowseLoading {
+                Text("No active sessions found")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(browsableSessions) { session in
+                    HStack {
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(session.sessionName)
+                                .font(.body.monospaced().bold())
+                            Text("\(session.ownerDisplayName) · \(session.memberCount) member\(session.memberCount == 1 ? "" : "s")")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        if requestedSessionIds.contains(session.sessionId) {
+                            Text("Requested")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        } else {
+                            Button("Request") {
+                                Task { await noSessionRequestJoin(session) }
+                            }
+                            .disabled(isBusy)
+                        }
+                    }
+                }
+            }
+        }
+        .padding(16)
+        .background(Color(.secondarySystemBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 14))
+    }
+
+    private var noSessionJoinCard: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Join")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .padding(.leading, 4)
+            VStack(spacing: 0) {
+                TextField("Invite code", text: $noSessionInviteCode)
+                    .textInputAutocapitalization(.characters)
+                    .autocorrectionDisabled()
+                    .onChange(of: noSessionInviteCode) { _, new in
+                        let filtered = String(new.uppercased().filter { $0.isLetter || $0.isNumber || $0 == "-" || $0 == "_" }.prefix(32))
+                        if filtered != new { noSessionInviteCode = filtered }
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 14)
+                Divider().padding(.leading, 16)
+                Button {
+                    Task { await noSessionJoinSession() }
+                } label: {
+                    Text("Join Session")
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 14)
+                }
+                .disabled(isBusy || noSessionInviteCode.trimmingCharacters(in: .whitespaces).isEmpty)
+            }
+            .background(Color(.secondarySystemBackground))
+            .clipShape(RoundedRectangle(cornerRadius: 14))
+        }
+    }
+
+    // MARK: - Session View
+
+    private var sessionView: some View {
         ScrollView {
             VStack(spacing: 16) {
                 headerSection
                 runnerRow
                 sessionNameCard
-                if location.activeMembership?.role == "owner" && !location.pendingJoinRequests.isEmpty {
-                    joinRequestsCard
-                }
-                statusCard
-                if !location.pendingJoinRequests.isEmpty {
+                if location.activeMembership?.role == "runner" && !location.pendingJoinRequests.isEmpty {
                     joinRequestsCard
                 }
                 participantsCard
@@ -40,92 +269,6 @@ struct ContentView: View {
                 .padding(.vertical, 12)
                 .frame(maxWidth: .infinity)
                 .background(.regularMaterial)
-        }
-        .onAppear {
-            UIDevice.current.isBatteryMonitoringEnabled = true
-            batteryLevel = UIDevice.current.batteryLevel
-            if location.isAuthenticated {
-                if location.runnerName.trimmingCharacters(in: .whitespaces).isEmpty {
-                    showNameEntry = true
-                }
-                Task { await location.loadSessions() }
-            } else {
-                showAuth = true
-            }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: UIDevice.batteryLevelDidChangeNotification)) { _ in
-            batteryLevel = UIDevice.current.batteryLevel
-        }
-        .alert("Deny request?", isPresented: Binding(
-            get: { requestPendingDeny != nil },
-            set: { if !$0 { requestPendingDeny = nil } }
-        )) {
-            Button("Deny", role: .destructive) {
-                if let request = requestPendingDeny {
-                    Task { try? await location.denyJoinRequest(request) }
-                }
-                requestPendingDeny = nil
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            if let request = requestPendingDeny {
-                Text("Deny \(request.displayName)'s request to join?")
-            }
-        }
-        .sheet(isPresented: $showHelp) {
-            HelpView()
-        }
-        .sheet(isPresented: $showNameEntry, onDismiss: {
-            if pendingSessionEntry {
-                pendingSessionEntry = false
-                showSessionEntry = true
-            }
-        }) {
-            NameEntryView(
-                name: $nameInput,
-                isFirstLaunch: location.runnerName.trimmingCharacters(in: .whitespaces).isEmpty
-            ) {
-                location.runnerName = nameInput.trimmingCharacters(in: .whitespaces)
-                showNameEntry = false
-            }
-            .interactiveDismissDisabled(location.runnerName.trimmingCharacters(in: .whitespaces).isEmpty)
-        }
-        .sheet(isPresented: $showSessionEntry) {
-            SessionEntrySheet(location: location)
-        }
-        .fullScreenCover(isPresented: $showAuth) {
-            AuthSheet(location: location)
-        }
-        .onChange(of: location.isAuthenticated) { _, isAuthenticated in
-            guard isAuthenticated else {
-                showAuth = true
-                return
-            }
-            if location.runnerName.trimmingCharacters(in: .whitespaces).isEmpty {
-                pendingSessionEntry = true
-                showNameEntry = true
-            }
-        }
-        .alert("Deny request?", isPresented: Binding(
-            get: { requestPendingDeny != nil },
-            set: { if !$0 { requestPendingDeny = nil } }
-        )) {
-            Button("Deny", role: .destructive) {
-                if let request = requestPendingDeny {
-                    Task { await deny(request) }
-                }
-                requestPendingDeny = nil
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            if let request = requestPendingDeny {
-                Text("Deny \(request.displayName)'s request to join?")
-            }
-        }
-        .onChange(of: location.pendingJoinRequestCount) { _, newCount in
-            if newCount > 0 {
-                Task { await location.loadJoinRequests() }
-            }
         }
     }
 
@@ -156,26 +299,69 @@ struct ContentView: View {
                 Image(systemName: "questionmark.circle")
                     .font(.title2)
                     .foregroundStyle(.secondary)
-            }
+                }
         }
     }
 
     // MARK: - Runner Row
 
     private var runnerRow: some View {
-        RunnerCircle(name: location.isAuthenticated ? location.runnerName : "??", size: 56, isHighlighted: true)
-            .onTapGesture {
-                nameInput = location.runnerName
-                showNameEntry = true
+        HStack(spacing: 12) {
+            RunnerCircle(name: location.isAuthenticated ? location.runnerName : "??", size: 56, isHighlighted: true)
+                .padding(.vertical, 8)
+                .onTapGesture {
+                    nameInput = location.runnerName
+                    showNameEntry = true
+                }
+            HStack(spacing: 8) {
+                Circle()
+                    .fill(statusDotColor)
+                    .frame(width: 10, height: 10)
+                Text(location.status)
+                    .font(.headline)
+                    .fontWeight(.bold)
             }
-            .frame(maxWidth: .infinity)
+            Spacer()
+            if location.activeMembership != nil {
+                Button {
+                    Task {
+                        await location.loadSessions()
+                        await location.loadSessionRunners()
+                    }
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                        .font(.system(size: 20))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 48, height: 48)
+                        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 12))
+                }
+                .buttonStyle(.plain)
+            }
+            if !location.sessionId.isEmpty,
+               let url = URL(string: "https://dot-watcher.skelstar.io/\(location.sessionId)") {
+                ShareLink(item: url) {
+                    Image(systemName: "square.and.arrow.up")
+                        .font(.system(size: 20))
+                        .foregroundStyle(.white)
+                        .frame(width: 48, height: 48)
+                        .background(Color(.systemBlue), in: RoundedRectangle(cornerRadius: 12))
+                }
+                Link(destination: url) {
+                    Image(systemName: "map.fill")
+                        .font(.system(size: 20))
+                        .foregroundStyle(.white)
+                        .frame(width: 48, height: 48)
+                        .background(Color(red: 0.2, green: 0.78, blue: 0.35), in: RoundedRectangle(cornerRadius: 12))
+                }
+            }
+        }
     }
 
     // MARK: - Session Name Card
 
     private var sessionNameCard: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("SESSION NAME")
+            Text("Session")
                 .font(.caption)
                 .fontWeight(.semibold)
                 .foregroundStyle(.secondary)
@@ -191,10 +377,13 @@ struct ContentView: View {
                         .foregroundStyle(.primary)
                 }
                 Spacer()
-                if let role = location.activeMembership?.role {
-                    Text(role.uppercased())
-                        .font(.caption2.bold())
-                        .foregroundStyle(.secondary)
+                if location.activeMembership != nil {
+                    Button("Leave") { showLeaveConfirm = true }
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 6)
+                        .background(.red, in: Capsule())
                 } else {
                     Image(systemName: "lock")
                         .font(.subheadline)
@@ -206,34 +395,8 @@ struct ContentView: View {
             .background(Color(.tertiarySystemBackground))
             .clipShape(RoundedRectangle(cornerRadius: 10))
             .contentShape(RoundedRectangle(cornerRadius: 10))
-            .onTapGesture {
-                if location.isAuthenticated { showSessionEntry = true }
-                else { showAuth = true }
-            }
 
-            if !location.sessionId.isEmpty,
-               let url = URL(string: "https://dot-watcher.skelstar.io/\(location.sessionId)") {
-                HStack(spacing: 10) {
-                    Spacer()
-                    ShareLink(item: url) {
-                        Image(systemName: "square.and.arrow.up")
-                            .font(.system(size: 20))
-                            .foregroundStyle(.white)
-                            .frame(width: 48, height: 48)
-                            .background(Color(.systemBlue), in: RoundedRectangle(cornerRadius: 12))
-                    }
-                    Link(destination: url) {
-                        Image(systemName: "map.fill")
-                            .font(.system(size: 20))
-                            .foregroundStyle(.white)
-                            .frame(width: 48, height: 48)
-                            .background(Color(red: 0.2, green: 0.78, blue: 0.35), in: RoundedRectangle(cornerRadius: 12))
-                    }
-                }
-            }
-
-            if let inviteCode = location.activeMembership?.inviteCode,
-               location.activeMembership?.role == "owner" {
+            if let inviteCode = location.activeMembership?.inviteCode {
                 Text("Invite \(inviteCode)")
                     .font(.caption.monospaced())
                     .foregroundStyle(.secondary)
@@ -262,23 +425,32 @@ struct ContentView: View {
                             .foregroundStyle(.tertiary)
                     }
                     Spacer()
-                    Button("Approve") {
-                        Task {
-                            busyRequestId = request.requestId
-                            try? await location.approveJoinRequest(request)
-                            busyRequestId = nil
+                    HStack(spacing: 4) {
+                        Button {
+                            Task { await approve(request) }
+                        } label: {
+                            Image(systemName: "checkmark.circle.fill")
+                                .font(.system(size: 44))
+                                .foregroundStyle(.green)
                         }
+                        .buttonStyle(.plain)
+                        .disabled(busyRequestId == request.requestId)
+                        Button {
+                            requestPendingDeny = request
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.system(size: 44))
+                                .foregroundStyle(.red)
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(busyRequestId == request.requestId)
                     }
-                    .buttonStyle(.borderedProminent)
-                    .tint(.green)
-                    .disabled(busyRequestId == request.requestId)
-                    Button("Deny") {
-                        requestPendingDeny = request
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .tint(.red)
-                    .disabled(busyRequestId == request.requestId)
                 }
+            }
+            if let memberError {
+                Text(memberError)
+                    .font(.caption)
+                    .foregroundStyle(.red)
             }
         }
         .padding(16)
@@ -339,16 +511,14 @@ struct ContentView: View {
 
     private var participantsCard: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("PARTICIPANTS")
+            Text("Participants")
                 .font(.caption)
                 .fontWeight(.semibold)
                 .foregroundStyle(.secondary)
-            if location.sessionRunnerNames.isEmpty {
-                Text("No participants yet")
-                    .font(.caption)
-                    .foregroundStyle(.tertiary)
-            } else {
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 56))], spacing: 10) {
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 56))], spacing: 10) {
+                if location.sessionRunnerNames.isEmpty {
+                    RunnerCircle(name: location.runnerName, size: 56, isHighlighted: true)
+                } else {
                     ForEach(location.sessionRunnerNames, id: \.self) { name in
                         RunnerCircle(
                             name: name,
@@ -357,12 +527,41 @@ struct ContentView: View {
                         )
                     }
                 }
+                let filledCount = max(1, location.sessionRunnerNames.count)
+                ForEach(0..<max(0, 5 - filledCount), id: \.self) { _ in
+                    ZStack {
+                        Circle()
+                            .strokeBorder(Color(.systemGray3), lineWidth: 2)
+                        Text("??")
+                            .font(.system(size: 56 * 0.3, weight: .bold))
+                            .foregroundStyle(Color(.systemGray3))
+                    }
+                    .frame(width: 56, height: 56)
+                }
             }
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
         .padding(16)
         .background(Color(.secondarySystemBackground))
         .clipShape(RoundedRectangle(cornerRadius: 14))
+    }
+
+    // MARK: - Status Bar (no-session bottom)
+
+    private var statusBarContent: some View {
+        HStack {
+            HStack(spacing: 8) {
+                Circle()
+                    .fill(statusDotColor)
+                    .frame(width: 10, height: 10)
+                Text(location.status)
+                    .font(.headline)
+            }
+            Spacer()
+            Text("every 15s")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
     }
 
     // MARK: - Bottom Button
@@ -377,7 +576,7 @@ struct ContentView: View {
             .tint(.red)
             .controlSize(.large)
             .alert("Stop tracking?", isPresented: $showStopConfirm) {
-                Button("Stop & Leave Session", role: .destructive) {
+                Button("Stop & Leave", role: .destructive) {
                     Task { await location.stopAndLeave() }
                 }
                 Button("Cancel", role: .cancel) {}
@@ -393,13 +592,9 @@ struct ContentView: View {
             .controlSize(.large)
         } else {
             Button {
-                if location.canTrackSelectedSession {
-                    location.start()
-                } else {
-                    showSessionEntry = true
-                }
+                location.start()
             } label: {
-                Text(location.canTrackSelectedSession ? "Start tracking" : "Choose tracking session")
+                Text("Start tracking")
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.borderedProminent)
@@ -408,56 +603,68 @@ struct ContentView: View {
         }
     }
 
-    // MARK: - Join Requests Card
+    // MARK: - No Session Actions
 
-    private var joinRequestsCard: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("JOIN REQUESTS")
-                .font(.caption)
-                .fontWeight(.semibold)
-                .foregroundStyle(.secondary)
-            ForEach(location.pendingJoinRequests) { request in
-                HStack {
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text(request.displayName)
-                            .font(.body)
-                        Text("Requested \(request.formattedDate)")
-                            .font(.caption2)
-                            .foregroundStyle(.tertiary)
-                    }
-                    Spacer()
-                    HStack(spacing: 4) {
-                        Button {
-                            Task { await approve(request) }
-                        } label: {
-                            Image(systemName: "checkmark.circle.fill")
-                                .font(.system(size: 44))
-                                .foregroundStyle(.green)
-                        }
-                        .buttonStyle(.plain)
-                        .disabled(busyRequestId == request.requestId)
-                        Button {
-                            requestPendingDeny = request
-                        } label: {
-                            Image(systemName: "xmark.circle.fill")
-                                .font(.system(size: 44))
-                                .foregroundStyle(.red)
-                        }
-                        .buttonStyle(.plain)
-                        .disabled(busyRequestId == request.requestId)
-                    }
-                }
-            }
-            if let memberError {
-                Text(memberError)
-                    .font(.caption)
-                    .foregroundStyle(.red)
-            }
+    private func noSessionCreateSession() async {
+        isBusy = true
+        formError = nil
+        do {
+            try await location.createSession(name: noSessionCreateCode, displayName: location.runnerName)
+            noSessionCreateCode = ""
+        } catch {
+            formError = error.localizedDescription
         }
-        .padding(16)
-        .background(Color(.secondarySystemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 14))
+        isBusy = false
     }
+
+    private func noSessionJoinSession() async {
+        isBusy = true
+        formError = nil
+        do {
+            try await location.joinInvite(code: noSessionInviteCode, displayName: location.runnerName)
+            noSessionInviteCode = ""
+        } catch {
+            formError = error.localizedDescription
+        }
+        isBusy = false
+    }
+
+    private func noSessionRequestJoin(_ session: BrowsableSession) async {
+        isBusy = true
+        formError = nil
+        do {
+            _ = try await location.requestToJoin(sessionId: session.sessionId, displayName: nil)
+            requestedSessionIds.insert(session.sessionId)
+        } catch {
+            formError = error.localizedDescription
+        }
+        isBusy = false
+    }
+
+    private func loadBrowsableSessions() async {
+        guard !isBrowseLoading else { return }
+        isBrowseLoading = true
+        do {
+            browsableSessions = try await location.browseSessions()
+        } catch {
+            // ignore browse errors silently
+        }
+        isBrowseLoading = false
+    }
+
+    // MARK: - Leave / Delete Session
+
+    private func leaveOrDeleteSession() async {
+        guard let membership = location.activeMembership else { return }
+        if location.isTracking { location.stop() }
+        do {
+            try await location.leaveSession(sessionId: membership.sessionId)
+        } catch {
+            memberError = error.localizedDescription
+        }
+    }
+
+    // MARK: - Join Request Actions
 
     private func approve(_ request: JoinRequest) async {
         busyRequestId = request.requestId

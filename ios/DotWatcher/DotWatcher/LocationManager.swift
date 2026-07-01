@@ -124,7 +124,7 @@ final class LocationManager {
     }
 
     var canTrackSelectedSession: Bool {
-        activeMembership?.role == "owner" || activeMembership?.role == "runner"
+        activeMembership?.role == "runner"
     }
 
 
@@ -201,9 +201,7 @@ final class LocationManager {
                 sessionId = ""
             }
             if sessionId.isEmpty {
-                if let owned = memberships.first(where: { $0.role == "owner" }) {
-                    selectSession(owned)
-                } else if let first = memberships.first {
+                if let first = memberships.first {
                     selectSession(first)
                 }
             } else {
@@ -238,6 +236,7 @@ final class LocationManager {
             method: "POST",
             body: [
                 "displayName": (name?.isEmpty ?? true) ? NSNull() : name!,
+                "role": "runner",
             ])
         upsertMembership(membership)
         selectSession(membership)
@@ -246,23 +245,8 @@ final class LocationManager {
     func selectSession(_ membership: SessionMembership) {
         sessionId = membership.sessionId
         status = membership.role == "viewer" ? "Viewer only" : "Ready"
-        Task { participants = await previewSession(membership.sessionId) }
-        Task { await loadJoinRequests() }
+Task { await loadJoinRequests() }
         Task { await loadSessionRunners() }
-    }
-
-    func deleteSession(sessionId code: String) async throws {
-        guard let token = accessToken else { throw DotWatcherAPIError.missingToken }
-        try await sendEmpty(path: "/me/sessions/\(code)", method: "DELETE", token: token)
-        memberships.removeAll { $0.sessionId == code }
-        if sessionId == code {
-            sessionId = ""
-            participants = []
-            pendingJoinRequests = []
-            pendingJoinRequestCount = 0
-            sessionRunnerNames = []
-            status = "Idle"
-        }
     }
 
     func leaveSession(sessionId code: String) async throws {
@@ -378,7 +362,7 @@ final class LocationManager {
         let id = sessionId
         stop()
         guard !id.isEmpty else { return }
-        try? await deleteSession(sessionId: id)
+        try? await leaveSession(sessionId: id)
     }
 
     private func trackingLoop() async {
