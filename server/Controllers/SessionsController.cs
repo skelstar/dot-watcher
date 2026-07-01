@@ -46,7 +46,10 @@ public class SessionsController(
         if (displayName.Length is < 1 or > 80)
             return BadRequest(new { error = "Display name must be 1-80 characters." });
 
-        return Ok(store.CreateSessionForUser(user.UserId, displayName, request.SessionName));
+        var membership = store.CreateSessionForUser(user.UserId, displayName, request.SessionName);
+        return membership is null
+            ? Conflict(new { error = "A session with that name already exists." })
+            : Ok(membership);
     }
 
     [HttpPost("/session-invites/{inviteCode}/join")]
@@ -64,10 +67,12 @@ public class SessionsController(
         if (displayName.Length is < 1 or > 80)
             return BadRequest(new { error = "Display name must be 1-80 characters." });
 
+        var role = request?.Role?.Trim().ToLowerInvariant() == "runner" ? "runner" : "viewer";
         var membership = store.JoinSessionByInvite(
             inviteCode,
             user.UserId,
-            displayName);
+            displayName,
+            role);
 
         return membership is null
             ? NotFound(new { error = "Invite not found." })
@@ -115,7 +120,6 @@ public class SessionsController(
             CreateJoinRequestStatus.Created => Ok(result.Request),
             CreateJoinRequestStatus.AlreadyPending => Ok(result.Request),
             CreateJoinRequestStatus.AlreadyMember => Conflict(new { error = "Already a member of this session." }),
-            CreateJoinRequestStatus.OwnSession => BadRequest(new { error = "Cannot request to join your own session." }),
             CreateJoinRequestStatus.SessionNotFound => NotFound(new { error = "Session not found." }),
             _ => StatusCode(StatusCodes.Status500InternalServerError),
         };
@@ -172,18 +176,6 @@ public class SessionsController(
             return Unauthorized();
 
         return store.LeaveSession(sessionId, user.UserId) ? NoContent() : NotFound();
-    }
-
-    [HttpDelete("/me/sessions/{sessionId}")]
-    public IActionResult DeleteMySession(string sessionId)
-    {
-        if (!userAuth.TryAuthenticate(Request, out var user))
-            return Unauthorized();
-
-        if (!store.IsSessionOwner(sessionId, user.UserId))
-            return StatusCode(StatusCodes.Status403Forbidden);
-
-        return store.DeleteSession(sessionId) ? NoContent() : NotFound();
     }
 
     [HttpPost("/sessions/{sessionId}/recording")]

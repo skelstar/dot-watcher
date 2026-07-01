@@ -48,7 +48,8 @@ public record CreateSessionRequest(
 );
 
 public record JoinSessionRequest(
-    string? DisplayName = null
+    string? DisplayName = null,
+    string? Role = null
 );
 
 public record SessionMembership(
@@ -125,7 +126,6 @@ public enum CreateJoinRequestStatus
     Created,
     AlreadyMember,
     AlreadyPending,
-    OwnSession,
     SessionNotFound,
 }
 

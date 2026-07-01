@@ -274,7 +274,7 @@ public class SessionStore(string dbPath)
         return deletedUsers > 0;
     }
 
-    public SessionMembership CreateSessionForUser(string userId, string displayName, string? requestedName = null)
+    public SessionMembership? CreateSessionForUser(string userId, string displayName, string? requestedName = null)
     {
         var sessionName = NormalizeSessionName(requestedName) ?? requestedName?.Trim() ?? "Session";
         var sessionId = Guid.NewGuid().ToString();
@@ -282,6 +282,12 @@ public class SessionStore(string dbPath)
         var now = DateTimeOffset.UtcNow.ToString("O");
 
         using var conn = Connect();
+
+        using var dupCheck = conn.CreateCommand();
+        dupCheck.CommandText = "SELECT 1 FROM app_sessions WHERE session_name = $name";
+        dupCheck.Parameters.AddWithValue("$name", sessionName);
+        if (dupCheck.ExecuteScalar() is not null)
+            return null;
 
         using var sessionCmd = conn.CreateCommand();
         sessionCmd.CommandText = """
@@ -295,12 +301,12 @@ public class SessionStore(string dbPath)
         sessionCmd.Parameters.AddWithValue("$createdAt", now);
         sessionCmd.ExecuteNonQuery();
 
-        UpsertMembership(conn, sessionId, userId, "owner", displayName, now);
+        UpsertMembership(conn, sessionId, userId, "runner", displayName, now);
 
-        return new SessionMembership(sessionId, sessionName, inviteCode, "owner", displayName);
+        return new SessionMembership(sessionId, sessionName, inviteCode, "runner", displayName);
     }
 
-    public SessionMembership? JoinSessionByInvite(string inviteCode, string userId, string displayName)
+    public SessionMembership? JoinSessionByInvite(string inviteCode, string userId, string displayName, string role = "viewer")
     {
         var normalizedInvite = NormalizeSessionName(inviteCode);
         if (normalizedInvite is null)
@@ -323,7 +329,7 @@ public class SessionStore(string dbPath)
         reader.Close();
 
         var joinedAt = DateTimeOffset.UtcNow.ToString("O");
-        UpsertMembershipPreservingRole(conn, sessionId, userId, "viewer", displayName, joinedAt);
+        UpsertMembershipPreservingRole(conn, sessionId, userId, role, displayName, joinedAt);
 
         return GetMembership(conn, sessionId, userId, storedInviteCode)!;
     }
@@ -387,11 +393,8 @@ public class SessionStore(string dbPath)
     public bool CanWriteLocation(string sessionId, string userId)
     {
         var membership = GetMembership(sessionId, userId);
-        return membership?.Role is "owner" or "runner";
+        return membership?.Role == "runner";
     }
-
-    public bool IsSessionOwner(string sessionId, string userId) =>
-        GetMembership(sessionId, userId)?.Role == "owner";
 
     public IReadOnlyList<string> GetSessionRunners(string sessionId)
     {
@@ -400,7 +403,7 @@ public class SessionStore(string dbPath)
         cmd.CommandText = """
             SELECT display_name
             FROM session_members
-            WHERE session_id = $sessionId AND role IN ('owner', 'runner')
+            WHERE session_id = $sessionId AND role = 'runner'
             ORDER BY joined_at ASC
             """;
         cmd.Parameters.AddWithValue("$sessionId", sessionId);
@@ -550,8 +553,6 @@ public class SessionStore(string dbPath)
             return new CreateJoinRequestResult(CreateJoinRequestStatus.SessionNotFound, null);
 
         var membership = GetMembership(conn, sessionId, userId);
-        if (membership?.Role == "owner")
-            return new CreateJoinRequestResult(CreateJoinRequestStatus.OwnSession, null);
         if (membership is not null)
             return new CreateJoinRequestResult(CreateJoinRequestStatus.AlreadyMember, null);
 
@@ -712,7 +713,7 @@ public class SessionStore(string dbPath)
         using var cmd = conn.CreateCommand();
         cmd.CommandText = """
             DELETE FROM session_members
-            WHERE session_id = $sessionId AND user_id = $userId AND role != 'owner'
+            WHERE session_id = $sessionId AND user_id = $userId
             """;
         cmd.Parameters.AddWithValue("$sessionId", sessionId);
         cmd.Parameters.AddWithValue("$userId", userId);
