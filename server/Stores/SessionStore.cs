@@ -667,8 +667,9 @@ public class SessionStore(string dbPath)
         using (var deleteCmd = conn.CreateCommand())
         {
             deleteCmd.Transaction = tx;
-            deleteCmd.CommandText = "DELETE FROM join_requests WHERE id = $requestId";
-            deleteCmd.Parameters.AddWithValue("$requestId", requestId);
+            deleteCmd.CommandText = "DELETE FROM join_requests WHERE session_id = $sessionId AND user_id = $userId";
+            deleteCmd.Parameters.AddWithValue("$sessionId", sessionId);
+            deleteCmd.Parameters.AddWithValue("$userId", userId);
             deleteCmd.ExecuteNonQuery();
         }
 
@@ -725,8 +726,15 @@ public class SessionStore(string dbPath)
         using var conn = Connect();
         using var cmd = conn.CreateCommand();
         cmd.CommandText = """
-            SELECT session_id, status FROM join_requests
-            WHERE user_id = $userId AND status IN ('pending', 'denied')
+            SELECT jr.session_id, jr.status FROM join_requests jr
+            WHERE jr.user_id = $userId
+              AND jr.status IN ('pending', 'denied')
+              AND jr.created_at = (
+                SELECT MAX(jr2.created_at) FROM join_requests jr2
+                WHERE jr2.user_id = $userId
+                  AND jr2.session_id = jr.session_id
+                  AND jr2.status IN ('pending', 'denied')
+              )
             """;
         cmd.Parameters.AddWithValue("$userId", userId);
         using var reader = cmd.ExecuteReader();

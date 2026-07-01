@@ -99,6 +99,8 @@ final class LocationManager {
     var participants: [String] = []
     private var lastParticipantCount = 0
     private var isLoadingSessions = false
+    private var isLoadingMyJoinRequests = false
+    private var isLoadingJoinRequests = false
     fileprivate var latestLocation: CLLocation?
     fileprivate var oneShotLocationContinuation: CheckedContinuation<CLLocation?, Never>?
 
@@ -198,7 +200,9 @@ final class LocationManager {
     }
 
     func loadMyJoinRequests() async {
-        guard isAuthenticated else { return }
+        guard isAuthenticated, !isLoadingMyJoinRequests else { return }
+        isLoadingMyJoinRequests = true
+        defer { isLoadingMyJoinRequests = false }
         do {
             myJoinRequests = try await send(path: "/me/join-requests")
         } catch {}
@@ -307,10 +311,12 @@ Task { await loadJoinRequests() }
     }
 
     func loadJoinRequests() async {
-        guard let membership = activeMembership else {
-            pendingJoinRequests = []
+        guard let membership = activeMembership, !isLoadingJoinRequests else {
+            if activeMembership == nil { pendingJoinRequests = [] }
             return
         }
+        isLoadingJoinRequests = true
+        defer { isLoadingJoinRequests = false }
         do {
             pendingJoinRequests = try await send(path: "/sessions/\(membership.sessionId)/join-requests")
         } catch DotWatcherAPIError.badResponse(401, _) {
