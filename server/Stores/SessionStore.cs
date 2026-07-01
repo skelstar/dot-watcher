@@ -720,6 +720,22 @@ public class SessionStore(string dbPath)
         return cmd.ExecuteNonQuery() > 0;
     }
 
+    public IReadOnlyList<MyJoinRequest> GetMyJoinRequests(string userId)
+    {
+        using var conn = Connect();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = """
+            SELECT session_id, status FROM join_requests
+            WHERE user_id = $userId AND status IN ('pending', 'denied')
+            """;
+        cmd.Parameters.AddWithValue("$userId", userId);
+        using var reader = cmd.ExecuteReader();
+        var list = new List<MyJoinRequest>();
+        while (reader.Read())
+            list.Add(new MyJoinRequest(reader.GetString(0), reader.GetString(1)));
+        return list;
+    }
+
     public bool DeleteJoinRequest(string requestId)
     {
         using var conn = Connect();

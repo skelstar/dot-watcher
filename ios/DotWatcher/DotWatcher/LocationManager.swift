@@ -50,6 +50,11 @@ struct JoinRequest: Codable, Identifiable {
     }
 }
 
+struct MyJoinRequest: Codable {
+    let sessionId: String
+    let status: String
+}
+
 private struct LocationPostResponse: Codable {
     let participants: [String]
     let pendingJoinRequests: Int?
@@ -88,6 +93,7 @@ final class LocationManager {
     private(set) var memberships: [SessionMembership] = []
     private(set) var pendingJoinRequestCount = 0
     private(set) var pendingJoinRequests: [JoinRequest] = []
+    private(set) var myJoinRequests: [MyJoinRequest] = []
     private(set) var sessionRunnerNames: [String] = []
 
     var participants: [String] = []
@@ -189,6 +195,13 @@ final class LocationManager {
         Self.storeToken(nil)
         UserDefaults.standard.removeObject(forKey: "currentUser")
         status = nextStatus
+    }
+
+    func loadMyJoinRequests() async {
+        guard isAuthenticated else { return }
+        do {
+            myJoinRequests = try await send(path: "/me/join-requests")
+        } catch {}
     }
 
     func loadSessions() async {

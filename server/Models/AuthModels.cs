@@ -129,6 +129,8 @@ public enum CreateJoinRequestStatus
     SessionNotFound,
 }
 
+public record MyJoinRequest(string SessionId, string Status);
+
 public record CreateJoinRequestResult(
     CreateJoinRequestStatus Status,
     JoinRequestRecord? Request
