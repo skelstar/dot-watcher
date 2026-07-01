@@ -20,6 +20,7 @@ struct ContentView: View {
     @State private var requestedSessionIds: Set<String> = []
     @State private var isBusy = false
     @State private var formError: String?
+    @State private var sessionRowSwipeOffset: CGFloat = 0
 
     var body: some View {
         mainContent
@@ -167,7 +168,10 @@ struct ContentView: View {
                     .font(.headline)
                 Spacer()
                 Button {
-                    Task { await loadBrowsableSessions() }
+                    Task {
+                        await location.loadSessions()
+                        await loadBrowsableSessions()
+                    }
                 } label: {
                     if isBrowseLoading {
                         ProgressView()
@@ -255,7 +259,6 @@ struct ContentView: View {
                 if location.activeMembership?.role == "runner" && !location.pendingJoinRequests.isEmpty {
                     joinRequestsCard
                 }
-                participantsCard
             }
             .padding()
         }
@@ -337,23 +340,6 @@ struct ContentView: View {
                 }
                 .buttonStyle(.plain)
             }
-            if !location.sessionId.isEmpty,
-               let url = URL(string: "https://dot-watcher.skelstar.io/\(location.sessionId)") {
-                ShareLink(item: url) {
-                    Image(systemName: "square.and.arrow.up")
-                        .font(.system(size: 20))
-                        .foregroundStyle(.white)
-                        .frame(width: 48, height: 48)
-                        .background(Color(.systemBlue), in: RoundedRectangle(cornerRadius: 12))
-                }
-                Link(destination: url) {
-                    Image(systemName: "map.fill")
-                        .font(.system(size: 20))
-                        .foregroundStyle(.white)
-                        .frame(width: 48, height: 48)
-                        .background(Color(red: 0.2, green: 0.78, blue: 0.35), in: RoundedRectangle(cornerRadius: 12))
-                }
-            }
         }
     }
 
@@ -366,42 +352,152 @@ struct ContentView: View {
                 .fontWeight(.semibold)
                 .foregroundStyle(.secondary)
 
-            HStack(spacing: 0) {
-                if location.sessionId.isEmpty {
-                    Text("Tap to set")
-                        .font(.title3.monospaced())
-                        .foregroundStyle(.tertiary)
-                } else {
-                    Text(location.activeMembership?.sessionName ?? "")
-                        .font(.title3.bold().monospaced())
-                        .foregroundStyle(.primary)
-                }
-                Spacer()
-                if location.activeMembership != nil {
-                    Button("Leave") { showLeaveConfirm = true }
-                        .font(.subheadline.weight(.semibold))
+            let rightActionW: CGFloat = 80
+            let leftActionW: CGFloat = 114
+            ZStack(alignment: .center) {
+                // Swipe-left reveals: Leave (right side)
+                HStack(spacing: 0) {
+                    Spacer()
+                    Button {
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) { sessionRowSwipeOffset = 0 }
+                        showLeaveConfirm = true
+                    } label: {
+                        VStack(spacing: 3) {
+                            Image(systemName: "rectangle.portrait.and.arrow.right")
+                                .font(.system(size: 18))
+                            Text("Leave")
+                                .font(.caption.weight(.semibold))
+                        }
                         .foregroundStyle(.white)
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 6)
-                        .background(.red, in: Capsule())
-                } else {
-                    Image(systemName: "lock")
-                        .font(.subheadline)
-                        .foregroundStyle(.tertiary)
+                        .frame(width: rightActionW)
+                        .frame(maxHeight: .infinity)
+                        .background(.red)
+                    }
+                    .buttonStyle(.plain)
                 }
+
+                // Swipe-right reveals: Share + Map (left side)
+                if !location.sessionId.isEmpty,
+                   let url = URL(string: "https://dot-watcher.skelstar.io/\(location.sessionId)") {
+                    HStack(spacing: 0) {
+                        ShareLink(item: url) {
+                            Image(systemName: "square.and.arrow.up")
+                                .font(.system(size: 18))
+                                .foregroundStyle(.white)
+                                .frame(width: leftActionW / 2)
+                                .frame(maxHeight: .infinity)
+                                .background(Color(.systemBlue))
+                        }
+                        Link(destination: url) {
+                            Image(systemName: "map.fill")
+                                .font(.system(size: 18))
+                                .foregroundStyle(.white)
+                                .frame(width: leftActionW / 2)
+                                .frame(maxHeight: .infinity)
+                                .background(Color(red: 0.2, green: 0.78, blue: 0.35))
+                        }
+                        Spacer()
+                    }
+                }
+
+                // Foreground row content
+                HStack {
+                    if location.sessionId.isEmpty {
+                        Text("Tap to set")
+                            .font(.title3.monospaced())
+                            .foregroundStyle(.tertiary)
+                    } else {
+                        Text(location.activeMembership?.sessionName ?? "")
+                            .font(.title3.bold().monospaced())
+                            .foregroundStyle(.primary)
+                    }
+                    Spacer()
+                    if location.activeMembership == nil {
+                        Image(systemName: "lock")
+                            .font(.subheadline)
+                            .foregroundStyle(.tertiary)
+                    }
+                }
+                .padding(.horizontal, 28)
+                .padding(.vertical, 14)
+                .background(Color(.tertiarySystemBackground))
+                .overlay(alignment: .leading) {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 16, weight: .light))
+                        .foregroundStyle(Color(.systemGray2))
+                        .padding(.leading, 8)
+                }
+                .overlay(alignment: .trailing) {
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 16, weight: .light))
+                        .foregroundStyle(Color(.systemGray2))
+                        .padding(.trailing, 8)
+                }
+                .offset(x: sessionRowSwipeOffset)
+                .gesture(
+                    DragGesture(minimumDistance: 10)
+                        .onChanged { value in
+                            let t = value.translation.width
+                            sessionRowSwipeOffset = t < 0
+                                ? max(t, -rightActionW)
+                                : min(t, leftActionW)
+                        }
+                        .onEnded { value in
+                            let threshold: CGFloat = 30
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                                if value.translation.width < -threshold {
+                                    sessionRowSwipeOffset = -rightActionW
+                                } else if value.translation.width > threshold {
+                                    sessionRowSwipeOffset = leftActionW
+                                } else {
+                                    sessionRowSwipeOffset = 0
+                                }
+                            }
+                        }
+                )
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 14)
-            .background(Color(.tertiarySystemBackground))
             .clipShape(RoundedRectangle(cornerRadius: 10))
-            .contentShape(RoundedRectangle(cornerRadius: 10))
 
             if let inviteCode = location.activeMembership?.inviteCode {
                 Text("Invite \(inviteCode)")
                     .font(.caption.monospaced())
                     .foregroundStyle(.secondary)
             }
+
+            Divider()
+                .padding(.vertical, 4)
+
+            Text("Participants")
+                .font(.caption)
+                .fontWeight(.semibold)
+                .foregroundStyle(.secondary)
+
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 56))], spacing: 10) {
+                if location.sessionRunnerNames.isEmpty {
+                    RunnerCircle(name: location.runnerName, size: 56, isHighlighted: true)
+                } else {
+                    ForEach(location.sessionRunnerNames, id: \.self) { name in
+                        RunnerCircle(
+                            name: name,
+                            size: 56,
+                            isHighlighted: location.participants.contains(name) || name == location.runnerName
+                        )
+                    }
+                }
+                let filledCount = max(1, location.sessionRunnerNames.count)
+                ForEach(0..<max(0, 5 - filledCount), id: \.self) { _ in
+                    ZStack {
+                        Circle()
+                            .strokeBorder(Color(.systemGray3), lineWidth: 2)
+                        Text("??")
+                            .font(.system(size: 56 * 0.3, weight: .bold))
+                            .foregroundStyle(Color(.systemGray3))
+                    }
+                    .frame(width: 56, height: 56)
+                }
+            }
         }
+        .frame(maxWidth: .infinity, alignment: .topLeading)
         .padding(16)
         .background(Color(.secondarySystemBackground))
         .clipShape(RoundedRectangle(cornerRadius: 14))
@@ -508,43 +604,6 @@ struct ContentView: View {
     }
 
     // MARK: - Participants Card
-
-    private var participantsCard: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("Participants")
-                .font(.caption)
-                .fontWeight(.semibold)
-                .foregroundStyle(.secondary)
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 56))], spacing: 10) {
-                if location.sessionRunnerNames.isEmpty {
-                    RunnerCircle(name: location.runnerName, size: 56, isHighlighted: true)
-                } else {
-                    ForEach(location.sessionRunnerNames, id: \.self) { name in
-                        RunnerCircle(
-                            name: name,
-                            size: 56,
-                            isHighlighted: location.participants.contains(name) || name == location.runnerName
-                        )
-                    }
-                }
-                let filledCount = max(1, location.sessionRunnerNames.count)
-                ForEach(0..<max(0, 5 - filledCount), id: \.self) { _ in
-                    ZStack {
-                        Circle()
-                            .strokeBorder(Color(.systemGray3), lineWidth: 2)
-                        Text("??")
-                            .font(.system(size: 56 * 0.3, weight: .bold))
-                            .foregroundStyle(Color(.systemGray3))
-                    }
-                    .frame(width: 56, height: 56)
-                }
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .topLeading)
-        .padding(16)
-        .background(Color(.secondarySystemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 14))
-    }
 
     // MARK: - Status Bar (no-session bottom)
 
