@@ -87,7 +87,7 @@ struct ContentView: View {
                 Button("Cancel", role: .cancel) {}
             } message: {
                 if let membership = location.activeMembership {
-                    Text("Are you sure you want to leave \(membership.sessionName)?")
+                    Text("Are you sure you want to leave this session? You can always request to join again.")
                 }
             }
             .onChange(of: location.pendingJoinRequestCount) { _, newCount in
