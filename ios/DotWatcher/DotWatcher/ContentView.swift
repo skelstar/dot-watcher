@@ -116,7 +116,14 @@ struct ContentView: View {
                 headerSection
                 runnerRow
                 noSessionCreateCard
-                noSessionBrowseCard
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Browse")
+                        .font(.caption)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(.secondary)
+                        .padding(.leading, 4)
+                    noSessionBrowseCard
+                }
                 noSessionJoinCard
                 if let formError {
                     Text(formError)
@@ -130,9 +137,13 @@ struct ContentView: View {
         }
         .refreshable {
             await location.loadSessions()
+            await location.loadMyJoinRequests()
             await loadBrowsableSessions()
         }
-        .task { await loadBrowsableSessions() }
+        .task {
+            await location.loadMyJoinRequests()
+            await loadBrowsableSessions()
+        }
     }
 
     private var noSessionCreateCard: some View {
@@ -164,12 +175,13 @@ struct ContentView: View {
     private var noSessionBrowseCard: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Text("Browse Active Sessions")
+                Text("Active Sessions")
                     .font(.headline)
                 Spacer()
                 Button {
                     Task {
                         await location.loadSessions()
+                        await location.loadMyJoinRequests()
                         await loadBrowsableSessions()
                     }
                 } label: {
@@ -197,7 +209,19 @@ struct ContentView: View {
                                 .foregroundStyle(.secondary)
                         }
                         Spacer()
-                        if requestedSessionIds.contains(session.sessionId) {
+                        let myRequest = location.myJoinRequests.first { $0.sessionId == session.sessionId }
+                        if myRequest?.status == "denied" {
+                            Text("Denied")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 4)
+                                .background(.red, in: Capsule())
+                            Button("Re-request") {
+                                Task { await noSessionRequestJoin(session) }
+                            }
+                            .disabled(isBusy)
+                        } else if myRequest?.status == "pending" || requestedSessionIds.contains(session.sessionId) {
                             Text("Requested")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
@@ -636,6 +660,9 @@ struct ContentView: View {
             .controlSize(.large)
             .alert("Stop tracking?", isPresented: $showStopConfirm) {
                 Button("Stop & Leave", role: .destructive) {
+                    if let sid = location.activeMembership?.sessionId {
+                        requestedSessionIds.remove(sid)
+                    }
                     Task { await location.stopAndLeave() }
                 }
                 Button("Cancel", role: .cancel) {}
@@ -694,6 +721,7 @@ struct ContentView: View {
         do {
             _ = try await location.requestToJoin(sessionId: session.sessionId, displayName: nil)
             requestedSessionIds.insert(session.sessionId)
+            await location.loadMyJoinRequests()
         } catch {
             formError = error.localizedDescription
         }
@@ -718,6 +746,7 @@ struct ContentView: View {
         if location.isTracking { location.stop() }
         do {
             try await location.leaveSession(sessionId: membership.sessionId)
+            requestedSessionIds.remove(membership.sessionId)
         } catch {
             memberError = error.localizedDescription
         }

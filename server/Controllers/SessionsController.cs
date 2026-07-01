@@ -10,6 +10,14 @@ public class SessionsController(
     UserTokenAuth userAuth,
     ILogger<SessionsController> logger) : ControllerBase
 {
+    [HttpGet("/me/join-requests")]
+    public IActionResult GetMyJoinRequests()
+    {
+        if (!userAuth.TryAuthenticate(Request, out var user))
+            return Unauthorized();
+        return Ok(store.GetMyJoinRequests(user.UserId));
+    }
+
     [HttpGet("/me/sessions")]
     public IActionResult GetMySessions()
     {
