@@ -36,7 +36,7 @@ public class SessionsApiTests
         Assert.NotNull(session);
         Assert.Equal("SUNSET23", session.SessionName);
         Assert.False(string.IsNullOrWhiteSpace(session.SessionId));
-        Assert.Equal("owner", session.Role);
+        Assert.Equal("runner", session.Role);
         Assert.Equal("Trail Alice", session.DisplayName);
         Assert.False(string.IsNullOrWhiteSpace(session.InviteCode));
     }
@@ -62,22 +62,48 @@ public class SessionsApiTests
         Assert.Equal("Roadside Viewer", joined.DisplayName);
     }
 
-    [Theory]
-    [InlineData("runner")]
-    [InlineData("owner")]
-    public async Task JoinSession_WithRequestedPrivilegedRole_StillAddsViewerMembership(string requestedRole)
+    [Fact]
+    public async Task JoinSession_WithRunnerRole_AddsRunnerMembership()
     {
         using var factory = new DotWatcherApiFactory();
         using var client = factory.CreateClient();
-        var ownerToken = await AuthTestHelpers.RegisterAsync(client, "owner", "Owner");
-        var session = await AuthTestHelpers.CreateSessionAsync(client, ownerToken);
+        var creatorToken = await AuthTestHelpers.RegisterAsync(client, "creator", "Creator");
+        var session = await AuthTestHelpers.CreateSessionAsync(client, creatorToken);
         var inviteeToken = await AuthTestHelpers.RegisterAsync(client, "invitee", "Invitee");
 
         var joined = await AuthTestHelpers.JoinSessionAsync(
             client,
             inviteeToken,
             session.InviteCode,
-            role: requestedRole,
+            role: "runner",
+            displayName: "The Runner");
+
+        Assert.Equal(session.SessionId, joined.SessionId);
+        Assert.Equal("runner", joined.Role);
+        Assert.Equal("The Runner", joined.DisplayName);
+
+        var writeAttempt = await LocationsApiTests.PostLocationAsync(
+            client,
+            LocationsApiTests.TestLocation("Ignored", session.SessionId),
+            inviteeToken);
+
+        Assert.Equal(HttpStatusCode.OK, writeAttempt.StatusCode);
+    }
+
+    [Fact]
+    public async Task JoinSession_WithOwnerRole_StillAddsViewerMembership()
+    {
+        using var factory = new DotWatcherApiFactory();
+        using var client = factory.CreateClient();
+        var creatorToken = await AuthTestHelpers.RegisterAsync(client, "creator", "Creator");
+        var session = await AuthTestHelpers.CreateSessionAsync(client, creatorToken);
+        var inviteeToken = await AuthTestHelpers.RegisterAsync(client, "invitee", "Invitee");
+
+        var joined = await AuthTestHelpers.JoinSessionAsync(
+            client,
+            inviteeToken,
+            session.InviteCode,
+            role: "owner",
             displayName: "Not The Owner");
 
         Assert.Equal(session.SessionId, joined.SessionId);
@@ -93,27 +119,27 @@ public class SessionsApiTests
     }
 
     [Fact]
-    public async Task JoinSession_WithExistingOwnerMembership_PreservesOwnerRole()
+    public async Task JoinSession_WithExistingRunnerMembership_PreservesRunnerRole()
     {
         using var factory = new DotWatcherApiFactory();
         using var client = factory.CreateClient();
-        var ownerToken = await AuthTestHelpers.RegisterAsync(client, "owner", "Owner");
-        var session = await AuthTestHelpers.CreateSessionAsync(client, ownerToken);
+        var creatorToken = await AuthTestHelpers.RegisterAsync(client, "creator", "Creator");
+        var session = await AuthTestHelpers.CreateSessionAsync(client, creatorToken);
 
         var joined = await AuthTestHelpers.JoinSessionAsync(
             client,
-            ownerToken,
+            creatorToken,
             session.InviteCode,
-            displayName: "Still The Owner");
+            displayName: "Still The Creator");
 
         Assert.Equal(session.SessionId, joined.SessionId);
-        Assert.Equal("owner", joined.Role);
-        Assert.Equal("Still The Owner", joined.DisplayName);
+        Assert.Equal("runner", joined.Role);
+        Assert.Equal("Still The Creator", joined.DisplayName);
 
         var writeAttempt = await LocationsApiTests.PostLocationAsync(
             client,
             LocationsApiTests.TestLocation("Ignored", session.SessionId),
-            ownerToken);
+            creatorToken);
 
         Assert.Equal(HttpStatusCode.OK, writeAttempt.StatusCode);
     }
