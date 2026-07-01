@@ -43,11 +43,13 @@ Generated review files belong under `.ai/reviews/`; generated PR descriptions be
 
 ## How it works
 
-1. Each runner signs in to the iOS app, creates or selects an owner/runner session, and starts tracking
-2. The app sends GPS coordinates and compass heading to the server at a configurable interval (default 60s)
+1. A runner signs in to the iOS app, creates a session, and starts tracking
+2. The app sends GPS coordinates and compass heading to the server at a configurable interval
 3. The server stores the latest positions for all runners in that session
-4. Other users sign in and join the session from an invite code or link
-5. The web viewer polls the server every 10–15 seconds and renders all runners as directional markers on a Mapbox map
+4. Other users join the session in one of two ways:
+   - **Invite code / link** — the session owner shares an invite code or link; joining via the iOS app grants `runner` membership; joining via the web client grants `viewer` membership
+   - **Browse and request** — users browse active sessions in the app, send a join request, and the owner approves or denies it; approval grants `runner` membership
+5. The web viewer polls the server and renders all runners as directional markers on a Mapbox map
 
 ---
 
@@ -118,15 +120,21 @@ A native Swift app.
 - Uses the device compass for heading — does not calculate bearing from consecutive positions
 - When heading is unavailable (e.g. runner is stationary), sends position without heading
 
-**Setup screen**
+**Session flow**
 
 - Runner signs in
-- Runner creates a session or joins from an invite code
+- Runner creates a session, joins via invite code, or browses active sessions and sends a join request
+- Session owner approves or denies join requests from the Participants section
 - Runner starts/stops tracking manually
+- Session row is swipeable: swipe right for share actions (SMS, Email, WhatsApp, Map); swipe left to leave
 
 **Auth**
 
 - Sends a user access token in the `Authorization` header on protected app API calls
+
+**Build configurations**
+
+Three Xcode configurations: Debug (simulator → localhost), Device (physical device → `jakkuu.local:8080`), Release (production). Switch schemes in Xcode to target simulator vs. physical device.
 
 **Distribution**
 
@@ -144,8 +152,12 @@ A native Swift app.
 | Viewer     | `GET /locations/{sessionCode}` | User access token plus session membership |
 | Admin/debug dashboard | `GET /sessions`, `GET /log`, recording mutations | Admin bearer token in `Authorization` header |
 
-Session codes are identifiers, not credentials. Invite codes/links are used to join a session, then the server stores membership and authorizes future reads/writes from the authenticated user identity.
-Invite joins create `viewer` membership for new members and preserve any existing role for current members; runner/owner privileges are not granted by invite code. Session owners or the admin bearer token can list members and promote viewers to runners through server-side membership endpoints. `GET /locations/{sessionCode}` returns `403` for authenticated users without membership, including unknown session codes, and returns `200 []` only for a member session with no live positions yet.
+Session codes are identifiers, not credentials. There are two paths to membership:
+
+- **Invite code join** (`POST /session-invites/{inviteCode}/join`) — grants `runner` when the iOS app sends `role: runner`, or `viewer` when joining via the web client. Preserves any existing role for returning members.
+- **Join request** (`POST /sessions/{sessionId}/join-requests` → owner approves) — always grants `runner` membership on approval.
+
+`GET /locations/{sessionCode}` returns `403` for authenticated users without membership, including unknown session codes, and returns `200 []` only for a member session with no live positions yet.
 
 ```text
                  public account endpoints
