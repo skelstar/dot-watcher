@@ -15,11 +15,11 @@
 	<key>CFBundleShortVersionString</key>
 	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleVersion</key>
-	<string>56</string>
-	<key>GitCommitSHA</key>
-	<string>b599b75</string>
+	<string>147</string>
 	<key>DotWatcherAPIBaseURL</key>
 	<string>$(DOTWATCHER_API_BASE_URL)</string>
+	<key>GitCommitSHA</key>
+	<string>b9f79b7</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
 	<string>DotWatcher uses your location in the background to track your position during a run. This includes while the phone is locked in order for you to find your group.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
@@ -29,6 +29,21 @@
 		<key>UIApplicationSupportsMultipleScenes</key>
 		<false/>
 	</dict>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSExceptionDomains</key>
+		<dict>
+			<key>jakkuu.local</key>
+			<dict>
+				<key>NSExceptionAllowsInsecureHTTPLoads</key>
+				<true/>
+			</dict>
+		</dict>
+	</dict>
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+		<string>whatsapp</string>
+	</array>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
 	<key>UIBackgroundModes</key>

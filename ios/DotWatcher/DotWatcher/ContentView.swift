@@ -1,5 +1,6 @@
 import SwiftUI
 import UIKit
+import MessageUI
 
 struct ContentView: View {
     @State private var location = LocationManager()
@@ -21,6 +22,8 @@ struct ContentView: View {
     @State private var isBusy = false
     @State private var formError: String?
     @State private var sessionRowSwipeOffset: CGFloat = 0
+    @State private var showSMSComposer = false
+    @State private var showEmailComposer = false
 
     var body: some View {
         mainContent
@@ -377,11 +380,111 @@ struct ContentView: View {
                 .foregroundStyle(.secondary)
 
             let rightActionW: CGFloat = 80
-            let leftActionW: CGFloat = 114
-            ZStack(alignment: .center) {
-                // Swipe-left reveals: Leave (right side)
+            let btnW: CGFloat = 52
+            let leftActionW: CGFloat = btnW * 4
+            ZStack(alignment: .leading) {
+                // Single background: share buttons on left, Leave on right
                 HStack(spacing: 0) {
+                    if !location.sessionId.isEmpty,
+                       let inviteCode = location.activeMembership?.inviteCode {
+                        let sessionUrl = "https://dot-watcher.skelstar.io/\(location.sessionId)"
+                        let shareMessage = "Join my DotWatcher session!\n\nInvite code: \(inviteCode)\n\n\(sessionUrl)"
+                        // SMS
+                        if MFMessageComposeViewController.canSendText() {
+                            Button {
+                                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) { sessionRowSwipeOffset = 0 }
+                                showSMSComposer = true
+                            } label: {
+                                VStack(spacing: 3) {
+                                    Image(systemName: "message.fill")
+                                        .font(.system(size: 16))
+                                        .frame(width: 22, height: 22)
+                                    Text("SMS")
+                                        .font(.system(size: 10, weight: .semibold))
+                                }
+                                .foregroundStyle(.white)
+                                .frame(width: btnW)
+                                .frame(maxHeight: .infinity)
+                                .background(Color(red: 0.2, green: 0.78, blue: 0.35))
+                            }
+                            .buttonStyle(.plain)
+                            .sheet(isPresented: $showSMSComposer) {
+                                SMSComposer(body: shareMessage, isPresented: $showSMSComposer)
+                                    .ignoresSafeArea()
+                            }
+                        }
+                        // Email
+                        if MFMailComposeViewController.canSendMail() {
+                            Button {
+                                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) { sessionRowSwipeOffset = 0 }
+                                showEmailComposer = true
+                            } label: {
+                                VStack(spacing: 3) {
+                                    Image(systemName: "envelope.fill")
+                                        .font(.system(size: 16))
+                                        .frame(width: 22, height: 22)
+                                    Text("Email")
+                                        .font(.system(size: 10, weight: .semibold))
+                                }
+                                .foregroundStyle(.white)
+                                .frame(width: btnW)
+                                .frame(maxHeight: .infinity)
+                                .background(Color(.systemBlue))
+                            }
+                            .buttonStyle(.plain)
+                            .sheet(isPresented: $showEmailComposer) {
+                                EmailComposer(
+                                    subject: "Join my DotWatcher session",
+                                    body: shareMessage,
+                                    isPresented: $showEmailComposer
+                                )
+                                .ignoresSafeArea()
+                            }
+                        }
+                        // WhatsApp
+                        if let waURL = URL(string: "whatsapp://send?text=\(shareMessage.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "")"),
+                           UIApplication.shared.canOpenURL(waURL) {
+                            Button {
+                                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) { sessionRowSwipeOffset = 0 }
+                                UIApplication.shared.open(waURL)
+                            } label: {
+                                VStack(spacing: 3) {
+                                    Image(systemName: "bubble.fill")
+                                        .font(.system(size: 16))
+                                        .frame(width: 22, height: 22)
+                                    Text("WhatsApp")
+                                        .font(.system(size: 10, weight: .semibold))
+                                }
+                                .foregroundStyle(.white)
+                                .frame(width: btnW)
+                                .frame(maxHeight: .infinity)
+                                .background(Color(red: 0.07, green: 0.53, blue: 0.27))
+                            }
+                            .buttonStyle(.plain)
+                        }
+                        // Map
+                        if let url = URL(string: sessionUrl) {
+                            Button {
+                                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) { sessionRowSwipeOffset = 0 }
+                                UIApplication.shared.open(url)
+                            } label: {
+                                VStack(spacing: 3) {
+                                    Image(systemName: "map.fill")
+                                        .font(.system(size: 16))
+                                        .frame(width: 22, height: 22)
+                                    Text("Map")
+                                        .font(.system(size: 10, weight: .semibold))
+                                }
+                                .foregroundStyle(.white)
+                                .frame(width: btnW)
+                                .frame(maxHeight: .infinity)
+                                .background(Color(red: 0.2, green: 0.6, blue: 0.86))
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
                     Spacer()
+                    // Leave
                     Button {
                         withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) { sessionRowSwipeOffset = 0 }
                         showLeaveConfirm = true
@@ -389,6 +492,7 @@ struct ContentView: View {
                         VStack(spacing: 3) {
                             Image(systemName: "rectangle.portrait.and.arrow.right")
                                 .font(.system(size: 18))
+                                .frame(width: 22, height: 22)
                             Text("Leave")
                                 .font(.caption.weight(.semibold))
                         }
@@ -399,30 +503,7 @@ struct ContentView: View {
                     }
                     .buttonStyle(.plain)
                 }
-
-                // Swipe-right reveals: Share + Map (left side)
-                if !location.sessionId.isEmpty,
-                   let url = URL(string: "https://dot-watcher.skelstar.io/\(location.sessionId)") {
-                    HStack(spacing: 0) {
-                        ShareLink(item: url) {
-                            Image(systemName: "square.and.arrow.up")
-                                .font(.system(size: 18))
-                                .foregroundStyle(.white)
-                                .frame(width: leftActionW / 2)
-                                .frame(maxHeight: .infinity)
-                                .background(Color(.systemBlue))
-                        }
-                        Link(destination: url) {
-                            Image(systemName: "map.fill")
-                                .font(.system(size: 18))
-                                .foregroundStyle(.white)
-                                .frame(width: leftActionW / 2)
-                                .frame(maxHeight: .infinity)
-                                .background(Color(red: 0.2, green: 0.78, blue: 0.35))
-                        }
-                        Spacer()
-                    }
-                }
+                .frame(maxHeight: .infinity)
 
                 // Foreground row content
                 HStack {
