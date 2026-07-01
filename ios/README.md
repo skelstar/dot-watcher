@@ -1,6 +1,55 @@
 # iOS
 
-Native Swift app that signs in with a Dot Watcher account and sends GPS positions to the server every 15 seconds while tracking.
+Native Swift app that signs in with a Dot Watcher account and sends GPS positions to the server while tracking. Runners join a session, start tracking, and appear as dots on the web viewer map.
+
+---
+
+## Build configurations
+
+Three Xcode build configurations control which server the app talks to:
+
+| Configuration | Target | API URL |
+| --- | --- | --- |
+| **Debug** | iOS Simulator | `http://localhost:8080` |
+| **Device** | Physical device (via USB) | `http://jakkuu.local:8080` |
+| **Release** | TestFlight / App Store | `https://dot-watcher.skelstar.io/api` |
+
+Switch between them by changing the active scheme in Xcode's toolbar:
+
+- **DotWatcher** — uses the Debug configuration (simulator, localhost)
+- **DotWatcher (Device)** — uses the Device configuration (physical device, Mac hostname)
+
+The API base URL is set in `DOTWATCHER_API_BASE_URL` (build setting) and read by the app at runtime from `DotWatcherAPIBaseURL` in `Info.plist`.
+
+### Physical device setup
+
+When running on a physical device, the server must bind on all interfaces so the phone can reach it over WiFi:
+
+```bash
+cd server
+dotnet run --urls "http://0.0.0.0:8080"
+```
+
+`Info.plist` contains an App Transport Security exception for `jakkuu.local` so plain HTTP is allowed on Device builds. The phone and Mac must be on the same WiFi network.
+
+---
+
+## Session flow
+
+After signing in, the main screen gives three ways to get into a session:
+
+1. **Create** — `POST /sessions`, becoming the session owner. Share the generated invite code or link with other runners.
+2. **Join via invite code** — `POST /session-invites/{inviteCode}/join`. Joining via the iOS app requests `runner` role; joining via the web client creates `viewer` membership.
+3. **Browse active sessions** — `GET /sessions/browse` lists open sessions. Tap "Request" to send a join request (`POST /sessions/{sessionId}/join-requests`). The session owner approves or denies from the Participants section of their session view. Approved requests grant `runner` membership.
+
+Join request status is shown inline on the browse list:
+- **Requested** — pending approval
+- **Denied** — request was denied; a "Re-request" button lets the user try again
+- The row disappears from Browse and the session appears in My Sessions once approved
+
+The session row (once in a session) is swipeable:
+- **Swipe right** — reveals share buttons: SMS, Email, WhatsApp, Map. Each sends or opens the invite link.
+- **Swipe left** — reveals a red Leave button. Owners leave without deleting the session; the session persists for other members.
 
 ---
 
@@ -10,29 +59,18 @@ Native Swift app that signs in with a Dot Watcher account and sends GPS position
 - User access tokens should be stored in Keychain, not `UserDefaults`.
 - Sign-out should call `POST /auth/logout` and remove the token from Keychain.
 - Account deletion should call `DELETE /me`, stop tracking, clear local account state, and remove the token from Keychain.
-- The app should load `GET /me/sessions` after sign-in and let the user select an existing membership, create a session with `POST /sessions`, or join from an invite code with `POST /session-invites/{inviteCode}/join`.
-- Invite joins create `viewer` membership for new members and preserve existing roles. The app can post locations only when the selected membership role is `owner` or `runner`.
-- Owners can manage members with `GET /sessions/{sessionCode}/members` and `POST /sessions/{sessionCode}/members/{userId}/role`; invite codes are not role grants.
-- `POST /location` must send `Authorization: Bearer <user access token>`. The server stores the authenticated member display name and ignores any client-supplied runner name for identity.
-- `GET /locations/{sessionCode}` and recording download return `403` for valid-looking session codes where the signed-in user is not a member.
+- After sign-in, load `GET /me/sessions` to show the user's current memberships.
+- The app can post locations only when the selected membership role is `owner` or `runner`.
+- `POST /location` must send `Authorization: Bearer <user access token>`. The server stores the authenticated member display name and ignores any client-supplied runner name.
+- `GET /locations/{sessionCode}` returns `403` for valid-looking session codes where the signed-in user is not a member.
 
-## API endpoint configuration
-
-The API base URL is configured through the `DOTWATCHER_API_BASE_URL` Xcode build setting, exposed to the app as `DotWatcherAPIBaseURL` in `Info.plist`.
-
-Production builds should use:
-
-```text
-https://dot-watcher.skelstar.io/api
-```
-
-The app rejects non-HTTPS API URLs outside local debug development. Debug builds may use `http://localhost`, `http://127.0.0.1`, or `http://[::1]` for local server testing.
+---
 
 ## Verification boundary
 
-GitHub Actions does not currently build or run the iOS project. iOS verification is manual for now because it depends on local Xcode, signing, simulator/device availability, Keychain behavior, background-location permissions, and real GPS/background execution.
+GitHub Actions does not currently build or run the iOS project. iOS verification is manual because it depends on local Xcode, signing, simulator/device availability, Keychain behavior, background-location permissions, and real GPS/background execution.
 
-Manual pre-release checks should cover sign-in/register, Keychain persistence, logout revocation, create session, join invite, owner/runner-only posting, `401`/`403` handling, background location, clock-aligned posting, offline retry, and TestFlight packaging.
+Manual pre-release checks should cover sign-in/register, Keychain persistence, logout revocation, create session, join via invite, join via browse/request, owner approval flow, owner/runner-only posting, `401`/`403` handling, background location, clock-aligned posting, offline retry, and TestFlight packaging.
 
 The app links to:
 
@@ -94,6 +132,23 @@ clManager.showsBackgroundLocationIndicator = true     // blue bar — required b
 <string>DotWatcher uses your location to track your position during a run.</string>
 <key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
 <string>DotWatcher uses your location in the background to track your position during a run.</string>
+<key>NSAppTransportSecurity</key>
+<dict>
+    <key>NSExceptionDomains</key>
+    <dict>
+        <key>jakkuu.local</key>
+        <dict>
+            <key>NSExceptionAllowsInsecureHTTPLoads</key>
+            <true/>
+        </dict>
+    </dict>
+</dict>
+<key>LSApplicationQueriesSchemes</key>
+<array>
+    <string>whatsapp</string>
+</array>
 ```
+
+The `NSAppTransportSecurity` exception allows plain HTTP to `jakkuu.local` for Device builds. The `LSApplicationQueriesSchemes` entry allows `UIApplication.canOpenURL` to check whether WhatsApp is installed before showing the WhatsApp share button.
 
 The app requests "Always" authorisation so location continues when the screen locks mid-run.
