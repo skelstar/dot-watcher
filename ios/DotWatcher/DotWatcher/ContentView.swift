@@ -320,7 +320,7 @@ struct ContentView: View {
                 let sessionUrl = "https://dot-watcher.skelstar.io/\(location.sessionId)"
                 let shareMessage = "Join my DotWatcher session!\n\nInvite code: \(inviteCode)\n\n\(sessionUrl)"
                 ShareLink(item: shareMessage) {
-                    Image(systemName: "square.and.arrow.up.circle")
+                    Image(systemName: "square.and.arrow.up")
                         .font(.title2)
                         .foregroundStyle(.secondary)
                 }
@@ -328,13 +328,13 @@ struct ContentView: View {
             if location.isAuthenticated {
                 Button { showAuth = true } label: {
                     Image(systemName: "person.crop.circle")
-                        .font(.title2)
+                        .font(.title)
                         .foregroundStyle(.secondary)
                 }
             }
             Button { showHelp = true } label: {
                 Image(systemName: "questionmark.circle")
-                    .font(.title2)
+                    .font(.title)
                     .foregroundStyle(.secondary)
                 }
         }
@@ -463,16 +463,20 @@ struct ContentView: View {
                 .padding(.vertical, 14)
                 .background(Color(.tertiarySystemBackground))
                 .overlay(alignment: .leading) {
+                    let opacity = max(0.0, 1.0 - abs(sessionRowSwipeOffset + sessionRowDragOffset) / 20.0)
                     Image(systemName: "chevron.left")
                         .font(.system(size: 16, weight: .light))
                         .foregroundStyle(Color(.systemGray2))
                         .padding(.leading, 8)
+                        .opacity(opacity)
                 }
                 .overlay(alignment: .trailing) {
+                    let opacity = max(0.0, 1.0 - abs(sessionRowSwipeOffset + sessionRowDragOffset) / 20.0)
                     Image(systemName: "chevron.right")
                         .font(.system(size: 16, weight: .light))
                         .foregroundStyle(Color(.systemGray2))
                         .padding(.trailing, 8)
+                        .opacity(opacity)
                 }
                 .offset(x: max(-rightActionW, min(leftActionW, sessionRowSwipeOffset + sessionRowDragOffset)))
                 .gesture(
@@ -526,14 +530,9 @@ struct ContentView: View {
                 }
                 let filledCount = max(1, location.sessionRunnerNames.count)
                 ForEach(0..<max(0, 5 - filledCount), id: \.self) { _ in
-                    ZStack {
-                        Circle()
-                            .strokeBorder(Color(.systemGray3), lineWidth: 2)
-                        Text("??")
-                            .font(.system(size: 56 * 0.3, weight: .bold))
-                            .foregroundStyle(Color(.systemGray3))
-                    }
-                    .frame(width: 56, height: 56)
+                    Circle()
+                        .stroke(Color(.systemGray3), style: StrokeStyle(lineWidth: 2, dash: [4, 4]))
+                        .frame(width: 56, height: 56)
                 }
             }
         }
