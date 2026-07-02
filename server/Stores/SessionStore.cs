@@ -90,6 +90,68 @@ public class SessionStore(string dbPath)
             """;
         cmd.ExecuteNonQuery();
 
+        // Migration: session_code → session_id rename + session_name column (commit 6965edb)
+        // If app_sessions still has the old session_code primary key, drop and recreate all
+        // session-related tables. Users and revoked tokens are preserved.
+        using (var check = conn.CreateCommand())
+        {
+            check.CommandText = "SELECT COUNT(*) FROM pragma_table_info('app_sessions') WHERE name = 'session_code'";
+            var hasOldSchema = (long)(check.ExecuteScalar() ?? 0L) > 0;
+            if (hasOldSchema)
+            {
+                using var drop = conn.CreateCommand();
+                drop.CommandText = """
+                    DROP TABLE IF EXISTS join_requests;
+                    DROP TABLE IF EXISTS session_members;
+                    DROP TABLE IF EXISTS location_updates;
+                    DROP TABLE IF EXISTS app_sessions;
+                    CREATE TABLE location_updates (
+                        id             INTEGER PRIMARY KEY AUTOINCREMENT,
+                        session_id     TEXT NOT NULL,
+                        runner_user_id TEXT,
+                        runner_name    TEXT NOT NULL,
+                        latitude       REAL NOT NULL,
+                        longitude      REAL NOT NULL,
+                        heading        REAL,
+                        timestamp      TEXT NOT NULL
+                    );
+                    CREATE INDEX idx_session        ON location_updates(session_id);
+                    CREATE INDEX idx_session_runner ON location_updates(session_id, runner_name);
+                    CREATE TABLE app_sessions (
+                        id            TEXT PRIMARY KEY,
+                        session_name  TEXT NOT NULL,
+                        invite_code   TEXT NOT NULL UNIQUE,
+                        owner_user_id TEXT NOT NULL,
+                        created_at    TEXT NOT NULL,
+                        FOREIGN KEY(owner_user_id) REFERENCES users(id)
+                    );
+                    CREATE INDEX idx_app_sessions_invite ON app_sessions(invite_code);
+                    CREATE TABLE session_members (
+                        session_id   TEXT NOT NULL,
+                        user_id      TEXT NOT NULL,
+                        role         TEXT NOT NULL,
+                        display_name TEXT NOT NULL,
+                        joined_at    TEXT NOT NULL,
+                        PRIMARY KEY(session_id, user_id),
+                        FOREIGN KEY(session_id) REFERENCES app_sessions(id),
+                        FOREIGN KEY(user_id)    REFERENCES users(id)
+                    );
+                    CREATE INDEX idx_session_members_user ON session_members(user_id);
+                    CREATE TABLE join_requests (
+                        id           TEXT PRIMARY KEY,
+                        session_id   TEXT NOT NULL,
+                        user_id      TEXT NOT NULL,
+                        display_name TEXT NOT NULL,
+                        status       TEXT NOT NULL DEFAULT 'pending',
+                        created_at   TEXT NOT NULL,
+                        role         TEXT NOT NULL DEFAULT 'runner'
+                    );
+                    CREATE INDEX idx_join_requests_session ON join_requests(session_id, status);
+                    """;
+                drop.ExecuteNonQuery();
+            }
+        }
+
         // Migration: add role column to existing join_requests tables
         try
         {
