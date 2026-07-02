@@ -7,6 +7,7 @@ interface Props {
   memberships: SessionMembership[]
   requestedSessionName?: string | null
   initialInviteCode?: string | null
+  autoJoinDisplayName?: string
   isReplay?: boolean
   onSelect: (membership: SessionMembership) => void
   onMembershipsChanged: (memberships: SessionMembership[]) => void
@@ -20,6 +21,7 @@ export default function SessionPrompt({
   memberships,
   requestedSessionName,
   initialInviteCode,
+  autoJoinDisplayName,
   isReplay = false,
   onSelect,
   onMembershipsChanged,
@@ -28,7 +30,7 @@ export default function SessionPrompt({
   const [createCode, setCreateCode] = useState(requestedSessionName ?? '')
   const [createName, setCreateName] = useState('')
   const [inviteCode, setInviteCode] = useState(initialInviteCode ?? '')
-  const [joinName, setJoinName] = useState('')
+  const [joinName, setJoinName] = useState(autoJoinDisplayName ?? '')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -38,6 +40,11 @@ export default function SessionPrompt({
       setMode('join')
     }
   }, [initialInviteCode])
+
+  useEffect(() => {
+    if (autoJoinDisplayName === undefined || !initialInviteCode) return
+    void joinSession()
+  }, [])
 
   const sortedMemberships = useMemo(
     () => [...memberships].sort((a, b) => a.sessionName.localeCompare(b.sessionName)),
@@ -86,8 +93,8 @@ export default function SessionPrompt({
     }
   }
 
-  async function joinSession(event: FormEvent) {
-    event.preventDefault()
+  async function joinSession(event?: FormEvent) {
+    event?.preventDefault()
     const code = cleanInput(inviteCode)
     if (!code) return
 

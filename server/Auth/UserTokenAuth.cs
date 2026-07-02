@@ -30,7 +30,7 @@ public sealed class UserTokenAuth
         _issuer = configuration.GetValue<string>("JwtIssuer", "dot-watcher")!;
         _audience = configuration.GetValue<string>("JwtAudience", "dot-watcher")!;
         _accessTokenLifetime = TimeSpan.FromMinutes(
-            Math.Clamp(configuration.GetValue<int>("JwtAccessTokenMinutes", 60), 1, 1440));
+            Math.Clamp(configuration.GetValue<int>("JwtAccessTokenMinutes", 60), 1, 525600));
         _clockSkew = TimeSpan.FromSeconds(
             Math.Clamp(configuration.GetValue<int>("JwtClockSkewSeconds", 60), 0, 300));
     }
