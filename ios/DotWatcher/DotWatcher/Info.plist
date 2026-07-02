@@ -15,20 +15,15 @@
 	<key>CFBundleShortVersionString</key>
 	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleVersion</key>
-	<string>147</string>
+	<string>151</string>
 	<key>DotWatcherAPIBaseURL</key>
 	<string>$(DOTWATCHER_API_BASE_URL)</string>
 	<key>GitCommitSHA</key>
-	<string>b9f79b7</string>
-	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
-	<string>DotWatcher uses your location in the background to track your position during a run. This includes while the phone is locked in order for you to find your group.</string>
-	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>DotWatcher uses your location to track your position during a run.</string>
-	<key>UIApplicationSceneManifest</key>
-	<dict>
-		<key>UIApplicationSupportsMultipleScenes</key>
-		<false/>
-	</dict>
+	<string>30babb4</string>
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+		<string>whatsapp</string>
+	</array>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSExceptionDomains</key>
@@ -40,10 +35,15 @@
 			</dict>
 		</dict>
 	</dict>
-	<key>LSApplicationQueriesSchemes</key>
-	<array>
-		<string>whatsapp</string>
-	</array>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>DotWatcher uses your location in the background to track your position during a run. This includes while the phone is locked in order for you to find your group.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>DotWatcher uses your location to track your position during a run.</string>
+	<key>UIApplicationSceneManifest</key>
+	<dict>
+		<key>UIApplicationSupportsMultipleScenes</key>
+		<false/>
+	</dict>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
 	<key>UIBackgroundModes</key>
