@@ -133,9 +133,15 @@ struct ContentView: View {
                 .foregroundStyle(.secondary)
                 .padding(.leading, 4)
             VStack(spacing: 0) {
-                CodeBoxField(text: $noSessionInviteCode, length: 6, autoFocus: true)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 14)
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Enter your invite code")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                    CodeBoxField(text: $noSessionInviteCode, length: 6, autoFocus: true)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 14)
                 Divider().padding(.leading, 16)
                 Button {
                     Task { await noSessionJoinSession() }

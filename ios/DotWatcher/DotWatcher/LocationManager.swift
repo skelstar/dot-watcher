@@ -321,10 +321,11 @@ final class LocationManager {
     }
 
     private func post(lat: Double, lon: Double, heading: Double?, timestamp: Date) async {
+        let targetSessionId = sessionId
         do {
             var body: [String: Any] = [
                 "runnerName": runnerName,
-                "sessionId": sessionId,
+                "sessionId": targetSessionId,
                 "latitude": lat,
                 "longitude": lon,
                 "timestamp": ISO8601DateFormatter().string(from: timestamp),
@@ -332,6 +333,7 @@ final class LocationManager {
             if let heading { body["heading"] = heading }
 
             let response: LocationPostResponse = try await send(path: "/location", method: "POST", body: body)
+            guard sessionId == targetSessionId else { return }
             status = "Sent"
             lastSent = Date()
             if response.participants.count != lastParticipantCount {
@@ -339,6 +341,7 @@ final class LocationManager {
                 participants = response.participants
             }
         } catch {
+            guard sessionId == targetSessionId else { return }
             status = error.localizedDescription
         }
     }
