@@ -96,3 +96,22 @@ test('shouldShowSessionPrompt stays hidden for active sessions and replay flows'
     hasSessionMembership: false,
   }), false)
 })
+
+test('shouldShowSessionPrompt still auto-joins via invite code when the link requests replay', () => {
+  assert.equal(shouldShowSessionPrompt({
+    accessToken: 'token',
+    membershipsLoaded: true,
+    isReplay: true,
+    inviteCode: 'INVITE123',
+    sessionName: null,
+    hasSessionMembership: false,
+  }), true)
+  assert.equal(shouldShowSessionPrompt({
+    accessToken: 'token',
+    membershipsLoaded: true,
+    isReplay: true,
+    inviteCode: 'INVITE123',
+    sessionName: null,
+    hasSessionMembership: true,
+  }), false)
+})

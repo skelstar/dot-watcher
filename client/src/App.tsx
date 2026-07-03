@@ -42,8 +42,8 @@ function parseUrl(): RouteState {
   if (parts[0] === 'admin') return { sessionName: null, isReplay: false, inviteCode: null, autoJoin: false, legalPage: null, isAdmin: true }
   if (parts[0] === 'privacy') return { sessionName: null, isReplay: false, inviteCode: null, autoJoin: false, legalPage: 'privacy', isAdmin: false }
   if (parts[0] === 'terms') return { sessionName: null, isReplay: false, inviteCode: null, autoJoin: false, legalPage: 'terms', isAdmin: false }
-  if (parts[0] === 'code') return { sessionName: null, isReplay: false, inviteCode: norm(parts[1] ?? ''), autoJoin: true, legalPage: null, isAdmin: false }
-  if (parts[0] === 'join') return { sessionName: null, isReplay: false, inviteCode: norm(parts[1] ?? ''), autoJoin: false, legalPage: null, isAdmin: false }
+  if (parts[0] === 'code') return { sessionName: null, isReplay: parts[2] === 'replay', inviteCode: norm(parts[1] ?? ''), autoJoin: true, legalPage: null, isAdmin: false }
+  if (parts[0] === 'join') return { sessionName: null, isReplay: parts[2] === 'replay', inviteCode: norm(parts[1] ?? ''), autoJoin: false, legalPage: null, isAdmin: false }
   if (parts[0] === 'replay') return { sessionName: null, isReplay: true, inviteCode: null, autoJoin: false, legalPage: null, isAdmin: false }
   if (parts[1] === 'replay') return { sessionName: norm(parts[0]), isReplay: true, inviteCode: null, autoJoin: false, legalPage: null, isAdmin: false }
   return { sessionName: norm(parts[0]), isReplay: false, inviteCode: null, autoJoin: false, legalPage: null, isAdmin: false }
