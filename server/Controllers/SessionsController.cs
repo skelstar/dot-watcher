@@ -89,6 +89,20 @@ public class SessionsController(
         return Ok(store.GetLatestPositions(sessionId));
     }
 
+    [HttpGet("/session-invites/{inviteCode}/recording")]
+    public IActionResult GetRecordingByInviteCode(string inviteCode)
+    {
+        var sessionId = store.GetSessionIdByInviteCode(inviteCode);
+        if (sessionId is null)
+            return NotFound(new { error = "Invite not found." });
+
+        if (!store.HasRecording(sessionId))
+            return NotFound();
+
+        var ndjson = store.GetRecordingAsNdjson(sessionId);
+        return Content(ndjson, "application/x-ndjson");
+    }
+
     [HttpGet("/sessions/{sessionId}/runners")]
     public IActionResult GetSessionRunners(string sessionId)
     {
