@@ -32,32 +32,8 @@ struct BrowsableSession: Codable, Identifiable {
     let createdAt: String
 }
 
-struct JoinRequest: Codable, Identifiable {
-    var id: String { requestId }
-    let requestId: String
-    let sessionId: String
-    let userId: String
-    let displayName: String
-    let createdAt: String
-    let role: String
-
-    var formattedDate: String {
-        let f = ISO8601DateFormatter()
-        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        if let d = f.date(from: createdAt) { return d.formatted(date: .abbreviated, time: .shortened) }
-        f.formatOptions = [.withInternetDateTime]
-        return f.date(from: createdAt)?.formatted(date: .abbreviated, time: .shortened) ?? createdAt
-    }
-}
-
-struct MyJoinRequest: Codable {
-    let sessionId: String
-    let status: String
-}
-
 private struct LocationPostResponse: Codable {
     let participants: [String]
-    let pendingJoinRequests: Int?
 }
 
 private struct ServerErrorBody: Decodable {
@@ -91,16 +67,11 @@ final class LocationManager {
     private(set) var isTracking = false
     private(set) var currentUser: AppUser?
     private(set) var memberships: [SessionMembership] = []
-    private(set) var pendingJoinRequestCount = 0
-    private(set) var pendingJoinRequests: [JoinRequest] = []
-    private(set) var myJoinRequests: [MyJoinRequest] = []
     private(set) var sessionRunnerNames: [String] = []
 
     var participants: [String] = []
     private var lastParticipantCount = 0
     private var isLoadingSessions = false
-    private var isLoadingMyJoinRequests = false
-    private var isLoadingJoinRequests = false
     fileprivate var latestLocation: CLLocation?
     fileprivate var oneShotLocationContinuation: CheckedContinuation<CLLocation?, Never>?
 
@@ -190,22 +161,11 @@ final class LocationManager {
         accessToken = nil
         currentUser = nil
         memberships = []
-        pendingJoinRequests = []
-        pendingJoinRequestCount = 0
         sessionRunnerNames = []
         sessionId = ""
         Self.storeToken(nil)
         UserDefaults.standard.removeObject(forKey: "currentUser")
         status = nextStatus
-    }
-
-    func loadMyJoinRequests() async {
-        guard isAuthenticated, !isLoadingMyJoinRequests else { return }
-        isLoadingMyJoinRequests = true
-        defer { isLoadingMyJoinRequests = false }
-        do {
-            myJoinRequests = try await send(path: "/me/join-requests")
-        } catch {}
     }
 
     func loadSessions() async {
@@ -221,8 +181,6 @@ final class LocationManager {
                 if let first = memberships.first {
                     selectSession(first)
                 }
-            } else {
-                await loadJoinRequests()
             }
         } catch DotWatcherAPIError.badResponse(401, _) {
             await signOut(status: "Sign in required")
@@ -262,7 +220,6 @@ final class LocationManager {
     func selectSession(_ membership: SessionMembership) {
         sessionId = membership.sessionId
         status = membership.role == "viewer" ? "Viewer only" : "Ready"
-Task { await loadJoinRequests() }
         Task { await loadSessionRunners() }
     }
 
@@ -274,8 +231,6 @@ Task { await loadJoinRequests() }
         if sessionId == code {
             sessionId = ""
             participants = []
-            pendingJoinRequests = []
-            pendingJoinRequestCount = 0
             sessionRunnerNames = []
             status = "Idle"
         }
@@ -283,19 +238,6 @@ Task { await loadJoinRequests() }
 
     func browseSessions() async throws -> [BrowsableSession] {
         try await send(path: "/sessions/browse")
-    }
-
-    func requestToJoin(sessionId code: String, displayName: String?) async throws -> JoinRequest {
-        let name = displayName?.trimmingCharacters(in: .whitespacesAndNewlines)
-        let request: JoinRequest = try await send(
-            path: "/sessions/\(code)/join-requests",
-            method: "POST",
-            body: [
-                "displayName": (name?.isEmpty ?? true) ? NSNull() : name!,
-                "role": "runner",
-            ])
-        status = "Pending request"
-        return request
     }
 
     func loadSessionRunners() async {
@@ -308,42 +250,6 @@ Task { await loadJoinRequests() }
         } catch {
             sessionRunnerNames = []
         }
-    }
-
-    func loadJoinRequests() async {
-        guard let membership = activeMembership, !isLoadingJoinRequests else {
-            if activeMembership == nil { pendingJoinRequests = [] }
-            return
-        }
-        isLoadingJoinRequests = true
-        defer { isLoadingJoinRequests = false }
-        do {
-            pendingJoinRequests = try await send(path: "/sessions/\(membership.sessionId)/join-requests")
-        } catch DotWatcherAPIError.badResponse(401, _) {
-            await signOut(status: "Sign in required")
-        } catch {
-            // silently ignore — badge count from POST response is the primary signal
-        }
-    }
-
-    func approveJoinRequest(_ request: JoinRequest) async throws {
-        guard let membership = activeMembership else { return }
-        let _: SessionMembership = try await send(
-            path: "/sessions/\(membership.sessionId)/join-requests/\(request.requestId)/approve",
-            method: "POST")
-        pendingJoinRequestCount = max(0, pendingJoinRequestCount - 1)
-        await loadJoinRequests()
-        await loadSessionRunners()
-    }
-
-    func denyJoinRequest(_ request: JoinRequest) async throws {
-        guard let membership = activeMembership, let token = accessToken else { return }
-        try await sendEmpty(
-            path: "/sessions/\(membership.sessionId)/join-requests/\(request.requestId)/deny",
-            method: "POST",
-            token: token)
-        pendingJoinRequests.removeAll { $0.requestId == request.requestId }
-        pendingJoinRequestCount = max(0, pendingJoinRequestCount - 1)
     }
 
     func start() {
@@ -444,9 +350,6 @@ Task { await loadJoinRequests() }
             if response.participants.count != lastParticipantCount {
                 lastParticipantCount = response.participants.count
                 participants = response.participants
-            }
-            if let count = response.pendingJoinRequests {
-                pendingJoinRequestCount = count
             }
         } catch {
             status = error.localizedDescription

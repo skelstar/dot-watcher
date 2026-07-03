@@ -26,13 +26,14 @@ export default function SessionPrompt({
   onSelect,
   onMembershipsChanged,
 }: Props) {
-  const [mode, setMode] = useState<Mode>(initialInviteCode ? 'join' : memberships.length ? 'sessions' : 'create')
+  const [mode, setMode] = useState<Mode>(initialInviteCode ? 'join' : memberships.length ? 'sessions' : 'join')
   const [createCode, setCreateCode] = useState(requestedSessionName ?? '')
   const [createName, setCreateName] = useState('')
   const [inviteCode, setInviteCode] = useState(initialInviteCode ?? '')
   const [joinName, setJoinName] = useState(autoJoinDisplayName ?? '')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [createOpen, setCreateOpen] = useState(false)
 
   useEffect(() => {
     if (initialInviteCode) {
@@ -133,11 +134,12 @@ export default function SessionPrompt({
           <p style={notice}>No membership for {requestedSessionName}.</p>
         )}
 
-        <div style={tabs}>
-          <button type="button" style={tabStyle(mode === 'sessions')} onClick={() => { setMode('sessions'); void refreshMemberships() }}>Sessions</button>
-          <button type="button" style={tabStyle(mode === 'create')} onClick={() => setMode('create')}>Create</button>
-          <button type="button" style={tabStyle(mode === 'join')} onClick={() => setMode('join')}>Join</button>
-        </div>
+        {sortedMemberships.length > 0 && (
+          <div style={tabs}>
+            <button type="button" style={tabStyle(mode === 'sessions')} onClick={() => { setMode('sessions'); void refreshMemberships() }}>Sessions</button>
+            <button type="button" style={tabStyle(mode === 'join')} onClick={() => setMode('join')}>Join</button>
+          </div>
+        )}
 
         {mode === 'sessions' && (
           <div style={sessionList}>
@@ -155,52 +157,65 @@ export default function SessionPrompt({
           </div>
         )}
 
-        {mode === 'create' && (
-          <form style={form} onSubmit={createSession}>
-            <input
-              style={input}
-              value={createCode}
-              onChange={event => setCreateCode(event.target.value.toUpperCase())}
-              placeholder="Session name"
-              autoCapitalize="characters"
-              autoCorrect="off"
-              spellCheck={false}
-            />
-            <input
-              style={input}
-              value={createName}
-              onChange={event => setCreateName(event.target.value)}
-              placeholder="Display name"
-              autoComplete="name"
-            />
-            <button style={button} type="submit" disabled={busy}>
-              Create
-            </button>
-          </form>
-        )}
-
         {mode === 'join' && (
-          <form style={form} onSubmit={joinSession}>
-            <input
-              style={input}
-              value={inviteCode}
-              onChange={event => setInviteCode(event.target.value.toUpperCase())}
-              placeholder="Invite code"
-              autoCapitalize="characters"
-              autoCorrect="off"
-              spellCheck={false}
-            />
-            <input
-              style={input}
-              value={joinName}
-              onChange={event => setJoinName(event.target.value)}
-              placeholder="Display name"
-              autoComplete="name"
-            />
-            <button style={button} type="submit" disabled={busy || !cleanInput(inviteCode)}>
-              Join
-            </button>
-          </form>
+          <>
+            <form style={form} onSubmit={joinSession}>
+              <label style={fieldLabel} htmlFor="invite-code-input">Enter invite code</label>
+              <input
+                id="invite-code-input"
+                style={joinInput}
+                value={inviteCode}
+                onChange={event => setInviteCode(event.target.value.toUpperCase())}
+                placeholder="ABCD12"
+                autoCapitalize="characters"
+                autoCorrect="off"
+                spellCheck={false}
+                autoFocus
+              />
+              <input
+                style={input}
+                value={joinName}
+                onChange={event => setJoinName(event.target.value)}
+                placeholder="Display name"
+                autoComplete="name"
+              />
+              <button style={button} type="submit" disabled={busy || !cleanInput(inviteCode)}>
+                Join
+              </button>
+            </form>
+
+            <div style={divider} />
+
+            {!createOpen && (
+              <button type="button" style={secondaryLink} onClick={() => setCreateOpen(true)}>
+                Have your own session? Create a new one
+              </button>
+            )}
+
+            {createOpen && (
+              <form style={form} onSubmit={createSession}>
+                <input
+                  style={input}
+                  value={createCode}
+                  onChange={event => setCreateCode(event.target.value.toUpperCase())}
+                  placeholder="Session name"
+                  autoCapitalize="characters"
+                  autoCorrect="off"
+                  spellCheck={false}
+                />
+                <input
+                  style={input}
+                  value={createName}
+                  onChange={event => setCreateName(event.target.value)}
+                  placeholder="Display name"
+                  autoComplete="name"
+                />
+                <button style={secondaryButton} type="submit" disabled={busy}>
+                  Create session
+                </button>
+              </form>
+            )}
+          </>
         )}
 
         {error && <p style={errorText}>{error}</p>}
@@ -261,7 +276,7 @@ const notice: React.CSSProperties = {
 
 const tabs: React.CSSProperties = {
   display: 'grid',
-  gridTemplateColumns: 'repeat(3, 1fr)',
+  gridTemplateColumns: 'repeat(2, 1fr)',
   border: '1px solid #d0d7de',
   borderRadius: 6,
   overflow: 'hidden',
@@ -278,6 +293,53 @@ function tabStyle(active: boolean): React.CSSProperties {
     fontFamily: 'system-ui, sans-serif',
     fontWeight: 600,
   }
+}
+
+const fieldLabel: React.CSSProperties = {
+  fontSize: '0.8rem',
+  fontWeight: 600,
+  color: '#57606a',
+  fontFamily: 'system-ui, sans-serif',
+}
+
+const joinInput: React.CSSProperties = {
+  fontSize: '1.4rem',
+  fontWeight: 700,
+  letterSpacing: '0.08em',
+  textAlign: 'center',
+  padding: '0.75rem',
+  borderRadius: 6,
+  border: '2px solid #1f6feb',
+  fontFamily: 'monospace',
+  outline: 'none',
+}
+
+const divider: React.CSSProperties = {
+  borderTop: '1px solid #eaeef2',
+  margin: '0.2rem 0',
+}
+
+const secondaryLink: React.CSSProperties = {
+  border: 'none',
+  background: 'none',
+  color: '#57606a',
+  fontSize: '0.85rem',
+  fontFamily: 'system-ui, sans-serif',
+  cursor: 'pointer',
+  textDecoration: 'underline',
+  padding: '0.25rem',
+}
+
+const secondaryButton: React.CSSProperties = {
+  fontSize: '0.9rem',
+  padding: '0.55rem',
+  borderRadius: 6,
+  border: '1px solid #d0d7de',
+  background: '#f6f8fa',
+  color: '#24292f',
+  cursor: 'pointer',
+  fontFamily: 'system-ui, sans-serif',
+  fontWeight: 600,
 }
 
 const form: React.CSSProperties = {
