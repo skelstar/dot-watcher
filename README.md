@@ -46,9 +46,7 @@ Generated review files belong under `.ai/reviews/`; generated PR descriptions be
 1. A runner signs in to the iOS app, creates a session, and starts tracking
 2. The app sends GPS coordinates and compass heading to the server at a configurable interval
 3. The server stores the latest positions for all runners in that session
-4. Other users join the session in one of two ways:
-   - **Invite code / link** — the session owner shares an invite code or link; joining via the iOS app grants `runner` membership; joining via the web client grants `viewer` membership
-   - **Browse and request** — users browse active sessions in the app, send a join request, and the owner approves or denies it; approval grants `runner` membership
+4. Other users join the session via invite code or link — the session owner shares it; joining via the iOS app grants `runner` membership; joining via the web client grants `viewer` membership
 5. The web viewer polls the server and renders all runners as directional markers on a Mapbox map
 
 ---
@@ -123,8 +121,7 @@ A native Swift app.
 **Session flow**
 
 - Runner signs in
-- Runner creates a session, joins via invite code, or browses active sessions and sends a join request
-- Session owner approves or denies join requests from the Participants section
+- Runner creates a session, or joins an existing one via invite code
 - Runner starts/stops tracking manually
 - Session row is swipeable: swipe right for share actions (SMS, Email, WhatsApp, Map); swipe left to leave
 
@@ -152,10 +149,9 @@ Three Xcode configurations: Debug (simulator → localhost), Device (physical de
 | Viewer     | `GET /locations/{sessionCode}` | User access token plus session membership |
 | Admin/debug dashboard | `GET /sessions`, `GET /log`, recording mutations | Admin bearer token in `Authorization` header |
 
-Session codes are identifiers, not credentials. There are two paths to membership:
+Session codes are identifiers, not credentials. Membership is granted via:
 
 - **Invite code join** (`POST /session-invites/{inviteCode}/join`) — grants `runner` when the iOS app sends `role: runner`, or `viewer` when joining via the web client. Preserves any existing role for returning members.
-- **Join request** (`POST /sessions/{sessionId}/join-requests` → owner approves) — always grants `runner` membership on approval.
 
 `GET /locations/{sessionCode}` returns `403` for authenticated users without membership, including unknown session codes, and returns `200 []` only for a member session with no live positions yet.
 

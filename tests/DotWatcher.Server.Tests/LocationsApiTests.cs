@@ -220,11 +220,11 @@ public class LocationsApiTests
         var runner = await AuthTestHelpers.RegisterWithResponseAsync(client, "runner", "Runner");
         var session = await AuthTestHelpers.CreateSessionAsync(client, owner.AccessToken);
 
-        await AuthTestHelpers.ApproveAsRunnerAsync(
+        await AuthTestHelpers.JoinSessionAsync(
             client,
-            owner.AccessToken,
             runner.AccessToken,
-            session.SessionId,
+            session.InviteCode,
+            role: "runner",
             displayName: "First Name");
 
         await PostLocationAsync(

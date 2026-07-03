@@ -15,15 +15,6 @@ interface AdminSession {
   createdAt: string
 }
 
-interface AdminJoinRequest {
-  requestId: string
-  sessionId: string
-  username: string
-  displayName: string
-  status: 'pending' | 'approved' | 'denied'
-  createdAt: string
-}
-
 interface AdminMemberStats {
   displayName: string
   role: string
@@ -41,7 +32,6 @@ export default function AdminPanel({ serverUrl }: { serverUrl: string }) {
   const [tokenInput, setTokenInput] = useState(token)
   const [users, setUsers] = useState<AdminUser[]>([])
   const [sessions, setSessions] = useState<AdminSession[]>([])
-  const [joinRequests, setJoinRequests] = useState<AdminJoinRequest[]>([])
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [deletingId, setDeletingId] = useState<string | null>(null)
@@ -49,7 +39,6 @@ export default function AdminPanel({ serverUrl }: { serverUrl: string }) {
   const [expandedSessionId, setExpandedSessionId] = useState<string | null>(null)
   const [memberStats, setMemberStats] = useState<Record<string, MemberStatsState>>({})
   const [clearingRecordsId, setClearingRecordsId] = useState<string | null>(null)
-  const [deletingJoinRequestId, setDeletingJoinRequestId] = useState<string | null>(null)
 
   useLayoutEffect(() => {
     const root = document.getElementById('root')
@@ -69,22 +58,20 @@ export default function AdminPanel({ serverUrl }: { serverUrl: string }) {
     setError(null)
     try {
       const headers = { Authorization: `Bearer ${bearerToken}` }
-      const [usersRes, sessionsRes, requestsRes] = await Promise.all([
+      const [usersRes, sessionsRes] = await Promise.all([
         fetch(`${serverUrl}/admin/users`, { headers }),
         fetch(`${serverUrl}/admin/sessions`, { headers }),
-        fetch(`${serverUrl}/admin/join-requests`, { headers }),
       ])
-      if (usersRes.status === 401 || sessionsRes.status === 401 || requestsRes.status === 401) {
+      if (usersRes.status === 401 || sessionsRes.status === 401) {
         setError('Invalid bearer token.')
         return
       }
-      if (!usersRes.ok || !sessionsRes.ok || !requestsRes.ok) {
+      if (!usersRes.ok || !sessionsRes.ok) {
         setError('Failed to load data.')
         return
       }
       setUsers(await usersRes.json() as AdminUser[])
       setSessions(await sessionsRes.json() as AdminSession[])
-      setJoinRequests(await requestsRes.json() as AdminJoinRequest[])
     } catch {
       setError('Network error.')
     } finally {
@@ -105,7 +92,7 @@ export default function AdminPanel({ serverUrl }: { serverUrl: string }) {
   }
 
   async function handleDeleteSession(session: AdminSession) {
-    if (!window.confirm(`Delete session "${session.sessionName}"? This removes all members, location data, and join requests. This cannot be undone.`)) return
+    if (!window.confirm(`Delete session "${session.sessionName}"? This removes all members and location data. This cannot be undone.`)) return
     setDeletingSessionId(session.sessionId)
     try {
       const response = await fetch(`${serverUrl}/admin/sessions/${session.sessionId}`, {
@@ -189,26 +176,6 @@ export default function AdminPanel({ serverUrl }: { serverUrl: string }) {
       setError('Network error.')
     } finally {
       setClearingRecordsId(null)
-    }
-  }
-
-  async function handleDeleteJoinRequest(requestId: string) {
-    if (!window.confirm('Delete this join request?')) return
-    setDeletingJoinRequestId(requestId)
-    try {
-      const r = await fetch(`${serverUrl}/admin/join-requests/${requestId}`, {
-        method: 'DELETE',
-        headers: { Authorization: `Bearer ${token}` },
-      })
-      if (r.ok || r.status === 204) {
-        setJoinRequests(prev => prev.filter(jr => jr.requestId !== requestId))
-      } else {
-        setError(`Delete failed (HTTP ${r.status}).`)
-      }
-    } catch {
-      setError('Network error.')
-    } finally {
-      setDeletingJoinRequestId(null)
     }
   }
 
@@ -400,47 +367,6 @@ export default function AdminPanel({ serverUrl }: { serverUrl: string }) {
       {token && !loading && sessions.length === 0 && !error && (
         <p style={emptyText}>No sessions.</p>
       )}
-
-      <h2 style={subheading}>Join Requests</h2>
-      {joinRequests.length > 0 && (
-        <table style={table}>
-          <thead>
-            <tr>
-              <th style={th}>Session ID</th>
-              <th style={th}>User</th>
-              <th style={th}>Display name</th>
-              <th style={th}>Status</th>
-              <th style={th}>Requested</th>
-              <th style={th}></th>
-            </tr>
-          </thead>
-          <tbody>
-            {joinRequests.map(req => (
-              <tr key={req.requestId} style={tr}>
-                <td style={td}><code>{req.sessionId}</code></td>
-                <td style={td}>{req.username}</td>
-                <td style={td}>{req.displayName}</td>
-                <td style={td}>
-                  <span style={statusBadge(req.status)}>{req.status}</span>
-                </td>
-                <td style={td}>{timeAgo(req.createdAt)}</td>
-                <td style={actionTd}>
-                  <button
-                    style={deleteBtn}
-                    onClick={() => void handleDeleteJoinRequest(req.requestId)}
-                    disabled={deletingJoinRequestId === req.requestId}
-                  >
-                    {deletingJoinRequestId === req.requestId ? '…' : 'Delete'}
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-      {token && !loading && joinRequests.length === 0 && !error && (
-        <p style={emptyText}>No join requests.</p>
-      )}
     </div>
   )
 }
@@ -608,19 +534,3 @@ const recTd: React.CSSProperties = {
   fontSize: '0.8rem',
 }
 
-function statusBadge(status: string): React.CSSProperties {
-  const colors: Record<string, string> = {
-    pending: '#f59e0b',
-    approved: '#22c55e',
-    denied: '#ef4444',
-  }
-  return {
-    display: 'inline-block',
-    padding: '0.15rem 0.5rem',
-    borderRadius: 999,
-    fontSize: '0.75rem',
-    fontWeight: 600,
-    background: colors[status] ?? '#94a3b8',
-    color: '#fff',
-  }
-}

@@ -36,16 +36,10 @@ dotnet run --urls "http://0.0.0.0:8080"
 
 ## Session flow
 
-After signing in, the main screen gives three ways to get into a session:
+After signing in, the main screen leads with joining a session, since most users arrive with an invite code from someone else:
 
-1. **Create** — `POST /sessions`, becoming the session owner. Share the generated invite code or link with other runners.
-2. **Join via invite code** — `POST /session-invites/{inviteCode}/join`. Joining via the iOS app requests `runner` role; joining via the web client creates `viewer` membership.
-3. **Browse active sessions** — `GET /sessions/browse` lists open sessions. Tap "Request" to send a join request (`POST /sessions/{sessionId}/join-requests`). The session owner approves or denies from the Participants section of their session view. Approved requests grant `runner` membership.
-
-Join request status is shown inline on the browse list:
-- **Requested** — pending approval
-- **Denied** — request was denied; a "Re-request" button lets the user try again
-- The row disappears from Browse and the session appears in My Sessions once approved
+1. **Join via invite code** — `POST /session-invites/{inviteCode}/join`. Joining via the iOS app requests `runner` role; joining via the web client creates `viewer` membership.
+2. **Create** — a small "Have your own session? Create one" link opens a sheet that calls `POST /sessions`, making the user the session owner. Share the generated invite code or link with other runners.
 
 The session row (once in a session) is swipeable:
 - **Swipe right** — reveals share buttons: SMS, Email, WhatsApp, Map. Each sends or opens the invite link.
@@ -70,7 +64,7 @@ The session row (once in a session) is swipeable:
 
 GitHub Actions does not currently build or run the iOS project. iOS verification is manual because it depends on local Xcode, signing, simulator/device availability, Keychain behavior, background-location permissions, and real GPS/background execution.
 
-Manual pre-release checks should cover sign-in/register, Keychain persistence, logout revocation, create session, join via invite, join via browse/request, owner approval flow, owner/runner-only posting, `401`/`403` handling, background location, clock-aligned posting, offline retry, and TestFlight packaging.
+Manual pre-release checks should cover sign-in/register, Keychain persistence, logout revocation, create session, join via invite, owner/runner-only posting, `401`/`403` handling, background location, clock-aligned posting, offline retry, and TestFlight packaging.
 
 The app links to:
 

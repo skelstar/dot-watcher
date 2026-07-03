@@ -23,15 +23,6 @@ struct SessionMembership: Codable, Identifiable {
     let displayName: String
 }
 
-struct BrowsableSession: Codable, Identifiable {
-    var id: String { sessionId }
-    let sessionId: String
-    let sessionName: String
-    let ownerDisplayName: String
-    let memberCount: Int
-    let createdAt: String
-}
-
 private struct LocationPostResponse: Codable {
     let participants: [String]
 }
@@ -234,10 +225,6 @@ final class LocationManager {
             sessionRunnerNames = []
             status = "Idle"
         }
-    }
-
-    func browseSessions() async throws -> [BrowsableSession] {
-        try await send(path: "/sessions/browse")
     }
 
     func loadSessionRunners() async {

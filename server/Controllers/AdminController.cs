@@ -44,15 +44,6 @@ public class AdminController(SessionStore store, BearerTokenAuth auth) : Control
         return store.DeleteSession(sessionId) ? NoContent() : NotFound();
     }
 
-    [HttpGet("/admin/join-requests")]
-    public IActionResult GetJoinRequests()
-    {
-        if (!auth.IsAuthorized(Request))
-            return Unauthorized();
-
-        return Ok(store.GetAllJoinRequests());
-    }
-
     [HttpGet("/admin/sessions/{sessionId}/records")]
     public IActionResult GetSessionRecords(string sessionId, [FromQuery] int limit = 20)
     {
@@ -70,14 +61,5 @@ public class AdminController(SessionStore store, BearerTokenAuth auth) : Control
             return Unauthorized();
 
         return Ok(store.GetSessionMemberStats(sessionId));
-    }
-
-    [HttpDelete("/admin/join-requests/{requestId}")]
-    public IActionResult DeleteJoinRequest(string requestId)
-    {
-        if (!auth.IsAuthorized(Request))
-            return Unauthorized();
-
-        return store.DeleteJoinRequest(requestId) ? NoContent() : NotFound();
     }
 }

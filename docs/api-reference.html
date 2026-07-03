@@ -1,0 +1,602 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>DotWatcher — iOS API Reference</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      background: #f1f5f9;
+      color: #1e293b;
+      padding: 2.5rem 1rem 4rem;
+    }
+
+    .page {
+      max-width: 900px;
+      margin: 0 auto;
+    }
+
+    header {
+      margin-bottom: 2.5rem;
+    }
+
+    header h1 {
+      font-size: 1.75rem;
+      font-weight: 700;
+      margin-bottom: 0.4rem;
+    }
+
+    header p {
+      color: #64748b;
+      font-size: 0.95rem;
+    }
+
+    header .meta {
+      margin-top: 0.75rem;
+      font-size: 0.85rem;
+      color: #94a3b8;
+    }
+
+    .section-title {
+      font-size: 0.75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: #94a3b8;
+      margin: 2.25rem 0 0.75rem;
+    }
+
+    .card {
+      background: #ffffff;
+      border-radius: 14px;
+      padding: 1.5rem 1.75rem;
+      margin-bottom: 1rem;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.07), 0 4px 16px rgba(0,0,0,0.04);
+    }
+
+    .endpoint-header {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      margin-bottom: 0.6rem;
+      flex-wrap: wrap;
+    }
+
+    .method {
+      display: inline-block;
+      font-size: 0.7rem;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      padding: 0.2rem 0.55rem;
+      border-radius: 6px;
+      flex-shrink: 0;
+    }
+
+    .method-get    { background: #dbeafe; color: #1d4ed8; }
+    .method-post   { background: #dcfce7; color: #166534; }
+    .method-delete { background: #fee2e2; color: #991b1b; }
+
+    .path {
+      font-family: ui-monospace, 'SF Mono', monospace;
+      font-size: 0.9rem;
+      font-weight: 600;
+      color: #1e293b;
+    }
+
+    .path .param {
+      color: #7c3aed;
+    }
+
+    .auth-badge {
+      margin-left: auto;
+      font-size: 0.7rem;
+      font-weight: 600;
+      padding: 0.2rem 0.55rem;
+      border-radius: 6px;
+      flex-shrink: 0;
+    }
+
+    .auth-required { background: #fef3c7; color: #92400e; }
+    .auth-none     { background: #f1f5f9; color: #64748b; }
+
+    .purpose {
+      font-size: 0.92rem;
+      color: #475569;
+      margin-bottom: 0.9rem;
+    }
+
+    .details {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.75rem;
+    }
+
+    @media (max-width: 600px) {
+      .details { grid-template-columns: 1fr; }
+    }
+
+    .detail-block {
+      background: #f8fafc;
+      border-radius: 8px;
+      padding: 0.75rem 1rem;
+    }
+
+    .detail-block h4 {
+      font-size: 0.7rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: #94a3b8;
+      margin-bottom: 0.4rem;
+    }
+
+    .detail-block pre {
+      font-family: ui-monospace, 'SF Mono', monospace;
+      font-size: 0.78rem;
+      color: #334155;
+      white-space: pre-wrap;
+      line-height: 1.6;
+    }
+
+    .detail-block .none-label {
+      font-size: 0.82rem;
+      color: #94a3b8;
+      font-style: italic;
+    }
+
+    .notes {
+      margin-top: 0.75rem;
+      font-size: 0.82rem;
+      color: #64748b;
+      background: #f0f9ff;
+      border-left: 3px solid #7dd3fc;
+      padding: 0.5rem 0.75rem;
+      border-radius: 0 6px 6px 0;
+    }
+
+    .owner-only {
+      display: inline-block;
+      font-size: 0.7rem;
+      font-weight: 600;
+      padding: 0.15rem 0.5rem;
+      border-radius: 5px;
+      background: #ede9fe;
+      color: #6d28d9;
+      margin-left: 0.4rem;
+    }
+
+    .periodic-badge {
+      display: inline-block;
+      font-size: 0.7rem;
+      font-weight: 600;
+      padding: 0.15rem 0.5rem;
+      border-radius: 5px;
+      background: #fce7f3;
+      color: #9d174d;
+      margin-left: 0.4rem;
+    }
+
+    .toc {
+      background: #fff;
+      border-radius: 14px;
+      padding: 1.25rem 1.75rem;
+      margin-bottom: 2rem;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.07), 0 4px 16px rgba(0,0,0,0.04);
+    }
+
+    .toc h3 {
+      font-size: 0.8rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: #94a3b8;
+      margin-bottom: 0.75rem;
+    }
+
+    .toc ul {
+      list-style: none;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+    }
+
+    .toc a {
+      display: inline-block;
+      font-size: 0.82rem;
+      font-weight: 600;
+      padding: 0.3rem 0.75rem;
+      border-radius: 20px;
+      text-decoration: none;
+      transition: opacity 0.15s;
+    }
+    .toc a:hover { opacity: 0.75; }
+
+    .toc-auth     { background: #dbeafe; color: #1d4ed8; }
+    .toc-sessions { background: #dcfce7; color: #166534; }
+    .toc-members  { background: #ede9fe; color: #6d28d9; }
+    .toc-requests { background: #fef3c7; color: #92400e; }
+    .toc-location { background: #fce7f3; color: #9d174d; }
+  </style>
+</head>
+<body>
+  <div class="page">
+
+    <header>
+      <h1>DotWatcher — iOS API Reference</h1>
+      <p>All network calls made by the iOS app to the DotWatcher REST API.</p>
+      <p class="meta">
+        Base URL: <code>https://dot-watcher.skelstar.io/api</code> &nbsp;·&nbsp;
+        Auth: Bearer token in <code>Authorization</code> header &nbsp;·&nbsp;
+        Token stored in Keychain
+      </p>
+    </header>
+
+    <!-- Table of Contents -->
+    <div class="toc">
+      <h3>Sections</h3>
+      <ul>
+        <li><a href="#auth" class="toc-auth">Authentication</a></li>
+        <li><a href="#sessions" class="toc-sessions">Sessions</a></li>
+        <li><a href="#members" class="toc-members">Members</a></li>
+        <li><a href="#location" class="toc-location">Location Tracking</a></li>
+      </ul>
+    </div>
+
+
+    <!-- ═══════════════════════════════════════════════ AUTHENTICATION -->
+    <p class="section-title" id="auth">Authentication</p>
+
+    <div class="card">
+      <div class="endpoint-header">
+        <span class="method method-post">POST</span>
+        <span class="path">/auth/login</span>
+        <span class="auth-badge auth-none">No auth</span>
+      </div>
+      <p class="purpose">Sign in with username and password. Returns a bearer token and user profile stored in the app for all subsequent calls.</p>
+      <div class="details">
+        <div class="detail-block">
+          <h4>Request Body</h4>
+          <pre>{
+  "username": "string",
+  "password": "string"
+}</pre>
+        </div>
+        <div class="detail-block">
+          <h4>Response — AuthSession</h4>
+          <pre>{
+  "accessToken": "string",
+  "user": {
+    "userId": "string",
+    "username": "string",
+    "displayName": "string"
+  }
+}</pre>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="endpoint-header">
+        <span class="method method-post">POST</span>
+        <span class="path">/auth/register</span>
+        <span class="auth-badge auth-none">No auth</span>
+      </div>
+      <p class="purpose">Create a new account. Returns the same <code>AuthSession</code> structure as login — the user is immediately signed in.</p>
+      <div class="details">
+        <div class="detail-block">
+          <h4>Request Body</h4>
+          <pre>{
+  "username": "string",
+  "password": "string",
+  "displayName": "string"
+}</pre>
+        </div>
+        <div class="detail-block">
+          <h4>Response — AuthSession</h4>
+          <pre>{
+  "accessToken": "string",
+  "user": { ... }
+}</pre>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="endpoint-header">
+        <span class="method method-post">POST</span>
+        <span class="path">/auth/logout</span>
+        <span class="auth-badge auth-required">Bearer token</span>
+      </div>
+      <p class="purpose">Revoke the current access token on the server, then clear it from the Keychain. Called when the user signs out.</p>
+      <div class="details">
+        <div class="detail-block">
+          <h4>Request Body</h4>
+          <p class="none-label">Empty</p>
+        </div>
+        <div class="detail-block">
+          <h4>Response</h4>
+          <p class="none-label">Empty / ignored</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="endpoint-header">
+        <span class="method method-delete">DELETE</span>
+        <span class="path">/me</span>
+        <span class="auth-badge auth-required">Bearer token</span>
+      </div>
+      <p class="purpose">Permanently delete the authenticated user's account and all associated data.</p>
+      <div class="details">
+        <div class="detail-block">
+          <h4>Request Body</h4>
+          <p class="none-label">Empty</p>
+        </div>
+        <div class="detail-block">
+          <h4>Response</h4>
+          <p class="none-label">Empty</p>
+        </div>
+      </div>
+    </div>
+
+
+    <!-- ═══════════════════════════════════════════════ SESSIONS -->
+    <p class="section-title" id="sessions">Sessions</p>
+
+    <div class="card">
+      <div class="endpoint-header">
+        <span class="method method-get">GET</span>
+        <span class="path">/me/sessions</span>
+        <span class="auth-badge auth-required">Bearer token</span>
+      </div>
+      <p class="purpose">Load all sessions the current user belongs to, including their role and the invite code for each. Called on app launch, after sign-in, and whenever the session sheet opens.</p>
+      <div class="details">
+        <div class="detail-block">
+          <h4>Request Body</h4>
+          <p class="none-label">None</p>
+        </div>
+        <div class="detail-block">
+          <h4>Response — [SessionMembership]</h4>
+          <pre>[{
+  "sessionId": "string",
+  "sessionName": "string",
+  "inviteCode": "string",
+  "role": "owner" | "runner" | "viewer",
+  "displayName": "string"
+}]</pre>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="endpoint-header">
+        <span class="method method-post">POST</span>
+        <span class="path">/sessions</span>
+        <span class="auth-badge auth-required">Bearer token</span>
+      </div>
+      <p class="purpose">Create a new session. The caller becomes the owner. An invite code is generated server-side and returned in the response.</p>
+      <div class="details">
+        <div class="detail-block">
+          <h4>Request Body</h4>
+          <pre>{
+  "sessionName": "string | null",
+  "displayName": "string | null"
+}</pre>
+        </div>
+        <div class="detail-block">
+          <h4>Response — SessionMembership</h4>
+          <pre>{
+  "sessionId": "string",
+  "sessionName": "string",
+  "inviteCode": "string",
+  "role": "owner",
+  "displayName": "string"
+}</pre>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="endpoint-header">
+        <span class="method method-post">POST</span>
+        <span class="path">/session-invites/<span class="param">{inviteCode}</span>/join</span>
+        <span class="auth-badge auth-required">Bearer token</span>
+      </div>
+      <p class="purpose">Join an existing session using a 6-character invite code (uppercase). Returns the new membership with role assigned by the owner's settings.</p>
+      <div class="details">
+        <div class="detail-block">
+          <h4>Request Body</h4>
+          <pre>{
+  "displayName": "string | null"
+}</pre>
+        </div>
+        <div class="detail-block">
+          <h4>Response — SessionMembership</h4>
+          <pre>{
+  "sessionId": "string",
+  "sessionName": "string",
+  "inviteCode": "string",
+  "role": "runner" | "viewer",
+  "displayName": "string"
+}</pre>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="endpoint-header">
+        <span class="method method-delete">DELETE</span>
+        <span class="path">/me/sessions/<span class="param">{sessionId}</span></span>
+        <span class="auth-badge auth-required">Bearer token</span>
+        <span class="owner-only">Owner only</span>
+      </div>
+      <p class="purpose">Permanently delete a session and all its members and locations. Only callable by the session owner.</p>
+      <div class="details">
+        <div class="detail-block">
+          <h4>Request Body</h4>
+          <p class="none-label">Empty</p>
+        </div>
+        <div class="detail-block">
+          <h4>Response</h4>
+          <p class="none-label">Empty</p>
+        </div>
+      </div>
+    </div>
+
+
+    <!-- ═══════════════════════════════════════════════ MEMBERS -->
+    <p class="section-title" id="members">Members</p>
+
+    <div class="card">
+      <div class="endpoint-header">
+        <span class="method method-get">GET</span>
+        <span class="path">/sessions/<span class="param">{sessionId}</span>/members</span>
+        <span class="auth-badge auth-required">Bearer token</span>
+        <span class="owner-only">Owner only</span>
+      </div>
+      <p class="purpose">Load all members of a session with their roles and display names. Called when the owner opens the Member Management sheet or selects a session.</p>
+      <div class="details">
+        <div class="detail-block">
+          <h4>Request Body</h4>
+          <p class="none-label">None</p>
+        </div>
+        <div class="detail-block">
+          <h4>Response — [SessionMember]</h4>
+          <pre>[{
+  "userId": "string",
+  "role": "owner" | "runner" | "viewer",
+  "displayName": "string"
+}]</pre>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="endpoint-header">
+        <span class="method method-post">POST</span>
+        <span class="path">/sessions/<span class="param">{sessionId}</span>/members/<span class="param">{userId}</span>/role</span>
+        <span class="auth-badge auth-required">Bearer token</span>
+        <span class="owner-only">Owner only</span>
+      </div>
+      <p class="purpose">Change an existing member's role (e.g. promote a viewer to runner, or demote a runner back to viewer). Returns the updated member record.</p>
+      <div class="details">
+        <div class="detail-block">
+          <h4>Request Body</h4>
+          <pre>{
+  "role": "runner" | "viewer"
+}</pre>
+        </div>
+        <div class="detail-block">
+          <h4>Response — SessionMember</h4>
+          <pre>{
+  "userId": "string",
+  "role": "runner" | "viewer",
+  "displayName": "string"
+}</pre>
+        </div>
+      </div>
+    </div>
+
+
+
+
+    <!-- ═══════════════════════════════════════════════ LOCATION -->
+    <p class="section-title" id="location">Location Tracking</p>
+
+    <div class="card">
+      <div class="endpoint-header">
+        <span class="method method-post">POST</span>
+        <span class="path">/location</span>
+        <span class="auth-badge auth-required">Bearer token</span>
+        <span class="periodic-badge">Every 15 s</span>
+      </div>
+      <p class="purpose">The core tracking call. Sends the runner's current GPS position to the server during an active tracking session. Fires every 15 seconds, aligned to epoch-based intervals. The response returns all current participant positions — this is the only way the app polls for live session state while tracking.</p>
+      <div class="details">
+        <div class="detail-block">
+          <h4>Request Body</h4>
+          <pre>{
+  "runnerName": "string",
+  "sessionId": "string",
+  "latitude": number,
+  "longitude": number,
+  "heading": number,   // omitted if < 0
+  "timestamp": "ISO8601"
+}</pre>
+        </div>
+        <div class="detail-block">
+          <h4>Response — LocationPostResponse</h4>
+          <pre>{
+  "participants": [{
+    "runnerName": "string",
+    "latitude": number,
+    "longitude": number,
+    "heading": number,
+    "timestamp": "ISO8601"
+  }]
+}</pre>
+        </div>
+      </div>
+      <div class="notes">
+        <strong>Role requirement:</strong> Only users with role <code>owner</code> or <code>runner</code> can post location updates.
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="endpoint-header">
+        <span class="method method-post">POST</span>
+        <span class="path">/location</span>
+        <span class="auth-badge auth-required">Bearer token</span>
+      </div>
+      <p class="purpose">Presence announcement — same endpoint as the tracking call, but sent once immediately when the user selects a session. Sends zero coordinates (<code>lat: 0, lon: 0</code>) so the server registers the user as active in the session before tracking starts.</p>
+      <div class="details">
+        <div class="detail-block">
+          <h4>Request Body</h4>
+          <pre>{
+  "runnerName": "string",
+  "sessionId": "string",
+  "latitude": 0.0,
+  "longitude": 0.0,
+  "timestamp": "ISO8601"
+}</pre>
+        </div>
+        <div class="detail-block">
+          <h4>Response</h4>
+          <p class="none-label">LocationPostResponse (ignored)</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="endpoint-header">
+        <span class="method method-get">GET</span>
+        <span class="path">/locations/<span class="param">{sessionId}</span></span>
+        <span class="auth-badge auth-required">Bearer token</span>
+      </div>
+      <p class="purpose">Fetch the current positions of all participants in a session. Called once when the user selects a session to pre-populate the map before the tracking loop begins.</p>
+      <div class="details">
+        <div class="detail-block">
+          <h4>Request Body</h4>
+          <p class="none-label">None</p>
+        </div>
+        <div class="detail-block">
+          <h4>Response — [[RunnerPositionResponse]]</h4>
+          <pre>[[{
+  "runnerName": "string",
+  "latitude": number,
+  "longitude": number,
+  "heading": number,
+  "timestamp": "ISO8601"
+}]]</pre>
+        </div>
+      </div>
+      <div class="notes">
+        Response is an array of arrays — each inner array is one runner's position history (most recent first). The outer array groups by runner.
+      </div>
+    </div>
+
+  </div>
+</body>
+</html>

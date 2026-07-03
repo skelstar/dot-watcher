@@ -13,8 +13,6 @@ struct ContentView: View {
     @State private var showCreateSession: Bool = false
     @State private var noSessionCreateCode = ""
     @State private var noSessionInviteCode = ""
-    @State private var browsableSessions: [BrowsableSession] = []
-    @State private var isBrowseLoading = false
     @State private var isBusy = false
     @State private var formError: String?
     @State private var sessionRowSwipeOffset: CGFloat = 0
@@ -102,14 +100,6 @@ struct ContentView: View {
                 runnerRow
                 noSessionJoinCard
                 noSessionCreateLink
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Browse")
-                        .font(.caption)
-                        .fontWeight(.semibold)
-                        .foregroundStyle(.secondary)
-                        .padding(.leading, 4)
-                    noSessionBrowseCard
-                }
                 if let formError {
                     Text(formError)
                         .font(.caption)
@@ -122,10 +112,6 @@ struct ContentView: View {
         }
         .refreshable {
             await location.loadSessions()
-            await loadBrowsableSessions()
-        }
-        .task {
-            await loadBrowsableSessions()
         }
     }
 
@@ -138,49 +124,6 @@ struct ContentView: View {
                 .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity)
-    }
-
-    private var noSessionBrowseCard: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Text("Active Sessions")
-                    .font(.headline)
-                Spacer()
-                Button {
-                    Task {
-                        await location.loadSessions()
-                        await loadBrowsableSessions()
-                    }
-                } label: {
-                    if isBrowseLoading {
-                        ProgressView()
-                    } else {
-                        Image(systemName: "arrow.clockwise")
-                            .foregroundStyle(.tint)
-                    }
-                }
-                .disabled(isBrowseLoading)
-            }
-            if browsableSessions.isEmpty && !isBrowseLoading {
-                Text("No active sessions found")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-            } else {
-                ForEach(browsableSessions) { session in
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text(session.sessionName)
-                            .font(.body.monospaced().bold())
-                        Text("\(session.ownerDisplayName) · \(session.memberCount) member\(session.memberCount == 1 ? "" : "s")")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                }
-            }
-        }
-        .padding(16)
-        .background(Color(.secondarySystemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 14))
     }
 
     private var noSessionJoinCard: some View {
@@ -607,17 +550,6 @@ struct ContentView: View {
             formError = error.localizedDescription
         }
         isBusy = false
-    }
-
-    private func loadBrowsableSessions() async {
-        guard !isBrowseLoading else { return }
-        isBrowseLoading = true
-        do {
-            browsableSessions = try await location.browseSessions()
-        } catch {
-            // ignore browse errors silently
-        }
-        isBrowseLoading = false
     }
 
     // MARK: - Leave / Delete Session
