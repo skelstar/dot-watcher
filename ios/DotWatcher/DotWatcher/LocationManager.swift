@@ -97,6 +97,12 @@ final class LocationManager {
         activeMembership?.role == "runner"
     }
 
+    func nextPostAt(from now: Date = Date()) -> Date {
+        let seconds = now.timeIntervalSince1970
+        let nextEpoch = (floor(seconds / interval) + 1) * interval
+        return Date(timeIntervalSince1970: nextEpoch)
+    }
+
 
     init() {
         accessToken = Self.readToken()
@@ -279,8 +285,7 @@ final class LocationManager {
 
     private func trackingLoop() async {
         while !Task.isCancelled {
-            let now = Date().timeIntervalSince1970
-            let delay = ((floor(now / interval) + 1) * interval) - now
+            let delay = nextPostAt().timeIntervalSinceNow
             try? await Task.sleep(for: .seconds(delay))
             guard !Task.isCancelled else { break }
             captureAndPost()

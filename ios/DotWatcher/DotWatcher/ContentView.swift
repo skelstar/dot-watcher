@@ -232,13 +232,27 @@ struct ContentView: View {
                     nameInput = location.runnerName
                     showNameEntry = true
                 }
-            HStack(spacing: 8) {
-                Circle()
-                    .fill(statusDotColor)
-                    .frame(width: 10, height: 10)
-                Text(location.status)
-                    .font(.headline)
-                    .fontWeight(.bold)
+            if location.isTracking {
+                TimelineView(.periodic(from: .now, by: 1.0 / 10.0)) { context in
+                    let nextPostAt = location.nextPostAt(from: location.lastSent ?? Date())
+                    let remaining = max(0, nextPostAt.timeIntervalSince(context.date))
+                    let fraction = location.interval > 0 ? remaining / location.interval : 0
+
+                    HStack(spacing: 8) {
+                        StatusIndicatorDot(color: statusDotColor, countdownFraction: fraction)
+                        Text("Sending")
+                            .font(.headline)
+                            .fontWeight(.bold)
+                        PostCountdownRing(fraction: fraction)
+                    }
+                }
+            } else {
+                HStack(spacing: 8) {
+                    StatusIndicatorDot(color: statusDotColor)
+                    Text(location.status)
+                        .font(.headline)
+                        .fontWeight(.bold)
+                }
             }
             Spacer()
             if location.activeMembership != nil {
