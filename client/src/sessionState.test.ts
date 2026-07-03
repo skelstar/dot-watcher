@@ -26,6 +26,12 @@ test('shouldShowAuthPrompt requires missing access token', () => {
   assert.equal(shouldShowAuthPrompt('token'), false)
 })
 
+test('shouldShowAuthPrompt is skipped when an invite code lets someone view without signing in', () => {
+  assert.equal(shouldShowAuthPrompt(null, 'INVITE123'), false)
+  assert.equal(shouldShowAuthPrompt(null, null), true)
+  assert.equal(shouldShowAuthPrompt('token', 'INVITE123'), false)
+})
+
 test('shouldShowSessionPrompt waits for auth and memberships', () => {
   assert.equal(shouldShowSessionPrompt({
     accessToken: null,

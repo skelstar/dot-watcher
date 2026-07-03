@@ -373,6 +373,19 @@ public class SessionStore(string dbPath)
         return GetMembership(conn, sessionId, userId, storedInviteCode)!;
     }
 
+    public string? GetSessionIdByInviteCode(string inviteCode)
+    {
+        var normalizedInvite = NormalizeSessionName(inviteCode);
+        if (normalizedInvite is null)
+            return null;
+
+        using var conn = Connect();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT id FROM app_sessions WHERE invite_code = $inviteCode";
+        cmd.Parameters.AddWithValue("$inviteCode", normalizedInvite);
+        return cmd.ExecuteScalar() as string;
+    }
+
     public IReadOnlyList<SessionMembership> GetSessionsForUser(string userId)
     {
         using var conn = Connect();

@@ -79,6 +79,16 @@ public class SessionsController(
             : Ok(membership);
     }
 
+    [HttpGet("/session-invites/{inviteCode}/locations")]
+    public IActionResult GetLocationsByInviteCode(string inviteCode)
+    {
+        var sessionId = store.GetSessionIdByInviteCode(inviteCode);
+        if (sessionId is null)
+            return NotFound(new { error = "Invite not found." });
+
+        return Ok(store.GetLatestPositions(sessionId));
+    }
+
     [HttpGet("/sessions/{sessionId}/runners")]
     public IActionResult GetSessionRunners(string sessionId)
     {

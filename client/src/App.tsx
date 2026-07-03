@@ -184,6 +184,7 @@ export default function App() {
     POLL_INTERVAL_MS,
     isReplay ? replay.positions : undefined,
     isReplay ? replay.virtualNowMs : undefined,
+    !isReplay && !accessToken ? inviteCode : null,
   )
 
   async function sendChester(lng: number, lat: number) {
@@ -304,9 +305,9 @@ export default function App() {
         />
       )}
       {isReplay && sessionName && <ReplayControls replay={replay} onFitAll={fitAll} />}
-      {liveError && !isReplay && hasSessionMembership && <div style={statusToast}>{liveError}</div>}
+      {liveError && !isReplay && (hasSessionMembership || (!accessToken && inviteCode)) && <div style={statusToast}>{liveError}</div>}
       {replay.error && isReplay && hasSessionMembership && <div style={statusToast}>{replay.error}</div>}
-      {shouldShowAuthPrompt(accessToken) && <AuthPrompt serverUrl={SERVER_URL} onAuth={handleAuth} />}
+      {shouldShowAuthPrompt(accessToken, inviteCode) && <AuthPrompt serverUrl={SERVER_URL} onAuth={handleAuth} />}
       {accessToken && membershipsLoaded && isReplay && !sessionName && (
         <ReplayPicker memberships={memberships} onSelect={handleReplaySelect} />
       )}

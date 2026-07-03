@@ -5,7 +5,7 @@ import mapboxgl from 'mapbox-gl'
 import type { RunnerPosition } from './types.ts'
 import Arrow, { ARROW_SIZE } from './components/Arrow.tsx'
 import Dot from './components/Dot.tsx'
-import { livePollingError, shouldPollLivePositions } from './useRunnerMarkersLogic.ts'
+import { livePollingError, shouldPollLivePositions, shouldPollLivePositionsByInvite } from './useRunnerMarkersLogic.ts'
 
 interface MarkerEntry {
   marker: mapboxgl.Marker
@@ -29,6 +29,7 @@ export function useRunnerMarkers(
   intervalMs: number,
   replayPositions?: RunnerPosition[][],
   replayNowMs?: number,
+  inviteCode?: string | null,
 ): RunnerMarkersResult {
   const markersRef = useRef<Record<string, MarkerEntry>>({})
   const hasLocatedRef = useRef(false)
@@ -121,7 +122,9 @@ export function useRunnerMarkers(
   // Live polling effect — skipped when replayPositions is provided
   // TODO: Add e2e coverage for signed-in member polling, 401/403 handling, and replay mode.
   useEffect(() => {
-    if (!shouldPollLivePositions(sessionId, accessToken, replayPositions !== undefined)) {
+    const byInvite = shouldPollLivePositionsByInvite(inviteCode ?? null, accessToken, replayPositions !== undefined)
+    const byMembership = shouldPollLivePositions(sessionId, accessToken, replayPositions !== undefined)
+    if (!byInvite && !byMembership) {
       setError(null)
       return
     }
@@ -131,9 +134,11 @@ export function useRunnerMarkers(
 
     async function fetchAndUpdate() {
       try {
-        const res = await fetch(`${serverUrl}/locations/${sessionId}`, {
-          headers: { 'Authorization': `Bearer ${accessToken}` },
-        })
+        const res = byInvite
+          ? await fetch(`${serverUrl}/session-invites/${inviteCode}/locations`)
+          : await fetch(`${serverUrl}/locations/${sessionId}`, {
+              headers: { 'Authorization': `Bearer ${accessToken}` },
+            })
         if (cancelled) return
         if (!res.ok) {
           setError(livePollingError(res.status))
@@ -157,7 +162,7 @@ export function useRunnerMarkers(
       cancelled = true
       clearInterval(id)
     }
-  }, [sessionId, serverUrl, accessToken, intervalMs, mapRef, replayPositions]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [sessionId, serverUrl, accessToken, intervalMs, mapRef, replayPositions, inviteCode]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Replay effect — runs when replayPositions changes
   useEffect(() => {

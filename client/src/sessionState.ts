@@ -19,8 +19,8 @@ export function canManageMembersForRole(role: SessionRole): boolean {
   return role === 'owner'
 }
 
-export function shouldShowAuthPrompt(accessToken: string | null): boolean {
-  return !accessToken
+export function shouldShowAuthPrompt(accessToken: string | null, inviteCode: string | null = null): boolean {
+  return !accessToken && !inviteCode
 }
 
 export function shouldShowSessionPrompt(state: PromptState): boolean {
