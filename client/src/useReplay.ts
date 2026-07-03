@@ -24,6 +24,7 @@ export interface ReplayState {
   durationMs: number
   loaded: boolean
   error: string | null
+  invalidInvite: boolean
   playing: boolean
   speed: number
   virtualNowMs: number
@@ -36,7 +37,12 @@ export interface ReplayState {
 const TRAIL_LENGTH = 1
 const TICK_MS = 100
 
-export function useReplay(sessionId: string | null, serverUrl: string, accessToken: string | null): ReplayState {
+export function useReplay(
+  sessionId: string | null,
+  serverUrl: string,
+  accessToken: string | null,
+  inviteCode?: string | null,
+): ReplayState {
   const [byRunner, setByRunner] = useState<Map<string, LocationUpdate[]> | null>(null)
   const [startEpochMs, setStartEpochMs] = useState(0)
   const [durationMs, setDurationMs] = useState(0)
@@ -44,22 +50,35 @@ export function useReplay(sessionId: string | null, serverUrl: string, accessTok
   const [playing, setPlaying] = useState(false)
   const [speed, setSpeed] = useState(10)
   const [error, setError] = useState<string | null>(null)
+  const [invalidInvite, setInvalidInvite] = useState(false)
   const speedRef = useRef(speed)
   speedRef.current = speed
   const playingRef = useRef(false)
 
   useEffect(() => {
-    if (!sessionId || !accessToken) return
+    const byInvite = Boolean(inviteCode && !accessToken)
+    if (!byInvite && (!sessionId || !accessToken)) return
     setByRunner(null)
     setCurrentTimeMs(0)
     setPlaying(false)
     setError(null)
+    setInvalidInvite(false)
 
-    fetch(`${serverUrl}/sessions/${sessionId}/recording`, {
-      headers: { 'Authorization': `Bearer ${accessToken}` },
-    })
+    const request = byInvite
+      ? fetch(`${serverUrl}/session-invites/${inviteCode}/recording`)
+      : fetch(`${serverUrl}/sessions/${sessionId}/recording`, {
+          headers: { 'Authorization': `Bearer ${accessToken}` },
+        })
+
+    request
       .then(r => {
-        if (!r.ok) throw new Error(`HTTP ${r.status} for ${sessionId}`)
+        if (!r.ok) {
+          if (byInvite && r.status === 404) {
+            setInvalidInvite(true)
+            throw new Error('Invite not found.')
+          }
+          throw new Error(`Failed to load recording: HTTP ${r.status}`)
+        }
         return r.text()
       })
       .then(text => {
@@ -89,7 +108,7 @@ export function useReplay(sessionId: string | null, serverUrl: string, accessTok
         console.error('[useReplay]', err)
         setError(err instanceof Error ? err.message : 'Failed to load recording')
       })
-  }, [sessionId, serverUrl, accessToken])
+  }, [sessionId, serverUrl, accessToken, inviteCode])
 
   useEffect(() => {
     if (!playing) return
@@ -127,6 +146,7 @@ export function useReplay(sessionId: string | null, serverUrl: string, accessTok
     durationMs,
     loaded: byRunner !== null,
     error,
+    invalidInvite,
     playing,
     speed,
     virtualNowMs: startEpochMs + currentTimeMs,

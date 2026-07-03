@@ -17,6 +17,7 @@ interface RunnerMarkersResult {
   visibleRunners: string[]
   offScreenRunners: string[]
   error: string | null
+  invalidInvite: boolean
   centerOnRunner: (name: string) => void
   fitAll: () => void
 }
@@ -39,6 +40,7 @@ export function useRunnerMarkers(
   const [visibleRunners, setVisibleRunners] = useState<string[]>([])
   const [offScreenRunners, setOffScreenRunners] = useState<string[]>([])
   const [error, setError] = useState<string | null>(null)
+  const [invalidInvite, setInvalidInvite] = useState(false)
 
   function applyPositions(runnerGroups: RunnerPosition[][], map: mapboxgl.Map, virtualNow?: number) {
     if (virtualNow !== undefined) virtualNowRef.current = virtualNow
@@ -129,6 +131,7 @@ export function useRunnerMarkers(
       return
     }
     hasLocatedRef.current = false
+    setInvalidInvite(false)
 
     let cancelled = false
     let stopped = false
@@ -146,6 +149,7 @@ export function useRunnerMarkers(
           setError(livePollingError(res.status))
           if (byInvite && res.status === 404) {
             stopped = true
+            setInvalidInvite(true)
             clearInterval(id)
           }
           return
@@ -280,7 +284,7 @@ export function useRunnerMarkers(
     }
   }
 
-  return { visibleRunners, offScreenRunners, error, centerOnRunner, fitAll }
+  return { visibleRunners, offScreenRunners, error, invalidInvite, centerOnRunner, fitAll }
 }
 
 export { ARROW_SIZE }

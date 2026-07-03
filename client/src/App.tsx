@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import mapboxgl from 'mapbox-gl'
 import 'mapbox-gl/dist/mapbox-gl.css'
 import SessionPrompt from './SessionPrompt.tsx'
+import InvalidInvitePrompt from './InvalidInvitePrompt.tsx'
 import Legend from './Legend.tsx'
 import MapMenu from './MapMenu.tsx'
 import MemberManager from './MemberManager.tsx'
@@ -174,9 +175,14 @@ export default function App() {
     hasSessionMembership,
   })
 
-  const replay = useReplay(isReplay && hasSessionMembership ? sessionId : null, SERVER_URL, accessToken)
+  const replay = useReplay(
+    isReplay && hasSessionMembership ? sessionId : null,
+    SERVER_URL,
+    accessToken,
+    isReplay && !accessToken ? inviteCode : null,
+  )
 
-  const { offScreenRunners, error: liveError, centerOnRunner, fitAll } = useRunnerMarkers(
+  const { offScreenRunners, error: liveError, invalidInvite: liveInvalidInvite, centerOnRunner, fitAll } = useRunnerMarkers(
     mapRef,
     !isReplay && hasSessionMembership ? sessionId : null,
     SERVER_URL,
@@ -304,9 +310,12 @@ export default function App() {
           onClose={() => setMenu(null)}
         />
       )}
-      {isReplay && sessionName && <ReplayControls replay={replay} onFitAll={fitAll} />}
-      {liveError && !isReplay && (hasSessionMembership || (!accessToken && inviteCode)) && <div style={statusToast}>{liveError}</div>}
-      {replay.error && isReplay && hasSessionMembership && <div style={statusToast}>{replay.error}</div>}
+      {isReplay && !replay.invalidInvite && (sessionName || (!accessToken && inviteCode)) && <ReplayControls replay={replay} onFitAll={fitAll} />}
+      {liveError && !liveInvalidInvite && !isReplay && (hasSessionMembership || (!accessToken && inviteCode)) && <div style={statusToast}>{liveError}</div>}
+      {replay.error && !replay.invalidInvite && isReplay && (hasSessionMembership || (!accessToken && inviteCode)) && <div style={statusToast}>{replay.error}</div>}
+      {(liveInvalidInvite || replay.invalidInvite) && (
+        <InvalidInvitePrompt message={isReplay ? replay.error ?? 'Invite not found.' : liveError ?? 'Invite not found.'} isReplay={isReplay} />
+      )}
       {shouldShowAuthPrompt(accessToken, inviteCode) && <AuthPrompt serverUrl={SERVER_URL} onAuth={handleAuth} />}
       {accessToken && membershipsLoaded && isReplay && !sessionName && (
         <ReplayPicker memberships={memberships} onSelect={handleReplaySelect} />

@@ -177,6 +177,54 @@ public class SessionsApiTests
     }
 
     [Fact]
+    public async Task GetRecordingByInviteCode_WithValidInvite_ReturnsNdjsonWithoutAuth()
+    {
+        using var factory = new DotWatcherApiFactory();
+        using var client = factory.CreateClient();
+        var token = await AuthTestHelpers.RegisterAsync(client, "alice", "Alice");
+        var session = await AuthTestHelpers.CreateSessionAsync(client, token);
+
+        await LocationsApiTests.PostLocationAsync(client,
+            LocationsApiTests.TestLocation("Ignored", session.SessionId, latitude: -33.8688),
+            token);
+
+        var response = await client.GetAsync($"/session-invites/{session.InviteCode}/recording");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("application/x-ndjson", response.Content.Headers.ContentType?.MediaType);
+
+        var body = await response.Content.ReadAsStringAsync();
+        var line = Assert.Single(body.Split('\n', StringSplitOptions.RemoveEmptyEntries));
+
+        using var json = JsonDocument.Parse(line);
+        Assert.Equal("Alice", json.RootElement.GetProperty("runnerName").GetString());
+    }
+
+    [Fact]
+    public async Task GetRecordingByInviteCode_WithUnknownInvite_ReturnsNotFound()
+    {
+        using var factory = new DotWatcherApiFactory();
+        using var client = factory.CreateClient();
+
+        var response = await client.GetAsync("/session-invites/NOPE99/recording");
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task GetRecordingByInviteCode_WithNoRecordingYet_ReturnsNotFound()
+    {
+        using var factory = new DotWatcherApiFactory();
+        using var client = factory.CreateClient();
+        var token = await AuthTestHelpers.RegisterAsync(client, "bob", "Bob");
+        var session = await AuthTestHelpers.CreateSessionAsync(client, token);
+
+        var response = await client.GetAsync($"/session-invites/{session.InviteCode}/recording");
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
     public async Task GetMySessions_WithUserToken_ReturnsMemberships()
     {
         using var factory = new DotWatcherApiFactory();
