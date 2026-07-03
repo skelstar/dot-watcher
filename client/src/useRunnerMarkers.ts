@@ -131,6 +131,8 @@ export function useRunnerMarkers(
     hasLocatedRef.current = false
 
     let cancelled = false
+    let stopped = false
+    let id: ReturnType<typeof setInterval> | undefined
 
     async function fetchAndUpdate() {
       try {
@@ -142,6 +144,10 @@ export function useRunnerMarkers(
         if (cancelled) return
         if (!res.ok) {
           setError(livePollingError(res.status))
+          if (byInvite && res.status === 404) {
+            stopped = true
+            clearInterval(id)
+          }
           return
         }
         const runnerGroups: RunnerPosition[][] = await res.json()
@@ -156,8 +162,9 @@ export function useRunnerMarkers(
       }
     }
 
-    fetchAndUpdate()
-    const id = setInterval(fetchAndUpdate, intervalMs)
+    fetchAndUpdate().then(() => {
+      if (!cancelled && !stopped) id = setInterval(fetchAndUpdate, intervalMs)
+    })
     return () => {
       cancelled = true
       clearInterval(id)
