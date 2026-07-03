@@ -10,14 +10,6 @@ public class SessionsController(
     UserTokenAuth userAuth,
     ILogger<SessionsController> logger) : ControllerBase
 {
-    [HttpGet("/me/join-requests")]
-    public IActionResult GetMyJoinRequests()
-    {
-        if (!userAuth.TryAuthenticate(Request, out var user))
-            return Unauthorized();
-        return Ok(store.GetMyJoinRequests(user.UserId));
-    }
-
     [HttpGet("/me/sessions")]
     public IActionResult GetMySessions()
     {
@@ -97,84 +89,6 @@ public class SessionsController(
             return StatusCode(StatusCodes.Status403Forbidden);
 
         return Ok(store.GetSessionRunners(sessionId));
-    }
-
-    [HttpGet("/sessions/browse")]
-    public IActionResult BrowseSessions()
-    {
-        if (!userAuth.TryAuthenticate(Request, out _))
-            return Unauthorized();
-
-        return Ok(store.GetBrowsableSessions());
-    }
-
-    [HttpPost("/sessions/{sessionId}/join-requests")]
-    public IActionResult CreateJoinRequest(string sessionId, [FromBody] CreateJoinRequestRequest? request)
-    {
-        if (!userAuth.TryAuthenticate(Request, out var user))
-            return Unauthorized();
-
-        var displayName = string.IsNullOrWhiteSpace(request?.DisplayName)
-            ? user.DisplayName
-            : request.DisplayName.Trim();
-
-        if (displayName.Length is < 1 or > 80)
-            return BadRequest(new { error = "Display name must be 1-80 characters." });
-
-        var role = request?.Role?.Trim().ToLowerInvariant() == "viewer" ? "viewer" : "runner";
-        var result = store.CreateJoinRequest(sessionId, user.UserId, displayName, role);
-        return result.Status switch
-        {
-            CreateJoinRequestStatus.Created => Ok(result.Request),
-            CreateJoinRequestStatus.AlreadyPending => Ok(result.Request),
-            CreateJoinRequestStatus.AlreadyMember => Conflict(new { error = "Already a member of this session." }),
-            CreateJoinRequestStatus.SessionNotFound => NotFound(new { error = "Session not found." }),
-            _ => StatusCode(StatusCodes.Status500InternalServerError),
-        };
-    }
-
-    [HttpGet("/sessions/{sessionId}/join-requests")]
-    public IActionResult GetJoinRequests(string sessionId)
-    {
-        if (!userAuth.TryAuthenticate(Request, out var user))
-            return Unauthorized();
-
-        if (!store.CanReadSession(sessionId, user.UserId))
-            return StatusCode(StatusCodes.Status403Forbidden);
-
-        var requests = store.GetJoinRequests(sessionId);
-        return requests is null
-            ? NotFound(new { error = "Session not found." })
-            : Ok(requests);
-    }
-
-    [HttpPost("/sessions/{sessionId}/join-requests/{requestId}/approve")]
-    public IActionResult ApproveJoinRequest(string sessionId, string requestId)
-    {
-        if (!userAuth.TryAuthenticate(Request, out var user))
-            return Unauthorized();
-
-        if (!store.CanReadSession(sessionId, user.UserId))
-            return StatusCode(StatusCodes.Status403Forbidden);
-
-        var membership = store.ApproveJoinRequest(requestId, sessionId);
-        return membership is null
-            ? NotFound(new { error = "Join request not found." })
-            : Ok(membership);
-    }
-
-    [HttpPost("/sessions/{sessionId}/join-requests/{requestId}/deny")]
-    public IActionResult DenyJoinRequest(string sessionId, string requestId)
-    {
-        if (!userAuth.TryAuthenticate(Request, out var user))
-            return Unauthorized();
-
-        if (!store.CanReadSession(sessionId, user.UserId))
-            return StatusCode(StatusCodes.Status403Forbidden);
-
-        return store.DenyJoinRequest(requestId, sessionId)
-            ? NoContent()
-            : NotFound(new { error = "Join request not found." });
     }
 
     [HttpDelete("/me/sessions/{sessionId}/membership")]

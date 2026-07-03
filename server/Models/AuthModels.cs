@@ -67,43 +67,12 @@ public record AdminUserSummary(
     string CreatedAt
 );
 
-public record AdminJoinRequestSummary(
-    string RequestId,
-    string SessionId,
-    string Username,
-    string DisplayName,
-    string Status,
-    string CreatedAt
-);
-
 public record AdminSessionSummary(
     string SessionId,
     string SessionName,
     string OwnerUsername,
     int MemberCount,
     string CreatedAt
-);
-
-public record BrowsableSession(
-    string SessionId,
-    string SessionName,
-    string OwnerDisplayName,
-    int MemberCount,
-    DateTimeOffset CreatedAt
-);
-
-public record JoinRequestRecord(
-    string RequestId,
-    string SessionId,
-    string UserId,
-    string DisplayName,
-    DateTimeOffset CreatedAt,
-    string Role
-);
-
-public record CreateJoinRequestRequest(
-    string? DisplayName = null,
-    string? Role = null
 );
 
 public record AdminLocationRecord(
@@ -121,17 +90,3 @@ public record AdminMemberStats(
     string? LastPositionAt
 );
 
-public enum CreateJoinRequestStatus
-{
-    Created,
-    AlreadyMember,
-    AlreadyPending,
-    SessionNotFound,
-}
-
-public record MyJoinRequest(string SessionId, string Status);
-
-public record CreateJoinRequestResult(
-    CreateJoinRequestStatus Status,
-    JoinRequestRecord? Request
-);

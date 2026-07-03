@@ -1,0 +1,738 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>DotWatcher — Database Schema</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      background: #f1f5f9;
+      color: #1e293b;
+      padding: 2.5rem 1rem 4rem;
+    }
+
+    .page {
+      max-width: 960px;
+      margin: 0 auto;
+    }
+
+    header {
+      margin-bottom: 2.5rem;
+    }
+
+    header h1 {
+      font-size: 1.75rem;
+      font-weight: 700;
+      margin-bottom: 0.4rem;
+    }
+
+    header p {
+      color: #64748b;
+      font-size: 0.95rem;
+      margin-bottom: 0.25rem;
+    }
+
+    .section-title {
+      font-size: 0.75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: #94a3b8;
+      margin: 2.25rem 0 0.75rem;
+    }
+
+    /* ── Table cards ── */
+    .table-card {
+      background: #ffffff;
+      border-radius: 14px;
+      padding: 1.5rem 1.75rem;
+      margin-bottom: 1.25rem;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.07), 0 4px 16px rgba(0,0,0,0.04);
+    }
+
+    .table-header {
+      display: flex;
+      align-items: baseline;
+      gap: 0.75rem;
+      margin-bottom: 0.35rem;
+      flex-wrap: wrap;
+    }
+
+    .table-name {
+      font-family: ui-monospace, 'SF Mono', monospace;
+      font-size: 1.05rem;
+      font-weight: 700;
+    }
+
+    .table-desc {
+      font-size: 0.88rem;
+      color: #64748b;
+      margin-bottom: 1.1rem;
+    }
+
+    .storage-badge {
+      font-size: 0.7rem;
+      font-weight: 700;
+      padding: 0.2rem 0.55rem;
+      border-radius: 6px;
+    }
+    .badge-sqlite  { background: #e0f2fe; color: #0369a1; }
+    .badge-memory  { background: #fef3c7; color: #92400e; }
+
+    /* ── Column table ── */
+    .cols {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.85rem;
+    }
+
+    .cols thead tr {
+      border-bottom: 2px solid #e2e8f0;
+    }
+
+    .cols thead th {
+      text-align: left;
+      font-size: 0.7rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: #94a3b8;
+      padding: 0 0.5rem 0.5rem;
+    }
+
+    .cols thead th:first-child { padding-left: 0; }
+
+    .cols tbody tr {
+      border-bottom: 1px solid #f1f5f9;
+    }
+
+    .cols tbody tr:last-child { border-bottom: none; }
+
+    .cols td {
+      padding: 0.55rem 0.5rem;
+      vertical-align: top;
+    }
+
+    .cols td:first-child { padding-left: 0; }
+
+    .col-name {
+      font-family: ui-monospace, 'SF Mono', monospace;
+      font-weight: 600;
+      color: #1e293b;
+      white-space: nowrap;
+    }
+
+    .col-type {
+      font-family: ui-monospace, 'SF Mono', monospace;
+      font-size: 0.78rem;
+      color: #7c3aed;
+      white-space: nowrap;
+    }
+
+    .col-constraints {
+      font-size: 0.78rem;
+      color: #64748b;
+    }
+
+    .tag {
+      display: inline-block;
+      font-size: 0.65rem;
+      font-weight: 700;
+      padding: 0.1rem 0.4rem;
+      border-radius: 4px;
+      margin-right: 2px;
+      white-space: nowrap;
+    }
+
+    .tag-pk   { background: #fce7f3; color: #9d174d; }
+    .tag-fk   { background: #ede9fe; color: #6d28d9; }
+    .tag-uq   { background: #dcfce7; color: #166534; }
+    .tag-nn   { background: #f1f5f9; color: #475569; }
+    .tag-null { background: #fff7ed; color: #c2410c; }
+    .tag-auto { background: #dbeafe; color: #1d4ed8; }
+    .tag-def  { background: #f0fdf4; color: #166534; border: 1px solid #bbf7d0; }
+
+    .col-notes {
+      font-size: 0.82rem;
+      color: #64748b;
+    }
+
+    /* ── Indexes ── */
+    .indexes {
+      margin-top: 1rem;
+      padding-top: 0.85rem;
+      border-top: 1px solid #f1f5f9;
+    }
+
+    .indexes h4 {
+      font-size: 0.7rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: #94a3b8;
+      margin-bottom: 0.5rem;
+    }
+
+    .idx-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.4rem;
+    }
+
+    .idx-pill {
+      font-family: ui-monospace, 'SF Mono', monospace;
+      font-size: 0.75rem;
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 6px;
+      padding: 0.2rem 0.6rem;
+      color: #475569;
+    }
+
+    /* ── Notes / callouts ── */
+    .callout {
+      margin-top: 0.85rem;
+      font-size: 0.82rem;
+      color: #64748b;
+      background: #f0f9ff;
+      border-left: 3px solid #7dd3fc;
+      padding: 0.5rem 0.75rem;
+      border-radius: 0 6px 6px 0;
+    }
+
+    .callout.warn {
+      background: #fff7ed;
+      border-color: #fb923c;
+    }
+
+    /* ── ERD key ── */
+    .erd-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 0.75rem;
+      margin-top: 0.75rem;
+    }
+
+    .erd-card {
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 10px;
+      padding: 0.85rem 1rem;
+    }
+
+    .erd-card h4 {
+      font-family: ui-monospace, 'SF Mono', monospace;
+      font-size: 0.85rem;
+      font-weight: 700;
+      margin-bottom: 0.5rem;
+    }
+
+    .erd-card ul {
+      list-style: none;
+      font-size: 0.78rem;
+      color: #64748b;
+      line-height: 1.8;
+    }
+
+    .erd-card li .rel-arrow {
+      color: #94a3b8;
+      margin: 0 0.2rem;
+    }
+
+    .fk-ref {
+      font-family: ui-monospace, 'SF Mono', monospace;
+      font-size: 0.75rem;
+      color: #7c3aed;
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+
+    <header>
+      <h1>DotWatcher — Database Schema</h1>
+      <p>SQLite database (<code>dotwatcher.db</code>) managed by <code>SessionStore.cs</code>. WAL journal mode enabled.</p>
+      <p>All timestamp columns store ISO 8601 strings (<code>TEXT</code>). All ID columns are either GUIDs or hex strings.</p>
+    </header>
+
+
+    <!-- ══════════════════════════ RELATIONSHIPS -->
+    <p class="section-title">Relationships at a glance</p>
+
+    <div class="table-card">
+      <div class="erd-grid">
+        <div class="erd-card">
+          <h4>users</h4>
+          <ul>
+            <li>↓ owns many <span class="fk-ref">app_sessions</span></li>
+            <li>↓ member of many <span class="fk-ref">session_members</span></li>
+            <li>↓ posts many <span class="fk-ref">location_updates</span></li>
+          </ul>
+        </div>
+        <div class="erd-card">
+          <h4>app_sessions</h4>
+          <ul>
+            <li>↑ owned by one <span class="fk-ref">users</span></li>
+            <li>↓ has many <span class="fk-ref">session_members</span></li>
+            <li>↓ has many <span class="fk-ref">location_updates</span></li>
+          </ul>
+        </div>
+        <div class="erd-card">
+          <h4>session_members</h4>
+          <ul>
+            <li>↑ belongs to one <span class="fk-ref">app_sessions</span></li>
+            <li>↑ belongs to one <span class="fk-ref">users</span></li>
+            <li>role: <code>owner</code> | <code>runner</code> | <code>viewer</code></li>
+          </ul>
+        </div>
+        <div class="erd-card">
+          <h4>location_updates</h4>
+          <ul>
+            <li>↑ belongs to one <span class="fk-ref">app_sessions</span></li>
+            <li><code>runner_user_id</code> is nullable</li>
+            <li><em>NULL = imported recording, not live tracking</em></li>
+          </ul>
+        </div>
+        <div class="erd-card">
+          <h4>revoked_user_tokens</h4>
+          <ul>
+            <li>Standalone — no FK to users</li>
+            <li>Expired rows are pruned on each check</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+
+    <!-- ══════════════════════════ TABLES -->
+    <p class="section-title">Tables</p>
+
+    <!-- users -->
+    <div class="table-card">
+      <div class="table-header">
+        <span class="table-name">users</span>
+        <span class="storage-badge badge-sqlite">SQLite</span>
+      </div>
+      <p class="table-desc">One row per registered account. The root of all FK relationships.</p>
+      <table class="cols">
+        <thead>
+          <tr>
+            <th>Column</th>
+            <th>Type</th>
+            <th>Constraints</th>
+            <th>Notes</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="col-name">id</td>
+            <td class="col-type">TEXT</td>
+            <td class="col-constraints"><span class="tag tag-pk">PK</span><span class="tag tag-nn">NOT NULL</span></td>
+            <td class="col-notes">GUID generated at registration</td>
+          </tr>
+          <tr>
+            <td class="col-name">username</td>
+            <td class="col-type">TEXT</td>
+            <td class="col-constraints"><span class="tag tag-nn">NOT NULL</span><span class="tag tag-uq">UNIQUE</span></td>
+            <td class="col-notes">Login handle, case-sensitive</td>
+          </tr>
+          <tr>
+            <td class="col-name">display_name</td>
+            <td class="col-type">TEXT</td>
+            <td class="col-constraints"><span class="tag tag-nn">NOT NULL</span></td>
+            <td class="col-notes">Shown to other users</td>
+          </tr>
+          <tr>
+            <td class="col-name">password_hash</td>
+            <td class="col-type">TEXT</td>
+            <td class="col-constraints"><span class="tag tag-nn">NOT NULL</span></td>
+            <td class="col-notes">BCrypt hash — never returned to client</td>
+          </tr>
+          <tr>
+            <td class="col-name">created_at</td>
+            <td class="col-type">TEXT</td>
+            <td class="col-constraints"><span class="tag tag-nn">NOT NULL</span></td>
+            <td class="col-notes">ISO 8601, set at insert, never updated</td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="indexes">
+        <h4>Indexes</h4>
+        <div class="idx-list">
+          <span class="idx-pill">idx_users_username ON (username)</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- app_sessions -->
+    <div class="table-card">
+      <div class="table-header">
+        <span class="table-name">app_sessions</span>
+        <span class="storage-badge badge-sqlite">SQLite</span>
+      </div>
+      <p class="table-desc">A tracking session created by an owner. The owner is always also a member in <code>session_members</code> with role <code>owner</code>.</p>
+      <table class="cols">
+        <thead>
+          <tr>
+            <th>Column</th>
+            <th>Type</th>
+            <th>Constraints</th>
+            <th>Notes</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="col-name">id</td>
+            <td class="col-type">TEXT</td>
+            <td class="col-constraints"><span class="tag tag-pk">PK</span><span class="tag tag-nn">NOT NULL</span></td>
+            <td class="col-notes">GUID generated at creation</td>
+          </tr>
+          <tr>
+            <td class="col-name">session_name</td>
+            <td class="col-type">TEXT</td>
+            <td class="col-constraints"><span class="tag tag-nn">NOT NULL</span></td>
+            <td class="col-notes">Normalised to uppercase alphanumeric + <code>-</code> <code>_</code>, 3–32 chars</td>
+          </tr>
+          <tr>
+            <td class="col-name">invite_code</td>
+            <td class="col-type">TEXT</td>
+            <td class="col-constraints"><span class="tag tag-nn">NOT NULL</span><span class="tag tag-uq">UNIQUE</span></td>
+            <td class="col-notes">6-char random hex string (uppercase). Shared with runners to join</td>
+          </tr>
+          <tr>
+            <td class="col-name">owner_user_id</td>
+            <td class="col-type">TEXT</td>
+            <td class="col-constraints"><span class="tag tag-nn">NOT NULL</span><span class="tag tag-fk">FK → users(id)</span></td>
+            <td class="col-notes">Denormalised for fast owner lookups without joining session_members</td>
+          </tr>
+          <tr>
+            <td class="col-name">created_at</td>
+            <td class="col-type">TEXT</td>
+            <td class="col-constraints"><span class="tag tag-nn">NOT NULL</span></td>
+            <td class="col-notes">ISO 8601. Used by browse query to filter to "today" only</td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="indexes">
+        <h4>Indexes</h4>
+        <div class="idx-list">
+          <span class="idx-pill">idx_app_sessions_invite ON (invite_code)</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- session_members -->
+    <div class="table-card">
+      <div class="table-header">
+        <span class="table-name">session_members</span>
+        <span class="storage-badge badge-sqlite">SQLite</span>
+      </div>
+      <p class="table-desc">Junction table linking users to sessions with a role. A user can belong to multiple sessions. The owner appears here with role <code>owner</code> — this role is immutable via the API.</p>
+      <table class="cols">
+        <thead>
+          <tr>
+            <th>Column</th>
+            <th>Type</th>
+            <th>Constraints</th>
+            <th>Notes</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="col-name">session_id</td>
+            <td class="col-type">TEXT</td>
+            <td class="col-constraints"><span class="tag tag-pk">PK (composite)</span><span class="tag tag-fk">FK → app_sessions(id)</span></td>
+            <td class="col-notes"></td>
+          </tr>
+          <tr>
+            <td class="col-name">user_id</td>
+            <td class="col-type">TEXT</td>
+            <td class="col-constraints"><span class="tag tag-pk">PK (composite)</span><span class="tag tag-fk">FK → users(id)</span></td>
+            <td class="col-notes">Composite PK enforces one membership per user per session</td>
+          </tr>
+          <tr>
+            <td class="col-name">role</td>
+            <td class="col-type">TEXT</td>
+            <td class="col-constraints"><span class="tag tag-nn">NOT NULL</span></td>
+            <td class="col-notes"><code>owner</code> — created by, immutable<br><code>runner</code> — can post locations<br><code>viewer</code> — read-only, joins via invite or request</td>
+          </tr>
+          <tr>
+            <td class="col-name">display_name</td>
+            <td class="col-type">TEXT</td>
+            <td class="col-constraints"><span class="tag tag-nn">NOT NULL</span></td>
+            <td class="col-notes">Name shown on the map for this member in this session. Can differ from <code>users.display_name</code></td>
+          </tr>
+          <tr>
+            <td class="col-name">joined_at</td>
+            <td class="col-type">TEXT</td>
+            <td class="col-constraints"><span class="tag tag-nn">NOT NULL</span></td>
+            <td class="col-notes">ISO 8601. Members are listed in join order</td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="indexes">
+        <h4>Indexes</h4>
+        <div class="idx-list">
+          <span class="idx-pill">idx_session_members_user ON (user_id)</span>
+        </div>
+      </div>
+      <div class="callout">
+        <strong>Role permissions:</strong> only <code>owner</code> and <code>runner</code> may post location updates
+        (<code>CanWriteLocation</code>). The <code>owner</code> role cannot be changed via
+        <code>UpdateSessionMemberRole</code> — it is set once at session creation and never altered.
+      </div>
+    </div>
+
+    <!-- location_updates -->
+    <div class="table-card">
+      <div class="table-header">
+        <span class="table-name">location_updates</span>
+        <span class="storage-badge badge-sqlite">SQLite</span>
+        <span class="storage-badge badge-memory">+ In-memory cache</span>
+      </div>
+      <p class="table-desc">Every GPS position posted during a live session, plus imported recordings. Also mirrored in the in-memory <code>_sessions</code> dictionary for low-latency reads during active tracking.</p>
+      <table class="cols">
+        <thead>
+          <tr>
+            <th>Column</th>
+            <th>Type</th>
+            <th>Constraints</th>
+            <th>Notes</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="col-name">id</td>
+            <td class="col-type">INTEGER</td>
+            <td class="col-constraints"><span class="tag tag-pk">PK</span><span class="tag tag-auto">AUTOINCREMENT</span></td>
+            <td class="col-notes">Insertion order is preserved; used for ORDER BY in recordings</td>
+          </tr>
+          <tr>
+            <td class="col-name">session_id</td>
+            <td class="col-type">TEXT</td>
+            <td class="col-constraints"><span class="tag tag-nn">NOT NULL</span></td>
+            <td class="col-notes">References <code>app_sessions.id</code> — no FK constraint, allowing orphan rows for imported recordings</td>
+          </tr>
+          <tr>
+            <td class="col-name">runner_user_id</td>
+            <td class="col-type">TEXT</td>
+            <td class="col-constraints"><span class="tag tag-null">NULLABLE</span></td>
+            <td class="col-notes"><code>NULL</code> for imported/replayed recordings. Set to the posting user's id for live tracking</td>
+          </tr>
+          <tr>
+            <td class="col-name">runner_name</td>
+            <td class="col-type">TEXT</td>
+            <td class="col-constraints"><span class="tag tag-nn">NOT NULL</span></td>
+            <td class="col-notes">Display name at the time of posting — denormalised so recordings remain readable after account changes</td>
+          </tr>
+          <tr>
+            <td class="col-name">latitude</td>
+            <td class="col-type">REAL</td>
+            <td class="col-constraints"><span class="tag tag-nn">NOT NULL</span></td>
+            <td class="col-notes">WGS-84 decimal degrees</td>
+          </tr>
+          <tr>
+            <td class="col-name">longitude</td>
+            <td class="col-type">REAL</td>
+            <td class="col-constraints"><span class="tag tag-nn">NOT NULL</span></td>
+            <td class="col-notes">WGS-84 decimal degrees</td>
+          </tr>
+          <tr>
+            <td class="col-name">heading</td>
+            <td class="col-type">REAL</td>
+            <td class="col-constraints"><span class="tag tag-null">NULLABLE</span></td>
+            <td class="col-notes">Degrees 0–360. Omitted by the iOS app when the device reports a negative course (no reliable heading)</td>
+          </tr>
+          <tr>
+            <td class="col-name">timestamp</td>
+            <td class="col-type">TEXT</td>
+            <td class="col-constraints"><span class="tag tag-nn">NOT NULL</span></td>
+            <td class="col-notes">ISO 8601 from the device clock, not the server receive time</td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="indexes">
+        <h4>Indexes</h4>
+        <div class="idx-list">
+          <span class="idx-pill">idx_session ON (session_id)</span>
+          <span class="idx-pill">idx_session_runner ON (session_id, runner_name)</span>
+        </div>
+      </div>
+      <div class="callout">
+        <strong>In-memory cache:</strong> live positions are also held in
+        <code>ConcurrentDictionary&lt;sessionId, ConcurrentDictionary&lt;userId, List&lt;RunnerPosition&gt;&gt;&gt;</code>.
+        The cache is the primary read path for <code>GET /locations/{sessionId}</code> and the location POST response —
+        SQLite is only queried for recordings and admin views. The cache is lost on server restart.
+      </div>
+    </div>
+
+    <!-- revoked_user_tokens -->
+    <div class="table-card">
+      <div class="table-header">
+        <span class="table-name">revoked_user_tokens</span>
+        <span class="storage-badge badge-sqlite">SQLite</span>
+      </div>
+      <p class="table-desc">Denylist for bearer tokens that have been explicitly signed out before their natural expiry. Expired rows are automatically pruned on every read or write to keep the table small.</p>
+      <table class="cols">
+        <thead>
+          <tr>
+            <th>Column</th>
+            <th>Type</th>
+            <th>Constraints</th>
+            <th>Notes</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="col-name">token_id</td>
+            <td class="col-type">TEXT</td>
+            <td class="col-constraints"><span class="tag tag-pk">PK</span><span class="tag tag-nn">NOT NULL</span></td>
+            <td class="col-notes">The JWT <code>jti</code> claim uniquely identifying the token</td>
+          </tr>
+          <tr>
+            <td class="col-name">expires_at</td>
+            <td class="col-type">TEXT</td>
+            <td class="col-constraints"><span class="tag tag-nn">NOT NULL</span></td>
+            <td class="col-notes">Copied from the token's own expiry — used to prune stale rows</td>
+          </tr>
+          <tr>
+            <td class="col-name">revoked_at</td>
+            <td class="col-type">TEXT</td>
+            <td class="col-constraints"><span class="tag tag-nn">NOT NULL</span></td>
+            <td class="col-notes">Server time of the logout call</td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="indexes">
+        <h4>Indexes</h4>
+        <div class="idx-list">
+          <span class="idx-pill">idx_revoked_user_tokens_expires_at ON (expires_at)</span>
+        </div>
+      </div>
+      <div class="callout">
+        No FK to <code>users</code> — a revoked token must remain valid even after the user account is deleted,
+        until the token's natural expiry passes.
+      </div>
+    </div>
+
+
+    <!-- ══════════════════════════ IN-MEMORY STRUCTURE -->
+    <p class="section-title">In-memory cache (live tracking only)</p>
+
+    <div class="table-card">
+      <div class="table-header">
+        <span class="table-name">_sessions</span>
+        <span class="storage-badge badge-memory">In-memory only</span>
+      </div>
+      <p class="table-desc">
+        Held in <code>SessionStore</code> as a nested <code>ConcurrentDictionary</code>. Populated as runners post
+        location updates. Cleared on server restart — SQLite is the source of truth for historical data.
+      </p>
+      <table class="cols">
+        <thead>
+          <tr>
+            <th>Key / Field</th>
+            <th>Type</th>
+            <th>Notes</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="col-name">outer key</td>
+            <td class="col-type">string</td>
+            <td class="col-notes">Session ID (<code>app_sessions.id</code>)</td>
+          </tr>
+          <tr>
+            <td class="col-name">inner key</td>
+            <td class="col-type">string</td>
+            <td class="col-notes">User ID (<code>users.id</code>)</td>
+          </tr>
+          <tr>
+            <td class="col-name">value</td>
+            <td class="col-type">List&lt;RunnerPosition&gt;</td>
+            <td class="col-notes">Append-only position history for this runner in this session. Only the last entry is used for <code>GetLatestPositions</code></td>
+          </tr>
+          <tr>
+            <td class="col-name">RunnerPosition.RunnerName</td>
+            <td class="col-type">string</td>
+            <td class="col-notes">Display name at time of post</td>
+          </tr>
+          <tr>
+            <td class="col-name">RunnerPosition.Latitude</td>
+            <td class="col-type">double</td>
+            <td class="col-notes">WGS-84</td>
+          </tr>
+          <tr>
+            <td class="col-name">RunnerPosition.Longitude</td>
+            <td class="col-type">double</td>
+            <td class="col-notes">WGS-84</td>
+          </tr>
+          <tr>
+            <td class="col-name">RunnerPosition.Heading</td>
+            <td class="col-type">double?</td>
+            <td class="col-notes">Nullable — absent when device has no reliable course</td>
+          </tr>
+          <tr>
+            <td class="col-name">RunnerPosition.Timestamp</td>
+            <td class="col-type">DateTimeOffset</td>
+            <td class="col-notes">Device clock time from the POST body</td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="callout warn">
+        Live participant lists and current positions are served entirely from this cache —
+        SQLite is not queried for real-time reads. After a server restart the cache is empty
+        until runners start posting again, so <code>GET /locations/{sessionId}</code> will return
+        no positions until the next location POST arrives.
+      </div>
+    </div>
+
+
+    <!-- ══════════════════════════ DELETION CASCADES -->
+    <p class="section-title">Deletion cascades</p>
+
+    <div class="table-card">
+      <p class="table-desc" style="margin-bottom: 1rem;">SQLite FK cascades are <strong>not</strong> used. All deletions are handled explicitly in <code>SessionStore</code> within transactions.</p>
+      <table class="cols">
+        <thead>
+          <tr>
+            <th>Trigger</th>
+            <th>Rows deleted</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="col-notes"><strong>Delete session</strong> (<code>DELETE /me/sessions/{id}</code>)</td>
+            <td class="col-notes">
+              <code>location_updates</code> WHERE session_id<br>
+              <code>session_members</code> WHERE session_id<br>
+              <code>app_sessions</code> WHERE id<br>
+              In-memory <code>_sessions[sessionId]</code> evicted
+            </td>
+          </tr>
+          <tr>
+            <td class="col-notes"><strong>Delete user account</strong> (<code>DELETE /me</code>)</td>
+            <td class="col-notes">
+              <code>location_updates</code> WHERE runner_user_id (own posts)<br>
+              For each <em>owned</em> session: <code>location_updates</code>, <code>session_members</code>, <code>app_sessions</code><br>
+              <code>session_members</code> WHERE user_id (non-owned memberships)<br>
+              <code>users</code> WHERE id<br>
+              In-memory cache evicted for owned sessions; user entry removed from shared sessions
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="callout warn">
+        <strong>Note for the stop-and-leave feature:</strong> <code>DELETE /me/sessions/{id}</code> is currently
+        owner-only and deletes the <em>entire</em> session including all members and location history. A non-owner
+        "leave session" flow will require a separate endpoint (e.g. <code>DELETE /me/sessions/{id}/membership</code>)
+        that only removes the calling user's row from <code>session_members</code>.
+      </div>
+    </div>
+
+  </div>
+</body>
+</html>

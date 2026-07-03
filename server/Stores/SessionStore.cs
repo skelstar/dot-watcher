@@ -76,19 +76,15 @@ public class SessionStore(string dbPath)
                 revoked_at TEXT NOT NULL
             );
             CREATE INDEX IF NOT EXISTS idx_revoked_user_tokens_expires_at ON revoked_user_tokens(expires_at);
-
-            CREATE TABLE IF NOT EXISTS join_requests (
-                id           TEXT PRIMARY KEY,
-                session_id   TEXT NOT NULL,
-                user_id      TEXT NOT NULL,
-                display_name TEXT NOT NULL,
-                status       TEXT NOT NULL DEFAULT 'pending',
-                created_at   TEXT NOT NULL,
-                role         TEXT NOT NULL DEFAULT 'runner'
-            );
-            CREATE INDEX IF NOT EXISTS idx_join_requests_session ON join_requests(session_id, status);
             """;
         cmd.ExecuteNonQuery();
+
+        // Migration: drop the retired join-request feature's table (invite codes are now the only join path)
+        using (var dropJoinRequests = conn.CreateCommand())
+        {
+            dropJoinRequests.CommandText = "DROP TABLE IF EXISTS join_requests";
+            dropJoinRequests.ExecuteNonQuery();
+        }
 
         // Migration: session_code → session_id rename + session_name column (commit 6965edb)
         // If app_sessions still has the old session_code primary key, drop and recreate all
@@ -137,29 +133,10 @@ public class SessionStore(string dbPath)
                         FOREIGN KEY(user_id)    REFERENCES users(id)
                     );
                     CREATE INDEX idx_session_members_user ON session_members(user_id);
-                    CREATE TABLE join_requests (
-                        id           TEXT PRIMARY KEY,
-                        session_id   TEXT NOT NULL,
-                        user_id      TEXT NOT NULL,
-                        display_name TEXT NOT NULL,
-                        status       TEXT NOT NULL DEFAULT 'pending',
-                        created_at   TEXT NOT NULL,
-                        role         TEXT NOT NULL DEFAULT 'runner'
-                    );
-                    CREATE INDEX idx_join_requests_session ON join_requests(session_id, status);
                     """;
                 drop.ExecuteNonQuery();
             }
         }
-
-        // Migration: add role column to existing join_requests tables
-        try
-        {
-            using var alter = conn.CreateCommand();
-            alter.CommandText = "ALTER TABLE join_requests ADD COLUMN role TEXT NOT NULL DEFAULT 'runner'";
-            alter.ExecuteNonQuery();
-        }
-        catch (SqliteException) { /* column already exists */ }
     }
 
     private SqliteConnection Connect()
@@ -559,217 +536,6 @@ public class SessionStore(string dbPath)
         return sessions;
     }
 
-    public IReadOnlyList<AdminJoinRequestSummary> GetAllJoinRequests()
-    {
-        using var conn = Connect();
-        using var cmd = conn.CreateCommand();
-        cmd.CommandText = """
-            SELECT jr.id, jr.session_id, u.username, jr.display_name, jr.status, jr.created_at
-            FROM join_requests jr
-            JOIN users u ON u.id = jr.user_id
-            ORDER BY jr.created_at DESC
-            """;
-        using var reader = cmd.ExecuteReader();
-        var requests = new List<AdminJoinRequestSummary>();
-        while (reader.Read())
-            requests.Add(new AdminJoinRequestSummary(
-                reader.GetString(0),
-                reader.GetString(1),
-                reader.GetString(2),
-                reader.GetString(3),
-                reader.GetString(4),
-                reader.GetString(5)));
-        return requests;
-    }
-
-    public IReadOnlyList<BrowsableSession> GetBrowsableSessions()
-    {
-        using var conn = Connect();
-        using var cmd = conn.CreateCommand();
-        cmd.CommandText = """
-            SELECT s.id, s.session_name, u.display_name, COUNT(DISTINCT m.user_id) AS member_count, s.created_at
-            FROM app_sessions s
-            JOIN users u ON u.id = s.owner_user_id
-            LEFT JOIN session_members m ON m.session_id = s.id
-            WHERE SUBSTR(s.created_at, 1, 10) = DATE('now')
-            GROUP BY s.id
-            ORDER BY s.created_at DESC
-            """;
-        using var reader = cmd.ExecuteReader();
-        var sessions = new List<BrowsableSession>();
-        while (reader.Read())
-            sessions.Add(new BrowsableSession(
-                reader.GetString(0),
-                reader.GetString(1),
-                reader.GetString(2),
-                reader.GetInt32(3),
-                DateTimeOffset.Parse(reader.GetString(4))));
-        return sessions;
-    }
-
-    public CreateJoinRequestResult CreateJoinRequest(string sessionId, string userId, string displayName, string role = "runner")
-    {
-        using var conn = Connect();
-
-        if (!SessionExists(conn, sessionId))
-            return new CreateJoinRequestResult(CreateJoinRequestStatus.SessionNotFound, null);
-
-        var membership = GetMembership(conn, sessionId, userId);
-        if (membership is not null)
-            return new CreateJoinRequestResult(CreateJoinRequestStatus.AlreadyMember, null);
-
-        using var checkCmd = conn.CreateCommand();
-        checkCmd.CommandText = """
-            SELECT id, session_id, user_id, display_name, created_at, role
-            FROM join_requests
-            WHERE session_id = $sessionId AND user_id = $userId AND status = 'pending'
-            """;
-        checkCmd.Parameters.AddWithValue("$sessionId", sessionId);
-        checkCmd.Parameters.AddWithValue("$userId", userId);
-        using var checkReader = checkCmd.ExecuteReader();
-        if (checkReader.Read())
-        {
-            var existing = new JoinRequestRecord(
-                checkReader.GetString(0),
-                checkReader.GetString(1),
-                checkReader.GetString(2),
-                checkReader.GetString(3),
-                DateTimeOffset.Parse(checkReader.GetString(4)),
-                checkReader.GetString(5));
-            return new CreateJoinRequestResult(CreateJoinRequestStatus.AlreadyPending, existing);
-        }
-        checkReader.Close();
-
-        var requestId = GenerateCode(8);
-        var createdAt = DateTimeOffset.UtcNow;
-
-        using var cmd = conn.CreateCommand();
-        cmd.CommandText = """
-            INSERT INTO join_requests (id, session_id, user_id, display_name, status, created_at, role)
-            VALUES ($id, $sessionId, $userId, $displayName, 'pending', $createdAt, $role)
-            """;
-        cmd.Parameters.AddWithValue("$id", requestId);
-        cmd.Parameters.AddWithValue("$sessionId", sessionId);
-        cmd.Parameters.AddWithValue("$userId", userId);
-        cmd.Parameters.AddWithValue("$displayName", displayName);
-        cmd.Parameters.AddWithValue("$createdAt", createdAt.ToString("O"));
-        cmd.Parameters.AddWithValue("$role", role);
-        cmd.ExecuteNonQuery();
-
-        return new CreateJoinRequestResult(
-            CreateJoinRequestStatus.Created,
-            new JoinRequestRecord(requestId, sessionId, userId, displayName, createdAt, role));
-    }
-
-    public IReadOnlyList<JoinRequestRecord>? GetJoinRequests(string sessionId)
-    {
-        using var conn = Connect();
-        if (!SessionExists(conn, sessionId))
-            return null;
-
-        using var cmd = conn.CreateCommand();
-        cmd.CommandText = """
-            SELECT id, session_id, user_id, display_name, created_at, role
-            FROM join_requests
-            WHERE session_id = $sessionId AND status = 'pending'
-            ORDER BY created_at ASC
-            """;
-        cmd.Parameters.AddWithValue("$sessionId", sessionId);
-        using var reader = cmd.ExecuteReader();
-
-        var requests = new List<JoinRequestRecord>();
-        while (reader.Read())
-            requests.Add(new JoinRequestRecord(
-                reader.GetString(0),
-                reader.GetString(1),
-                reader.GetString(2),
-                reader.GetString(3),
-                DateTimeOffset.Parse(reader.GetString(4)),
-                reader.GetString(5)));
-        return requests;
-    }
-
-    public int GetPendingJoinRequestCount(string sessionId)
-    {
-        using var conn = Connect();
-        using var cmd = conn.CreateCommand();
-        cmd.CommandText = """
-            SELECT COUNT(1)
-            FROM join_requests
-            WHERE session_id = $sessionId AND status = 'pending'
-            """;
-        cmd.Parameters.AddWithValue("$sessionId", sessionId);
-        return (int)(long)(cmd.ExecuteScalar() ?? 0L);
-    }
-
-    public SessionMembership? ApproveJoinRequest(string requestId, string sessionId)
-    {
-        using var conn = Connect();
-
-        string userId, displayName, role;
-        using (var findCmd = conn.CreateCommand())
-        {
-            findCmd.CommandText = """
-                SELECT user_id, display_name, role
-                FROM join_requests
-                WHERE id = $requestId AND session_id = $sessionId AND status = 'pending'
-                """;
-            findCmd.Parameters.AddWithValue("$requestId", requestId);
-            findCmd.Parameters.AddWithValue("$sessionId", sessionId);
-            using var reader = findCmd.ExecuteReader();
-            if (!reader.Read())
-                return null;
-            userId = reader.GetString(0);
-            displayName = reader.GetString(1);
-            role = reader.GetString(2);
-        }
-
-        using var tx = conn.BeginTransaction();
-
-        using (var deleteCmd = conn.CreateCommand())
-        {
-            deleteCmd.Transaction = tx;
-            deleteCmd.CommandText = "DELETE FROM join_requests WHERE session_id = $sessionId AND user_id = $userId";
-            deleteCmd.Parameters.AddWithValue("$sessionId", sessionId);
-            deleteCmd.Parameters.AddWithValue("$userId", userId);
-            deleteCmd.ExecuteNonQuery();
-        }
-
-        var joinedAt = DateTimeOffset.UtcNow.ToString("O");
-        using (var memberCmd = conn.CreateCommand())
-        {
-            memberCmd.Transaction = tx;
-            memberCmd.CommandText = """
-                INSERT INTO session_members (session_id, user_id, role, display_name, joined_at)
-                VALUES ($sessionId, $userId, $role, $displayName, $joinedAt)
-                ON CONFLICT(session_id, user_id) DO UPDATE SET display_name = excluded.display_name
-                """;
-            memberCmd.Parameters.AddWithValue("$role", role);
-            memberCmd.Parameters.AddWithValue("$sessionId", sessionId);
-            memberCmd.Parameters.AddWithValue("$userId", userId);
-            memberCmd.Parameters.AddWithValue("$displayName", displayName);
-            memberCmd.Parameters.AddWithValue("$joinedAt", joinedAt);
-            memberCmd.ExecuteNonQuery();
-        }
-
-        tx.Commit();
-
-        return GetMembership(conn, sessionId, userId);
-    }
-
-    public bool DenyJoinRequest(string requestId, string sessionId)
-    {
-        using var conn = Connect();
-        using var cmd = conn.CreateCommand();
-        cmd.CommandText = """
-            UPDATE join_requests SET status = 'denied'
-            WHERE id = $requestId AND session_id = $sessionId AND status = 'pending'
-            """;
-        cmd.Parameters.AddWithValue("$requestId", requestId);
-        cmd.Parameters.AddWithValue("$sessionId", sessionId);
-        return cmd.ExecuteNonQuery() > 0;
-    }
-
     public bool LeaveSession(string sessionId, string userId)
     {
         using var conn = Connect();
@@ -783,44 +549,12 @@ public class SessionStore(string dbPath)
         return cmd.ExecuteNonQuery() > 0;
     }
 
-    public IReadOnlyList<MyJoinRequest> GetMyJoinRequests(string userId)
-    {
-        using var conn = Connect();
-        using var cmd = conn.CreateCommand();
-        cmd.CommandText = """
-            SELECT jr.session_id, jr.status FROM join_requests jr
-            WHERE jr.user_id = $userId
-              AND jr.status IN ('pending', 'denied')
-              AND jr.created_at = (
-                SELECT MAX(jr2.created_at) FROM join_requests jr2
-                WHERE jr2.user_id = $userId
-                  AND jr2.session_id = jr.session_id
-                  AND jr2.status IN ('pending', 'denied')
-              )
-            """;
-        cmd.Parameters.AddWithValue("$userId", userId);
-        using var reader = cmd.ExecuteReader();
-        var list = new List<MyJoinRequest>();
-        while (reader.Read())
-            list.Add(new MyJoinRequest(reader.GetString(0), reader.GetString(1)));
-        return list;
-    }
-
-    public bool DeleteJoinRequest(string requestId)
-    {
-        using var conn = Connect();
-        using var cmd = conn.CreateCommand();
-        cmd.CommandText = "DELETE FROM join_requests WHERE id = $requestId";
-        cmd.Parameters.AddWithValue("$requestId", requestId);
-        return cmd.ExecuteNonQuery() > 0;
-    }
-
     public bool DeleteSession(string sessionId)
     {
         using var conn = Connect();
         using var tx = conn.BeginTransaction();
 
-        foreach (var table in new[] { "join_requests", "location_updates", "session_members" })
+        foreach (var table in new[] { "location_updates", "session_members" })
         {
             using var cmd = conn.CreateCommand();
             cmd.Transaction = tx;

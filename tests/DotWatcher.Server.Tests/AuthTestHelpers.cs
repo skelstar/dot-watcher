@@ -62,27 +62,6 @@ internal static class AuthTestHelpers
         return (await response.Content.ReadFromJsonAsync<SessionMembership>())!;
     }
 
-    internal static async Task ApproveAsRunnerAsync(
-        HttpClient client,
-        string ownerAccessToken,
-        string runnerAccessToken,
-        string sessionId,
-        string? displayName = null)
-    {
-        using var joinReq = new HttpRequestMessage(HttpMethod.Post, $"/sessions/{sessionId}/join-requests")
-        {
-            Content = JsonContent.Create(new { displayName, role = "runner" }),
-        };
-        joinReq.Headers.Authorization = new AuthenticationHeaderValue("Bearer", runnerAccessToken);
-        var joinResponse = await client.SendAsync(joinReq);
-        var request = (await joinResponse.Content.ReadFromJsonAsync<JoinRequestRecord>())!;
-
-        using var approveReq = WithUserToken(HttpMethod.Post,
-            $"/sessions/{sessionId}/join-requests/{request.RequestId}/approve",
-            ownerAccessToken);
-        await client.SendAsync(approveReq);
-    }
-
     internal static HttpRequestMessage WithUserToken(
         HttpMethod method,
         string uri,
