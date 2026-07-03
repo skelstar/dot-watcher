@@ -24,7 +24,8 @@ export function shouldShowAuthPrompt(accessToken: string | null, inviteCode: str
 }
 
 export function shouldShowSessionPrompt(state: PromptState): boolean {
-  if (!state.accessToken || !state.membershipsLoaded || state.isReplay) return false
+  if (!state.accessToken || !state.membershipsLoaded) return false
   if (state.inviteCode) return !state.hasSessionMembership
+  if (state.isReplay) return false
   return !state.sessionName || !state.hasSessionMembership
 }
