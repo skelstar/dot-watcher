@@ -193,7 +193,7 @@ struct ContentView: View {
             }
             Spacer()
             if let inviteCode = location.activeMembership?.inviteCode {
-                let sessionUrl = "https://dot-watcher.skelstar.io/\(location.sessionId)"
+                let sessionUrl = "https://dot-watcher.skelstar.io/code/\(inviteCode)"
                 let shareMessage = "Join my DotWatcher session!\n\nInvite code: \(inviteCode)\n\n\(sessionUrl)"
                 ShareLink(item: shareMessage) {
                     Image(systemName: "square.and.arrow.up")
@@ -270,7 +270,7 @@ struct ContentView: View {
                 HStack(spacing: 0) {
                     if !location.sessionId.isEmpty,
                        let inviteCode = location.activeMembership?.inviteCode {
-                        let sessionUrl = "https://dot-watcher.skelstar.io/\(location.sessionId)"
+                        let sessionUrl = "https://dot-watcher.skelstar.io/code/\(inviteCode)"
                         let shareMessage = "Join my DotWatcher session!\n\nInvite code: \(inviteCode)\n\n\(sessionUrl)"
                         ShareLink(item: shareMessage) {
                             Image(systemName: "square.and.arrow.up")

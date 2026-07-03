@@ -145,6 +145,38 @@ public class SessionsApiTests
     }
 
     [Fact]
+    public async Task GetLocationsByInviteCode_WithValidInvite_ReturnsPositionsWithoutAuth()
+    {
+        using var factory = new DotWatcherApiFactory();
+        using var client = factory.CreateClient();
+        var ownerToken = await AuthTestHelpers.RegisterAsync(client, "owner", "Owner");
+        var session = await AuthTestHelpers.CreateSessionAsync(client, ownerToken);
+
+        await LocationsApiTests.PostLocationAsync(
+            client,
+            LocationsApiTests.TestLocation("Owner", session.SessionId),
+            ownerToken);
+
+        var response = await client.GetAsync($"/session-invites/{session.InviteCode}/locations");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var positions = await response.Content.ReadFromJsonAsync<List<List<RunnerPosition>>>();
+        Assert.NotNull(positions);
+        Assert.Contains(positions, group => group.Any(p => p.RunnerName == "Owner"));
+    }
+
+    [Fact]
+    public async Task GetLocationsByInviteCode_WithUnknownInvite_ReturnsNotFound()
+    {
+        using var factory = new DotWatcherApiFactory();
+        using var client = factory.CreateClient();
+
+        var response = await client.GetAsync("/session-invites/NOPE99/locations");
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
     public async Task GetMySessions_WithUserToken_ReturnsMemberships()
     {
         using var factory = new DotWatcherApiFactory();
