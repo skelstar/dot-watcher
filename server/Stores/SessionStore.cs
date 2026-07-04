@@ -616,6 +616,10 @@ public class SessionStore(string dbPath)
         return (long)(cmd.ExecuteScalar() ?? 0L) > 0;
     }
 
+    // A session's recording accumulates for as long as its invite code is reused, so a gap this
+    // large between consecutive pings is treated as the boundary of a separate, earlier run.
+    private static readonly TimeSpan RunGapThreshold = TimeSpan.FromMinutes(60);
+
     public string GetRecordingAsNdjson(string sessionId)
     {
         using var conn = Connect();
@@ -624,24 +628,45 @@ public class SessionStore(string dbPath)
             SELECT session_id, runner_name, latitude, longitude, heading, timestamp
             FROM location_updates
             WHERE session_id = $code
-            ORDER BY id
+            ORDER BY timestamp
             """;
         cmd.Parameters.AddWithValue("$code", sessionId);
         using var reader = cmd.ExecuteReader();
-        var lines = new List<string>();
+        var updates = new List<LocationUpdate>();
         while (reader.Read())
         {
-            var update = new LocationUpdate(
+            updates.Add(new LocationUpdate(
                 RunnerName: reader.GetString(1),
                 SessionId: reader.GetString(0),
                 Latitude: reader.GetDouble(2),
                 Longitude: reader.GetDouble(3),
                 Heading: reader.IsDBNull(4) ? null : reader.GetDouble(4),
                 Timestamp: DateTimeOffset.Parse(reader.GetString(5))
-            );
-            lines.Add(JsonSerializer.Serialize(update, _jsonOptions));
+            ));
         }
-        return string.Join("\n", lines);
+
+        var latestRun = LatestRun(updates);
+        return string.Join("\n", latestRun.Select(u => JsonSerializer.Serialize(u, _jsonOptions)));
+    }
+
+    // Finds the start of the most recent contiguous run by scanning backward from the latest
+    // timestamp and stopping at the first gap larger than RunGapThreshold.
+    private static List<LocationUpdate> LatestRun(List<LocationUpdate> updatesByTimestamp)
+    {
+        if (updatesByTimestamp.Count == 0)
+            return updatesByTimestamp;
+
+        var cutoff = 0;
+        for (var i = updatesByTimestamp.Count - 1; i > 0; i--)
+        {
+            if (updatesByTimestamp[i].Timestamp - updatesByTimestamp[i - 1].Timestamp > RunGapThreshold)
+            {
+                cutoff = i;
+                break;
+            }
+        }
+
+        return updatesByTimestamp.GetRange(cutoff, updatesByTimestamp.Count - cutoff);
     }
 
     public void SaveRecording(string sessionId, string ndjsonContent)

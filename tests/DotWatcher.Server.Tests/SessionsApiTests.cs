@@ -201,6 +201,35 @@ public class SessionsApiTests
     }
 
     [Fact]
+    public async Task GetRecordingByInviteCode_WithGapFromEarlierRun_OnlyReturnsLatestRun()
+    {
+        using var factory = new DotWatcherApiFactory();
+        using var client = factory.CreateClient();
+        var token = await AuthTestHelpers.RegisterAsync(client, "carol", "Carol");
+        var session = await AuthTestHelpers.CreateSessionAsync(client, token);
+
+        var earlierRun = LocationsApiTests.TestLocation("Ignored", session.SessionId, latitude: -33.8000) with
+        {
+            Timestamp = new DateTimeOffset(2024, 11, 15, 2, 0, 0, TimeSpan.Zero),
+        };
+        var latestRun = LocationsApiTests.TestLocation("Ignored", session.SessionId, latitude: -33.8688) with
+        {
+            Timestamp = new DateTimeOffset(2024, 11, 15, 9, 23, 0, TimeSpan.Zero),
+        };
+        await LocationsApiTests.PostLocationAsync(client, earlierRun, token);
+        await LocationsApiTests.PostLocationAsync(client, latestRun, token);
+
+        var response = await client.GetAsync($"/session-invites/{session.InviteCode}/recording");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadAsStringAsync();
+        var line = Assert.Single(body.Split('\n', StringSplitOptions.RemoveEmptyEntries));
+
+        using var json = JsonDocument.Parse(line);
+        Assert.Equal(-33.8688, json.RootElement.GetProperty("latitude").GetDouble());
+    }
+
+    [Fact]
     public async Task GetRecordingByInviteCode_WithUnknownInvite_ReturnsNotFound()
     {
         using var factory = new DotWatcherApiFactory();
