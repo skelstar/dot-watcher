@@ -317,7 +317,7 @@ export default function App() {
         <InvalidInvitePrompt message={isReplay ? replay.error ?? 'Invite not found.' : liveError ?? 'Invite not found.'} isReplay={isReplay} />
       )}
       {shouldShowAuthPrompt(accessToken, inviteCode) && <AuthPrompt serverUrl={SERVER_URL} onAuth={handleAuth} />}
-      {accessToken && membershipsLoaded && isReplay && !sessionName && (
+      {accessToken && membershipsLoaded && isReplay && !sessionName && !inviteCode && (
         <ReplayPicker memberships={memberships} onSelect={handleReplaySelect} />
       )}
       {accessToken && showSessionPrompt && (
