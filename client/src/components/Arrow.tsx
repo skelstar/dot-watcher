@@ -88,10 +88,11 @@ export default function Arrow({ name, heading, colour, label, stationary }: Prop
         }}
       >
         <path
-          d="m 2.397561,10.97932 a 13,13 0 0 0 0,18.384776 13,13 0 0 0 18.384776,0 13,13 0 0 0 0,-18.384776 L 11.589949,1.7869317 Z"
+          d="M 11.589949,7.171708 A 13,13 0 0 0 -1.410051,20.171708 13,13 0 0 0 11.589949,33.171708 13,13 0 0 0 24.589949,20.171708 V 10.171708 Q 24.589949,7.171708 21.589949,7.171708 Z"
           fill="#ffffff"
           stroke="#ffffff"
-          strokeWidth="1.6"
+          strokeWidth="4.0"
+          transform={`rotate(-26.2, ${CX}, ${CY})`}
         />
         <circle cx={CX} cy={CY} r={12} fill={colour} />
         <text
