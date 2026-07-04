@@ -288,7 +288,19 @@ export default function AdminPanel({ serverUrl }: { serverUrl: string }) {
                     onClick={() => void handleSessionRowClick(session)}
                   >
                     <td style={td}>{session.sessionName}</td>
-                    <td style={td}>{session.inviteCode}</td>
+                    <td style={td}>
+                      {session.inviteCode}
+                      <a
+                        href={`/code/${session.inviteCode}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={e => e.stopPropagation()}
+                        title="Open map"
+                        style={mapLink}
+                      >
+                        🗺️
+                      </a>
+                    </td>
                     <td style={td}>{session.ownerUsername}</td>
                     <td style={td}>{session.memberCount}</td>
                     <td style={td}>{timeAgo(session.createdAt)}</td>
@@ -493,6 +505,11 @@ const actionTd: React.CSSProperties = {
   textAlign: 'right',
   width: '1%',
   whiteSpace: 'nowrap',
+}
+
+const mapLink: React.CSSProperties = {
+  marginLeft: '0.5rem',
+  textDecoration: 'none',
 }
 
 const versionText: React.CSSProperties = {
