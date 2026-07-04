@@ -70,6 +70,7 @@ public record AdminUserSummary(
 public record AdminSessionSummary(
     string SessionId,
     string SessionName,
+    string InviteCode,
     string OwnerUsername,
     int MemberCount,
     string CreatedAt

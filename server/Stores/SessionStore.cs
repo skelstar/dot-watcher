@@ -535,7 +535,7 @@ public class SessionStore(string dbPath)
         using var conn = Connect();
         using var cmd = conn.CreateCommand();
         cmd.CommandText = """
-            SELECT s.id, s.session_name, u.username, COUNT(m.user_id) AS member_count, s.created_at
+            SELECT s.id, s.session_name, s.invite_code, u.username, COUNT(m.user_id) AS member_count, s.created_at
             FROM app_sessions s
             JOIN users u ON u.id = s.owner_user_id
             LEFT JOIN session_members m ON m.session_id = s.id
@@ -545,7 +545,7 @@ public class SessionStore(string dbPath)
         using var reader = cmd.ExecuteReader();
         var sessions = new List<AdminSessionSummary>();
         while (reader.Read())
-            sessions.Add(new AdminSessionSummary(reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetInt32(3), reader.GetString(4)));
+            sessions.Add(new AdminSessionSummary(reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetString(3), reader.GetInt32(4), reader.GetString(5)));
         return sessions;
     }
 

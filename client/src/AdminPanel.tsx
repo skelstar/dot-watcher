@@ -10,6 +10,7 @@ interface AdminUser {
 interface AdminSession {
   sessionId: string
   sessionName: string
+  inviteCode: string
   ownerUsername: string
   memberCount: number
   createdAt: string
@@ -270,6 +271,7 @@ export default function AdminPanel({ serverUrl }: { serverUrl: string }) {
           <thead>
             <tr>
               <th style={th}>Name</th>
+              <th style={th}>Invite code</th>
               <th style={th}>Owner</th>
               <th style={th}>Members</th>
               <th style={th}>Created</th>
@@ -286,6 +288,7 @@ export default function AdminPanel({ serverUrl }: { serverUrl: string }) {
                     onClick={() => void handleSessionRowClick(session)}
                   >
                     <td style={td}>{session.sessionName}</td>
+                    <td style={td}>{session.inviteCode}</td>
                     <td style={td}>{session.ownerUsername}</td>
                     <td style={td}>{session.memberCount}</td>
                     <td style={td}>{timeAgo(session.createdAt)}</td>
@@ -302,7 +305,7 @@ export default function AdminPanel({ serverUrl }: { serverUrl: string }) {
                   {isExpanded && (
                     <tr>
                       <td
-                        colSpan={5}
+                        colSpan={6}
                         style={{ padding: 0, cursor: 'pointer' }}
                         onClick={() => setExpandedSessionId(null)}
                       >
