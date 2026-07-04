@@ -188,6 +188,7 @@ export default function App() {
     SERVER_URL,
     accessToken,
     POLL_INTERVAL_MS,
+    isReplay,
     isReplay ? replay.positions : undefined,
     isReplay ? replay.virtualNowMs : undefined,
     !isReplay && !accessToken ? inviteCode : null,

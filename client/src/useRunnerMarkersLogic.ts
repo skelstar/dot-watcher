@@ -9,15 +9,15 @@ export function livePollingError(status: number): string {
 export function shouldPollLivePositions(
   sessionId: string | null,
   accessToken: string | null,
-  replayPositionsProvided: boolean,
+  isReplay: boolean,
 ): boolean {
-  return Boolean(sessionId && accessToken && !replayPositionsProvided)
+  return Boolean(sessionId && accessToken && !isReplay)
 }
 
 export function shouldPollLivePositionsByInvite(
   inviteCode: string | null,
   accessToken: string | null,
-  replayPositionsProvided: boolean,
+  isReplay: boolean,
 ): boolean {
-  return Boolean(inviteCode && !accessToken && !replayPositionsProvided)
+  return Boolean(inviteCode && !accessToken && !isReplay)
 }
