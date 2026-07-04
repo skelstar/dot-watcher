@@ -8,7 +8,7 @@ test('shouldPollLivePositions requires a session and access token', () => {
   assert.equal(shouldPollLivePositions('SUNSET23', null, false), false)
 })
 
-test('shouldPollLivePositions skips live polling while replay positions are provided', () => {
+test('shouldPollLivePositions skips live polling while in replay mode', () => {
   assert.equal(shouldPollLivePositions('SUNSET23', 'token', true), false)
 })
 

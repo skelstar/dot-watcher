@@ -28,6 +28,7 @@ export function useRunnerMarkers(
   serverUrl: string,
   accessToken: string | null,
   intervalMs: number,
+  isReplay: boolean,
   replayPositions?: RunnerPosition[][],
   replayNowMs?: number,
   inviteCode?: string | null,
@@ -121,11 +122,11 @@ export function useRunnerMarkers(
     }
   }
 
-  // Live polling effect — skipped when replayPositions is provided
+  // Live polling effect — skipped in replay mode
   // TODO: Add e2e coverage for signed-in member polling, 401/403 handling, and replay mode.
   useEffect(() => {
-    const byInvite = shouldPollLivePositionsByInvite(inviteCode ?? null, accessToken, replayPositions !== undefined)
-    const byMembership = shouldPollLivePositions(sessionId, accessToken, replayPositions !== undefined)
+    const byInvite = shouldPollLivePositionsByInvite(inviteCode ?? null, accessToken, isReplay)
+    const byMembership = shouldPollLivePositions(sessionId, accessToken, isReplay)
     if (!byInvite && !byMembership) {
       setError(null)
       return
@@ -173,7 +174,7 @@ export function useRunnerMarkers(
       cancelled = true
       clearInterval(id)
     }
-  }, [sessionId, serverUrl, accessToken, intervalMs, mapRef, replayPositions, inviteCode]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [sessionId, serverUrl, accessToken, intervalMs, mapRef, isReplay, inviteCode]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Replay effect — runs when replayPositions changes
   useEffect(() => {
