@@ -14,6 +14,7 @@ struct CreateSessionView: View {
                     .font(.headline)
                     .foregroundStyle(.white)
                     .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 10)
                     .padding(.horizontal, 16)
@@ -26,6 +27,7 @@ struct CreateSessionView: View {
 
                 Text("Give your session a name. You'll get an invite code to share with others.")
                     .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
                     .foregroundStyle(.secondary)
 
                 CodeBoxField(text: $sessionCode, length: 8)
