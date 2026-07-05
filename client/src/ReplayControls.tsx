@@ -1,9 +1,12 @@
-import { useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { SessionTimelineState } from './useSessionTimeline.ts'
 
 interface Props {
   timeline: SessionTimelineState
+  onFitAll: () => void
 }
+
+const TIME_TOOLTIP_LINGER_MS = 800
 
 function formatTime(ms: number): string {
   const totalSec = Math.floor(ms / 1000)
@@ -14,15 +17,19 @@ function formatTime(ms: number): string {
   return `${m}:${String(s).padStart(2, '0')}`
 }
 
-export default function ReplayControls({ timeline }: Props) {
+export default function ReplayControls({ timeline, onFitAll }: Props) {
   const { following, scrubTimeMs, runStartMs, nowMs, dragTo, dragEnd, goLive } = timeline
   const trackRef = useRef<HTMLDivElement>(null)
+  const [showTooltip, setShowTooltip] = useState(false)
+  const lingerTimerRef = useRef<ReturnType<typeof setTimeout>>()
 
   const rangeStart = runStartMs ?? nowMs
   const rangeEnd = nowMs
   const durationMs = Math.max(rangeEnd - rangeStart, 1)
   const currentMs = scrubTimeMs ?? nowMs
   const fraction = Math.max(0, Math.min(1, (currentMs - rangeStart) / durationMs))
+
+  useEffect(() => () => clearTimeout(lingerTimerRef.current), [])
 
   function timeFromClientX(clientX: number): number {
     const track = trackRef.current
@@ -34,6 +41,8 @@ export default function ReplayControls({ timeline }: Props) {
 
   function handlePointerDown(event: React.PointerEvent<HTMLDivElement>) {
     event.currentTarget.setPointerCapture(event.pointerId)
+    clearTimeout(lingerTimerRef.current)
+    setShowTooltip(true)
     dragTo(timeFromClientX(event.clientX))
   }
 
@@ -44,70 +53,62 @@ export default function ReplayControls({ timeline }: Props) {
 
   function handlePointerUp() {
     dragEnd()
-  }
-
-  if (runStartMs === null) {
-    return (
-      <div style={bar}>
-        <button onClick={goLive} style={{ ...liveBtn, ...(following ? liveBtnActive : liveBtnInactive) }} title="Go live">
-          <span style={{ ...liveDot, background: following ? '#fff' : '#94a3b8' }} />
-          LIVE
-        </button>
-      </div>
-    )
+    lingerTimerRef.current = setTimeout(() => setShowTooltip(false), TIME_TOOLTIP_LINGER_MS)
   }
 
   return (
     <div style={bar}>
-      <span style={timeLabel}>{formatTime(currentMs - rangeStart)}</span>
-
-      <div
-        ref={trackRef}
-        style={track}
-        onPointerDown={handlePointerDown}
-        onPointerMove={handlePointerMove}
-        onPointerUp={handlePointerUp}
-      >
-        <div style={{ ...trackFill, width: `${fraction * 100}%` }} />
-        <div style={{ ...dot, left: `${fraction * 100}%` }} />
-      </div>
-
-      <span style={timeLabel}>{formatTime(durationMs)}</span>
+      {runStartMs !== null && (
+        <div
+          ref={trackRef}
+          style={track}
+          onPointerDown={handlePointerDown}
+          onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerUp}
+        >
+          <div style={{ ...trackFill, width: `${fraction * 100}%` }} />
+          {showTooltip && (
+            <span style={{ ...timeTooltip, left: `${fraction * 100}%` }}>
+              {formatTime(currentMs - rangeStart)}
+            </span>
+          )}
+          <div style={{ ...dot, left: `${fraction * 100}%` }} />
+        </div>
+      )}
 
       <button onClick={goLive} style={{ ...liveBtn, ...(following ? liveBtnActive : liveBtnInactive) }} title="Go live">
         <span style={{ ...liveDot, background: following ? '#fff' : '#94a3b8' }} />
         LIVE
       </button>
+
+      <button onClick={onFitAll} style={fitAllBtn} title="Fit all">⤢</button>
     </div>
   )
 }
 
 const bar: React.CSSProperties = {
   position: 'absolute',
-  bottom: 36,
-  left: '50%',
-  transform: 'translateX(-50%)',
+  bottom: 27,
+  left: 0,
+  right: 0,
   display: 'flex',
   alignItems: 'center',
-  gap: 8,
-  background: 'rgba(255,255,255,0.95)',
-  borderRadius: 10,
-  padding: '8px 8px',
-  boxShadow: '0 2px 12px rgba(0,0,0,0.2)',
+  padding: '0 12px',
   zIndex: 10,
-  maxWidth: 'calc(100vw - 32px)',
   boxSizing: 'border-box',
+  pointerEvents: 'none',
 }
 
 const track: React.CSSProperties = {
   position: 'relative',
   flex: 1,
-  minWidth: 80,
+  minWidth: 40,
   height: 34,
   display: 'flex',
   alignItems: 'center',
   cursor: 'pointer',
   touchAction: 'none',
+  pointerEvents: 'auto',
 }
 
 const trackFill: React.CSSProperties = {
@@ -116,26 +117,34 @@ const trackFill: React.CSSProperties = {
   height: 3,
   borderRadius: 2,
   background: '#ef4444',
+  boxShadow: '0 0 3px rgba(0,0,0,0.4)',
 }
 
 const dot: React.CSSProperties = {
   position: 'absolute',
-  width: 14,
-  height: 14,
+  width: 16,
+  height: 16,
   borderRadius: '50%',
   background: '#ef4444',
   border: '2px solid #fff',
-  boxShadow: '0 0 0 1px rgba(0,0,0,0.2)',
+  boxShadow: '0 1px 4px rgba(0,0,0,0.5)',
   transform: 'translateX(-50%)',
 }
 
-const timeLabel: React.CSSProperties = {
+const timeTooltip: React.CSSProperties = {
+  position: 'absolute',
+  bottom: '100%',
+  marginBottom: 8,
+  transform: 'translateX(-50%)',
+  background: 'rgba(0,0,0,0.75)',
+  color: '#fff',
   fontSize: 12,
   fontFamily: 'monospace',
-  color: '#334155',
-  flexShrink: 0,
-  minWidth: 38,
-  textAlign: 'center',
+  fontWeight: 600,
+  borderRadius: 4,
+  padding: '2px 6px',
+  whiteSpace: 'nowrap',
+  pointerEvents: 'none',
 }
 
 const liveBtn: React.CSSProperties = {
@@ -152,7 +161,10 @@ const liveBtn: React.CSSProperties = {
   justifyContent: 'center',
   gap: 6,
   flexShrink: 0,
+  marginLeft: 13,
   padding: '0 12px',
+  boxShadow: '0 0 0 2px rgba(0,0,0,0.1)',
+  pointerEvents: 'auto',
 }
 
 const liveBtnActive: React.CSSProperties = {
@@ -161,7 +173,7 @@ const liveBtnActive: React.CSSProperties = {
 }
 
 const liveBtnInactive: React.CSSProperties = {
-  background: '#e2e8f0',
+  background: '#fff',
   color: '#334155',
 }
 
@@ -169,4 +181,23 @@ const liveDot: React.CSSProperties = {
   width: 6,
   height: 6,
   borderRadius: '50%',
+}
+
+const fitAllBtn: React.CSSProperties = {
+  width: 34,
+  height: 34,
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  background: '#fff',
+  border: 'none',
+  borderRadius: 6,
+  boxShadow: '0 0 0 2px rgba(0,0,0,0.1)',
+  cursor: 'pointer',
+  fontSize: '1.1rem',
+  color: '#333',
+  padding: 0,
+  flexShrink: 0,
+  marginLeft: 8,
+  pointerEvents: 'auto',
 }
