@@ -3,6 +3,7 @@ import type { ReplayState } from './useReplay.ts'
 interface Props {
   replay: ReplayState
   onFitAll: () => void
+  onGoLive: () => void
 }
 
 function formatTime(ms: number): string {
@@ -14,7 +15,7 @@ function formatTime(ms: number): string {
   return `${m}:${String(s).padStart(2, '0')}`
 }
 
-export default function ReplayControls({ replay, onFitAll }: Props) {
+export default function ReplayControls({ replay, onFitAll, onGoLive }: Props) {
   const { currentTimeMs, durationMs, loaded, error, playing, speed, play, pause, seek, setSpeed } = replay
 
   function handleFast() {
@@ -87,6 +88,7 @@ export default function ReplayControls({ replay, onFitAll }: Props) {
         {formatTime(durationMs)}
       </span>
 
+      <button onClick={onGoLive} style={goLiveBtn} title="Go live">LIVE</button>
       <button onClick={onFitAll} style={fitAllBtn} title="Fit all">⤢</button>
     </div>
   )
@@ -99,10 +101,10 @@ const bar: React.CSSProperties = {
   transform: 'translateX(-50%)',
   display: 'flex',
   alignItems: 'center',
-  gap: 10,
+  gap: 8,
   background: 'rgba(255,255,255,0.95)',
   borderRadius: 10,
-  padding: '8px 14px',
+  padding: '8px 8px',
   boxShadow: '0 2px 12px rgba(0,0,0,0.2)',
   zIndex: 10,
   maxWidth: 'calc(100vw - 32px)',
@@ -152,5 +154,23 @@ const fitAllBtn: React.CSSProperties = {
   alignItems: 'center',
   justifyContent: 'center',
   flexShrink: 0,
+}
+
+const goLiveBtn: React.CSSProperties = {
+  height: 34,
+  border: 'none',
+  borderRadius: 6,
+  background: '#e2e8f0',
+  color: '#334155',
+  fontSize: 12,
+  fontWeight: 700,
+  fontFamily: 'system-ui, sans-serif',
+  letterSpacing: 0.5,
+  cursor: 'pointer',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  flexShrink: 0,
+  padding: '0 12px',
 }
 
