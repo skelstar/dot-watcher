@@ -86,8 +86,9 @@ function clearStoredAuth() {
 export default function App() {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<mapboxgl.Map | null>(null)
-  const { sessionName: initialName, isReplay, inviteCode, autoJoin, legalPage, isAdmin } = parseUrl()
+  const { sessionName: initialName, isReplay: initialIsReplay, inviteCode, autoJoin, legalPage, isAdmin } = parseUrl()
   const [sessionName, setSessionName] = useState<string | null>(initialName)
+  const [isReplay, setIsReplay] = useState(initialIsReplay)
   const [auth, setAuth] = useState<AuthResponse | null>(() => readStoredAuth())
   const [memberships, setMemberships] = useState<SessionMembership[]>([])
   const [membershipsLoaded, setMembershipsLoaded] = useState(false)
@@ -275,6 +276,20 @@ export default function App() {
     setSessionName(membership.sessionName)
   }
 
+  function goToReplay() {
+    const path = sessionName ? `/${sessionName}/replay` : inviteCode ? `/code/${inviteCode}/replay` : null
+    if (!path) return
+    window.history.replaceState(null, '', path)
+    setIsReplay(true)
+  }
+
+  function goLive() {
+    const path = sessionName ? `/${sessionName}` : inviteCode ? `/code/${inviteCode}` : null
+    if (!path) return
+    window.history.replaceState(null, '', path)
+    setIsReplay(false)
+  }
+
   if (isAdmin) {
     return <AdminPanel serverUrl={SERVER_URL} />
   }
@@ -301,6 +316,12 @@ export default function App() {
           <button type="button" style={signOutButton} onClick={handleSignOut}>Sign out</button>
         </div>
       )}
+      {!isReplay && (sessionName || (!accessToken && inviteCode)) && (
+        <button onClick={goToReplay} style={liveIndicatorBtn} title="View replay">
+          <span className="live-pulse" style={liveDot} />
+          LIVE
+        </button>
+      )}
       {!isReplay && <button onClick={fitAll} style={fitAllBtn} title="Fit all">⤢</button>}
       <Legend runners={offScreenRunners} onRunnerClick={centerOnRunner} />
       {menu && canWriteLocation && (
@@ -311,7 +332,7 @@ export default function App() {
           onClose={() => setMenu(null)}
         />
       )}
-      {isReplay && !replay.invalidInvite && (sessionName || (!accessToken && inviteCode)) && <ReplayControls replay={replay} onFitAll={fitAll} />}
+      {isReplay && !replay.invalidInvite && (sessionName || (!accessToken && inviteCode)) && <ReplayControls replay={replay} onFitAll={fitAll} onGoLive={goLive} />}
       {liveError && !liveInvalidInvite && !isReplay && (hasSessionMembership || (!accessToken && inviteCode)) && <div style={statusToast}>{liveError}</div>}
       {replay.error && !replay.invalidInvite && isReplay && (hasSessionMembership || (!accessToken && inviteCode)) && <div style={statusToast}>{replay.error}</div>}
       {(liveInvalidInvite || replay.invalidInvite) && (
@@ -365,7 +386,7 @@ export default function App() {
 
 const fitAllBtn: React.CSSProperties = {
   position: 'absolute',
-  bottom: 32,
+  bottom: 42,
   right: 12,
   width: 36,
   height: 36,
@@ -380,6 +401,35 @@ const fitAllBtn: React.CSSProperties = {
   fontSize: '1.1rem',
   color: '#333',
   padding: 0,
+}
+
+const liveIndicatorBtn: React.CSSProperties = {
+  position: 'absolute',
+  bottom: 42,
+  right: 56,
+  height: 36,
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  gap: 6,
+  background: '#ef4444',
+  border: 'none',
+  borderRadius: 4,
+  boxShadow: '0 0 0 2px rgba(0,0,0,0.1)',
+  cursor: 'pointer',
+  fontSize: 12,
+  fontWeight: 700,
+  fontFamily: 'system-ui, sans-serif',
+  letterSpacing: 0.5,
+  color: '#fff',
+  padding: '0 10px',
+}
+
+const liveDot: React.CSSProperties = {
+  width: 6,
+  height: 6,
+  borderRadius: '50%',
+  background: '#fff',
 }
 
 const accountBar: React.CSSProperties = {
