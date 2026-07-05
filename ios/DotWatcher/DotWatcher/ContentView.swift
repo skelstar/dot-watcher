@@ -2,6 +2,7 @@ import SwiftUI
 import UIKit
 
 struct ContentView: View {
+    @Environment(\.scenePhase) private var scenePhase
     @State private var location = LocationManager()
     @State private var batteryLevel: Float = UIDevice.current.batteryLevel
     @State private var showNameEntry: Bool = false
@@ -23,6 +24,7 @@ struct ContentView: View {
             .onAppear {
                 UIDevice.current.isBatteryMonitoringEnabled = true
                 batteryLevel = UIDevice.current.batteryLevel
+                location.startConnectivityPolling()
                 if location.isAuthenticated {
                     if location.runnerName.trimmingCharacters(in: .whitespaces).isEmpty {
                         showNameEntry = true
@@ -34,6 +36,13 @@ struct ContentView: View {
             }
             .onReceive(NotificationCenter.default.publisher(for: UIDevice.batteryLevelDidChangeNotification)) { _ in
                 batteryLevel = UIDevice.current.batteryLevel
+            }
+            .onChange(of: scenePhase) { _, newPhase in
+                if newPhase == .active {
+                    location.startConnectivityPolling()
+                } else {
+                    location.stopConnectivityPolling()
+                }
             }
             .sheet(isPresented: $showHelp) {
                 HelpView()
@@ -51,7 +60,8 @@ struct ContentView: View {
             .sheet(isPresented: $showCreateSession) {
                 CreateSessionView(
                     sessionCode: $noSessionCreateCode,
-                    isBusy: isBusy
+                    isBusy: isBusy,
+                    isOffline: location.isOffline
                 ) {
                     Task { await noSessionCreateSession() }
                 }
@@ -94,25 +104,39 @@ struct ContentView: View {
     // MARK: - No Session View
 
     private var noSessionView: some View {
-        ScrollView {
-            VStack(spacing: 16) {
-                headerSection
-                runnerRow
-                noSessionJoinCard
-                noSessionCreateLink
-                if let formError {
-                    Text(formError)
-                        .font(.caption)
-                        .foregroundStyle(.red)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal, 4)
-                }
+        VStack(spacing: 0) {
+            if location.isOffline {
+                offlineBanner
             }
-            .padding()
+            ScrollView {
+                VStack(spacing: 16) {
+                    headerSection
+                    runnerRow
+                    noSessionJoinCard
+                    noSessionCreateLink
+                    if let formError {
+                        Text(formError)
+                            .font(.caption)
+                            .foregroundStyle(.red)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, 4)
+                    }
+                }
+                .padding()
+            }
+            .refreshable {
+                await location.loadSessions()
+            }
         }
-        .refreshable {
-            await location.loadSessions()
-        }
+    }
+
+    private var offlineBanner: some View {
+        Label("No internet connection", systemImage: "wifi.slash")
+            .font(.headline)
+            .foregroundStyle(.white)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 10)
+            .background(Color.red)
     }
 
     private var noSessionCreateLink: some View {
