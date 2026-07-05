@@ -301,7 +301,6 @@ export default function App() {
           <button type="button" style={signOutButton} onClick={handleSignOut}>Sign out</button>
         </div>
       )}
-      <button onClick={fitAll} style={fitAllBtn} title="Fit all">⤢</button>
       <Legend runners={offScreenRunners} onRunnerClick={centerOnRunner} />
       {menu && canWriteLocation && (
         <MapMenu
@@ -313,7 +312,7 @@ export default function App() {
       )}
       {!timeline.invalidInvite && (sessionName || (!accessToken && inviteCode)) && (
         <>
-          <ReplayControls timeline={timeline} />
+          <ReplayControls timeline={timeline} onFitAll={fitAll} />
           {!timeline.following && !timeline.playing && <MapPlayButton onPlay={timeline.play} />}
         </>
       )}
@@ -367,25 +366,6 @@ export default function App() {
       )}
     </>
   )
-}
-
-const fitAllBtn: React.CSSProperties = {
-  position: 'absolute',
-  bottom: 42,
-  right: 12,
-  width: 36,
-  height: 36,
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  background: '#fff',
-  border: 'none',
-  borderRadius: 4,
-  boxShadow: '0 0 0 2px rgba(0,0,0,0.1)',
-  cursor: 'pointer',
-  fontSize: '1.1rem',
-  color: '#333',
-  padding: 0,
 }
 
 
