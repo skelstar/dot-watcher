@@ -37,6 +37,7 @@ public class SessionStore(string dbPath)
             );
             CREATE INDEX IF NOT EXISTS idx_session        ON location_updates(session_id);
             CREATE INDEX IF NOT EXISTS idx_session_runner ON location_updates(session_id, runner_name);
+            CREATE INDEX IF NOT EXISTS idx_session_timestamp ON location_updates(session_id, timestamp);
 
             CREATE TABLE IF NOT EXISTS users (
                 id            TEXT PRIMARY KEY,
@@ -620,7 +621,116 @@ public class SessionStore(string dbPath)
     // large between consecutive pings is treated as the boundary of a separate, earlier run.
     private static readonly TimeSpan RunGapThreshold = TimeSpan.FromMinutes(60);
 
+    // Defensive cap on rows returned from a single windowed recording fetch.
+    private const int MaxRecordingRows = 20000;
+
     public string GetRecordingAsNdjson(string sessionId)
+    {
+        var latestRun = LatestRun(LoadUpdatesByTimestamp(sessionId));
+        return string.Join("\n", latestRun.Select(u => JsonSerializer.Serialize(u, _jsonOptions)));
+    }
+
+    // Returns NDJSON for the given time window, clamped to the current run so callers can never
+    // scrub back past the boundary that GetRecordingAsNdjson/GetRecordingMeta already enforce.
+    // truncated is true when more rows existed in-range than MaxRecordingRows allowed returning.
+    public (string Ndjson, bool Truncated) GetRecordingWindowAsNdjson(
+        string sessionId, DateTimeOffset? since, DateTimeOffset? until)
+    {
+        var runStart = GetRunStartTimestamp(sessionId);
+        var effectiveSince = runStart is null ? since
+            : since is null ? runStart
+            : since < runStart ? runStart
+            : since;
+
+        using var conn = Connect();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = """
+            SELECT session_id, runner_name, latitude, longitude, heading, timestamp
+            FROM location_updates
+            WHERE session_id = $code
+              AND ($since IS NULL OR timestamp >= $since)
+              AND ($until IS NULL OR timestamp <= $until)
+            ORDER BY timestamp
+            LIMIT $limit
+            """;
+        cmd.Parameters.AddWithValue("$code", sessionId);
+        cmd.Parameters.AddWithValue("$since", (object?)effectiveSince?.ToString("O") ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$until", (object?)until?.ToString("O") ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$limit", MaxRecordingRows + 1);
+
+        var updates = new List<LocationUpdate>();
+        using (var reader = cmd.ExecuteReader())
+        {
+            while (reader.Read())
+            {
+                updates.Add(new LocationUpdate(
+                    RunnerName: reader.GetString(1),
+                    SessionId: reader.GetString(0),
+                    Latitude: reader.GetDouble(2),
+                    Longitude: reader.GetDouble(3),
+                    Heading: reader.IsDBNull(4) ? null : reader.GetDouble(4),
+                    Timestamp: DateTimeOffset.Parse(reader.GetString(5))
+                ));
+            }
+        }
+
+        var truncated = updates.Count > MaxRecordingRows;
+        if (truncated)
+            updates.RemoveRange(MaxRecordingRows, updates.Count - MaxRecordingRows);
+
+        var ndjson = string.Join("\n", updates.Select(u => JsonSerializer.Serialize(u, _jsonOptions)));
+        return (ndjson, truncated);
+    }
+
+    // Metadata about the current run's scrubbable range, without fetching any position rows.
+    public RecordingMeta? GetRecordingMeta(string sessionId)
+    {
+        if (!HasRecording(sessionId))
+            return null;
+
+        var runStart = GetRunStartTimestamp(sessionId);
+
+        using var conn = Connect();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT MAX(timestamp) FROM location_updates WHERE session_id = $code";
+        cmd.Parameters.AddWithValue("$code", sessionId);
+        var latest = cmd.ExecuteScalar() as string;
+
+        return new RecordingMeta(
+            RunStartTimestamp: runStart,
+            LatestTimestamp: latest is null ? null : DateTimeOffset.Parse(latest));
+    }
+
+    // Finds where the most recent contiguous run begins, by scanning timestamps backward from
+    // the latest and stopping at the first gap larger than RunGapThreshold.
+    private DateTimeOffset? GetRunStartTimestamp(string sessionId)
+    {
+        using var conn = Connect();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = """
+            SELECT timestamp
+            FROM location_updates
+            WHERE session_id = $code
+            ORDER BY timestamp DESC
+            """;
+        cmd.Parameters.AddWithValue("$code", sessionId);
+        using var reader = cmd.ExecuteReader();
+
+        DateTimeOffset? previous = null;
+        DateTimeOffset? runStart = null;
+        while (reader.Read())
+        {
+            var current = DateTimeOffset.Parse(reader.GetString(0));
+            if (previous is not null && previous.Value - current > RunGapThreshold)
+                break;
+            runStart = current;
+            previous = current;
+        }
+
+        return runStart;
+    }
+
+    private List<LocationUpdate> LoadUpdatesByTimestamp(string sessionId)
     {
         using var conn = Connect();
         using var cmd = conn.CreateCommand();
@@ -644,9 +754,7 @@ public class SessionStore(string dbPath)
                 Timestamp: DateTimeOffset.Parse(reader.GetString(5))
             ));
         }
-
-        var latestRun = LatestRun(updates);
-        return string.Join("\n", latestRun.Select(u => JsonSerializer.Serialize(u, _jsonOptions)));
+        return updates;
     }
 
     // Finds the start of the most recent contiguous run by scanning backward from the latest

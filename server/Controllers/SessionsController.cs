@@ -90,7 +90,7 @@ public class SessionsController(
     }
 
     [HttpGet("/session-invites/{inviteCode}/recording")]
-    public IActionResult GetRecordingByInviteCode(string inviteCode)
+    public IActionResult GetRecordingByInviteCode(string inviteCode, DateTimeOffset? since, DateTimeOffset? until)
     {
         var sessionId = store.GetSessionIdByInviteCode(inviteCode);
         if (sessionId is null)
@@ -99,8 +99,18 @@ public class SessionsController(
         if (!store.HasRecording(sessionId))
             return NotFound();
 
-        var ndjson = store.GetRecordingAsNdjson(sessionId);
-        return Content(ndjson, "application/x-ndjson");
+        return RecordingResult(sessionId, since, until);
+    }
+
+    [HttpGet("/session-invites/{inviteCode}/recording/meta")]
+    public IActionResult GetRecordingMetaByInviteCode(string inviteCode)
+    {
+        var sessionId = store.GetSessionIdByInviteCode(inviteCode);
+        if (sessionId is null)
+            return NotFound(new { error = "Invite not found." });
+
+        var meta = store.GetRecordingMeta(sessionId);
+        return meta is null ? NotFound() : Ok(meta);
     }
 
     [HttpGet("/sessions/{sessionId}/runners")]
@@ -154,7 +164,7 @@ public class SessionsController(
     }
 
     [HttpGet("/sessions/{sessionId}/recording")]
-    public IActionResult DownloadRecording(string sessionId)
+    public IActionResult DownloadRecording(string sessionId, DateTimeOffset? since, DateTimeOffset? until)
     {
         if (!auth.IsAuthorized(Request))
         {
@@ -175,8 +185,30 @@ public class SessionsController(
         if (!store.HasRecording(sessionId))
             return NotFound();
 
-        var ndjson = store.GetRecordingAsNdjson(sessionId);
-        return Content(ndjson, "application/x-ndjson");
+        return RecordingResult(sessionId, since, until);
+    }
+
+    [HttpGet("/sessions/{sessionId}/recording/meta")]
+    public IActionResult GetRecordingMeta(string sessionId)
+    {
+        if (!auth.IsAuthorized(Request))
+        {
+            if (!userAuth.TryAuthenticate(Request, out var user))
+                return Unauthorized();
+
+            if (string.IsNullOrWhiteSpace(sessionId))
+                return BadRequest(new { error = "Invalid session ID." });
+
+            if (!store.CanReadSession(sessionId, user.UserId))
+                return StatusCode(StatusCodes.Status403Forbidden);
+        }
+        else if (string.IsNullOrWhiteSpace(sessionId))
+        {
+            return BadRequest(new { error = "Invalid session ID." });
+        }
+
+        var meta = store.GetRecordingMeta(sessionId);
+        return meta is null ? NotFound() : Ok(meta);
     }
 
     [HttpDelete("/sessions/{sessionId}/recording")]
@@ -223,6 +255,22 @@ public class SessionsController(
         var rows = store.MergeSession(sourceId, targetId);
         logger.LogInformation("Merged session {Source} into {Target} ({Rows} records)", sourceId, targetId, rows);
         return Ok(new { sourceId = sourceId, targetId = targetId, recordsMerged = rows });
+    }
+
+    // Omitting since/until preserves the original "whole latest run" behavior; passing either
+    // switches to the windowed, run-clamped query used by the live scrubber.
+    private IActionResult RecordingResult(string sessionId, DateTimeOffset? since, DateTimeOffset? until)
+    {
+        if (since is null && until is null)
+        {
+            var ndjson = store.GetRecordingAsNdjson(sessionId);
+            return Content(ndjson, "application/x-ndjson");
+        }
+
+        var (windowNdjson, truncated) = store.GetRecordingWindowAsNdjson(sessionId, since, until);
+        if (truncated)
+            Response.Headers.Append("X-Truncated", "true");
+        return Content(windowNdjson, "application/x-ndjson");
     }
 
 }

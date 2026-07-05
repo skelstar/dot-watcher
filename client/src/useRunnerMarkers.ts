@@ -5,7 +5,6 @@ import mapboxgl from 'mapbox-gl'
 import type { RunnerPosition } from './types.ts'
 import Arrow, { ARROW_SIZE } from './components/Arrow.tsx'
 import Dot from './components/Dot.tsx'
-import { livePollingError, shouldPollLivePositions, shouldPollLivePositionsByInvite } from './useRunnerMarkersLogic.ts'
 
 interface MarkerEntry {
   marker: mapboxgl.Marker
@@ -16,22 +15,14 @@ interface MarkerEntry {
 interface RunnerMarkersResult {
   visibleRunners: string[]
   offScreenRunners: string[]
-  error: string | null
-  invalidInvite: boolean
   centerOnRunner: (name: string) => void
   fitAll: () => void
 }
 
 export function useRunnerMarkers(
   mapRef: RefObject<mapboxgl.Map | null>,
-  sessionId: string | null,
-  serverUrl: string,
-  accessToken: string | null,
-  intervalMs: number,
-  isReplay: boolean,
-  replayPositions?: RunnerPosition[][],
-  replayNowMs?: number,
-  inviteCode?: string | null,
+  positions: RunnerPosition[][] | undefined,
+  nowMs: number,
 ): RunnerMarkersResult {
   const markersRef = useRef<Record<string, MarkerEntry>>({})
   const hasLocatedRef = useRef(false)
@@ -40,8 +31,6 @@ export function useRunnerMarkers(
   const virtualNowRef = useRef<number | null>(null)
   const [visibleRunners, setVisibleRunners] = useState<string[]>([])
   const [offScreenRunners, setOffScreenRunners] = useState<string[]>([])
-  const [error, setError] = useState<string | null>(null)
-  const [invalidInvite, setInvalidInvite] = useState(false)
 
   function applyPositions(runnerGroups: RunnerPosition[][], map: mapboxgl.Map, virtualNow?: number) {
     if (virtualNow !== undefined) virtualNowRef.current = virtualNow
@@ -69,7 +58,7 @@ export function useRunnerMarkers(
           }
         } else {
           existing?.marker.remove()
-          existing?.root.unmount()
+          if (existing) queueMicrotask(() => existing.root.unmount())
 
           const el = document.createElement('div')
           const root = createRoot(el)
@@ -88,8 +77,9 @@ export function useRunnerMarkers(
 
     for (const key of Object.keys(markersRef.current)) {
       if (!seen.has(key)) {
-        markersRef.current[key].marker.remove()
-        markersRef.current[key].root.unmount()
+        const stale = markersRef.current[key]
+        stale.marker.remove()
+        queueMicrotask(() => stale.root.unmount())
         delete markersRef.current[key]
       }
     }
@@ -122,67 +112,14 @@ export function useRunnerMarkers(
     }
   }
 
-  // Live polling effect — skipped in replay mode
-  // TODO: Add e2e coverage for signed-in member polling, 401/403 handling, and replay mode.
+  // Renders whenever the timeline hook produces a new frame — whether from live polling or
+  // from a scrubbed/replayed position.
   useEffect(() => {
-    const byInvite = shouldPollLivePositionsByInvite(inviteCode ?? null, accessToken, isReplay)
-    const byMembership = shouldPollLivePositions(sessionId, accessToken, isReplay)
-    if (!byInvite && !byMembership) {
-      setError(null)
-      return
-    }
-    hasLocatedRef.current = false
-    setInvalidInvite(false)
-
-    let cancelled = false
-    let stopped = false
-    let id: ReturnType<typeof setInterval> | undefined
-
-    async function fetchAndUpdate() {
-      try {
-        const res = byInvite
-          ? await fetch(`${serverUrl}/session-invites/${inviteCode}/locations`)
-          : await fetch(`${serverUrl}/locations/${sessionId}`, {
-              headers: { 'Authorization': `Bearer ${accessToken}` },
-            })
-        if (cancelled) return
-        if (!res.ok) {
-          setError(livePollingError(res.status))
-          if (byInvite && res.status === 404) {
-            stopped = true
-            setInvalidInvite(true)
-            clearInterval(id)
-          }
-          return
-        }
-        const runnerGroups: RunnerPosition[][] = await res.json()
-        setError(null)
-
-        const map = mapRef.current
-        if (!map || cancelled) return
-
-        applyPositions(runnerGroups, map)
-      } catch {
-        setError('Network error while loading live positions.')
-      }
-    }
-
-    fetchAndUpdate().then(() => {
-      if (!cancelled && !stopped) id = setInterval(fetchAndUpdate, intervalMs)
-    })
-    return () => {
-      cancelled = true
-      clearInterval(id)
-    }
-  }, [sessionId, serverUrl, accessToken, intervalMs, mapRef, isReplay, inviteCode]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Replay effect — runs when replayPositions changes
-  useEffect(() => {
-    if (replayPositions === undefined) return
+    if (positions === undefined) return
     const map = mapRef.current
     if (!map) return
-    applyPositions(replayPositions, map, replayNowMs)
-  }, [replayPositions, replayNowMs]) // eslint-disable-line react-hooks/exhaustive-deps
+    applyPositions(positions, map, nowMs)
+  }, [positions, nowMs]) // eslint-disable-line react-hooks/exhaustive-deps
 
   function recluster(map: mapboxgl.Map) {
     const runners = Object.entries(latestPositionsRef.current)
@@ -285,7 +222,7 @@ export function useRunnerMarkers(
     }
   }
 
-  return { visibleRunners, offScreenRunners, error, invalidInvite, centerOnRunner, fitAll }
+  return { visibleRunners, offScreenRunners, centerOnRunner, fitAll }
 }
 
 export { ARROW_SIZE }
