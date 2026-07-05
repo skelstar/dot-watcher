@@ -65,6 +65,7 @@ struct ContentView: View {
                 ) {
                     Task { await noSessionCreateSession() }
                 }
+                .presentationDetents([.height(560)])
             }
             .fullScreenCover(isPresented: $showAuth) {
                 AuthSheet(location: location)
