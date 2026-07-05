@@ -1,5 +1,6 @@
 import CoreLocation
 import Foundation
+import Network
 import Security
 
 struct AppUser: Codable {
@@ -59,6 +60,7 @@ final class LocationManager {
     private(set) var currentUser: AppUser?
     private(set) var memberships: [SessionMembership] = []
     private(set) var sessionRunnerNames: [String] = []
+    private(set) var isOffline = false
 
     var participants: [String] = []
     private var lastParticipantCount = 0
@@ -70,6 +72,9 @@ final class LocationManager {
     private let locationDelegate = LocationDelegate()
     private var trackingTask: Task<Void, Never>?
     private var accessToken: String?
+    private let pathMonitor = NWPathMonitor()
+    private let pathMonitorQueue = DispatchQueue(label: "DotWatcher.NWPathMonitor")
+    private var connectivityPollTimer: Timer?
 
     let serverBaseURL = LocationManager.configuredServerBaseURL()
     var sessionId = UserDefaults.standard.string(forKey: "sessionId") ?? "" {
@@ -119,6 +124,34 @@ final class LocationManager {
         clManager.pausesLocationUpdatesAutomatically = false
         clManager.allowsBackgroundLocationUpdates = true
         clManager.showsBackgroundLocationIndicator = true
+
+        pathMonitor.pathUpdateHandler = { [weak self] path in
+            Task { @MainActor in
+                self?.isOffline = path.status != .satisfied
+            }
+        }
+        pathMonitor.start(queue: pathMonitorQueue)
+    }
+
+    // NWPathMonitor's callback can lag behind the real connectivity state (especially in the
+    // Simulator), so re-check the live path directly rather than relying on it firing promptly.
+    func refreshConnectivity() {
+        isOffline = pathMonitor.currentPath.status != .satisfied
+    }
+
+    // Polls while the app is in the foreground so someone watching the screen for a signal to
+    // come back (e.g. out on a trail) sees it update within a second, not just on app switches.
+    func startConnectivityPolling() {
+        refreshConnectivity()
+        connectivityPollTimer?.invalidate()
+        connectivityPollTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.refreshConnectivity() }
+        }
+    }
+
+    func stopConnectivityPolling() {
+        connectivityPollTimer?.invalidate()
+        connectivityPollTimer = nil
     }
 
     func signIn(username: String, password: String) async throws {
