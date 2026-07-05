@@ -1,9 +1,8 @@
-import type { ReplayState } from './useReplay.ts'
+import { useRef } from 'react'
+import type { SessionTimelineState } from './useSessionTimeline.ts'
 
 interface Props {
-  replay: ReplayState
-  onFitAll: () => void
-  onGoLive: () => void
+  timeline: SessionTimelineState
 }
 
 function formatTime(ms: number): string {
@@ -15,81 +14,70 @@ function formatTime(ms: number): string {
   return `${m}:${String(s).padStart(2, '0')}`
 }
 
-export default function ReplayControls({ replay, onFitAll, onGoLive }: Props) {
-  const { currentTimeMs, durationMs, loaded, error, playing, speed, play, pause, seek, setSpeed } = replay
+export default function ReplayControls({ timeline }: Props) {
+  const { following, scrubTimeMs, runStartMs, nowMs, dragTo, dragEnd, goLive } = timeline
+  const trackRef = useRef<HTMLDivElement>(null)
 
-  function handleFast() {
-    if (speed === 20) {
-      setSpeed(10)
-    } else {
-      setSpeed(20)
-      if (!playing) play()
-    }
+  const rangeStart = runStartMs ?? nowMs
+  const rangeEnd = nowMs
+  const durationMs = Math.max(rangeEnd - rangeStart, 1)
+  const currentMs = scrubTimeMs ?? nowMs
+  const fraction = Math.max(0, Math.min(1, (currentMs - rangeStart) / durationMs))
+
+  function timeFromClientX(clientX: number): number {
+    const track = trackRef.current
+    if (!track) return currentMs
+    const rect = track.getBoundingClientRect()
+    const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width))
+    return rangeStart + ratio * durationMs
   }
 
-  if (error) {
-    return (
-      <div style={{ ...bar, color: '#ef4444', fontSize: 13, fontFamily: 'system-ui, sans-serif' }}>
-        Recording not found: {error}
-      </div>
-    )
+  function handlePointerDown(event: React.PointerEvent<HTMLDivElement>) {
+    event.currentTarget.setPointerCapture(event.pointerId)
+    dragTo(timeFromClientX(event.clientX))
   }
 
-  if (!loaded) {
+  function handlePointerMove(event: React.PointerEvent<HTMLDivElement>) {
+    if (event.buttons === 0) return
+    dragTo(timeFromClientX(event.clientX))
+  }
+
+  function handlePointerUp() {
+    dragEnd()
+  }
+
+  if (runStartMs === null) {
     return (
-      <div style={{ ...bar, color: '#64748b', fontSize: 13, fontFamily: 'system-ui, sans-serif' }}>
-        Loading recording…
+      <div style={bar}>
+        <button onClick={goLive} style={{ ...liveBtn, ...(following ? liveBtnActive : liveBtnInactive) }} title="Go live">
+          <span style={{ ...liveDot, background: following ? '#fff' : '#94a3b8' }} />
+          LIVE
+        </button>
       </div>
     )
   }
 
   return (
     <div style={bar}>
-      <button
-        onClick={playing ? pause : play}
-        disabled={!loaded}
-        style={playBtn}
-        title={playing ? 'Pause' : 'Play'}
+      <span style={timeLabel}>{formatTime(currentMs - rangeStart)}</span>
+
+      <div
+        ref={trackRef}
+        style={track}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
       >
-        {playing
-          ? '⏸'
-          : <svg width="10" height="14" viewBox="0 0 10 14" fill="white"><polygon points="0,0 10,7 0,14" /></svg>
-        }
+        <div style={{ ...trackFill, width: `${fraction * 100}%` }} />
+        <div style={{ ...dot, left: `${fraction * 100}%` }} />
+      </div>
+
+      <span style={timeLabel}>{formatTime(durationMs)}</span>
+
+      <button onClick={goLive} style={{ ...liveBtn, ...(following ? liveBtnActive : liveBtnInactive) }} title="Go live">
+        <span style={{ ...liveDot, background: following ? '#fff' : '#94a3b8' }} />
+        LIVE
       </button>
-
-      <button
-        onClick={handleFast}
-        disabled={!loaded}
-        style={playBtn}
-        title="Fast forward (20×)"
-      >
-        <svg width="17" height="14" viewBox="0 0 17 14" fill="white">
-          <polygon points="0,0 7,7 0,14" />
-          <polygon points="10,0 17,7 10,14" />
-        </svg>
-      </button>
-
-      <span style={timeLabel}>
-        {formatTime(currentTimeMs)}
-      </span>
-
-      <input
-        type="range"
-        min={0}
-        max={durationMs || 1}
-        value={currentTimeMs}
-        disabled={!loaded}
-        onPointerDown={pause}
-        onChange={e => seek(Number(e.target.value))}
-        style={scrubber}
-      />
-
-      <span style={timeLabel}>
-        {formatTime(durationMs)}
-      </span>
-
-      <button onClick={onGoLive} style={goLiveBtn} title="Go live">LIVE</button>
-      <button onClick={onFitAll} style={fitAllBtn} title="Fit all">⤢</button>
     </div>
   )
 }
@@ -111,25 +99,34 @@ const bar: React.CSSProperties = {
   boxSizing: 'border-box',
 }
 
-const playBtn: React.CSSProperties = {
-  width: 34,
-  height: 34,
-  border: 'none',
-  borderRadius: 6,
-  background: '#3b82f6',
-  color: '#fff',
-  fontSize: '1rem',
-  cursor: 'pointer',
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  flexShrink: 0,
-}
-
-const scrubber: React.CSSProperties = {
+const track: React.CSSProperties = {
+  position: 'relative',
   flex: 1,
   minWidth: 80,
+  height: 34,
+  display: 'flex',
+  alignItems: 'center',
   cursor: 'pointer',
+  touchAction: 'none',
+}
+
+const trackFill: React.CSSProperties = {
+  position: 'absolute',
+  left: 0,
+  height: 3,
+  borderRadius: 2,
+  background: '#ef4444',
+}
+
+const dot: React.CSSProperties = {
+  position: 'absolute',
+  width: 14,
+  height: 14,
+  borderRadius: '50%',
+  background: '#ef4444',
+  border: '2px solid #fff',
+  boxShadow: '0 0 0 1px rgba(0,0,0,0.2)',
+  transform: 'translateX(-50%)',
 }
 
 const timeLabel: React.CSSProperties = {
@@ -141,27 +138,10 @@ const timeLabel: React.CSSProperties = {
   textAlign: 'center',
 }
 
-const fitAllBtn: React.CSSProperties = {
-  width: 34,
+const liveBtn: React.CSSProperties = {
   height: 34,
   border: 'none',
   borderRadius: 6,
-  background: '#e2e8f0',
-  color: '#334155',
-  fontSize: '1.1rem',
-  cursor: 'pointer',
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  flexShrink: 0,
-}
-
-const goLiveBtn: React.CSSProperties = {
-  height: 34,
-  border: 'none',
-  borderRadius: 6,
-  background: '#e2e8f0',
-  color: '#334155',
   fontSize: 12,
   fontWeight: 700,
   fontFamily: 'system-ui, sans-serif',
@@ -170,7 +150,23 @@ const goLiveBtn: React.CSSProperties = {
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
+  gap: 6,
   flexShrink: 0,
   padding: '0 12px',
 }
 
+const liveBtnActive: React.CSSProperties = {
+  background: '#ef4444',
+  color: '#fff',
+}
+
+const liveBtnInactive: React.CSSProperties = {
+  background: '#e2e8f0',
+  color: '#334155',
+}
+
+const liveDot: React.CSSProperties = {
+  width: 6,
+  height: 6,
+  borderRadius: '50%',
+}

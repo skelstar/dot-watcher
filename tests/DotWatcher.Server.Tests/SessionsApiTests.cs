@@ -241,6 +241,122 @@ public class SessionsApiTests
     }
 
     [Fact]
+    public async Task GetRecordingByInviteCode_WithSinceUntil_ReturnsOnlyPointsInWindow()
+    {
+        using var factory = new DotWatcherApiFactory();
+        using var client = factory.CreateClient();
+        var token = await AuthTestHelpers.RegisterAsync(client, "dana", "Dana");
+        var session = await AuthTestHelpers.CreateSessionAsync(client, token);
+
+        var first = LocationsApiTests.TestLocation("Dana", session.SessionId, latitude: -33.80) with
+        {
+            Timestamp = new DateTimeOffset(2024, 11, 15, 9, 0, 0, TimeSpan.Zero),
+        };
+        var second = LocationsApiTests.TestLocation("Dana", session.SessionId, latitude: -33.81) with
+        {
+            Timestamp = new DateTimeOffset(2024, 11, 15, 9, 10, 0, TimeSpan.Zero),
+        };
+        var third = LocationsApiTests.TestLocation("Dana", session.SessionId, latitude: -33.82) with
+        {
+            Timestamp = new DateTimeOffset(2024, 11, 15, 9, 20, 0, TimeSpan.Zero),
+        };
+        await LocationsApiTests.PostLocationAsync(client, first, token);
+        await LocationsApiTests.PostLocationAsync(client, second, token);
+        await LocationsApiTests.PostLocationAsync(client, third, token);
+
+        var since = Uri.EscapeDataString("2024-11-15T09:05:00Z");
+        var until = Uri.EscapeDataString("2024-11-15T09:15:00Z");
+        var response = await client.GetAsync(
+            $"/session-invites/{session.InviteCode}/recording?since={since}&until={until}");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadAsStringAsync();
+        var line = Assert.Single(body.Split('\n', StringSplitOptions.RemoveEmptyEntries));
+
+        using var json = JsonDocument.Parse(line);
+        Assert.Equal(-33.81, json.RootElement.GetProperty("latitude").GetDouble());
+    }
+
+    [Fact]
+    public async Task DownloadRecording_WithSinceBeforeRunStart_ClampsToRunStart()
+    {
+        using var factory = new DotWatcherApiFactory();
+        using var client = factory.CreateClient();
+
+        var earlierRun = NdjsonLineAt("Erin", SomeSessionId, new DateTimeOffset(2024, 11, 15, 2, 0, 0, TimeSpan.Zero));
+        var runStart = NdjsonLineAt("Erin", SomeSessionId, new DateTimeOffset(2024, 11, 15, 9, 0, 0, TimeSpan.Zero));
+        await SendWithAdminBearerAsync(client, HttpMethod.Post, $"/sessions/{SomeSessionId}/recording", earlierRun);
+        await SendWithAdminBearerAsync(client, HttpMethod.Post, $"/sessions/{SomeSessionId}/recording", runStart);
+
+        var since = Uri.EscapeDataString("2024-11-15T00:00:00Z");
+        var response = await SendWithAdminBearerAsync(
+            client, HttpMethod.Get, $"/sessions/{SomeSessionId}/recording?since={since}");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadAsStringAsync();
+
+        // Only the most recent run's point is returned even though `since` asked for everything,
+        // because the windowed query is clamped to the current run's start.
+        var line = Assert.Single(body.Split('\n', StringSplitOptions.RemoveEmptyEntries));
+        using var json = JsonDocument.Parse(line);
+        Assert.Equal("2024-11-15T09:00:00+00:00", json.RootElement.GetProperty("timestamp").GetString());
+    }
+
+    [Fact]
+    public async Task GetRecordingMeta_ReturnsRunStartAndLatestTimestamp()
+    {
+        using var factory = new DotWatcherApiFactory();
+        using var client = factory.CreateClient();
+        var token = await AuthTestHelpers.RegisterAsync(client, "finn", "Finn");
+        var session = await AuthTestHelpers.CreateSessionAsync(client, token);
+
+        var start = LocationsApiTests.TestLocation("Finn", session.SessionId) with
+        {
+            Timestamp = new DateTimeOffset(2024, 11, 15, 9, 0, 0, TimeSpan.Zero),
+        };
+        var latest = LocationsApiTests.TestLocation("Finn", session.SessionId) with
+        {
+            Timestamp = new DateTimeOffset(2024, 11, 15, 9, 30, 0, TimeSpan.Zero),
+        };
+        await LocationsApiTests.PostLocationAsync(client, start, token);
+        await LocationsApiTests.PostLocationAsync(client, latest, token);
+
+        var response = await SendWithUserTokenAsync(
+            client, HttpMethod.Get, $"/sessions/{session.SessionId}/recording/meta", token);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var meta = await response.Content.ReadFromJsonAsync<RecordingMeta>();
+        Assert.NotNull(meta);
+        Assert.Equal(start.Timestamp, meta!.RunStartTimestamp);
+        Assert.Equal(latest.Timestamp, meta.LatestTimestamp);
+    }
+
+    [Fact]
+    public async Task GetRecordingMetaByInviteCode_WithUnknownInvite_ReturnsNotFound()
+    {
+        using var factory = new DotWatcherApiFactory();
+        using var client = factory.CreateClient();
+
+        var response = await client.GetAsync("/session-invites/NOPE99/recording/meta");
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task GetRecordingMeta_WithNoRecording_ReturnsNotFound()
+    {
+        using var factory = new DotWatcherApiFactory();
+        using var client = factory.CreateClient();
+        var token = await AuthTestHelpers.RegisterAsync(client, "gwen", "Gwen");
+        var session = await AuthTestHelpers.CreateSessionAsync(client, token);
+
+        var response = await SendWithUserTokenAsync(
+            client, HttpMethod.Get, $"/sessions/{session.SessionId}/recording/meta", token);
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
     public async Task GetRecordingByInviteCode_WithNoRecordingYet_ReturnsNotFound()
     {
         using var factory = new DotWatcherApiFactory();
@@ -663,4 +779,10 @@ public class SessionsApiTests
             runnerName,
             sessionId,
             timestampSeconds: timestampSeconds));
+
+    private static string NdjsonLineAt(string runnerName, string sessionId, DateTimeOffset timestamp) =>
+        JsonSerializer.Serialize(LocationsApiTests.TestLocation(runnerName, sessionId) with
+        {
+            Timestamp = timestamp,
+        });
 }

@@ -8,12 +8,13 @@ import MapMenu from './MapMenu.tsx'
 import MemberManager from './MemberManager.tsx'
 import ReplayControls from './ReplayControls.tsx'
 import ReplayPicker from './ReplayPicker.tsx'
+import MapPlayButton from './MapPlayButton.tsx'
 import AuthPrompt from './AuthPrompt.tsx'
 import LegalPage from './LegalPage.tsx'
 import AdminPanel from './AdminPanel.tsx'
 import AccountSettings from './AccountSettings.tsx'
 import { useRunnerMarkers } from './useRunnerMarkers.ts'
-import { useReplay } from './useReplay.ts'
+import { useSessionTimeline } from './useSessionTimeline.ts'
 import { canManageMembersForRole, canWriteLocationForRole, shouldShowAuthPrompt, shouldShowSessionPrompt } from './sessionState.ts'
 import type { AuthResponse, AuthenticatedUser, SessionMembership } from './types.ts'
 
@@ -86,9 +87,8 @@ function clearStoredAuth() {
 export default function App() {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<mapboxgl.Map | null>(null)
-  const { sessionName: initialName, isReplay: initialIsReplay, inviteCode, autoJoin, legalPage, isAdmin } = parseUrl()
+  const { sessionName: initialName, isReplay: startScrubbedToStart, inviteCode, autoJoin, legalPage, isAdmin } = parseUrl()
   const [sessionName, setSessionName] = useState<string | null>(initialName)
-  const [isReplay, setIsReplay] = useState(initialIsReplay)
   const [auth, setAuth] = useState<AuthResponse | null>(() => readStoredAuth())
   const [memberships, setMemberships] = useState<SessionMembership[]>([])
   const [membershipsLoaded, setMembershipsLoaded] = useState(false)
@@ -108,11 +108,9 @@ export default function App() {
     })
 
     map.doubleClickZoom.disable()
-    if (!isReplay) {
-      map.on('dblclick', (e) => {
-        setMenu({ x: e.point.x, y: e.point.y, lng: e.lngLat.lng, lat: e.lngLat.lat })
-      })
-    }
+    map.on('dblclick', (e) => {
+      setMenu({ x: e.point.x, y: e.point.y, lng: e.lngLat.lng, lat: e.lngLat.lat })
+    })
 
     map.addControl(new mapboxgl.NavigationControl(), 'top-right')
     map.addControl(new mapboxgl.GeolocateControl({
@@ -125,7 +123,7 @@ export default function App() {
       map.remove()
       mapRef.current = null
     }
-  }, [isReplay, legalPage])
+  }, [legalPage])
 
   useEffect(() => {
     if (!accessToken) {
@@ -170,30 +168,31 @@ export default function App() {
   const showSessionPrompt = shouldShowSessionPrompt({
     accessToken,
     membershipsLoaded,
-    isReplay,
+    isReplay: startScrubbedToStart,
     inviteCode,
     sessionName,
     hasSessionMembership,
   })
 
-  const replay = useReplay(
-    isReplay && hasSessionMembership ? sessionId : null,
-    SERVER_URL,
-    accessToken,
-    isReplay && !accessToken ? inviteCode : null,
-  )
-
-  const { offScreenRunners, error: liveError, invalidInvite: liveInvalidInvite, centerOnRunner, fitAll } = useRunnerMarkers(
-    mapRef,
-    !isReplay && hasSessionMembership ? sessionId : null,
+  const timeline = useSessionTimeline(
+    hasSessionMembership ? sessionId : null,
     SERVER_URL,
     accessToken,
     POLL_INTERVAL_MS,
-    isReplay,
-    isReplay ? replay.positions : undefined,
-    isReplay ? replay.virtualNowMs : undefined,
-    !isReplay && !accessToken ? inviteCode : null,
+    !accessToken ? inviteCode : null,
   )
+
+  const { offScreenRunners, centerOnRunner, fitAll } = useRunnerMarkers(mapRef, timeline.positions, timeline.nowMs)
+
+  // A `/replay` deep link means "open this session already scrubbed to its start" rather than a
+  // distinct mode — seed the scrub once the run's start time is known, then forget about it.
+  const hasSeededReplayRef = useRef(false)
+  useEffect(() => {
+    if (!startScrubbedToStart || hasSeededReplayRef.current || timeline.runStartMs === null) return
+    hasSeededReplayRef.current = true
+    timeline.dragTo(timeline.runStartMs)
+    timeline.dragEnd()
+  }, [startScrubbedToStart, timeline.runStartMs]) // eslint-disable-line react-hooks/exhaustive-deps
 
   async function sendChester(lng: number, lat: number) {
     if (!sessionId || !accessToken || !canWriteLocation) return
@@ -266,28 +265,14 @@ export default function App() {
   }
 
   function handleMembershipSelect(membership: SessionMembership) {
-    window.history.replaceState(null, '', isReplay ? `/${membership.sessionName}/replay` : `/${membership.sessionName}`)
+    window.history.replaceState(null, '', `/${membership.sessionName}`)
     setSessionName(membership.sessionName)
     setShowMembers(false)
   }
 
   function handleReplaySelect(membership: SessionMembership) {
-    window.history.replaceState(null, '', `/${membership.sessionName}/replay`)
+    window.history.replaceState(null, '', `/${membership.sessionName}`)
     setSessionName(membership.sessionName)
-  }
-
-  function goToReplay() {
-    const path = sessionName ? `/${sessionName}/replay` : inviteCode ? `/code/${inviteCode}/replay` : null
-    if (!path) return
-    window.history.replaceState(null, '', path)
-    setIsReplay(true)
-  }
-
-  function goLive() {
-    const path = sessionName ? `/${sessionName}` : inviteCode ? `/code/${inviteCode}` : null
-    if (!path) return
-    window.history.replaceState(null, '', path)
-    setIsReplay(false)
   }
 
   if (isAdmin) {
@@ -316,13 +301,7 @@ export default function App() {
           <button type="button" style={signOutButton} onClick={handleSignOut}>Sign out</button>
         </div>
       )}
-      {!isReplay && (sessionName || (!accessToken && inviteCode)) && (
-        <button onClick={goToReplay} style={liveIndicatorBtn} title="View replay">
-          <span className="live-pulse" style={liveDot} />
-          LIVE
-        </button>
-      )}
-      {!isReplay && <button onClick={fitAll} style={fitAllBtn} title="Fit all">⤢</button>}
+      <button onClick={fitAll} style={fitAllBtn} title="Fit all">⤢</button>
       <Legend runners={offScreenRunners} onRunnerClick={centerOnRunner} />
       {menu && canWriteLocation && (
         <MapMenu
@@ -332,14 +311,20 @@ export default function App() {
           onClose={() => setMenu(null)}
         />
       )}
-      {isReplay && !replay.invalidInvite && (sessionName || (!accessToken && inviteCode)) && <ReplayControls replay={replay} onFitAll={fitAll} onGoLive={goLive} />}
-      {liveError && !liveInvalidInvite && !isReplay && (hasSessionMembership || (!accessToken && inviteCode)) && <div style={statusToast}>{liveError}</div>}
-      {replay.error && !replay.invalidInvite && isReplay && (hasSessionMembership || (!accessToken && inviteCode)) && <div style={statusToast}>{replay.error}</div>}
-      {(liveInvalidInvite || replay.invalidInvite) && (
-        <InvalidInvitePrompt message={isReplay ? replay.error ?? 'Invite not found.' : liveError ?? 'Invite not found.'} isReplay={isReplay} />
+      {!timeline.invalidInvite && (sessionName || (!accessToken && inviteCode)) && (
+        <>
+          <ReplayControls timeline={timeline} />
+          {!timeline.following && !timeline.playing && <MapPlayButton onPlay={timeline.play} />}
+        </>
+      )}
+      {timeline.error && !timeline.invalidInvite && (hasSessionMembership || (!accessToken && inviteCode)) && (
+        <div style={statusToast}>{timeline.error}</div>
+      )}
+      {timeline.invalidInvite && (
+        <InvalidInvitePrompt message={timeline.error ?? 'Invite not found.'} isReplay={!timeline.following} />
       )}
       {shouldShowAuthPrompt(accessToken, inviteCode) && <AuthPrompt serverUrl={SERVER_URL} onAuth={handleAuth} />}
-      {accessToken && membershipsLoaded && isReplay && !sessionName && !inviteCode && (
+      {accessToken && membershipsLoaded && startScrubbedToStart && !sessionName && !inviteCode && (
         <ReplayPicker memberships={memberships} onSelect={handleReplaySelect} />
       )}
       {accessToken && showSessionPrompt && (
@@ -354,7 +339,7 @@ export default function App() {
           onMembershipsChanged={setMemberships}
         />
       )}
-      {accessToken && membershipsLoaded && isReplay && sessionName && !hasSessionMembership && !inviteCode && (
+      {accessToken && membershipsLoaded && startScrubbedToStart && sessionName && !hasSessionMembership && !inviteCode && (
         <SessionPrompt
           serverUrl={SERVER_URL}
           accessToken={accessToken}
@@ -403,34 +388,6 @@ const fitAllBtn: React.CSSProperties = {
   padding: 0,
 }
 
-const liveIndicatorBtn: React.CSSProperties = {
-  position: 'absolute',
-  bottom: 42,
-  right: 56,
-  height: 36,
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  gap: 6,
-  background: '#ef4444',
-  border: 'none',
-  borderRadius: 4,
-  boxShadow: '0 0 0 2px rgba(0,0,0,0.1)',
-  cursor: 'pointer',
-  fontSize: 12,
-  fontWeight: 700,
-  fontFamily: 'system-ui, sans-serif',
-  letterSpacing: 0.5,
-  color: '#fff',
-  padding: '0 10px',
-}
-
-const liveDot: React.CSSProperties = {
-  width: 6,
-  height: 6,
-  borderRadius: '50%',
-  background: '#fff',
-}
 
 const accountBar: React.CSSProperties = {
   position: 'absolute',
