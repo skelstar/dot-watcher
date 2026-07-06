@@ -176,7 +176,9 @@ struct ContentView: View {
                         } label: {
                             Label("Paste", systemImage: "doc.on.clipboard")
                                 .font(.subheadline)
+                                .foregroundStyle(.primary)
                         }
+                        .buttonStyle(.plain)
                     }
                     CodeBoxField(text: $noSessionInviteCode, length: 6, autoFocus: true)
                 }
@@ -188,10 +190,13 @@ struct ContentView: View {
                     Task { await noSessionJoinSession() }
                 } label: {
                     Text("Join Session")
+                        .fontWeight(.semibold)
+                        .foregroundStyle(isBusy || noSessionInviteCode.count < 6 ? Color.secondary : Color.primary)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.horizontal, 16)
                         .padding(.vertical, 14)
                 }
+                .buttonStyle(.plain)
                 .disabled(isBusy || noSessionInviteCode.count < 6)
             }
             .background(Color(.systemGray5))
@@ -284,21 +289,24 @@ struct ContentView: View {
                 ShareLink(item: shareMessage) {
                     Image(systemName: "square.and.arrow.up")
                         .font(.title2)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.primary)
                 }
+                .buttonStyle(.plain)
             }
             if location.isAuthenticated {
                 Button { showAuth = true } label: {
                     Image(systemName: "person.crop.circle")
                         .font(.title)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.primary)
                 }
+                .buttonStyle(.plain)
             }
             Button { showHelp = true } label: {
                 Image(systemName: "questionmark.circle")
                     .font(.title)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.primary)
                 }
+                .buttonStyle(.plain)
         }
     }
 

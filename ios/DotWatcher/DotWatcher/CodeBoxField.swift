@@ -18,8 +18,8 @@ struct CodeBoxField: View {
                         .fill(Color(.tertiarySystemBackground))
                     RoundedRectangle(cornerRadius: 8)
                         .strokeBorder(
-                            isActive ? Color.accentColor : Color(.separator),
-                            lineWidth: isActive ? 2 : 1
+                            isActive ? Color.primary : Color(.separator),
+                            lineWidth: isActive ? 3 : 1
                         )
                     Text(char)
                         .font(.title2.bold().monospaced())
