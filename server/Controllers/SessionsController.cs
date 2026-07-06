@@ -77,11 +77,14 @@ public class SessionsController(
             return BadRequest(new { error = "Display name must be 1-80 characters." });
 
         var role = request?.Role?.Trim().ToLowerInvariant() == "runner" ? "runner" : "viewer";
-        var membership = store.JoinSessionByInvite(
+        var (membership, archived) = store.JoinSessionByInvite(
             inviteCode,
             user.UserId,
             displayName,
             role);
+
+        if (archived)
+            return StatusCode(StatusCodes.Status410Gone, new { error = "This session has ended and can no longer be joined." });
 
         return membership is null
             ? NotFound(new { error = "Invite not found." })
