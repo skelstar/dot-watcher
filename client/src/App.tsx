@@ -182,7 +182,7 @@ export default function App() {
     !accessToken ? inviteCode : null,
   )
 
-  const { offScreenRunners, centerOnRunner, fitAll } = useRunnerMarkers(mapRef, timeline.positions, timeline.nowMs)
+  const { offScreenRunners, centerOnRunner, fitAll } = useRunnerMarkers(mapRef, timeline.positions, timeline.virtualNowMs)
 
   // A `/replay` deep link means "open this session already scrubbed to its start" rather than a
   // distinct mode — seed the scrub once the run's start time is known, then forget about it.

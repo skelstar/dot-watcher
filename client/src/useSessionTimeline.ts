@@ -25,6 +25,7 @@ export interface SessionTimelineState {
   scrubTimeMs: number | null
   runStartMs: number | null
   nowMs: number
+  virtualNowMs: number
   isLive: boolean
   lastActivityMs: number | null
   playing: boolean
@@ -248,11 +249,13 @@ export function useSessionTimeline(
     return () => { playingRef.current = false; clearInterval(id) }
   }, [playing, nowMs]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // The playhead time: wall-clock while following live, the scrub position while replaying.
+  const virtualNowMs = scrubTimeMs ?? nowMs
+
   const positions = useMemo((): RunnerPosition[][] | undefined => {
-    const cutoff = scrubTimeMs ?? nowMs
-    const result = positionsAtCutoff(byRunner, cutoff)
+    const result = positionsAtCutoff(byRunner, virtualNowMs)
     return result.length > 0 ? result : undefined
-  }, [byRunner, scrubTimeMs, nowMs])
+  }, [byRunner, virtualNowMs])
 
   const polledLatestMs = useMemo(() => latestActivityMs(byRunner), [byRunner])
   const lastActivityMs = useMemo(() => maxOrNull(polledLatestMs, metaLatestMs), [polledLatestMs, metaLatestMs])
@@ -264,6 +267,7 @@ export function useSessionTimeline(
     scrubTimeMs,
     runStartMs,
     nowMs,
+    virtualNowMs,
     isLive,
     lastActivityMs,
     playing,
