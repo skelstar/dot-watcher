@@ -164,9 +164,20 @@ struct ContentView: View {
                 .padding(.leading, 4)
             VStack(spacing: 0) {
                 VStack(alignment: .leading, spacing: 10) {
-                    Text("Enter your invite code")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                    HStack {
+                        Text("Enter your invite code")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        Button {
+                            if let pasted = UIPasteboard.general.string {
+                                noSessionInviteCode = pasted
+                            }
+                        } label: {
+                            Label("Paste", systemImage: "doc.on.clipboard")
+                                .font(.subheadline)
+                        }
+                    }
                     CodeBoxField(text: $noSessionInviteCode, length: 6, autoFocus: true)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -199,13 +210,23 @@ struct ContentView: View {
                     if index > 0 {
                         Divider().padding(.leading, 16)
                     }
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(membership.sessionName)
-                            .font(.subheadline.weight(.medium))
-                            .foregroundStyle(.primary)
-                        Text("Invite \(membership.inviteCode)")
-                            .font(.caption.monospaced())
-                            .foregroundStyle(.secondary)
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(membership.sessionName)
+                                .font(.subheadline.weight(.medium))
+                                .foregroundStyle(.primary)
+                            Text("Invite \(membership.inviteCode)")
+                                .font(.caption.monospaced())
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        Button {
+                            UIPasteboard.general.string = membership.inviteCode
+                        } label: {
+                            Image(systemName: "doc.on.doc")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                        }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, 16)
