@@ -53,6 +53,7 @@ public class SessionStore(string dbPath)
                 invite_code   TEXT NOT NULL UNIQUE,
                 owner_user_id TEXT NOT NULL,
                 created_at    TEXT NOT NULL,
+                archived_at   TEXT,
                 FOREIGN KEY(owner_user_id) REFERENCES users(id)
             );
             CREATE INDEX IF NOT EXISTS idx_app_sessions_invite ON app_sessions(invite_code);
@@ -140,19 +141,22 @@ public class SessionStore(string dbPath)
             }
         }
 
-        // Migration: add left_at so leaving a session archives the membership instead of
-        // deleting it, letting clients show a "recent sessions" history.
-        using (var check = conn.CreateCommand())
-        {
-            check.CommandText = "SELECT COUNT(*) FROM pragma_table_info('session_members') WHERE name = 'left_at'";
-            var hasLeftAt = (long)(check.ExecuteScalar() ?? 0L) > 0;
-            if (!hasLeftAt)
-            {
-                using var addColumn = conn.CreateCommand();
-                addColumn.CommandText = "ALTER TABLE session_members ADD COLUMN left_at TEXT";
-                addColumn.ExecuteNonQuery();
-            }
-        }
+        // Migration: leaving a session archives the membership (left_at) instead of deleting
+        // it, and a session with no active runners left is archived as a whole (archived_at).
+        AddColumnIfMissing(conn, "session_members", "left_at");
+        AddColumnIfMissing(conn, "app_sessions", "archived_at");
+    }
+
+    private static void AddColumnIfMissing(SqliteConnection conn, string table, string column)
+    {
+        using var check = conn.CreateCommand();
+        check.CommandText = $"SELECT COUNT(*) FROM pragma_table_info('{table}') WHERE name = '{column}'";
+        if ((long)(check.ExecuteScalar() ?? 0L) > 0)
+            return;
+
+        using var addColumn = conn.CreateCommand();
+        addColumn.CommandText = $"ALTER TABLE {table} ADD COLUMN {column} TEXT";
+        addColumn.ExecuteNonQuery();
     }
 
     private SqliteConnection Connect()
@@ -361,32 +365,34 @@ public class SessionStore(string dbPath)
         return new SessionMembership(sessionId, sessionName, inviteCode, "runner", displayName);
     }
 
-    public SessionMembership? JoinSessionByInvite(string inviteCode, string userId, string displayName, string role = "viewer")
+    public (SessionMembership? Membership, bool Archived) JoinSessionByInvite(string inviteCode, string userId, string displayName, string role = "viewer")
     {
         var normalizedInvite = NormalizeSessionName(inviteCode);
         if (normalizedInvite is null)
-            return null;
+            return (null, false);
 
         using var conn = Connect();
         using var lookup = conn.CreateCommand();
         lookup.CommandText = """
-            SELECT id, session_name, invite_code
+            SELECT id, session_name, invite_code, archived_at
             FROM app_sessions
             WHERE invite_code = $inviteCode
             """;
         lookup.Parameters.AddWithValue("$inviteCode", normalizedInvite);
         using var reader = lookup.ExecuteReader();
         if (!reader.Read())
-            return null;
+            return (null, false);
 
         var sessionId = reader.GetString(0);
         var storedInviteCode = reader.GetString(2);
+        if (!reader.IsDBNull(3))
+            return (null, true);
         reader.Close();
 
         var joinedAt = DateTimeOffset.UtcNow.ToString("O");
-        UpsertMembershipPreservingRole(conn, sessionId, userId, role, displayName, joinedAt);
+        UpsertMembership(conn, sessionId, userId, role, displayName, joinedAt, preserveExistingRole: true);
 
-        return GetMembership(conn, sessionId, userId, storedInviteCode)!;
+        return (GetMembership(conn, sessionId, userId, storedInviteCode)!, false);
     }
 
     public string? GetSessionIdByInviteCode(string inviteCode)
@@ -414,18 +420,7 @@ public class SessionStore(string dbPath)
             ORDER BY m.joined_at DESC
             """;
         cmd.Parameters.AddWithValue("$userId", userId);
-        using var reader = cmd.ExecuteReader();
-
-        var sessions = new List<SessionMembership>();
-        while (reader.Read())
-            sessions.Add(new SessionMembership(
-                reader.GetString(0),
-                reader.GetString(1),
-                reader.GetString(2),
-                reader.GetString(3),
-                reader.GetString(4)));
-
-        return sessions;
+        return ReadMemberships(cmd);
     }
 
     public IReadOnlyList<SessionMembership> GetRecentLeftSessions(string userId, int limit = 3)
@@ -442,8 +437,12 @@ public class SessionStore(string dbPath)
             """;
         cmd.Parameters.AddWithValue("$userId", userId);
         cmd.Parameters.AddWithValue("$limit", limit);
-        using var reader = cmd.ExecuteReader();
+        return ReadMemberships(cmd);
+    }
 
+    private static IReadOnlyList<SessionMembership> ReadMemberships(SqliteCommand cmd)
+    {
+        using var reader = cmd.ExecuteReader();
         var sessions = new List<SessionMembership>();
         while (reader.Read())
             sessions.Add(new SessionMembership(
@@ -595,6 +594,8 @@ public class SessionStore(string dbPath)
 
     public bool LeaveSession(string sessionId, string userId)
     {
+        var now = DateTimeOffset.UtcNow.ToString("O");
+
         using var conn = Connect();
         using var cmd = conn.CreateCommand();
         cmd.CommandText = """
@@ -602,10 +603,29 @@ public class SessionStore(string dbPath)
             SET left_at = $leftAt
             WHERE session_id = $sessionId AND user_id = $userId AND left_at IS NULL
             """;
-        cmd.Parameters.AddWithValue("$leftAt", DateTimeOffset.UtcNow.ToString("O"));
+        cmd.Parameters.AddWithValue("$leftAt", now);
         cmd.Parameters.AddWithValue("$sessionId", sessionId);
         cmd.Parameters.AddWithValue("$userId", userId);
-        return cmd.ExecuteNonQuery() > 0;
+        if (cmd.ExecuteNonQuery() == 0)
+            return false;
+
+        // Once the last runner is gone the run is over: archive the session so nobody can
+        // join or rejoin it. Replay stays available (recording endpoints don't check this).
+        using var archive = conn.CreateCommand();
+        archive.CommandText = """
+            UPDATE app_sessions
+            SET archived_at = $archivedAt
+            WHERE id = $sessionId AND archived_at IS NULL
+              AND NOT EXISTS (
+                  SELECT 1 FROM session_members
+                  WHERE session_id = $sessionId AND role = 'runner' AND left_at IS NULL
+              )
+            """;
+        archive.Parameters.AddWithValue("$archivedAt", now);
+        archive.Parameters.AddWithValue("$sessionId", sessionId);
+        archive.ExecuteNonQuery();
+
+        return true;
     }
 
     public bool DeleteSession(string sessionId)
@@ -973,20 +993,24 @@ public class SessionStore(string dbPath)
         return rows;
     }
 
+    // On conflict a rejoin refreshes the membership; preserveExistingRole keeps a role the
+    // user already held (e.g. runner) from being downgraded by a plain invite-code rejoin.
     private static void UpsertMembership(
         SqliteConnection conn,
         string sessionId,
         string userId,
         string role,
         string displayName,
-        string joinedAt)
+        string joinedAt,
+        bool preserveExistingRole = false)
     {
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = """
+        var roleUpdate = preserveExistingRole ? "" : "role = excluded.role,";
+        cmd.CommandText = $"""
             INSERT INTO session_members (session_id, user_id, role, display_name, joined_at, left_at)
             VALUES ($sessionId, $userId, $role, $displayName, $joinedAt, NULL)
             ON CONFLICT(session_id, user_id)
-            DO UPDATE SET role = excluded.role, display_name = excluded.display_name,
+            DO UPDATE SET {roleUpdate} display_name = excluded.display_name,
                           joined_at = excluded.joined_at, left_at = NULL
             """;
         cmd.Parameters.AddWithValue("$sessionId", sessionId);
@@ -1041,30 +1065,6 @@ public class SessionStore(string dbPath)
             """;
         cmd.Parameters.AddWithValue("$sessionId", sessionId);
         return cmd.ExecuteScalar() is not null;
-    }
-
-    private static void UpsertMembershipPreservingRole(
-        SqliteConnection conn,
-        string sessionId,
-        string userId,
-        string role,
-        string displayName,
-        string joinedAt)
-    {
-        using var cmd = conn.CreateCommand();
-        cmd.CommandText = """
-            INSERT INTO session_members (session_id, user_id, role, display_name, joined_at, left_at)
-            VALUES ($sessionId, $userId, $role, $displayName, $joinedAt, NULL)
-            ON CONFLICT(session_id, user_id)
-            DO UPDATE SET display_name = excluded.display_name,
-                          joined_at = excluded.joined_at, left_at = NULL
-            """;
-        cmd.Parameters.AddWithValue("$sessionId", sessionId);
-        cmd.Parameters.AddWithValue("$userId", userId);
-        cmd.Parameters.AddWithValue("$role", role);
-        cmd.Parameters.AddWithValue("$displayName", displayName);
-        cmd.Parameters.AddWithValue("$joinedAt", joinedAt);
-        cmd.ExecuteNonQuery();
     }
 
     private static void DeleteExpiredRevokedTokens(SqliteConnection conn, DateTimeOffset now)
