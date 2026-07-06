@@ -114,6 +114,9 @@ struct ContentView: View {
                     headerSection
                     runnerRow
                     noSessionJoinCard
+                    if !location.recentSessions.isEmpty {
+                        recentSessionsCard
+                    }
                     noSessionCreateLink
                     if let formError {
                         Text(formError)
@@ -177,6 +180,35 @@ struct ContentView: View {
                         .padding(.vertical, 14)
                 }
                 .disabled(isBusy || noSessionInviteCode.count < 6)
+            }
+            .background(Color(.systemGray5))
+            .clipShape(RoundedRectangle(cornerRadius: 14))
+        }
+    }
+
+    private var recentSessionsCard: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Recent Sessions")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .padding(.leading, 4)
+            VStack(spacing: 0) {
+                ForEach(Array(location.recentSessions.enumerated()), id: \.element.id) { index, membership in
+                    if index > 0 {
+                        Divider().padding(.leading, 16)
+                    }
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(membership.sessionName)
+                            .font(.subheadline.weight(.medium))
+                            .foregroundStyle(.primary)
+                        Text("Invite \(membership.inviteCode)")
+                            .font(.caption.monospaced())
+                            .foregroundStyle(.secondary)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 14)
+                }
             }
             .background(Color(.systemGray5))
             .clipShape(RoundedRectangle(cornerRadius: 14))
