@@ -35,17 +35,39 @@ struct CodeBoxField: View {
                 .textInputAutocapitalization(.characters)
                 .autocorrectionDisabled()
                 .onChange(of: text) { _, new in
-                    let filtered: String
-                    if lettersOnly {
-                        filtered = String(new.uppercased().filter { $0.isLetter && $0.isASCII }.prefix(length))
-                    } else {
-                        filtered = String(new.uppercased().filter { $0.isLetter || $0.isNumber }.prefix(length))
-                    }
+                    let filtered = Self.sanitize(new, length: length, lettersOnly: lettersOnly)
                     if filtered != new { text = filtered }
                 }
         )
         .contentShape(Rectangle())
         .onTapGesture { isFocused = true }
         .onAppear { if autoFocus { isFocused = true } }
+    }
+
+    // Typing produces valid input incrementally, so a plain filter+truncate is enough there.
+    // Pasting (e.g. a whole WhatsApp share message with the code embedded in a sentence) can
+    // carry surrounding words, so look for a whole word of exactly `length` matching characters
+    // rather than just taking the first matching characters in sequence. Invite codes are hex
+    // (0-9A-F), which ordinary English words practically never are, so prefer a hex-only word
+    // when one exists to avoid matching a coincidentally-6-letter word like "INVITE".
+    private static func sanitize(_ raw: String, length: Int, lettersOnly: Bool) -> String {
+        let isMatch: (Character) -> Bool = lettersOnly
+            ? { $0.isLetter && $0.isASCII }
+            : { $0.isLetter || $0.isNumber }
+
+        let uppercased = raw.uppercased()
+        if uppercased.count <= length {
+            return String(uppercased.filter(isMatch).prefix(length))
+        }
+
+        let words = uppercased.split(whereSeparator: { !isMatch($0) }).filter { $0.count == length }
+        let isHexDigit: (Character) -> Bool = { $0.isNumber || ("A"..."F").contains($0) }
+        if let hexWord = words.first(where: { $0.allSatisfy(isHexDigit) }) {
+            return String(hexWord)
+        }
+        if let word = words.first {
+            return String(word)
+        }
+        return String(uppercased.filter(isMatch).prefix(length))
     }
 }
