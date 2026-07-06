@@ -19,6 +19,15 @@ public class SessionsController(
         return Ok(store.GetSessionsForUser(user.UserId));
     }
 
+    [HttpGet("/me/sessions/recent")]
+    public IActionResult GetMyRecentSessions()
+    {
+        if (!userAuth.TryAuthenticate(Request, out var user))
+            return Unauthorized();
+
+        return Ok(store.GetRecentLeftSessions(user.UserId));
+    }
+
     [HttpGet("/sessions")]
     public IActionResult GetSessions()
     {
