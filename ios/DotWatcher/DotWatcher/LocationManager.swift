@@ -59,6 +59,7 @@ final class LocationManager {
     private(set) var isTracking = false
     private(set) var currentUser: AppUser?
     private(set) var memberships: [SessionMembership] = []
+    private(set) var recentSessions: [SessionMembership] = LocationManager.loadRecentSessions()
     private(set) var sessionRunnerNames: [String] = []
     private(set) var isOffline = false
 
@@ -191,10 +192,12 @@ final class LocationManager {
         accessToken = nil
         currentUser = nil
         memberships = []
+        recentSessions = []
         sessionRunnerNames = []
         sessionId = ""
         Self.storeToken(nil)
         UserDefaults.standard.removeObject(forKey: "currentUser")
+        UserDefaults.standard.removeObject(forKey: Self.recentSessionsKey)
         status = nextStatus
     }
 
@@ -204,6 +207,7 @@ final class LocationManager {
         defer { isLoadingSessions = false }
         do {
             memberships = try await send(path: "/me/sessions")
+            memberships.reversed().forEach(rememberRecentSession)
             if !sessionId.isEmpty && activeMembership == nil {
                 sessionId = ""
             }
@@ -472,6 +476,30 @@ final class LocationManager {
     private func upsertMembership(_ membership: SessionMembership) {
         memberships.removeAll { $0.sessionId == membership.sessionId }
         memberships.insert(membership, at: 0)
+        rememberRecentSession(membership)
+    }
+
+    // The server hard-deletes a session_members row on leave, so this is the only record of
+    // sessions the user has been part of once they leave. Capped at 3, most-recent-first.
+    private static let recentSessionsKey = "recentSessions"
+    private static let maxRecentSessions = 3
+
+    private static func loadRecentSessions() -> [SessionMembership] {
+        guard let data = UserDefaults.standard.data(forKey: recentSessionsKey),
+              let sessions = try? JSONDecoder().decode([SessionMembership].self, from: data)
+        else { return [] }
+        return sessions
+    }
+
+    private func rememberRecentSession(_ membership: SessionMembership) {
+        recentSessions.removeAll { $0.sessionId == membership.sessionId }
+        recentSessions.insert(membership, at: 0)
+        if recentSessions.count > Self.maxRecentSessions {
+            recentSessions.removeLast(recentSessions.count - Self.maxRecentSessions)
+        }
+        if let data = try? JSONEncoder().encode(recentSessions) {
+            UserDefaults.standard.set(data, forKey: Self.recentSessionsKey)
+        }
     }
 
     private static func readToken() -> String? {
