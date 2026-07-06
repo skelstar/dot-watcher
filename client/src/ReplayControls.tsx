@@ -18,16 +18,20 @@ function formatTime(ms: number): string {
 }
 
 export default function ReplayControls({ timeline, onFitAll }: Props) {
-  const { following, scrubTimeMs, runStartMs, nowMs, dragTo, dragEnd, goLive } = timeline
+  const { following, scrubTimeMs, runStartMs, nowMs, isLive, lastActivityMs, dragTo, dragEnd, goLive } = timeline
   const trackRef = useRef<HTMLDivElement>(null)
   const [showTooltip, setShowTooltip] = useState(false)
   const lingerTimerRef = useRef<ReturnType<typeof setTimeout>>()
 
   const rangeStart = runStartMs ?? nowMs
-  const rangeEnd = nowMs
+  // Once the session has gone stale, freeze the scrubbable range at the last real ping instead of
+  // letting it ride wall-clock time forever — otherwise a 75-minute run from 4 days ago ends up
+  // buried in the first sliver of a 4-day-wide bar, with everything after it "dead" replay.
+  const rangeEnd = isLive ? nowMs : Math.max(lastActivityMs ?? rangeStart, rangeStart)
   const durationMs = Math.max(rangeEnd - rangeStart, 1)
   const currentMs = scrubTimeMs ?? nowMs
   const fraction = Math.max(0, Math.min(1, (currentMs - rangeStart) / durationMs))
+  const trackColour = isLive ? '#ef4444' : '#ffffff'
 
   useEffect(() => () => clearTimeout(lingerTimerRef.current), [])
 
@@ -66,20 +70,29 @@ export default function ReplayControls({ timeline, onFitAll }: Props) {
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
         >
-          <div style={{ ...trackFill, width: `${fraction * 100}%` }} />
+          <div style={{ ...trackFill, width: `${fraction * 100}%`, background: trackColour }} />
           {showTooltip && (
             <span style={{ ...timeTooltip, left: `${fraction * 100}%` }}>
               {formatTime(currentMs - rangeStart)}
             </span>
           )}
-          <div style={{ ...dot, left: `${fraction * 100}%` }} />
+          <div style={{ ...dot, left: `${fraction * 100}%`, background: trackColour }} />
         </div>
       )}
 
-      <button onClick={goLive} style={{ ...liveBtn, ...(following ? liveBtnActive : liveBtnInactive) }} title="Go live">
-        <span style={{ ...liveDot, background: following ? '#fff' : '#94a3b8' }} />
-        LIVE
-      </button>
+      {isLive
+        ? (
+          <button onClick={goLive} style={{ ...liveBtn, ...(following ? liveBtnActive : liveBtnInactive) }} title="Go live">
+            <span style={{ ...liveDot, background: following ? '#fff' : '#94a3b8' }} />
+            LIVE
+          </button>
+        )
+        : (
+          <button onClick={goLive} style={{ ...liveBtn, ...liveBtnInactive }} title="Jump to most recent position">
+            {formatTime(durationMs)}
+          </button>
+        )
+      }
 
       <button onClick={onFitAll} style={fitAllBtn} title="Fit all">⤢</button>
     </div>

@@ -2,7 +2,9 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
   isRangeCovered,
+  latestActivityMs,
   livePollingError,
+  maxOrNull,
   mergeIntoByRunner,
   mergeRange,
   parseNdjson,
@@ -76,6 +78,34 @@ test('mergeIntoByRunner appends and sorts by timestamp, de-duping exact repeats'
   assert.equal(merged.get('Alice')?.length, 2)
   assert.equal(merged.get('Alice')?.[0].timestamp, '2024-01-01T00:00:00Z')
   assert.equal(merged.get('Alice')?.[1].timestamp, '2024-01-01T00:00:10Z')
+})
+
+test('latestActivityMs is null when no runner has reported in', () => {
+  assert.equal(latestActivityMs(new Map()), null)
+})
+
+test('latestActivityMs is the max last-position timestamp across all runners', () => {
+  const byRunner = new Map([
+    ['Alice', [
+      { runnerName: 'Alice', latitude: 0, longitude: 0, heading: null, timestamp: '2024-01-01T00:00:00Z' },
+      { runnerName: 'Alice', latitude: 1, longitude: 1, heading: null, timestamp: '2024-01-01T00:00:10Z' },
+    ]],
+    ['Bob', [
+      { runnerName: 'Bob', latitude: 2, longitude: 2, heading: null, timestamp: '2024-01-01T00:00:20Z' },
+    ]],
+  ])
+  assert.equal(latestActivityMs(byRunner), new Date('2024-01-01T00:00:20Z').getTime())
+})
+
+test('maxOrNull returns the larger value when both are known', () => {
+  assert.equal(maxOrNull(10, 20), 20)
+  assert.equal(maxOrNull(20, 10), 20)
+})
+
+test('maxOrNull falls back to whichever side is known when the other is null', () => {
+  assert.equal(maxOrNull(null, 20), 20)
+  assert.equal(maxOrNull(10, null), 10)
+  assert.equal(maxOrNull(null, null), null)
 })
 
 test('positionsAtCutoff returns the last position at or before cutoff, omitting runners with none yet', () => {

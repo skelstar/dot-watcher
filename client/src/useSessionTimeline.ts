@@ -2,7 +2,9 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { RunnerPosition } from './types.ts'
 import {
   isRangeCovered,
+  latestActivityMs,
   livePollingError,
+  maxOrNull,
   mergeIntoByRunner,
   mergeRange,
   parseNdjson,
@@ -11,6 +13,7 @@ import {
   shouldPollLivePositionsByInvite,
   type TimeRange,
 } from './useSessionTimelineLogic.ts'
+import { isSessionLive, LIVE_STALE_MS } from './sessionLiveness.ts'
 
 const TICK_MS = 100
 const WINDOW_MS = 10 * 60 * 1000 // default backward-fetch window when scrubbing into uncached history
@@ -22,6 +25,8 @@ export interface SessionTimelineState {
   scrubTimeMs: number | null
   runStartMs: number | null
   nowMs: number
+  isLive: boolean
+  lastActivityMs: number | null
   playing: boolean
   speed: number
   loading: boolean
@@ -49,6 +54,7 @@ export function useSessionTimeline(
   const [byRunner, setByRunner] = useState<Map<string, RunnerPosition[]>>(new Map())
   const [fetchedRanges, setFetchedRanges] = useState<TimeRange[]>([])
   const [runStartMs, setRunStartMs] = useState<number | null>(null)
+  const [metaLatestMs, setMetaLatestMs] = useState<number | null>(null)
   const [nowMs, setNowMs] = useState<number>(() => Date.now())
   const [scrubTimeMs, setScrubTimeMs] = useState<number | null>(null)
   const [playing, setPlaying] = useState(false)
@@ -77,6 +83,7 @@ export function useSessionTimeline(
     setByRunner(new Map())
     setFetchedRanges([])
     setRunStartMs(null)
+    setMetaLatestMs(null)
     setScrubTimeMs(null)
     setPlaying(false)
     setError(null)
@@ -97,8 +104,9 @@ export function useSessionTimeline(
         return res.json()
       })
       .then(meta => {
-        if (cancelled || !meta?.runStartTimestamp) return
-        setRunStartMs(new Date(meta.runStartTimestamp).getTime())
+        if (cancelled || !meta) return
+        if (meta.runStartTimestamp) setRunStartMs(new Date(meta.runStartTimestamp).getTime())
+        if (meta.latestTimestamp) setMetaLatestMs(new Date(meta.latestTimestamp).getTime())
       })
       .catch(err => {
         if (!cancelled) console.error('[useSessionTimeline] meta fetch failed', err)
@@ -246,12 +254,18 @@ export function useSessionTimeline(
     return result.length > 0 ? result : undefined
   }, [byRunner, scrubTimeMs, nowMs])
 
+  const polledLatestMs = useMemo(() => latestActivityMs(byRunner), [byRunner])
+  const lastActivityMs = useMemo(() => maxOrNull(polledLatestMs, metaLatestMs), [polledLatestMs, metaLatestMs])
+  const isLive = useMemo(() => isSessionLive(lastActivityMs, nowMs, LIVE_STALE_MS), [lastActivityMs, nowMs])
+
   return {
     positions,
     following: scrubTimeMs === null,
     scrubTimeMs,
     runStartMs,
     nowMs,
+    isLive,
+    lastActivityMs,
     playing,
     speed,
     loading,

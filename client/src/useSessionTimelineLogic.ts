@@ -110,3 +110,24 @@ export function mergeIntoByRunner(
   }
   return next
 }
+
+// The most recent position timestamp across all runners, or null if nobody has reported in yet.
+// Assumes each runner's array is sorted ascending by timestamp, as mergeIntoByRunner maintains.
+export function latestActivityMs(byRunner: Map<string, RunnerPosition[]>): number | null {
+  let latest: number | null = null
+  for (const positions of byRunner.values()) {
+    if (positions.length === 0) continue
+    const ts = new Date(positions[positions.length - 1].timestamp).getTime()
+    if (latest === null || ts > latest) latest = ts
+  }
+  return latest
+}
+
+// The more recent of two possibly-unknown timestamps. Used to combine the client's own
+// live-polled activity with the server's DB-backed recording metadata, since either source can
+// be the only one with data (e.g. the in-memory poll cache is empty right after a server restart).
+export function maxOrNull(a: number | null, b: number | null): number | null {
+  if (a === null) return b
+  if (b === null) return a
+  return Math.max(a, b)
+}
