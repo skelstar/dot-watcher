@@ -30,6 +30,7 @@ struct ContentView: View {
                         showNameEntry = true
                     }
                     Task { await location.loadSessions() }
+                    Task { await location.loadRecentSessions() }
                 } else {
                     showAuth = true
                 }
@@ -130,6 +131,7 @@ struct ContentView: View {
             }
             .refreshable {
                 await location.loadSessions()
+                await location.loadRecentSessions()
             }
         }
     }
@@ -317,6 +319,20 @@ struct ContentView: View {
                     Task {
                         await location.loadSessions()
                         await location.loadSessionRunners()
+                    }
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                        .font(.system(size: 20))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 48, height: 48)
+                        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 12))
+                }
+                .buttonStyle(.plain)
+            } else if location.isAuthenticated {
+                Button {
+                    Task {
+                        await location.loadSessions()
+                        await location.loadRecentSessions()
                     }
                 } label: {
                     Image(systemName: "arrow.clockwise")

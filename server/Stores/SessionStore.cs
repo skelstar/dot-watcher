@@ -63,6 +63,7 @@ public class SessionStore(string dbPath)
                 role         TEXT NOT NULL,
                 display_name TEXT NOT NULL,
                 joined_at    TEXT NOT NULL,
+                left_at      TEXT,
                 PRIMARY KEY(session_id, user_id),
                 FOREIGN KEY(session_id) REFERENCES app_sessions(id),
                 FOREIGN KEY(user_id)    REFERENCES users(id)
@@ -136,6 +137,20 @@ public class SessionStore(string dbPath)
                     CREATE INDEX idx_session_members_user ON session_members(user_id);
                     """;
                 drop.ExecuteNonQuery();
+            }
+        }
+
+        // Migration: add left_at so leaving a session archives the membership instead of
+        // deleting it, letting clients show a "recent sessions" history.
+        using (var check = conn.CreateCommand())
+        {
+            check.CommandText = "SELECT COUNT(*) FROM pragma_table_info('session_members') WHERE name = 'left_at'";
+            var hasLeftAt = (long)(check.ExecuteScalar() ?? 0L) > 0;
+            if (!hasLeftAt)
+            {
+                using var addColumn = conn.CreateCommand();
+                addColumn.CommandText = "ALTER TABLE session_members ADD COLUMN left_at TEXT";
+                addColumn.ExecuteNonQuery();
             }
         }
     }
@@ -395,10 +410,38 @@ public class SessionStore(string dbPath)
             SELECT s.id, s.session_name, s.invite_code, m.role, m.display_name
             FROM session_members m
             JOIN app_sessions s ON s.id = m.session_id
-            WHERE m.user_id = $userId
+            WHERE m.user_id = $userId AND m.left_at IS NULL
             ORDER BY m.joined_at DESC
             """;
         cmd.Parameters.AddWithValue("$userId", userId);
+        using var reader = cmd.ExecuteReader();
+
+        var sessions = new List<SessionMembership>();
+        while (reader.Read())
+            sessions.Add(new SessionMembership(
+                reader.GetString(0),
+                reader.GetString(1),
+                reader.GetString(2),
+                reader.GetString(3),
+                reader.GetString(4)));
+
+        return sessions;
+    }
+
+    public IReadOnlyList<SessionMembership> GetRecentLeftSessions(string userId, int limit = 3)
+    {
+        using var conn = Connect();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = """
+            SELECT s.id, s.session_name, s.invite_code, m.role, m.display_name
+            FROM session_members m
+            JOIN app_sessions s ON s.id = m.session_id
+            WHERE m.user_id = $userId AND m.left_at IS NOT NULL
+            ORDER BY m.left_at DESC
+            LIMIT $limit
+            """;
+        cmd.Parameters.AddWithValue("$userId", userId);
+        cmd.Parameters.AddWithValue("$limit", limit);
         using var reader = cmd.ExecuteReader();
 
         var sessions = new List<SessionMembership>();
@@ -430,7 +473,7 @@ public class SessionStore(string dbPath)
             SELECT s.id, s.session_name, s.invite_code, m.role, m.display_name
             FROM session_members m
             JOIN app_sessions s ON s.id = m.session_id
-            WHERE m.session_id = $sessionId AND m.user_id = $userId
+            WHERE m.session_id = $sessionId AND m.user_id = $userId AND m.left_at IS NULL
             """;
         cmd.Parameters.AddWithValue("$sessionId", sessionId);
         cmd.Parameters.AddWithValue("$userId", userId);
@@ -456,7 +499,7 @@ public class SessionStore(string dbPath)
         cmd.CommandText = """
             SELECT display_name
             FROM session_members
-            WHERE session_id = $sessionId AND role = 'runner'
+            WHERE session_id = $sessionId AND role = 'runner' AND left_at IS NULL
             ORDER BY joined_at ASC
             """;
         cmd.Parameters.AddWithValue("$sessionId", sessionId);
@@ -539,7 +582,7 @@ public class SessionStore(string dbPath)
             SELECT s.id, s.session_name, s.invite_code, u.username, COUNT(m.user_id) AS member_count, s.created_at
             FROM app_sessions s
             JOIN users u ON u.id = s.owner_user_id
-            LEFT JOIN session_members m ON m.session_id = s.id
+            LEFT JOIN session_members m ON m.session_id = s.id AND m.left_at IS NULL
             GROUP BY s.id
             ORDER BY s.created_at DESC
             """;
@@ -555,9 +598,11 @@ public class SessionStore(string dbPath)
         using var conn = Connect();
         using var cmd = conn.CreateCommand();
         cmd.CommandText = """
-            DELETE FROM session_members
-            WHERE session_id = $sessionId AND user_id = $userId
+            UPDATE session_members
+            SET left_at = $leftAt
+            WHERE session_id = $sessionId AND user_id = $userId AND left_at IS NULL
             """;
+        cmd.Parameters.AddWithValue("$leftAt", DateTimeOffset.UtcNow.ToString("O"));
         cmd.Parameters.AddWithValue("$sessionId", sessionId);
         cmd.Parameters.AddWithValue("$userId", userId);
         return cmd.ExecuteNonQuery() > 0;
@@ -938,10 +983,11 @@ public class SessionStore(string dbPath)
     {
         using var cmd = conn.CreateCommand();
         cmd.CommandText = """
-            INSERT INTO session_members (session_id, user_id, role, display_name, joined_at)
-            VALUES ($sessionId, $userId, $role, $displayName, $joinedAt)
+            INSERT INTO session_members (session_id, user_id, role, display_name, joined_at, left_at)
+            VALUES ($sessionId, $userId, $role, $displayName, $joinedAt, NULL)
             ON CONFLICT(session_id, user_id)
-            DO UPDATE SET role = excluded.role, display_name = excluded.display_name
+            DO UPDATE SET role = excluded.role, display_name = excluded.display_name,
+                          joined_at = excluded.joined_at, left_at = NULL
             """;
         cmd.Parameters.AddWithValue("$sessionId", sessionId);
         cmd.Parameters.AddWithValue("$userId", userId);
@@ -1007,10 +1053,11 @@ public class SessionStore(string dbPath)
     {
         using var cmd = conn.CreateCommand();
         cmd.CommandText = """
-            INSERT INTO session_members (session_id, user_id, role, display_name, joined_at)
-            VALUES ($sessionId, $userId, $role, $displayName, $joinedAt)
+            INSERT INTO session_members (session_id, user_id, role, display_name, joined_at, left_at)
+            VALUES ($sessionId, $userId, $role, $displayName, $joinedAt, NULL)
             ON CONFLICT(session_id, user_id)
-            DO UPDATE SET display_name = excluded.display_name
+            DO UPDATE SET display_name = excluded.display_name,
+                          joined_at = excluded.joined_at, left_at = NULL
             """;
         cmd.Parameters.AddWithValue("$sessionId", sessionId);
         cmd.Parameters.AddWithValue("$userId", userId);

@@ -59,7 +59,7 @@ final class LocationManager {
     private(set) var isTracking = false
     private(set) var currentUser: AppUser?
     private(set) var memberships: [SessionMembership] = []
-    private(set) var recentSessions: [SessionMembership] = LocationManager.loadRecentSessions()
+    private(set) var recentSessions: [SessionMembership] = []
     private(set) var sessionRunnerNames: [String] = []
     private(set) var isOffline = false
 
@@ -197,7 +197,6 @@ final class LocationManager {
         sessionId = ""
         Self.storeToken(nil)
         UserDefaults.standard.removeObject(forKey: "currentUser")
-        UserDefaults.standard.removeObject(forKey: Self.recentSessionsKey)
         status = nextStatus
     }
 
@@ -207,7 +206,6 @@ final class LocationManager {
         defer { isLoadingSessions = false }
         do {
             memberships = try await send(path: "/me/sessions")
-            memberships.reversed().forEach(rememberRecentSession)
             if !sessionId.isEmpty && activeMembership == nil {
                 sessionId = ""
             }
@@ -220,6 +218,17 @@ final class LocationManager {
             await signOut(status: "Sign in required")
         } catch {
             status = error.localizedDescription
+        }
+    }
+
+    // Sessions the user has left; the server keeps these as archived (left_at set)
+    // memberships rather than deleting them, so this survives across devices/reinstalls.
+    func loadRecentSessions() async {
+        guard isAuthenticated else { return }
+        do {
+            recentSessions = try await send(path: "/me/sessions/recent")
+        } catch {
+            // Leave the existing list in place; this is a secondary, best-effort fetch.
         }
     }
 
@@ -261,6 +270,10 @@ final class LocationManager {
         if isTracking && sessionId == code { stop() }
         guard let token = accessToken else { throw DotWatcherAPIError.missingToken }
         try await sendEmpty(path: "/me/sessions/\(code)/membership", method: "DELETE", token: token)
+        if let left = memberships.first(where: { $0.sessionId == code }) {
+            recentSessions.removeAll { $0.sessionId == code }
+            recentSessions.insert(left, at: 0)
+        }
         memberships.removeAll { $0.sessionId == code }
         if sessionId == code {
             sessionId = ""
@@ -476,30 +489,6 @@ final class LocationManager {
     private func upsertMembership(_ membership: SessionMembership) {
         memberships.removeAll { $0.sessionId == membership.sessionId }
         memberships.insert(membership, at: 0)
-        rememberRecentSession(membership)
-    }
-
-    // The server hard-deletes a session_members row on leave, so this is the only record of
-    // sessions the user has been part of once they leave. Capped at 3, most-recent-first.
-    private static let recentSessionsKey = "recentSessions"
-    private static let maxRecentSessions = 3
-
-    private static func loadRecentSessions() -> [SessionMembership] {
-        guard let data = UserDefaults.standard.data(forKey: recentSessionsKey),
-              let sessions = try? JSONDecoder().decode([SessionMembership].self, from: data)
-        else { return [] }
-        return sessions
-    }
-
-    private func rememberRecentSession(_ membership: SessionMembership) {
-        recentSessions.removeAll { $0.sessionId == membership.sessionId }
-        recentSessions.insert(membership, at: 0)
-        if recentSessions.count > Self.maxRecentSessions {
-            recentSessions.removeLast(recentSessions.count - Self.maxRecentSessions)
-        }
-        if let data = try? JSONEncoder().encode(recentSessions) {
-            UserDefaults.standard.set(data, forKey: Self.recentSessionsKey)
-        }
     }
 
     private static func readToken() -> String? {
