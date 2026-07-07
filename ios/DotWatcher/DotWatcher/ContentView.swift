@@ -21,6 +21,7 @@ struct ContentView: View {
 
     var body: some View {
         mainContent
+            .preferredColorScheme(location.appearanceMode.colorScheme)
             .onAppear {
                 UIDevice.current.isBatteryMonitoringEnabled = true
                 batteryLevel = UIDevice.current.batteryLevel
@@ -47,6 +48,7 @@ struct ContentView: View {
             }
             .sheet(isPresented: $showHelp) {
                 HelpView()
+                    .preferredColorScheme(location.appearanceMode.colorScheme)
             }
             .sheet(isPresented: $showNameEntry) {
                 NameEntryView(
@@ -57,6 +59,7 @@ struct ContentView: View {
                     showNameEntry = false
                 }
                 .interactiveDismissDisabled(location.runnerName.trimmingCharacters(in: .whitespaces).isEmpty)
+                .preferredColorScheme(location.appearanceMode.colorScheme)
             }
             .sheet(isPresented: $showCreateSession) {
                 CreateSessionView(
@@ -67,9 +70,11 @@ struct ContentView: View {
                     Task { await noSessionCreateSession() }
                 }
                 .presentationDetents([.height(560)])
+                .preferredColorScheme(location.appearanceMode.colorScheme)
             }
             .fullScreenCover(isPresented: $showAuth) {
                 AuthSheet(location: location)
+                    .preferredColorScheme(location.appearanceMode.colorScheme)
             }
             .onChange(of: location.isAuthenticated) { _, isAuthenticated in
                 guard isAuthenticated else {

@@ -2,11 +2,36 @@ import CoreLocation
 import Foundation
 import Network
 import Security
+import SwiftUI
 
 struct AppUser: Codable {
     let userId: String
     let username: String
     let displayName: String
+}
+
+enum AppearanceMode: String, CaseIterable, Identifiable {
+    case system
+    case light
+    case dark
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .system: return "System"
+        case .light: return "Light"
+        case .dark: return "Dark"
+        }
+    }
+
+    var colorScheme: ColorScheme? {
+        switch self {
+        case .system: return nil
+        case .light: return .light
+        case .dark: return .dark
+        }
+    }
 }
 
 struct AuthSession: Codable {
@@ -89,6 +114,10 @@ final class LocationManager {
 
     var runnerName: String = UserDefaults.standard.string(forKey: "runnerName") ?? "" {
         didSet { UserDefaults.standard.set(runnerName, forKey: "runnerName") }
+    }
+
+    var appearanceMode: AppearanceMode = AppearanceMode(rawValue: UserDefaults.standard.string(forKey: "appearanceMode") ?? "") ?? .system {
+        didSet { UserDefaults.standard.set(appearanceMode.rawValue, forKey: "appearanceMode") }
     }
 
     let interval: TimeInterval = 15
