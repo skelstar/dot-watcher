@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
+  earliestActivityMs,
   isRangeCovered,
   latestActivityMs,
   livePollingError,
@@ -95,6 +96,23 @@ test('latestActivityMs is the max last-position timestamp across all runners', (
     ]],
   ])
   assert.equal(latestActivityMs(byRunner), new Date('2024-01-01T00:00:20Z').getTime())
+})
+
+test('earliestActivityMs is null when no runner has reported in', () => {
+  assert.equal(earliestActivityMs(new Map()), null)
+})
+
+test('earliestActivityMs is the min first-position timestamp across all runners', () => {
+  const byRunner = new Map([
+    ['Alice', [
+      { runnerName: 'Alice', latitude: 0, longitude: 0, heading: null, timestamp: '2024-01-01T00:00:10Z' },
+      { runnerName: 'Alice', latitude: 1, longitude: 1, heading: null, timestamp: '2024-01-01T00:00:20Z' },
+    ]],
+    ['Bob', [
+      { runnerName: 'Bob', latitude: 2, longitude: 2, heading: null, timestamp: '2024-01-01T00:00:05Z' },
+    ]],
+  ])
+  assert.equal(earliestActivityMs(byRunner), new Date('2024-01-01T00:00:05Z').getTime())
 })
 
 test('maxOrNull returns the larger value when both are known', () => {
