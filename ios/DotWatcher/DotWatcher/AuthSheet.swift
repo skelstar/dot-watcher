@@ -4,7 +4,7 @@ private let privacyURL = URL(string: "https://dot-watcher.skelstar.io/privacy")!
 private let termsURL = URL(string: "https://dot-watcher.skelstar.io/terms")!
 
 struct AuthSheet: View {
-    var location: LocationManager
+    @Bindable var location: LocationManager
 
     @State private var mode: AuthMode = .signIn
     @State private var username: String = ""
@@ -26,6 +26,9 @@ struct AuthSheet: View {
                 if location.isAuthenticated {
                     Section {
                         LabeledContent("User", value: location.currentUser?.displayName ?? location.currentUser?.username ?? "")
+                        LabeledContent("Initials") {
+                            CodeBoxField(text: $location.runnerName, length: 2, lettersOnly: true)
+                        }
                         Button("Sign out", role: .destructive) {
                             Task { await location.signOut() }
                         }
@@ -33,6 +36,15 @@ struct AuthSheet: View {
                             showDeleteConfirmation = true
                         }
                         .disabled(isBusy)
+                    }
+                    Section("Appearance") {
+                        Picker("Appearance", selection: $location.appearanceMode) {
+                            ForEach(AppearanceMode.allCases) { mode in
+                                Text(mode.label).tag(mode)
+                            }
+                        }
+                        .pickerStyle(.segmented)
+                        .labelsHidden()
                     }
                     legalSection
                 } else {
