@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { RunnerPosition } from './types.ts'
 import {
+  earliestActivityMs,
   isRangeCovered,
   latestActivityMs,
   livePollingError,
@@ -63,6 +64,12 @@ export function useSessionTimeline(
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [invalidInvite, setInvalidInvite] = useState(false)
+
+  // Falls back to the earliest live-polled position when the one-shot recording/meta fetch
+  // missed the run (e.g. it 404'd because the viewer loaded before the runner's first ping,
+  // and that fetch is never retried) — otherwise the scrubber would stay hidden for the rest
+  // of the page's lifetime even once real position data starts arriving.
+  const effectiveRunStartMs = runStartMs ?? earliestActivityMs(byRunner)
 
   const speedRef = useRef(speed)
   speedRef.current = speed
@@ -185,7 +192,7 @@ export function useSessionTimeline(
   }
 
   function ensureCovered(targetMs: number) {
-    const floor = runStartMs ?? targetMs
+    const floor = effectiveRunStartMs ?? targetMs
     const since = Math.max(floor, targetMs - WINDOW_MS)
     if (isRangeCovered(fetchedRangesRef.current, since, targetMs)) return
     fetchWindow(since, targetMs)
@@ -197,7 +204,7 @@ export function useSessionTimeline(
   function dragTo(ms: number) {
     if (playingRef.current) { playingRef.current = false; setPlaying(false) }
     if (settleTimerRef.current) clearTimeout(settleTimerRef.current)
-    setScrubTimeMs(Math.max(runStartMs ?? ms, Math.min(ms, nowMs)))
+    setScrubTimeMs(Math.max(effectiveRunStartMs ?? ms, Math.min(ms, nowMs)))
   }
 
   function dragEnd() {
@@ -265,7 +272,7 @@ export function useSessionTimeline(
     positions,
     following: scrubTimeMs === null,
     scrubTimeMs,
-    runStartMs,
+    runStartMs: effectiveRunStartMs,
     nowMs,
     virtualNowMs,
     isLive,

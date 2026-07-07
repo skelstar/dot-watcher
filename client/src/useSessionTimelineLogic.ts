@@ -123,6 +123,20 @@ export function latestActivityMs(byRunner: Map<string, RunnerPosition[]>): numbe
   return latest
 }
 
+// The earliest position timestamp across all runners, or null if nobody has reported in yet.
+// Used as a fallback run-start when the one-shot server-side recording/meta fetch missed the
+// run (e.g. the viewer loaded before the runner's very first ping, so that fetch 404'd and is
+// never retried) — the scrubber can still appear once live-polled positions start arriving.
+export function earliestActivityMs(byRunner: Map<string, RunnerPosition[]>): number | null {
+  let earliest: number | null = null
+  for (const positions of byRunner.values()) {
+    if (positions.length === 0) continue
+    const ts = new Date(positions[0].timestamp).getTime()
+    if (earliest === null || ts < earliest) earliest = ts
+  }
+  return earliest
+}
+
 // The more recent of two possibly-unknown timestamps. Used to combine the client's own
 // live-polled activity with the server's DB-backed recording metadata, since either source can
 // be the only one with data (e.g. the in-memory poll cache is empty right after a server restart).
