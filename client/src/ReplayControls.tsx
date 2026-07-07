@@ -31,7 +31,7 @@ export default function ReplayControls({ timeline, onFitAll }: Props) {
   const durationMs = Math.max(rangeEnd - rangeStart, 1)
   const currentMs = scrubTimeMs ?? nowMs
   const fraction = Math.max(0, Math.min(1, (currentMs - rangeStart) / durationMs))
-  const trackColour = isLive ? '#ef4444' : '#ffffff'
+  const trackColour = isLive ? '#ef4444' : '#64748b'
 
   useEffect(() => () => clearTimeout(lingerTimerRef.current), [])
 
@@ -80,28 +80,22 @@ export default function ReplayControls({ timeline, onFitAll }: Props) {
         </div>
       )}
 
-      {following
+      {isLive
         ? (
-          isLive
-            ? (
-              <button onClick={goLive} style={{ ...liveBtn, ...liveBtnActive }} title="Live">
-                <span style={{ ...liveDot, background: '#fff' }} />
-                LIVE
-              </button>
-            )
-            : (
-              <button onClick={goLive} style={{ ...liveBtn, ...liveBtnInactive }} title="Jump to most recent position">
-                {formatTime(durationMs)}
-              </button>
-            )
-        )
-        : (
           <button
             onClick={goLive}
-            style={{ ...liveBtn, ...liveBtnInactive }}
-            title={isLive ? 'Go live' : 'Jump to most recent position'}
+            style={{ ...liveBtn, ...(following ? liveBtnActive : liveBtnDimmed) }}
+            title={following ? 'Live' : 'Jump to most recent position'}
           >
-            {formatTime(Math.max(0, rangeEnd - currentMs))}
+            <span style={{ ...liveDot, background: following ? '#fff' : '#ef4444' }} />
+            LIVE
+          </button>
+        )
+        : (
+          // Finished runs have a fixed length, so the badge always shows the total duration
+          // rather than "time behind" — there's no live edge to be behind once it's over.
+          <button onClick={goLive} style={{ ...liveBtn, ...liveBtnInactive }} title="Jump to most recent position">
+            {formatTime(durationMs)}
           </button>
         )
       }
@@ -195,6 +189,11 @@ const liveBtn: React.CSSProperties = {
 const liveBtnActive: React.CSSProperties = {
   background: '#ef4444',
   color: '#fff',
+}
+
+const liveBtnDimmed: React.CSSProperties = {
+  background: '#fff',
+  color: '#ef4444',
 }
 
 const liveBtnInactive: React.CSSProperties = {
