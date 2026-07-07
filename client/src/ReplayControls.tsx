@@ -80,16 +80,28 @@ export default function ReplayControls({ timeline, onFitAll }: Props) {
         </div>
       )}
 
-      {isLive
+      {following
         ? (
-          <button onClick={goLive} style={{ ...liveBtn, ...(following ? liveBtnActive : liveBtnInactive) }} title="Go live">
-            <span style={{ ...liveDot, background: following ? '#fff' : '#94a3b8' }} />
-            LIVE
-          </button>
+          isLive
+            ? (
+              <button onClick={goLive} style={{ ...liveBtn, ...liveBtnActive }} title="Live">
+                <span style={{ ...liveDot, background: '#fff' }} />
+                LIVE
+              </button>
+            )
+            : (
+              <button onClick={goLive} style={{ ...liveBtn, ...liveBtnInactive }} title="Jump to most recent position">
+                {formatTime(durationMs)}
+              </button>
+            )
         )
         : (
-          <button onClick={goLive} style={{ ...liveBtn, ...liveBtnInactive }} title="Jump to most recent position">
-            {formatTime(durationMs)}
+          <button
+            onClick={goLive}
+            style={{ ...liveBtn, ...liveBtnInactive }}
+            title={isLive ? 'Go live' : 'Jump to most recent position'}
+          >
+            {formatTime(Math.max(0, rangeEnd - currentMs))}
           </button>
         )
       }
