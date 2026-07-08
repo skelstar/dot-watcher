@@ -6,12 +6,7 @@
 	objectVersion = 77;
 	objects = {
 
-/* Begin PBXBuildFile section */
-		497E134A2FF9D3E600B657D6 /* Kapakapanui_xcode.gpx in Resources */ = {isa = PBXBuildFile; fileRef = 497E13492FF9D3E600B657D6 /* Kapakapanui_xcode.gpx */; };
-/* End PBXBuildFile section */
-
 /* Begin PBXFileReference section */
-		497E13492FF9D3E600B657D6 /* Kapakapanui_xcode.gpx */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = Kapakapanui_xcode.gpx; sourceTree = "<group>"; };
 		497F89C62FDC6E6300022FF1 /* DotWatcher.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = DotWatcher.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -50,7 +45,6 @@
 		497F89BD2FDC6E6300022FF1 = {
 			isa = PBXGroup;
 			children = (
-				497E13492FF9D3E600B657D6 /* Kapakapanui_xcode.gpx */,
 				497F89C82FDC6E6300022FF1 /* DotWatcher */,
 				497F89C72FDC6E6300022FF1 /* Products */,
 			);
@@ -128,7 +122,6 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				497E134A2FF9D3E600B657D6 /* Kapakapanui_xcode.gpx in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
