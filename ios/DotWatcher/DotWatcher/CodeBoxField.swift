@@ -52,7 +52,7 @@ struct CodeBoxField: View {
     // when one exists to avoid matching a coincidentally-6-letter word like "INVITE".
     private static func sanitize(_ raw: String, length: Int, lettersOnly: Bool) -> String {
         let isMatch: (Character) -> Bool = lettersOnly
-            ? { $0.isLetter && $0.isASCII }
+            ? { ($0.isLetter && $0.isASCII) || $0.isNumber }
             : { $0.isLetter || $0.isNumber }
 
         let uppercased = raw.uppercased()

@@ -277,8 +277,22 @@ struct ContentView: View {
     private var headerSection: some View {
         HStack(alignment: .top) {
             VStack(alignment: .leading, spacing: 4) {
-                Text("DotWatcher")
-                    .font(.largeTitle.bold())
+                HStack(spacing: 1) {
+                    Text("d")
+                        .font(.largeTitle.bold())
+                    if location.isAuthenticated, !location.runnerName.trimmingCharacters(in: .whitespaces).isEmpty {
+                        Text(location.runnerName.uppercased())
+                            .font(.caption2.bold())
+                            .foregroundStyle(.white)
+                            .frame(width: 28, height: 28)
+                            .background(Circle().fill(Color.blue))
+                    } else {
+                        Text("o")
+                            .font(.largeTitle.bold())
+                    }
+                    Text("t-watchr")
+                        .font(.largeTitle.bold())
+                }
                 let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String
                 let sha = Bundle.main.infoDictionary?["GitCommitSHA"] as? String
                 if build != nil || sha != nil {
@@ -319,12 +333,6 @@ struct ContentView: View {
 
     private var runnerRow: some View {
         HStack(spacing: 12) {
-            RunnerCircle(name: location.isAuthenticated ? location.runnerName : "??", size: 56, isHighlighted: true)
-                .padding(.vertical, 8)
-                .onTapGesture {
-                    nameInput = location.runnerName
-                    showNameEntry = true
-                }
             if location.isTracking {
                 TimelineView(.periodic(from: .now, by: 1.0 / 10.0)) { context in
                     let nextPostAt = location.nextPostAt(from: location.lastSent ?? Date())
@@ -338,6 +346,10 @@ struct ContentView: View {
                             .fontWeight(.bold)
                         PostCountdownRing(fraction: fraction)
                     }
+                    .onTapGesture {
+                        nameInput = location.runnerName
+                        showNameEntry = true
+                    }
                 }
             } else {
                 HStack(spacing: 8) {
@@ -345,6 +357,10 @@ struct ContentView: View {
                     Text(location.status)
                         .font(.headline)
                         .fontWeight(.bold)
+                }
+                .onTapGesture {
+                    nameInput = location.runnerName
+                    showNameEntry = true
                 }
             }
             Spacer()
