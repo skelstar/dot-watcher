@@ -122,7 +122,7 @@ final class LocationManager {
 
     let interval: TimeInterval = 15
 
-    var isAuthenticated: Bool { accessToken != nil }
+    var isAuthenticated: Bool { accessToken != nil && currentUser != nil }
 
     var activeMembership: SessionMembership? {
         memberships.first { $0.sessionId == sessionId }
@@ -438,9 +438,7 @@ final class LocationManager {
         if let data = try? JSONEncoder().encode(session.user) {
             UserDefaults.standard.set(data, forKey: "currentUser")
         }
-        if runnerName.trimmingCharacters(in: .whitespaces).isEmpty {
-            runnerName = String(session.user.displayName.uppercased().prefix(3))
-        }
+        runnerName = session.user.displayName.uppercased()
         status = "Signed in"
         await loadSessions()
     }

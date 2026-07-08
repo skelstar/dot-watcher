@@ -25,7 +25,7 @@ struct AuthSheet: View {
             Form {
                 if location.isAuthenticated {
                     Section {
-                        LabeledContent("User", value: location.currentUser?.displayName ?? location.currentUser?.username ?? "")
+                        LabeledContent("User", value: location.currentUser?.username ?? "")
                         LabeledContent("Initials") {
                             CodeBoxField(text: $location.runnerName, length: 2, lettersOnly: true)
                         }
