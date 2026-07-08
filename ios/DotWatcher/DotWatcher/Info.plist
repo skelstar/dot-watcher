@@ -15,11 +15,11 @@
 	<key>CFBundleShortVersionString</key>
 	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleVersion</key>
-	<string>184</string>
+	<string>185</string>
 	<key>DotWatcherAPIBaseURL</key>
 	<string>$(DOTWATCHER_API_BASE_URL)</string>
 	<key>GitCommitSHA</key>
-	<string>9251ca6</string>
+	<string>951d8af</string>
 	<key>LSApplicationQueriesSchemes</key>
 	<array>
 		<string>whatsapp</string>
