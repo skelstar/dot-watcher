@@ -23,11 +23,11 @@
      inkscape:pagecheckerboard="0"
      inkscape:deskcolor="#d1d1d1"
      inkscape:zoom="0.32"
-     inkscape:cx="214.0625"
-     inkscape:cy="632.8125"
-     inkscape:window-width="1565"
-     inkscape:window-height="976"
-     inkscape:window-x="0"
+     inkscape:cx="215.625"
+     inkscape:cy="631.25"
+     inkscape:window-width="1710"
+     inkscape:window-height="1045"
+     inkscape:window-x="-1"
      inkscape:window-y="34"
      inkscape:window-maximized="0"
      inkscape:current-layer="svg6" />
@@ -36,10 +36,9 @@
      height="1024"
      fill="#a6d583"
      id="rect1"
-     sodipodi:insensitive="true"
      x="0"
      y="0"
-     style="display:inline" />
+     style="display:inline;opacity:1" />
   <path
      d="M 512,172 C 705,155 855,320 845,520 835,725 690,875 500,858 305,840 165,690 178,498 190,310 320,189 512,172 Z"
      fill="none"
@@ -48,7 +47,7 @@
      opacity="0.5"
      id="path1"
      sodipodi:insensitive="true"
-     style="display:none" />
+     style="display:inline" />
   <path
      d="m 512.22259,59.250483 c 258,-22 453,187.999997 440,462.999997 -14,275 -207,460 -457,443 -250,-18 -440.000001,-223 -423.000001,-473 16,-245 183.000001,-410.999997 440.000001,-432.999997 z"
      fill="none"
@@ -57,7 +56,7 @@
      opacity="0.32"
      id="path2"
      sodipodi:insensitive="true"
-     style="display:none" />
+     style="display:inline" />
   <path
      d="m 512.18232,-58.590001 c 323,-22 562.99998,238.000001 549.99998,588.000001 -14,350 -261.99998,575 -571.99998,553 -310,-23 -544.999994,-283 -527.999994,-593 16,-310 227.999994,-526.000001 549.999994,-548.000001 z"
      fill="none"
@@ -68,7 +67,7 @@
      sodipodi:insensitive="true"
      style="display:inline" />
   <path
-     d="m 60,1000 c 240,-85 45,-270 235,-355 135,-62 150,-75 217,-133 78,-67 143,73 258,8 120,-68 -10,-190 80,-305 50,-65 95,-105 150,-175"
+     d="M 60,1000 C 300,915 133.39706,677.33636 323.39706,592.33636 458.39706,530.33636 445,570 512,512 c 78,-67 0,0 233.34524,-70.71068 C 837.22024,357.66432 741.25,286.25 831.25,171.25 881.25,106.25 945,110 1000,40"
      fill="none"
      stroke="#5f6a57"
      stroke-width="40"
@@ -76,45 +75,54 @@
      stroke-dasharray="70, 84"
      opacity="0.85"
      id="path4"
-     sodipodi:insensitive="true"
-     style="display:none"
-     inkscape:label="Trail" />
-  <g
-     transform="rotate(45,512,512)"
-     id="g5"
-     sodipodi:insensitive="true">
-    <path
-       d="M 397,297 512,182 627,297"
-       fill="none"
-       stroke="#ffffff"
-       stroke-width="62"
-       stroke-linecap="round"
-       stroke-linejoin="round"
-       id="path5" />
-  </g>
-  <circle
-     cx="512"
-     cy="512"
-     r="205"
-     fill="#ffffff"
-     id="circle5"
-     sodipodi:insensitive="true" />
-  <circle
-     cx="512"
-     cy="512"
-     r="160"
-     fill="#007aff"
-     id="circle6"
      style="display:inline"
-     sodipodi:insensitive="true" />
-  <text
-     x="512"
-     y="558"
-     font-family="Arial, 'Helvetica Neue', sans-serif"
-     font-weight="bold"
-     font-size="135px"
-     fill="#ffffff"
-     text-anchor="middle"
-     id="text6"
-     sodipodi:insensitive="true">DW</text>
+     inkscape:label="trail"
+     sodipodi:nodetypes="cccccc" />
+  <g
+     id="g7"
+     inkscape:label="dot and chevron"
+     transform="matrix(0.9999973,0,0,1,0.00168719,-2.2111775e-5)">
+    <g
+       transform="rotate(45,512,512)"
+       id="g5"
+       inkscape:label="chevron">
+      <path
+         d="m 397.00023,296.99977 115,-115 115,115"
+         fill="none"
+         stroke="#ffffff"
+         stroke-width="62"
+         stroke-linecap="round"
+         stroke-linejoin="round"
+         id="path5" />
+    </g>
+    <g
+       id="g6"
+       inkscape:label="Dot">
+      <circle
+         cx="512"
+         cy="512"
+         r="205"
+         fill="#ffffff"
+         id="circle5"
+         sodipodi:insensitive="true" />
+      <circle
+         cx="512"
+         cy="512"
+         r="160"
+         fill="#007aff"
+         id="circle6"
+         style="display:inline"
+         sodipodi:insensitive="true" />
+      <text
+         x="512"
+         y="558"
+         font-family="Arial, 'Helvetica Neue', sans-serif"
+         font-weight="bold"
+         font-size="135px"
+         fill="#ffffff"
+         text-anchor="middle"
+         id="text6"
+         sodipodi:insensitive="true">DW</text>
+    </g>
+  </g>
 </svg>
