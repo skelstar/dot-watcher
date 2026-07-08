@@ -125,11 +125,13 @@ struct ContentView: View {
                     }
                     noSessionCreateLink
                     if let formError {
-                        Text(formError)
-                            .font(.caption)
+                        Label(formError, systemImage: "exclamationmark.triangle.fill")
+                            .font(.subheadline.weight(.semibold))
                             .foregroundStyle(.red)
                             .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.horizontal, 4)
+                            .padding(12)
+                            .background(Color.red.opacity(0.12))
+                            .clipShape(RoundedRectangle(cornerRadius: 10))
                     }
                 }
                 .padding()
@@ -277,7 +279,7 @@ struct ContentView: View {
     private var headerSection: some View {
         HStack(alignment: .top) {
             VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 1) {
+                HStack(spacing: 2) {
                     Text("d")
                         .font(.largeTitle.bold())
                     if location.isAuthenticated, !location.runnerName.trimmingCharacters(in: .whitespaces).isEmpty {
@@ -522,9 +524,14 @@ struct ContentView: View {
             .clipShape(RoundedRectangle(cornerRadius: 10))
 
             if let inviteCode = location.activeMembership?.inviteCode {
-                Text("Invite \(inviteCode)")
-                    .font(.caption.monospaced())
-                    .foregroundStyle(.secondary)
+                HStack(spacing: 6) {
+                    Text("Invite")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                    Text(inviteCode)
+                        .font(.title3.weight(.medium).monospaced())
+                        .foregroundStyle(.primary)
+                }
             }
 
             Divider()
