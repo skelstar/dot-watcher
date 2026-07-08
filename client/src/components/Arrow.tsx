@@ -1,16 +1,12 @@
-// Circle centre of the marker shape in SVG path coordinates
-const CX = 11.589949
-const CY = 20.171708
+// Chevron-satellite marker (concept 1d)
+// The dot stays upright at all times — only the chevron orbits to show heading.
 
-// ViewBox sized so (CX, CY) is exactly at the element's 50% 50%,
-// giving enough room for the tip above and the circle below (plus stroke padding)
-const VB_W = 30
-const VB_H = 40
-const VB_X = CX - VB_W / 2   // -3.410051
-const VB_Y = CY - VB_H / 2   //  0.171708
+// Circle centre in SVG/element coordinates (element anchors at its centre)
+const CX = 24
+const CY = 24
 
-const MARKER_W = VB_W
-const MARKER_H = VB_H
+const MARKER_W = 48
+const MARKER_H = 48
 
 // Legacy export — useRunnerMarkers imports this but only uses it for label offset
 const ARROW_SIZE = MARKER_W
@@ -29,7 +25,6 @@ export default function Arrow({ name, heading, colour, label, stationary }: Prop
   const displayLabel = label !== undefined ? label : name
   // Only show the label when it's a cluster label (multiple runners merged)
   const showLabel = displayLabel !== '' && displayLabel !== name
-  const h = heading ?? 0
 
   if (stationary) {
     return (
@@ -79,22 +74,13 @@ export default function Arrow({ name, heading, colour, label, stationary }: Prop
       <svg
         width={MARKER_W}
         height={MARKER_H}
-        viewBox={`${VB_X} ${VB_Y} ${VB_W} ${VB_H}`}
-        style={{
-          display: 'block',
-          filter: 'drop-shadow(0 1px 4px rgba(0,0,0,0.45))',
-          transform: `rotate(${h}deg)`,
-          transformOrigin: '50% 50%',
-        }}
+        viewBox={`0 0 ${MARKER_W} ${MARKER_H}`}
+        style={{ display: 'block', overflow: 'visible' }}
       >
-        <path
-          d="M 11.589949,7.171708 A 13,13 0 0 0 -1.410051,20.171708 13,13 0 0 0 11.589949,33.171708 13,13 0 0 0 24.589949,20.171708 V 10.171708 Q 24.589949,7.171708 21.589949,7.171708 Z"
-          fill="#ffffff"
-          stroke="#ffffff"
-          strokeWidth="4.0"
-          transform={`rotate(-26.2, ${CX}, ${CY})`}
-        />
-        <circle cx={CX} cy={CY} r={12} fill={colour} />
+        {/* Upright dot — never rotates, so ring and initials stay crisp */}
+        <g style={{ filter: 'drop-shadow(0 1px 4px rgba(0,0,0,0.45))' }}>
+          <circle cx={CX} cy={CY} r={12} fill={colour} stroke="#ffffff" strokeWidth="3" />
+        </g>
         <text
           x={CX}
           y={CY + 4}
@@ -103,16 +89,33 @@ export default function Arrow({ name, heading, colour, label, stationary }: Prop
           fontSize="11"
           fill="#ffffff"
           textAnchor="middle"
-          transform={`rotate(${-h}, ${CX}, ${CY})`}
         >
           {name}
         </text>
+
+        {/* Orbiting chevron — the only part that rotates with heading. Rendered after the dot
+            so its shadow isn't hidden underneath the dot's own shadow/fill. */}
+        {heading !== null && (
+          <g
+            transform={`rotate(${heading}, ${CX}, ${CY})`}
+            style={{ filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.4))' }}
+          >
+            <path
+              d={`M ${CX - 6.5},11 L ${CX},4.5 L ${CX + 6.5},11`}
+              fill="none"
+              stroke="#ffffff"
+              strokeWidth="4"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </g>
+        )}
       </svg>
 
       {showLabel && (
         <div style={{
           position: 'absolute',
-          top: MARKER_H + 4,
+          top: CY + 18,
           left: '50%',
           transform: 'translateX(-50%)',
           fontSize: 11,
