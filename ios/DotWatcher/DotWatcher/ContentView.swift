@@ -156,8 +156,8 @@ struct ContentView: View {
         Button {
             showCreateSession = true
         } label: {
-            Text("Have your own session? Create one")
-                .font(.footnote)
+            Text("Session doesn't exist yet? Create one")
+                .font(.subheadline)
                 .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity)
@@ -284,9 +284,9 @@ struct ContentView: View {
                         .font(.largeTitle.bold())
                     if location.isAuthenticated, !location.runnerName.trimmingCharacters(in: .whitespaces).isEmpty {
                         Text(location.runnerName.uppercased())
-                            .font(.caption2.bold())
+                            .font(.callout.bold())
                             .foregroundStyle(.white)
-                            .frame(width: 28, height: 28)
+                            .frame(width: 38, height: 38)
                             .background(Circle().fill(Color.blue))
                     } else {
                         Text("o")
