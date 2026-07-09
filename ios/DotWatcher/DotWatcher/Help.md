@@ -28,7 +28,7 @@ Terms of Use: https://dot-watcher.skelstar.io/terms
 
 Use **Account > Delete account** to delete your DotWatcher account, memberships, owned sessions, and stored location rows linked to your account. Historical records without account attribution, admin uploads, or operational logs may need manual deletion.
 
-DotWatcher is a beta service. Do not use it for emergency response, rescue, medical, safety-critical tracking, or any situation where delayed or missing location data could cause harm.
+Do not use DotWatcher for emergency response, rescue, medical, safety-critical tracking, or any situation where delayed or missing location data could cause harm.
 
 ## Battery
 
