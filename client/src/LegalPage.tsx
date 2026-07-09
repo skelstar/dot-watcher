@@ -4,7 +4,7 @@ interface Props {
   kind: LegalPageKind
 }
 
-const lastUpdated = '20 Jun 2026'
+const lastUpdated = '9 Jul 2026'
 const contactEmail = 'support@dot-watcher.skelstar.io'
 
 export default function LegalPage({ kind }: Props) {
@@ -41,7 +41,7 @@ const privacyPage = {
     {
       heading: 'Overview',
       paragraphs: [
-        'Dot Watcher helps people share live location during a run, race, or similar group activity. The service is currently a beta and may change as we learn from early use.',
+        'Dot Watcher helps people share live location during a run, race, or similar group activity. The service is under active development and may change as we learn from early use.',
         'This policy explains what data Dot Watcher collects, why it is collected, and how it is used. It is intended to be clear about precise location data because that is the core purpose of the app.',
       ],
     },
@@ -59,7 +59,7 @@ const privacyPage = {
       paragraphs: [
         'We use account and membership data to authenticate users and decide who can read or write locations for a session.',
         'We use location data to show live runner positions, provide participant lists, and support replay/recording features for sessions where the user is a member.',
-        'We use operational data to diagnose bugs, investigate abuse, improve reliability, and understand whether the beta service is working as expected.',
+        'We use operational data to diagnose bugs, investigate abuse, improve reliability, and understand whether the service is working as expected.',
       ],
     },
     {
@@ -98,9 +98,9 @@ const termsPage = {
   title: 'Terms of Use',
   sections: [
     {
-      heading: 'Beta Service',
+      heading: 'Service Availability',
       paragraphs: [
-        'Dot Watcher is provided as a beta service. Features may change, break, be unavailable, or lose data. Use the service at your own risk.',
+        'Dot Watcher is under active development. Features may change, and the service may occasionally be unavailable or affected by bugs. Use the service at your own risk.',
         'The app is not intended for emergency response, rescue, medical, safety-critical tracking, or any situation where delayed, inaccurate, or missing location data could cause harm.',
       ],
     },
@@ -130,13 +130,13 @@ const termsPage = {
       heading: 'No Warranty',
       paragraphs: [
         'Dot Watcher is provided as is and as available, without warranties of any kind. We do not guarantee accuracy, uptime, data retention, or fitness for a particular purpose.',
-        'To the maximum extent permitted by law, we are not liable for losses or damages arising from use of the beta service.',
+        'To the maximum extent permitted by law, we are not liable for losses or damages arising from use of the service.',
       ],
     },
     {
       heading: 'Changes',
       paragraphs: [
-        'We may update these terms as the beta evolves. Continued use of Dot Watcher after an update means you accept the updated terms.',
+        'We may update these terms as the service evolves. Continued use of Dot Watcher after an update means you accept the updated terms.',
         `Questions can be sent to ${contactEmail}.`,
       ],
     },

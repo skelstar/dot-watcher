@@ -117,7 +117,7 @@ struct AuthSheet: View {
             Link("Privacy Policy", destination: privacyURL)
             Link("Terms of Use", destination: termsURL)
         } footer: {
-            Text("Dot Watcher is a beta service. Location data can be delayed, inaccurate, or unavailable.")
+            Text("Location data can be delayed, inaccurate, or unavailable.")
         }
     }
 
