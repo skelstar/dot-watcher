@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dot Watcher — README</title>
+<style>
+  :root {
+    --border: #d0d7de;
+    --text: #1f2328;
+    --muted: #57606a;
+    --code-bg: #f6f8fa;
+    --link: #0969da;
+    --accent: #0969da;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 2.5rem 1.5rem 4rem;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    color: var(--text);
+    background: #ffffff;
+    line-height: 1.6;
+  }
+  .doc {
+    max-width: 860px;
+    margin: 0 auto;
+  }
+  h1, h2, h3 {
+    font-weight: 600;
+    line-height: 1.25;
+  }
+  h1 {
+    font-size: 2rem;
+    margin: 0 0 0.5rem;
+    padding-bottom: 0.4rem;
+    border-bottom: 1px solid var(--border);
+  }
+  h2 {
+    font-size: 1.4rem;
+    margin: 2.2rem 0 1rem;
+    padding-bottom: 0.3rem;
+    border-bottom: 1px solid var(--border);
+  }
+  h3 {
+    font-size: 1.15rem;
+    margin: 1.6rem 0 0.75rem;
+    color: var(--accent);
+  }
+  p { margin: 0.75rem 0; }
+  .lede {
+    font-size: 1.05rem;
+    color: var(--muted);
+  }
+  hr {
+    border: none;
+    border-top: 1px solid var(--border);
+    margin: 2rem 0;
+  }
+  ul, ol {
+    margin: 0.5rem 0 1rem;
+    padding-left: 1.5rem;
+  }
+  li { margin: 0.3rem 0; }
+  li > ul, li > ol { margin: 0.3rem 0; }
+  code {
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+    background: var(--code-bg);
+    padding: 0.15em 0.4em;
+    border-radius: 4px;
+    font-size: 0.88em;
+  }
+  pre {
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 1rem;
+    overflow-x: auto;
+    font-size: 0.82rem;
+    line-height: 1.5;
+  }
+  pre code {
+    background: none;
+    padding: 0;
+    font-size: 1em;
+  }
+  table {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 1rem 0 1.5rem;
+    font-size: 0.92rem;
+  }
+  th, td {
+    border: 1px solid var(--border);
+    padding: 0.5rem 0.75rem;
+    text-align: left;
+    vertical-align: top;
+  }
+  th {
+    background: var(--code-bg);
+    font-weight: 600;
+  }
+  strong { font-weight: 600; }
+  .label {
+    display: block;
+    font-weight: 600;
+    margin: 1rem 0 0.25rem;
+  }
+  a { color: var(--link); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+</style>
+</head>
+<body>
+<div class="doc">
+
+<h1>Dot Watcher</h1>
+<p class="lede">Real-time GPS tracking for running groups. Runners share their position during a group run, race, or solo outing. Supporters and fellow runners can watch everyone's location on a live map in a browser.</p>
+
+<hr>
+
+<h2>Repo structure</h2>
+<pre><code>dot-watcher/
+  .ai/         AI-assisted PR review/description helpers and templates
+  server/      .NET Core minimal API
+  tests/       .NET integration tests
+  client/      React web app (Mapbox)
+  ios/         Swift iOS app
+  android/     Kotlin Android app (not started)
+  AGENTS.md   Codex/agent repository instructions
+  README.md
+</code></pre>
+
+<hr>
+
+<h2>AI review workflow</h2>
+<p>This repo uses a small, practical split for AI-assisted work:</p>
+<ul>
+  <li><code>AGENTS.md</code> contains standing Codex/agent instructions. The main rule is that agents should not run local build, publish, or test commands because GitHub Actions CI owns that verification.</li>
+  <li><code>.ai/pr-review-template.md</code> contains the reusable static PR review template. It is intentionally separate from <code>AGENTS.md</code> so the always-on agent rules stay short.</li>
+  <li><code>.ai/review-pr.sh</code> prints a ready-to-copy PR review prompt for the current branch.</li>
+  <li><code>.ai/create-pr-description.sh</code> prints a ready-to-copy PR title/description prompt for the current branch.</li>
+  <li>GitHub Actions owns runtime verification. The server workflow restores/builds/publishes/tests .NET changes, and the client workflow installs dependencies, runs client unit tests, and builds the Vite app. iOS simulator/device verification is currently manual because it depends on local Xcode signing and device/simulator availability.</li>
+</ul>
+<p>Run the helper from the repo root:</p>
+<pre><code>./.ai/review-pr.sh main
+./.ai/create-pr-description.sh main
+</code></pre>
+<p>Generated review files belong under <code>.ai/reviews/</code>; generated PR descriptions belong under <code>.ai/pr-descriptions/</code>. Both are ignored by git. This keeps local generated artifacts out of commits while preserving the templates and helper scripts in the repo.</p>
+
+<hr>
+
+<h2>How it works</h2>
+<ol>
+  <li>A runner signs in to the iOS app, creates a session, and starts tracking</li>
+  <li>The app sends GPS coordinates and compass heading to the server at a configurable interval</li>
+  <li>The server stores the latest positions for all runners in that session</li>
+  <li>Other users join the session in one of two ways:
+    <ul>
+      <li><strong>Invite code / link</strong> — the session owner shares an invite code or link; joining via the iOS app grants <code>runner</code> membership; joining via the web client grants <code>viewer</code> membership</li>
+      <li><strong>Browse and request</strong> — users browse active sessions in the app, send a join request, and the owner approves or denies it; approval grants <code>runner</code> membership</li>
+    </ul>
+  </li>
+  <li>The web viewer polls the server and renders all runners as directional markers on a Mapbox map</li>
+</ol>
+
+<hr>
+
+<h2>Components</h2>
+
+<h3>server</h3>
+<p>A lightweight .NET Core minimal API.</p>
+
+<span class="label">Responsibilities</span>
+<ul>
+  <li>Receive position updates from phone apps (<code>POST /location</code>)</li>
+  <li>Store latest live positions in memory and persisted history in SQLite</li>
+  <li>Serve current runner positions to authenticated session members (<code>GET /locations/{sessionCode}</code>)</li>
+  <li>No geometry or bearing logic — that is handled by the client</li>
+</ul>
+
+<span class="label">Auth</span>
+<ul>
+  <li>App endpoints require a signed user access token in the <code>Authorization</code> header</li>
+  <li>Admin/debug endpoints require the server admin bearer token</li>
+  <li>Session membership controls who can read or write location data</li>
+</ul>
+
+<span class="label">Hosting</span>
+<ul>
+  <li>Runs on Tatooine (home server, k3s cluster)</li>
+  <li>Exposed publicly via Cloudflare Tunnel</li>
+  <li>HTTPS handled by Cloudflare</li>
+</ul>
+
+<span class="label">Data</span>
+<ul>
+  <li>SQLite persistence for recorded history</li>
+  <li>In-memory live state for latest runner positions</li>
+  <li>Designed for up to 20 concurrent runners</li>
+  <li>Session data can be cleared between runs</li>
+</ul>
+
+<hr>
+
+<h3>client</h3>
+<p>A React web app using Mapbox GL JS.</p>
+
+<span class="label">Behaviour</span>
+<ul>
+  <li>Full-screen Mapbox map, responsive and touch-friendly</li>
+  <li>On first load, prompts for sign-in, then lists existing memberships or offers create/join actions</li>
+  <li>Session code can be embedded in the URL for members (e.g. <code>https://dot-watcher.yourdomain.com/SESSIONCODE</code>)</li>
+  <li>Polls the server for updated positions every 10–15 seconds</li>
+  <li>Renders each runner as a named marker with a directional arrow</li>
+  <li>Arrow orientation is driven by the <code>heading</code> field from the server (compass bearing from the phone)</li>
+  <li>When heading is unavailable for a runner, renders a plain dot instead</li>
+  <li>Map auto-fits bounds to show all runners</li>
+</ul>
+<p><strong>No bearing calculation in the client</strong> — heading comes directly from the phone's compass via the server payload.</p>
+
+<hr>
+
+<h3>ios</h3>
+<p>A native Swift app.</p>
+
+<span class="label">Behaviour</span>
+<ul>
+  <li>Runs as a background task with the screen locked</li>
+  <li>Uses <code>CLLocationManager</code> with <code>allowsBackgroundLocationUpdates = true</code></li>
+  <li>Sends position updates (coordinates + compass heading) to the server at a configurable interval</li>
+  <li>Interval is configurable within the app (e.g. 30s, 60s, 120s)</li>
+  <li>Failed transmissions are queued locally and retried</li>
+  <li>Uses the device compass for heading — does not calculate bearing from consecutive positions</li>
+  <li>When heading is unavailable (e.g. runner is stationary), sends position without heading</li>
+</ul>
+
+<span class="label">Session flow</span>
+<ul>
+  <li>Runner signs in</li>
+  <li>Runner creates a session, joins via invite code, or browses active sessions and sends a join request</li>
+  <li>Session owner approves or denies join requests from the Participants section</li>
+  <li>Runner starts/stops tracking manually</li>
+  <li>Session row is swipeable: swipe right for share actions (SMS, Email, WhatsApp, Map); swipe left to leave</li>
+</ul>
+
+<span class="label">Auth</span>
+<ul>
+  <li>Sends a user access token in the <code>Authorization</code> header on protected app API calls</li>
+</ul>
+
+<span class="label">Build configurations</span>
+<p>Three Xcode configurations: Debug (simulator → localhost), Device (physical device → <code>jakkuu.local:8080</code>), Release (production). Switch schemes in Xcode to target simulator vs. physical device.</p>
+
+<span class="label">Distribution</span>
+<ul>
+  <li>Distributed via TestFlight (not the App Store)</li>
+  <li>Public legal pages are served by the web client at <code>/privacy</code> and <code>/terms</code>; review them before public App Store release.</li>
+</ul>
+
+<hr>
+
+<h2>Auth model</h2>
+<table>
+  <thead>
+    <tr><th>Actor</th><th>Method</th><th>Auth</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>App user</td>
+      <td><code>POST /auth/register</code>, <code>POST /auth/login</code>, <code>POST /auth/logout</code>, <code>DELETE /me</code></td>
+      <td>Username/password, returns revocable user access token</td>
+    </tr>
+    <tr>
+      <td>Runner</td>
+      <td><code>POST /location</code></td>
+      <td>User access token plus owner/runner session membership</td>
+    </tr>
+    <tr>
+      <td>Viewer</td>
+      <td><code>GET /locations/{sessionCode}</code></td>
+      <td>User access token plus session membership</td>
+    </tr>
+    <tr>
+      <td>Admin/debug dashboard</td>
+      <td><code>GET /sessions</code>, <code>GET /log</code>, recording mutations</td>
+      <td>Admin bearer token in <code>Authorization</code> header</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>Session codes are identifiers, not credentials. There are two paths to membership:</p>
+<ul>
+  <li><strong>Invite code join</strong> (<code>POST /session-invites/{inviteCode}/join</code>) — grants <code>runner</code> when the iOS app sends <code>role: runner</code>, or <code>viewer</code> when joining via the web client. Preserves any existing role for returning members.</li>
+  <li><strong>Join request</strong> (<code>POST /sessions/{sessionId}/join-requests</code> → owner approves) — always grants <code>runner</code> membership on approval.</li>
+</ul>
+<p><code>GET /locations/{sessionCode}</code> returns <code>403</code> for authenticated users without membership, including unknown session codes, and returns <code>200 []</code> only for a member session with no live positions yet.</p>
+
+<pre><code>                 public account endpoints
+        +--------------------------------------+
+        | POST /auth/register, POST /auth/login |
+        +-------------------+------------------+
+                            |
+                            v
+                  +-------------------+
+                  | User access token |
+                  | exp + jti claims  |
+                  | Authorization:    |
+                  | Bearer &lt;token&gt;    |
+                  +---------+---------+
+                            |
+          +-----------------+-----------------+
+          |                                   |
+          v                                   v
++-------------------+              +----------------------+
+| Create session    |              | Join from invite     |
+| POST /sessions    |              | POST /session-       |
+|                   |              | invites/{code}/join  |
++---------+---------+              +----------+-----------+
+          |                                   |
+          v                                   v
+ +----------------+                 +----------------+
+ | app_sessions   |                 | session_members|
+ | session_code   |&lt;---------------&gt;| user_id        |
+ | invite_code    |                 | role           |
+ | owner_user_id  |                 | display_name   |
+ +--------+-------+                 +--------+-------+
+          |                                  |
+          +----------------+-----------------+
+                           |
+                           v
+              +--------------------------+
+              | Protected app endpoints |
+              | GET /locations/{code}   |
+              | POST /location          |
+              | GET /.../recording      |
+              +--------------------------+
+
+        owner/admin role management
+        +-----------------------------+
+        | GET /sessions/{code}/       |
+        |   members                   |
+        | POST /sessions/{code}/      |
+        |   members/{userId}/role     |
+        +-----------------------------+
+
+        logout/deletion revoke access
+        +-----------------------------+
+        | POST /auth/logout           |
+        | DELETE /me removes user row |
+        | token auth checks both      |
+        +-----------------------------+
+
+        separate admin/debug credential
+        +-----------------------------+
+        | Admin BearerToken           |
+        | GET /sessions, GET /log,    |
+        | upload/delete/merge         |
+        +-----------------------------+
+</code></pre>
+
+<hr>
+
+<h2>Position payload (phone → server)</h2>
+<p>Each update from the phone includes:</p>
+<ul>
+  <li>Runner identifier (server stores the authenticated member display name)</li>
+  <li>Session code</li>
+  <li>Latitude and longitude (<code>latitude</code> must be <code>-90..90</code>, <code>longitude</code> must be <code>-180..180</code>)</li>
+  <li>Compass heading in degrees (0–360, true north) — optional, omitted if unavailable</li>
+  <li>Timestamp as ISO 8601 GPS capture time</li>
+</ul>
+<p>The server validates live posts and recording uploads with the same GPS payload rules. <code>runnerName</code> remains in the payload for compatibility, but the server uses the authenticated membership display name for identity.</p>
+
+<hr>
+
+<h2>Position synchronisation</h2>
+<p>A key goal is showing all runners at the <strong>same moment in time</strong> on the map. The naive approach — each phone sends on a timer from whenever tracking started — means Runner A's last known position might be 45 seconds older than Runner B's, even if they're polling at the same interval.</p>
+
+<p><strong>Strategy: clock-aligned recording intervals</strong></p>
+<p>Instead of <code>"send every 60 seconds from now"</code>, each phone snaps its recording times to fixed wall-clock boundaries:</p>
+<ul>
+  <li>60-second interval → record at <code>17:47:00</code>, <code>17:48:00</code>, <code>17:49:00</code> …</li>
+  <li>30-second interval → record at <code>17:47:00</code>, <code>17:47:30</code>, <code>17:48:00</code> …</li>
+</ul>
+<p>All phones independently align to the same slots without any coordination. iOS devices stay within ~50–200 ms of true UTC via NTP, which is negligible compared to GPS accuracy (~3–5 m) and a runner's movement over that time (~60 cm at jogging pace).</p>
+<p>The <code>timestamp</code> field in the payload is the <em>capture time</em> (when the GPS fix was taken), not the send time. This means retried or delayed POSTs still carry the correct position timestamp. The viewer always shows where each runner <em>was</em> at the same moment, regardless of when their phone managed to upload it.</p>
+<p>No server-side changes are needed — the server already stores and returns the timestamp from the payload.</p>
+
+<hr>
+
+<h2>CI and verification</h2>
+<ul>
+  <li><code>Server .NET</code> runs for server, tests, workflow, and common root .NET metadata changes.</li>
+  <li><code>Client Node</code> runs for web client changes and covers <code>npm ci</code>, <code>npm run test</code>, and <code>npm run build</code>.</li>
+  <li>iOS build, simulator, TestFlight, Keychain, background-location, and real-device GPS behavior are manually verified outside GitHub Actions for now.</li>
+  <li>Local agents and contributors should not run local build/publish/test commands unless explicitly asked; PR verification belongs to GitHub Actions.</li>
+</ul>
+
+<hr>
+
+<h2>Out of scope (for now)</h2>
+<ul>
+  <li>Android app</li>
+  <li>Trail lines on the map (history of each runner's path)</li>
+  <li>Production OIDC/identity-provider integration</li>
+  <li>Push notifications</li>
+  <li>Offline map tiles</li>
+  <li>Public App Store or Play Store distribution</li>
+</ul>
+
+</div>
+</body>
+</html>
