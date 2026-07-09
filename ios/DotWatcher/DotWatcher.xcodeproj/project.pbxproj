@@ -68,6 +68,7 @@
 				497F89C22FDC6E6300022FF1 /* Sources */,
 				497F89C32FDC6E6300022FF1 /* Frameworks */,
 				497F89C42FDC6E6300022FF1 /* Resources */,
+				497F89ED2FDCE39200022FF1 /* Stamp Git Commit SHA */,
 			);
 			buildRules = (
 			);
@@ -127,6 +128,23 @@
 		};
 /* End PBXResourcesBuildPhase section */
 
+/* Begin PBXShellScriptBuildPhase section */
+		497F89ED2FDCE39200022FF1 /* Stamp Git Commit SHA */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+			);
+			name = "Stamp Git Commit SHA";
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "SHA=$(git -C \"$SRCROOT\" rev-parse --short HEAD 2>/dev/null || echo unknown)\n/usr/libexec/PlistBuddy -c \"Set :GitCommitSHA $SHA\" \"$CODESIGNING_FOLDER_PATH/Info.plist\"\n";
+		};
+/* End PBXShellScriptBuildPhase section */
+
 /* Begin PBXSourcesBuildPhase section */
 		497F89C22FDC6E6300022FF1 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
@@ -176,7 +194,7 @@
 				DEVELOPMENT_TEAM = 8A9JZATC8G;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
-				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GCC_C_LANGUAGE_STANDARD = gnu17;
 				GCC_DYNAMIC_NO_PIC = NO;
 				GCC_NO_COMMON_BLOCKS = YES;
@@ -240,7 +258,7 @@
 				DEVELOPMENT_TEAM = 8A9JZATC8G;
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
-				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GCC_C_LANGUAGE_STANDARD = gnu17;
 				GCC_NO_COMMON_BLOCKS = YES;
 				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
@@ -265,7 +283,6 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 5;
 				DEVELOPMENT_TEAM = 8A9JZATC8G;
 				DOTWATCHER_API_BASE_URL = "http://localhost:8080";
 				ENABLE_PREVIEWS = YES;
@@ -284,8 +301,7 @@
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
-				VERSIONING_SYSTEM = "";
+				TARGETED_DEVICE_FAMILY = 1;
 			};
 			name = Debug;
 		};
@@ -295,7 +311,6 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 5;
 				DEVELOPMENT_TEAM = 8A9JZATC8G;
 				DOTWATCHER_API_BASE_URL = "https://dot-watcher.skelstar.io/api";
 				ENABLE_PREVIEWS = YES;
@@ -314,8 +329,7 @@
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
-				VERSIONING_SYSTEM = "";
+				TARGETED_DEVICE_FAMILY = 1;
 			};
 			name = Release;
 		};
@@ -357,7 +371,7 @@
 				DEVELOPMENT_TEAM = 8A9JZATC8G;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
-				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GCC_C_LANGUAGE_STANDARD = gnu17;
 				GCC_DYNAMIC_NO_PIC = NO;
 				GCC_NO_COMMON_BLOCKS = YES;
@@ -389,7 +403,6 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 5;
 				DEVELOPMENT_TEAM = 8A9JZATC8G;
 				DOTWATCHER_API_BASE_URL = "http://jakkuu.local:8080";
 				ENABLE_PREVIEWS = YES;
@@ -408,8 +421,7 @@
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
-				VERSIONING_SYSTEM = "";
+				TARGETED_DEVICE_FAMILY = 1;
 			};
 			name = Device;
 		};
