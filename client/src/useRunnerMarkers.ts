@@ -29,10 +29,21 @@ export function useRunnerMarkers(
   const latestPositionsRef = useRef<Record<string, [number, number]>>({})
   const latestMarkerRef = useRef<Record<string, { root: Root; heading: number | null; colour: string; timestamp: string }>>({})
   const virtualNowRef = useRef<number | null>(null)
+  const pendingUnmountsRef = useRef<Root[]>([])
   const [visibleRunners, setVisibleRunners] = useState<string[]>([])
   const [offScreenRunners, setOffScreenRunners] = useState<string[]>([])
 
+  // Unmounting a React root synchronously while another root's render is still being committed
+  // (e.g. recluster() rendering into a sibling marker in the same tick) trips React's reentrancy
+  // guard. Roots queued here are dropped for good — nothing else may hold or render into them —
+  // so flushing on the next call is safe once the current commit has finished.
+  function flushPendingUnmounts() {
+    for (const root of pendingUnmountsRef.current) root.unmount()
+    pendingUnmountsRef.current = []
+  }
+
   function applyPositions(runnerGroups: RunnerPosition[][], map: mapboxgl.Map, virtualNow?: number) {
+    flushPendingUnmounts()
     if (virtualNow !== undefined) virtualNowRef.current = virtualNow
     const isFirstLoad = !hasLocatedRef.current
     const seen = new Set<string>()
@@ -57,8 +68,18 @@ export function useRunnerMarkers(
             latestMarkerRef.current[runnerName] = { root: existing.root, heading, colour, timestamp: pos.timestamp }
           }
         } else {
-          existing?.marker.remove()
-          if (existing) queueMicrotask(() => existing.root.unmount())
+          if (existing) {
+            existing.marker.remove()
+            delete markersRef.current[key]
+            // Dropping a marker whose root is still the one referenced by latestMarkerRef (e.g.
+            // rapid scrubbing that revisits a timestamp before the previous unmount could run)
+            // would leave recluster() rendering into an unmounted root, so only queue unmount
+            // once nothing else can still reference it. The unmount itself is deferred to the
+            // next applyPositions call so it never races a same-tick render (see flushPendingUnmounts).
+            const stillReferenced = Object.values(markersRef.current).some(e => e.root === existing.root)
+              || Object.values(latestMarkerRef.current).some(m => m.root === existing.root)
+            if (!stillReferenced) pendingUnmountsRef.current.push(existing.root)
+          }
 
           const el = document.createElement('div')
           const root = createRoot(el)
@@ -79,8 +100,11 @@ export function useRunnerMarkers(
       if (!seen.has(key)) {
         const stale = markersRef.current[key]
         stale.marker.remove()
-        queueMicrotask(() => stale.root.unmount())
         delete markersRef.current[key]
+        // See comment above: only queue unmount once no other entry still points at this root.
+        const stillReferenced = Object.values(markersRef.current).some(e => e.root === stale.root)
+          || Object.values(latestMarkerRef.current).some(m => m.root === stale.root)
+        if (!stillReferenced) pendingUnmountsRef.current.push(stale.root)
       }
     }
 
@@ -197,6 +221,7 @@ export function useRunnerMarkers(
         root.unmount()
       }
       markersRef.current = {}
+      flushPendingUnmounts()
     }
   }, [])
 
