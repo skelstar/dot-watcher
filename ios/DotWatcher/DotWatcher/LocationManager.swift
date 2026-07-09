@@ -320,7 +320,9 @@ final class LocationManager {
         do {
             sessionRunnerNames = try await send(path: "/sessions/\(membership.sessionId)/runners")
         } catch {
-            sessionRunnerNames = []
+            // Leave the existing list in place; a transient failure here (e.g. a network blip
+            // right as the app resumes from background) shouldn't hide other runners who were
+            // already known to be in the session, since nothing else re-fetches this list.
         }
     }
 
