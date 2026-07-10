@@ -13,6 +13,7 @@ import AuthPrompt from './AuthPrompt.tsx'
 import LegalPage from './LegalPage.tsx'
 import AdminPanel from './AdminPanel.tsx'
 import AccountSettings from './AccountSettings.tsx'
+import LandingPage from './LandingPage.tsx'
 import { useRunnerMarkers } from './useRunnerMarkers.ts'
 import { useSessionTimeline } from './useSessionTimeline.ts'
 import { canManageMembersForRole, canWriteLocationForRole, shouldShowAuthPrompt, shouldShowSessionPrompt } from './sessionState.ts'
@@ -36,19 +37,21 @@ interface RouteState {
   autoJoin: boolean
   legalPage: 'privacy' | 'terms' | null
   isAdmin: boolean
+  isLanding: boolean
 }
 
 function parseUrl(): RouteState {
   const parts = window.location.pathname.replace(/^\//, '').split('/')
   const norm = (s: string) => s.toUpperCase() || null
-  if (parts[0] === 'admin') return { sessionName: null, isReplay: false, inviteCode: null, autoJoin: false, legalPage: null, isAdmin: true }
-  if (parts[0] === 'privacy') return { sessionName: null, isReplay: false, inviteCode: null, autoJoin: false, legalPage: 'privacy', isAdmin: false }
-  if (parts[0] === 'terms') return { sessionName: null, isReplay: false, inviteCode: null, autoJoin: false, legalPage: 'terms', isAdmin: false }
-  if (parts[0] === 'code') return { sessionName: null, isReplay: parts[2] === 'replay', inviteCode: norm(parts[1] ?? ''), autoJoin: true, legalPage: null, isAdmin: false }
-  if (parts[0] === 'join') return { sessionName: null, isReplay: parts[2] === 'replay', inviteCode: norm(parts[1] ?? ''), autoJoin: false, legalPage: null, isAdmin: false }
-  if (parts[0] === 'replay') return { sessionName: null, isReplay: true, inviteCode: null, autoJoin: false, legalPage: null, isAdmin: false }
-  if (parts[1] === 'replay') return { sessionName: norm(parts[0]), isReplay: true, inviteCode: null, autoJoin: false, legalPage: null, isAdmin: false }
-  return { sessionName: norm(parts[0]), isReplay: false, inviteCode: null, autoJoin: false, legalPage: null, isAdmin: false }
+  if (parts[0] === 'admin') return { sessionName: null, isReplay: false, inviteCode: null, autoJoin: false, legalPage: null, isAdmin: true, isLanding: false }
+  if (parts[0] === 'privacy') return { sessionName: null, isReplay: false, inviteCode: null, autoJoin: false, legalPage: 'privacy', isAdmin: false, isLanding: false }
+  if (parts[0] === 'terms') return { sessionName: null, isReplay: false, inviteCode: null, autoJoin: false, legalPage: 'terms', isAdmin: false, isLanding: false }
+  if (parts[0] === 'code') return { sessionName: null, isReplay: parts[2] === 'replay', inviteCode: norm(parts[1] ?? ''), autoJoin: true, legalPage: null, isAdmin: false, isLanding: false }
+  if (parts[0] === 'join') return { sessionName: null, isReplay: parts[2] === 'replay', inviteCode: norm(parts[1] ?? ''), autoJoin: false, legalPage: null, isAdmin: false, isLanding: false }
+  if (parts[0] === 'replay') return { sessionName: null, isReplay: true, inviteCode: null, autoJoin: false, legalPage: null, isAdmin: false, isLanding: false }
+  if (parts[1] === 'replay') return { sessionName: norm(parts[0]), isReplay: true, inviteCode: null, autoJoin: false, legalPage: null, isAdmin: false, isLanding: false }
+  if (!parts[0]) return { sessionName: null, isReplay: false, inviteCode: null, autoJoin: false, legalPage: null, isAdmin: false, isLanding: true }
+  return { sessionName: norm(parts[0]), isReplay: false, inviteCode: null, autoJoin: false, legalPage: null, isAdmin: false, isLanding: false }
 }
 
 function readStoredAuth(): AuthResponse | null {
@@ -87,7 +90,7 @@ function clearStoredAuth() {
 export default function App() {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<mapboxgl.Map | null>(null)
-  const { sessionName: initialName, isReplay: startScrubbedToStart, inviteCode, autoJoin, legalPage, isAdmin } = parseUrl()
+  const { sessionName: initialName, isReplay: startScrubbedToStart, inviteCode, autoJoin, legalPage, isAdmin, isLanding } = parseUrl()
   const [sessionName, setSessionName] = useState<string | null>(initialName)
   const [auth, setAuth] = useState<AuthResponse | null>(() => readStoredAuth())
   const [memberships, setMemberships] = useState<SessionMembership[]>([])
@@ -98,7 +101,7 @@ export default function App() {
   const accessToken = auth?.accessToken ?? null
 
   useEffect(() => {
-    if (legalPage || !containerRef.current) return
+    if (legalPage || isLanding || !containerRef.current) return
 
     const map = new mapboxgl.Map({
       container: containerRef.current,
@@ -281,6 +284,10 @@ export default function App() {
 
   if (legalPage) {
     return <LegalPage kind={legalPage} />
+  }
+
+  if (isLanding) {
+    return <LandingPage />
   }
 
   return (
