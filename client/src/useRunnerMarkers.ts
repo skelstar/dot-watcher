@@ -51,11 +51,11 @@ export function useRunnerMarkers(
   function applyPositions(runnerGroups: RunnerPosition[][], map: mapboxgl.Map, virtualNow?: number) {
     if (dragListenerMapRef.current !== map) {
       dragListenerMapRef.current = map
-      // 'dragstart' only covers mouse/touch drags — trackpad two-finger panning goes through a
-      // different handler and never fires it. 'movestart' fires for both, but also fires for our
-      // own followRunner()/re-center easeTo() calls, so only unfollow when originalEvent is set
-      // (i.e. the move was actually initiated by the user, not programmatically).
-      map.on('movestart', (e) => { if (e.originalEvent) unfollowRunner() })
+      // 'dragstart' covers mouse drag, touch drag, and trackpad two-finger panning (Mapbox's
+      // ScrollZoomHandler routes non-ctrl wheel deltas to the pan handler) without also firing
+      // for zoom/rotate gestures the way a generic 'movestart' does — zooming while following
+      // should keep tracking, only an actual pan should break it.
+      map.on('dragstart', unfollowRunner)
     }
     flushPendingUnmounts()
     if (virtualNow !== undefined) virtualNowRef.current = virtualNow
