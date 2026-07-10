@@ -16,6 +16,7 @@ interface RunnerMarkersResult {
   visibleRunners: string[]
   offScreenRunners: string[]
   followedRunner: string | null
+  followingAll: boolean
   centerOnRunner: (name: string) => void
   followRunner: (name: string) => void
   unfollowRunner: () => void
@@ -37,6 +38,8 @@ export function useRunnerMarkers(
   const [offScreenRunners, setOffScreenRunners] = useState<string[]>([])
   const [followedRunner, setFollowedRunner] = useState<string | null>(null)
   const followedRunnerRef = useRef<string | null>(null)
+  const [followingAll, setFollowingAll] = useState(false)
+  const followingAllRef = useRef(false)
   const dragListenerMapRef = useRef<mapboxgl.Map | null>(null)
 
   // Unmounting a React root synchronously while another root's render is still being committed
@@ -52,9 +55,14 @@ export function useRunnerMarkers(
     if (dragListenerMapRef.current !== map) {
       dragListenerMapRef.current = map
       // 'movestart' fires for any user-driven camera change — pan, zoom, or rotate — as well as
-      // our own follow-tracking easeTo() calls below, so only unfollow when originalEvent is set
-      // (present only for gestures the user actually initiated, not programmatic moves).
-      map.on('movestart', (e) => { if (e.originalEvent) unfollowRunner() })
+      // our own follow-tracking easeTo()/fitBounds() calls below, so only unfollow when
+      // originalEvent is set (present only for gestures the user actually initiated, not
+      // programmatic moves).
+      map.on('movestart', (e) => {
+        if (!e.originalEvent) return
+        unfollowRunner()
+        unfollowAll()
+      })
     }
     flushPendingUnmounts()
     if (virtualNow !== undefined) virtualNowRef.current = virtualNow
@@ -135,6 +143,8 @@ export function useRunnerMarkers(
     if (followed) {
       const pos = latestPositionsRef.current[followed]
       if (pos) map.easeTo({ center: pos, duration: 300 })
+    } else if (followingAllRef.current) {
+      fitAllBounds(map, { duration: 300 })
     }
 
     if (seen.size > 0 && isFirstLoad) {
@@ -259,6 +269,7 @@ export function useRunnerMarkers(
   }
 
   function followRunner(name: string) {
+    unfollowAll()
     followedRunnerRef.current = name
     setFollowedRunner(name)
     const pos = latestPositionsRef.current[name]
@@ -272,23 +283,35 @@ export function useRunnerMarkers(
     setFollowedRunner(null)
   }
 
-  function fitAll() {
-    unfollowRunner()
-    const map = mapRef.current
+  function unfollowAll() {
+    if (!followingAllRef.current) return
+    followingAllRef.current = false
+    setFollowingAll(false)
+  }
+
+  function fitAllBounds(map: mapboxgl.Map, options?: mapboxgl.AnimationOptions) {
     const coords = Object.values(latestPositionsRef.current)
-    if (!map || coords.length === 0) return
+    if (coords.length === 0) return
     if (coords.length === 1) {
-      map.easeTo({ center: coords[0], zoom: 15 })
+      map.easeTo({ center: coords[0], zoom: 15, ...options })
     } else {
       const bounds = coords.reduce(
         (b, c) => b.extend(c),
         new mapboxgl.LngLatBounds(coords[0], coords[0]),
       )
-      map.fitBounds(bounds, { padding: 80, maxZoom: 16 })
+      map.fitBounds(bounds, { padding: 80, maxZoom: 16, ...options })
     }
   }
 
-  return { visibleRunners, offScreenRunners, followedRunner, centerOnRunner, followRunner, unfollowRunner, fitAll }
+  function fitAll() {
+    unfollowRunner()
+    followingAllRef.current = true
+    setFollowingAll(true)
+    const map = mapRef.current
+    if (map) fitAllBounds(map)
+  }
+
+  return { visibleRunners, offScreenRunners, followedRunner, followingAll, centerOnRunner, followRunner, unfollowRunner, fitAll }
 }
 
 export { ARROW_SIZE }
