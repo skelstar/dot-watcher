@@ -559,6 +559,29 @@ Push changes to `main`, then run in Claude Code:
 
 This re-clones the repo, rebuilds the image, pushes it to the local registry, and restarts the pod.
 
+### Deploying a release
+
+The iOS app in production points at this single server with no API versioning, so a breaking
+change deployed here affects every shipped app install immediately — there's no way for users to
+opt out or pin to an older server version. Keep changes additive (new fields, new endpoints)
+whenever possible; anything that isn't should go out as a GitHub release deployed deliberately,
+not on every push to `main`.
+
+`server/scripts/deploy.sh` wraps the same build → push → restart steps as `/deploy update`, but
+takes a git ref so you can deploy an exact tagged release instead of whatever's latest on `main`.
+It must run **on Tatooine** (it builds against `localhost:5000` and uses the in-cluster `kubectl`
+context) — SSH in first:
+
+```bash
+ssh <tatooine-host>
+curl -sO https://raw.githubusercontent.com/skelstar/dot-watcher/main/server/scripts/deploy.sh
+chmod +x deploy.sh
+./deploy.sh v1.2.0   # or a branch/commit; defaults to main
+```
+
+There is no automatic trigger from GitHub — releases are cut and deployed as two deliberate,
+separate steps, so a tagged release never rolls out to production before you've decided it should.
+
 ### Runtime secrets
 
 `BearerToken` and `JwtSigningKey` are injected into the container via a k8s secret rather than committed to the repo. The secret is named `dot-watcher-server-secrets` in the `dot-watcher-server` namespace. To recreate it (e.g. after a namespace teardown):
