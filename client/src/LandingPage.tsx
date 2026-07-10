@@ -40,7 +40,7 @@ export default function LandingPage() {
               <img src="/landing/assets/dw-sending-screenshot.png" alt="Sending location in the Dot Watcher iOS app" style={phoneAImg} />
             </div>
             <div className="dw-phone-b" style={phoneB}>
-              <video src="/landing/uploads/video_file-1783642774517.mov" style={phoneBVideo} loop muted playsInline preload="metadata" controls />
+              <video src="/landing/uploads/dw-sending-demo.mp4" style={phoneBVideo} autoPlay loop muted playsInline preload="auto" controls />
             </div>
           </div>
         </section>
