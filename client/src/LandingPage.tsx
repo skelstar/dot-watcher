@@ -113,28 +113,26 @@ function FaqItem({ q, a, last }: { q: string; a: string; last?: boolean }) {
 }
 
 const responsiveCss = `
-  .dw-phones { max-width: 100%; overflow: hidden; }
+  .dw-phones { max-width: 100%; }
   @media (max-width: 980px) {
     .dw-nav { flex-wrap:wrap; padding:22px 28px 0 !important; }
     .dw-nav-links { order:3; width:100%; justify-content:center; padding-top:14px; }
     .dw-hero { grid-template-columns:1fr !important; padding:36px 28px 12px !important; }
     .dw-hero-headline { font-size:36px !important; }
-    .dw-phones { margin-top:8px; }
-    .dw-phone-a, .dw-phone-b { transform:scale(0.72); margin-bottom:-160px; }
+    .dw-phones { margin-top:32px; }
     .dw-section { padding:8px 28px !important; }
     .dw-features { padding:28px 28px 44px !important; grid-template-columns:1fr !important; }
     .dw-faq { padding:0 28px 44px !important; }
   }
   @media (max-width: 520px) {
     .dw-hero-headline { font-size:29px !important; letter-spacing:-0.5px; }
-    .dw-phone-a, .dw-phone-b { transform:scale(0.42); margin-bottom:-350px; }
-    .dw-phones { margin-bottom:-90px; margin-left:-50px; }
   }
 `
 
 const page: React.CSSProperties = {
-  minHeight: '100%',
+  height: '100%',
   overflowY: 'auto',
+  WebkitOverflowScrolling: 'touch',
   background: '#F0F1F5',
   fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif',
 }
@@ -276,38 +274,36 @@ const heroCta: React.CSSProperties = {
 const phones: React.CSSProperties = {
   display: 'flex',
   justifyContent: 'center',
+  alignItems: 'flex-start',
 }
 
 const phoneA: React.CSSProperties = {
-  transform: 'scale(0.62)',
-  transformOrigin: 'top center',
-  marginBottom: -230,
-  width: 390,
+  width: '58%',
+  maxWidth: 242,
   boxShadow: '0 20px 60px rgba(20,21,26,.35)',
-  borderRadius: 55,
+  borderRadius: 34,
 }
 
 const phoneAImg: React.CSSProperties = {
-  width: 390,
-  borderRadius: 55,
+  width: '100%',
+  borderRadius: 34,
   display: 'block',
 }
 
 const phoneB: React.CSSProperties = {
-  transform: 'scale(0.62)',
-  transformOrigin: 'top center',
-  marginBottom: -230,
-  width: 390,
-  marginLeft: -238,
+  width: '58%',
+  maxWidth: 242,
+  marginLeft: '-24%',
+  marginTop: 60,
   position: 'relative',
   zIndex: 1,
-  borderRadius: 55,
+  borderRadius: 34,
   overflow: 'hidden',
   boxShadow: '0 20px 60px rgba(20,21,26,.35)',
 }
 
 const phoneBVideo: React.CSSProperties = {
-  width: 390,
+  width: '100%',
   display: 'block',
 }
 
