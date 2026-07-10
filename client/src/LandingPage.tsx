@@ -48,9 +48,9 @@ export default function LandingPage() {
         <section id="dw-how" className="dw-section" style={sectionStyle}>
           <h2 style={eyebrowHeading}>How it works</h2>
           <div style={stepList}>
-            <Step n={1} title="Sign in and create a session" body="Give it a name — you'll get a 6-character invite code instantly." />
-            <Step n={2} title="Send the code to your group" body="Runners join from the app, supporters just open the link in a browser." />
-            <Step n={3} title="Start tracking, watch it live" body="Every runner shows up as a dot with heading, updating every few seconds." last />
+            <Step n={1} title="Sign in and join a session" body="Some one will have created a session — you'll get a 6-character invite code to enter in the first screen after signing in." />
+            <Step n={2} title="Share the invite with others" body="You can share the invite code with others that want to join. Use WhatsApp, email or whatever options your phone provides." />
+            <Step n={3} title="Start tracking, watch it live" body="Every runner shows up as a dot with heading, updating every 15 seconds." last />
           </div>
         </section>
 
@@ -63,10 +63,11 @@ export default function LandingPage() {
         <section id="dw-faq" className="dw-faq" style={faq}>
           <h2 style={eyebrowHeading}>FAQ</h2>
           <div style={stepList}>
-            <FaqItem q="Is dot-watchr only for iPhone?" a="Right now, yes — runners join from an iPhone. Anyone watching a session, though, can do it from any browser, no app needed." />
-            <FaqItem q="How accurate is the location?" a="It uses your phone's GPS, updated every few seconds. Like any GPS app, accuracy can vary with weather, buildings, or signal." />
+            <FaqItem q="Is it only for iPhone?" a="Right now, yes — runners join from an iPhone. Once the app is sorted, we'll port to Android. Spectators will be able to watch from any browser, no app needed." />
+            <FaqItem q="How accurate is the location?" a="It uses your phone's GPS, updated every 15 seconds. Like any GPS app, accuracy can vary with weather, buildings, or signal." />
             <FaqItem q="How many people can join a session?" a="Sessions support small groups comfortably today — great for a run club outing or a race-day crew." />
-            <FaqItem q="Is it free?" a="Yes, dot-watchr is free to use during the TestFlight beta." last />
+            <FaqItem q="What's TestFlight?" a="TestFlight is Apple's beta testing platform for iOS apps. It's where you can download the last version of the app for testing. It's really easy to use." />
+            <FaqItem q="Is it free?" a="Yes, free to use during the TestFlight beta." last />
           </div>
         </section>
 
