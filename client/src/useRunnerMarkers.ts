@@ -51,7 +51,11 @@ export function useRunnerMarkers(
   function applyPositions(runnerGroups: RunnerPosition[][], map: mapboxgl.Map, virtualNow?: number) {
     if (dragListenerMapRef.current !== map) {
       dragListenerMapRef.current = map
-      map.on('dragstart', unfollowRunner)
+      // 'dragstart' only covers mouse/touch drags — trackpad two-finger panning goes through a
+      // different handler and never fires it. 'movestart' fires for both, but also fires for our
+      // own followRunner()/re-center easeTo() calls, so only unfollow when originalEvent is set
+      // (i.e. the move was actually initiated by the user, not programmatically).
+      map.on('movestart', (e) => { if (e.originalEvent) unfollowRunner() })
     }
     flushPendingUnmounts()
     if (virtualNow !== undefined) virtualNowRef.current = virtualNow
