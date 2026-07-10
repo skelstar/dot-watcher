@@ -15,7 +15,10 @@ interface MarkerEntry {
 interface RunnerMarkersResult {
   visibleRunners: string[]
   offScreenRunners: string[]
+  followedRunner: string | null
   centerOnRunner: (name: string) => void
+  followRunner: (name: string) => void
+  unfollowRunner: () => void
   fitAll: () => void
 }
 
@@ -32,6 +35,8 @@ export function useRunnerMarkers(
   const pendingUnmountsRef = useRef<Root[]>([])
   const [visibleRunners, setVisibleRunners] = useState<string[]>([])
   const [offScreenRunners, setOffScreenRunners] = useState<string[]>([])
+  const [followedRunner, setFollowedRunner] = useState<string | null>(null)
+  const followedRunnerRef = useRef<string | null>(null)
 
   // Unmounting a React root synchronously while another root's render is still being committed
   // (e.g. recluster() rendering into a sibling marker in the same tick) trips React's reentrancy
@@ -118,6 +123,12 @@ export function useRunnerMarkers(
     updateVisibleRunners(map)
     recluster(map)
 
+    const followed = followedRunnerRef.current
+    if (followed) {
+      const pos = latestPositionsRef.current[followed]
+      if (pos) map.easeTo({ center: pos, duration: 300 })
+    }
+
     if (seen.size > 0 && isFirstLoad) {
       hasLocatedRef.current = true
       const latestCoords = runnerGroups
@@ -179,7 +190,14 @@ export function useRunnerMarkers(
       const label = labels.get(name) ?? name
       const stationary = now - new Date(info.timestamp).getTime() > 45_000
       if (stationary) stationaryRunners.add(name)
-      info.root.render(createElement(Arrow, { name, heading: info.heading, colour: info.colour, label, stationary }))
+      info.root.render(createElement(Arrow, {
+        name,
+        heading: info.heading,
+        colour: info.colour,
+        label,
+        stationary,
+        onClick: () => followRunner(name),
+      }))
     }
 
     for (const [key, entry] of Object.entries(markersRef.current)) {
@@ -206,11 +224,14 @@ export function useRunnerMarkers(
     if (!map) return
     const onMove = () => updateVisibleRunners(map)
     const onMoveEnd = () => recluster(map)
+    const onDragStart = () => unfollowRunner()
     map.on('move', onMove)
     map.on('moveend', onMoveEnd)
+    map.on('dragstart', onDragStart)
     return () => {
       map.off('move', onMove)
       map.off('moveend', onMoveEnd)
+      map.off('dragstart', onDragStart)
     }
   }, [mapRef.current]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -232,7 +253,22 @@ export function useRunnerMarkers(
     map.easeTo({ center: pos, zoom: Math.max(map.getZoom(), 15) })
   }
 
+  function followRunner(name: string) {
+    followedRunnerRef.current = name
+    setFollowedRunner(name)
+    const pos = latestPositionsRef.current[name]
+    const map = mapRef.current
+    if (pos && map) map.easeTo({ center: pos })
+  }
+
+  function unfollowRunner() {
+    if (!followedRunnerRef.current) return
+    followedRunnerRef.current = null
+    setFollowedRunner(null)
+  }
+
   function fitAll() {
+    unfollowRunner()
     const map = mapRef.current
     const coords = Object.values(latestPositionsRef.current)
     if (!map || coords.length === 0) return
@@ -247,7 +283,7 @@ export function useRunnerMarkers(
     }
   }
 
-  return { visibleRunners, offScreenRunners, centerOnRunner, fitAll }
+  return { visibleRunners, offScreenRunners, followedRunner, centerOnRunner, followRunner, unfollowRunner, fitAll }
 }
 
 export { ARROW_SIZE }

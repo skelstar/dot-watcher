@@ -17,18 +17,19 @@ interface Props {
   colour: string
   label?: string  // overrides display name; '' hides the label
   stationary?: boolean
+  onClick?: () => void
 }
 
 export { ARROW_SIZE }
 
-export default function Arrow({ name, heading, colour, label, stationary }: Props) {
+export default function Arrow({ name, heading, colour, label, stationary, onClick }: Props) {
   const displayLabel = label !== undefined ? label : name
   // Only show the label when it's a cluster label (multiple runners merged)
   const showLabel = displayLabel !== '' && displayLabel !== name
 
   if (stationary) {
     return (
-      <div style={{ position: 'relative', width: 28, height: 28 }}>
+      <div style={{ position: 'relative', width: 28, height: 28 }} onClick={onClick}>
         <div className="dot-sleep" style={{
           width: 28,
           height: 28,
@@ -43,6 +44,7 @@ export default function Arrow({ name, heading, colour, label, stationary }: Prop
           fontFamily: 'system-ui, sans-serif',
           fontWeight: 700,
           color: colour,
+          cursor: onClick ? 'pointer' : undefined,
         }}>
           {name}
         </div>
@@ -70,7 +72,7 @@ export default function Arrow({ name, heading, colour, label, stationary }: Prop
   }
 
   return (
-    <div style={{ position: 'relative', width: MARKER_W, height: MARKER_H }}>
+    <div style={{ position: 'relative', width: MARKER_W, height: MARKER_H, cursor: onClick ? 'pointer' : undefined }} onClick={onClick}>
       <svg
         width={MARKER_W}
         height={MARKER_H}
