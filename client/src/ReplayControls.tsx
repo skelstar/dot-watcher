@@ -3,7 +3,6 @@ import type { SessionTimelineState } from './useSessionTimeline.ts'
 
 interface Props {
   timeline: SessionTimelineState
-  onFitAll: () => void
 }
 
 const TIME_TOOLTIP_LINGER_MS = 800
@@ -17,7 +16,7 @@ function formatTime(ms: number): string {
   return `${m}:${String(s).padStart(2, '0')}`
 }
 
-export default function ReplayControls({ timeline, onFitAll }: Props) {
+export default function ReplayControls({ timeline }: Props) {
   const { following, scrubTimeMs, runStartMs, nowMs, isLive, lastActivityMs, dragTo, dragEnd, goLive } = timeline
   const trackRef = useRef<HTMLDivElement>(null)
   const [showTooltip, setShowTooltip] = useState(false)
@@ -100,7 +99,6 @@ export default function ReplayControls({ timeline, onFitAll }: Props) {
         )
       }
 
-      <button onClick={onFitAll} style={fitAllBtn} title="Fit all">⤢</button>
     </div>
   )
 }
@@ -205,23 +203,4 @@ const liveDot: React.CSSProperties = {
   width: 6,
   height: 6,
   borderRadius: '50%',
-}
-
-const fitAllBtn: React.CSSProperties = {
-  width: 34,
-  height: 34,
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  background: '#fff',
-  border: 'none',
-  borderRadius: 6,
-  boxShadow: '0 0 0 2px rgba(0,0,0,0.1)',
-  cursor: 'pointer',
-  fontSize: '1.1rem',
-  color: '#333',
-  padding: 0,
-  flexShrink: 0,
-  marginLeft: 8,
-  pointerEvents: 'auto',
 }

@@ -15,6 +15,7 @@ interface MarkerEntry {
 interface RunnerMarkersResult {
   visibleRunners: string[]
   offScreenRunners: string[]
+  allRunners: string[]
   followedRunner: string | null
   followingAll: boolean
   centerOnRunner: (name: string) => void
@@ -36,6 +37,7 @@ export function useRunnerMarkers(
   const pendingUnmountsRef = useRef<Root[]>([])
   const [visibleRunners, setVisibleRunners] = useState<string[]>([])
   const [offScreenRunners, setOffScreenRunners] = useState<string[]>([])
+  const [allRunners, setAllRunners] = useState<string[]>([])
   const [followedRunner, setFollowedRunner] = useState<string | null>(null)
   const followedRunnerRef = useRef<string | null>(null)
   const [followingAll, setFollowingAll] = useState(false)
@@ -236,11 +238,15 @@ export function useRunnerMarkers(
     const all = Object.entries(latestPositionsRef.current)
     const visible = all.filter(([, pos]) => isInView(map, pos)).map(([name]) => name)
     const offScreen = all.filter(([, pos]) => !isInView(map, pos)).map(([name]) => name)
+    const everyone = all.map(([name]) => name).sort((a, b) => a.localeCompare(b))
     setVisibleRunners(prev =>
       prev.length === visible.length && prev.every((r, i) => r === visible[i]) ? prev : visible
     )
     setOffScreenRunners(prev =>
       prev.length === offScreen.length && prev.every((r, i) => r === offScreen[i]) ? prev : offScreen
+    )
+    setAllRunners(prev =>
+      prev.length === everyone.length && prev.every((r, i) => r === everyone[i]) ? prev : everyone
     )
   }
 
@@ -318,7 +324,7 @@ export function useRunnerMarkers(
     if (map) fitAllBounds(map)
   }
 
-  return { visibleRunners, offScreenRunners, followedRunner, followingAll, centerOnRunner, followRunner, unfollowRunner, fitAll }
+  return { visibleRunners, offScreenRunners, allRunners, followedRunner, followingAll, centerOnRunner, followRunner, unfollowRunner, fitAll }
 }
 
 export { ARROW_SIZE }

@@ -185,7 +185,7 @@ export default function App() {
     !accessToken ? inviteCode : null,
   )
 
-  const { offScreenRunners, centerOnRunner, fitAll } = useRunnerMarkers(mapRef, timeline.positions, timeline.virtualNowMs)
+  const { allRunners, followRunner, fitAll } = useRunnerMarkers(mapRef, timeline.positions, timeline.virtualNowMs)
 
   // A `/replay` deep link means "open this session already scrubbed to its start" rather than a
   // distinct mode — seed the scrub once the run's start time is known, then forget about it.
@@ -308,7 +308,7 @@ export default function App() {
           <button type="button" style={signOutButton} onClick={handleSignOut}>Sign out</button>
         </div>
       )}
-      <Legend runners={offScreenRunners} onRunnerClick={centerOnRunner} />
+      <Legend runners={allRunners} onRunnerClick={followRunner} onFitAll={fitAll} belowAccountBar={!!auth} />
       {menu && canWriteLocation && (
         <MapMenu
           x={menu.x}
@@ -319,7 +319,7 @@ export default function App() {
       )}
       {!timeline.invalidInvite && (sessionName || (!accessToken && inviteCode)) && (
         <>
-          <ReplayControls timeline={timeline} onFitAll={fitAll} />
+          <ReplayControls timeline={timeline} />
           {!timeline.following && !timeline.playing && <MapPlayButton onPlay={timeline.play} />}
         </>
       )}
