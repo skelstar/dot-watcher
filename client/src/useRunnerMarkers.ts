@@ -37,6 +37,7 @@ export function useRunnerMarkers(
   const [offScreenRunners, setOffScreenRunners] = useState<string[]>([])
   const [followedRunner, setFollowedRunner] = useState<string | null>(null)
   const followedRunnerRef = useRef<string | null>(null)
+  const dragListenerMapRef = useRef<mapboxgl.Map | null>(null)
 
   // Unmounting a React root synchronously while another root's render is still being committed
   // (e.g. recluster() rendering into a sibling marker in the same tick) trips React's reentrancy
@@ -48,6 +49,10 @@ export function useRunnerMarkers(
   }
 
   function applyPositions(runnerGroups: RunnerPosition[][], map: mapboxgl.Map, virtualNow?: number) {
+    if (dragListenerMapRef.current !== map) {
+      dragListenerMapRef.current = map
+      map.on('dragstart', unfollowRunner)
+    }
     flushPendingUnmounts()
     if (virtualNow !== undefined) virtualNowRef.current = virtualNow
     const isFirstLoad = !hasLocatedRef.current
@@ -224,14 +229,11 @@ export function useRunnerMarkers(
     if (!map) return
     const onMove = () => updateVisibleRunners(map)
     const onMoveEnd = () => recluster(map)
-    const onDragStart = () => unfollowRunner()
     map.on('move', onMove)
     map.on('moveend', onMoveEnd)
-    map.on('dragstart', onDragStart)
     return () => {
       map.off('move', onMove)
       map.off('moveend', onMoveEnd)
-      map.off('dragstart', onDragStart)
     }
   }, [mapRef.current]) // eslint-disable-line react-hooks/exhaustive-deps
 
