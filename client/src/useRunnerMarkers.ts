@@ -54,15 +54,22 @@ export function useRunnerMarkers(
   function applyPositions(runnerGroups: RunnerPosition[][], map: mapboxgl.Map, virtualNow?: number) {
     if (dragListenerMapRef.current !== map) {
       dragListenerMapRef.current = map
-      // 'movestart' fires for any user-driven camera change — pan, zoom, or rotate — as well as
-      // our own follow-tracking easeTo()/fitBounds() calls below, so only unfollow when
-      // originalEvent is set (present only for gestures the user actually initiated, not
-      // programmatic moves).
-      map.on('movestart', (e) => {
-        if (!e.originalEvent) return
+      // Mapbox's own movestart/zoomstart events are unreliable here: their originalEvent is only
+      // set for some gesture sources (e.g. a real click on the zoom button) and not others (wheel
+      // and ctrl-wheel/trackpad-pinch zoom fire with originalEvent undefined, indistinguishable
+      // from our own programmatic easeTo()/fitBounds() calls below). Listening on the raw DOM
+      // events instead catches genuine user input at the source, unaffected by that inconsistency.
+      const onUserGesture = () => {
         unfollowRunner()
         unfollowAll()
-      })
+      }
+      const container = map.getCanvasContainer()
+      container.addEventListener('mousedown', onUserGesture)
+      container.addEventListener('touchstart', onUserGesture)
+      container.addEventListener('wheel', onUserGesture)
+      // The zoom +/- buttons (NavigationControl) live outside the canvas container, so they
+      // don't reach the listeners above — but a real click on them does carry originalEvent.
+      map.on('zoomstart', (e) => { if (e.originalEvent) onUserGesture() })
     }
     flushPendingUnmounts()
     if (virtualNow !== undefined) virtualNowRef.current = virtualNow
