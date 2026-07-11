@@ -554,8 +554,16 @@ final class LocationManager {
         SecItemAdd(item as CFDictionary, nil)
     }
 
+    /// TestFlight builds carry a sandbox receipt; App Store builds carry a production receipt.
+    /// Both are archived from the same Release build configuration, so this is the only way to
+    /// tell them apart at runtime and route TestFlight to the staging server.
+    private static var isTestFlightBuild: Bool {
+        Bundle.main.appStoreReceiptURL?.lastPathComponent == "sandboxReceipt"
+    }
+
     private static func configuredServerBaseURL() -> URL {
-        let configured = Bundle.main.object(forInfoDictionaryKey: "DotWatcherAPIBaseURL") as? String
+        let infoKey = isTestFlightBuild ? "DotWatcherStagingAPIBaseURL" : "DotWatcherAPIBaseURL"
+        let configured = Bundle.main.object(forInfoDictionaryKey: infoKey) as? String
         let rawValue = configured?.trimmingCharacters(in: .whitespacesAndNewlines)
         let fallback = "https://dot-watcher.skelstar.io/api"
         let urlString: String

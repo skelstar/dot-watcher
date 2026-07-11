@@ -12,7 +12,7 @@ Three Xcode build configurations control which server the app talks to:
 | --- | --- | --- |
 | **Debug** | iOS Simulator | `http://localhost:8080` |
 | **Device** | Physical device (via USB) | `http://jakkuu.local:8080` |
-| **Release** | TestFlight / App Store | `https://dot-watcher.skelstar.io/api` |
+| **Release** | TestFlight / App Store | see below |
 
 Switch between them by changing the active scheme in Xcode's toolbar:
 
@@ -20,6 +20,15 @@ Switch between them by changing the active scheme in Xcode's toolbar:
 - **DotWatcher (Device)** — uses the Device configuration (physical device, Mac hostname)
 
 The API base URL is set in `DOTWATCHER_API_BASE_URL` (build setting) and read by the app at runtime from `DotWatcherAPIBaseURL` in `Info.plist`.
+
+### Release: TestFlight vs App Store
+
+TestFlight and App Store builds are both archived from the same **Release** configuration — Xcode has no separate build configuration for them, since Apple only decides the distribution channel after the archive is uploaded. To still route each to the right server, `LocationManager.configuredServerBaseURL()` checks the app's StoreKit receipt at runtime:
+
+- A **sandbox receipt** (`appStoreReceiptURL` ends in `sandboxReceipt`) means the build came from TestFlight → uses `DotWatcherStagingAPIBaseURL` (`DOTWATCHER_STAGING_API_BASE_URL` build setting → `https://dot-watcher-staging.skelstar.io/api`).
+- Any other receipt means an App Store install → uses `DotWatcherAPIBaseURL` (`DOTWATCHER_API_BASE_URL` build setting → `https://dot-watcher.skelstar.io/api`).
+
+No separate archive or scheme switch is needed — the same Release build works correctly whether it's distributed via TestFlight or released to the App Store.
 
 ### Physical device setup
 
