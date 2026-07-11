@@ -18,6 +18,8 @@
 	<string>209</string>
 	<key>DotWatcherAPIBaseURL</key>
 	<string>$(DOTWATCHER_API_BASE_URL)</string>
+	<key>DotWatcherStagingAPIBaseURL</key>
+	<string>$(DOTWATCHER_STAGING_API_BASE_URL)</string>
 	<key>GitCommitSHA</key>
 	<string>3b66e63</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
