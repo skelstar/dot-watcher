@@ -457,6 +457,7 @@ final class LocationManager {
         }
         var request = URLRequest(url: url)
         request.httpMethod = method
+        request.setValue(UIDevice.current.name, forHTTPHeaderField: "X-Device-Name")
         if authorized {
             guard let accessToken else { throw DotWatcherAPIError.missingToken }
             request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
@@ -489,6 +490,7 @@ final class LocationManager {
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.setValue(UIDevice.current.name, forHTTPHeaderField: "X-Device-Name")
         _ = try? await URLSession.shared.data(for: request)
     }
 
@@ -501,6 +503,7 @@ final class LocationManager {
         var request = URLRequest(url: url)
         request.httpMethod = method
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.setValue(UIDevice.current.name, forHTTPHeaderField: "X-Device-Name")
 
         do {
             let (_, response) = try await URLSession.shared.data(for: request)
