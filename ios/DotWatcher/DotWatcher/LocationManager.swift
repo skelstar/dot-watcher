@@ -103,6 +103,7 @@ final class LocationManager {
     private var connectivityPollTimer: Timer?
 
     let serverBaseURL = LocationManager.configuredServerBaseURL()
+    let webBaseURL = LocationManager.configuredWebBaseURL()
     var sessionId = UserDefaults.standard.string(forKey: "sessionId") ?? "" {
         didSet {
             UserDefaults.standard.set(sessionId, forKey: "sessionId")
@@ -130,6 +131,10 @@ final class LocationManager {
 
     var canTrackSelectedSession: Bool {
         activeMembership?.role == "runner"
+    }
+
+    func liveMapURL(inviteCode: String) -> URL? {
+        URL(string: "code/\(inviteCode)", relativeTo: webBaseURL)
     }
 
     func nextPostAt(from now: Date = Date()) -> Date {
@@ -562,10 +567,22 @@ final class LocationManager {
     }
 
     private static func configuredServerBaseURL() -> URL {
-        let infoKey = isTestFlightBuild ? "DotWatcherStagingAPIBaseURL" : "DotWatcherAPIBaseURL"
+        configuredBaseURL(
+            infoKey: isTestFlightBuild ? "DotWatcherStagingAPIBaseURL" : "DotWatcherAPIBaseURL",
+            fallback: "https://dot-watcher.skelstar.io/api"
+        )
+    }
+
+    private static func configuredWebBaseURL() -> URL {
+        configuredBaseURL(
+            infoKey: isTestFlightBuild ? "DotWatcherStagingWebBaseURL" : "DotWatcherWebBaseURL",
+            fallback: "https://dot-watcher.skelstar.io"
+        )
+    }
+
+    private static func configuredBaseURL(infoKey: String, fallback: String) -> URL {
         let configured = Bundle.main.object(forInfoDictionaryKey: infoKey) as? String
         let rawValue = configured?.trimmingCharacters(in: .whitespacesAndNewlines)
-        let fallback = "https://dot-watcher.skelstar.io/api"
         let urlString: String
         if let rawValue, !rawValue.isEmpty {
             urlString = rawValue
@@ -577,7 +594,7 @@ final class LocationManager {
               let scheme = url.scheme?.lowercased(),
               url.host != nil
         else {
-            preconditionFailure("DotWatcherAPIBaseURL must be a valid absolute URL.")
+            preconditionFailure("\(infoKey) must be a valid absolute URL.")
         }
 
         if scheme == "https" {
@@ -590,7 +607,7 @@ final class LocationManager {
         }
         #endif
 
-        preconditionFailure("DotWatcherAPIBaseURL must use HTTPS outside local development.")
+        preconditionFailure("\(infoKey) must use HTTPS outside local development.")
     }
 }
 

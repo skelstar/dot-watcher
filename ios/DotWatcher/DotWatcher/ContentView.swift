@@ -266,11 +266,20 @@ struct ContentView: View {
             await location.loadSessionRunners()
         }
         .safeAreaInset(edge: .bottom) {
-            bottomButton
-                .padding(.horizontal, 16)
-                .padding(.vertical, 12)
-                .frame(maxWidth: .infinity)
-                .background(.regularMaterial)
+            if !location.isTracking {
+                bottomButton
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
+                    .frame(maxWidth: .infinity)
+                    .background(.regularMaterial)
+            }
+        }
+        .sheet(isPresented: .constant(location.isTracking)) {
+            LiveMapSheet(location: location)
+                .presentationDetents([.height(LiveMapSheet.peekHeight), .medium, .large])
+                .presentationBackgroundInteraction(.enabled(upThrough: .medium))
+                .interactiveDismissDisabled()
+                .presentationDragIndicator(.visible)
         }
     }
 
@@ -366,6 +375,26 @@ struct ContentView: View {
                 }
             }
             Spacer()
+            if location.isTracking {
+                Button { showStopConfirm = true } label: {
+                    Text("Stop")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .frame(height: 48)
+                        .padding(.horizontal, 16)
+                        .background(Color.red, in: RoundedRectangle(cornerRadius: 12))
+                }
+                .buttonStyle(.plain)
+                .alert("Stop tracking?", isPresented: $showStopConfirm) {
+                    Button("Stop & Leave", role: .destructive) {
+                        Task { await location.stopAndLeave() }
+                    }
+                    Button("Cancel", role: .cancel) {}
+                } message: {
+                    let name = location.activeMembership?.sessionName ?? "this session"
+                    Text("This will stop tracking and remove you from \(name). You can rejoin later using the invite code.")
+                }
+            }
             if location.activeMembership != nil {
                 Button {
                     Task {
@@ -409,9 +438,9 @@ struct ContentView: View {
 
             let rightActionW: CGFloat = 72
             let btnW: CGFloat = 64
-            let leftActionW: CGFloat = btnW * 2
+            let leftActionW: CGFloat = btnW
             ZStack(alignment: .leading) {
-                // Single background: share + map on left, Leave on right
+                // Single background: share on left, Leave on right
                 HStack(spacing: 0) {
                     if !location.sessionId.isEmpty,
                        let inviteCode = location.activeMembership?.inviteCode {
@@ -428,22 +457,6 @@ struct ContentView: View {
                         .simultaneousGesture(TapGesture().onEnded {
                             withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) { sessionRowSwipeOffset = 0 }
                         })
-                        if let url = URL(string: sessionUrl) {
-                            Button {
-                                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) { sessionRowSwipeOffset = 0 }
-                                UIApplication.shared.open(url)
-                            } label: {
-                                Image("MapIcon")
-                                    .resizable()
-                                    .scaledToFit()
-                                    .frame(width: 36, height: 36)
-                                    .foregroundStyle(.white)
-                                    .frame(width: btnW)
-                                    .frame(maxHeight: .infinity)
-                                    .background(Color(.systemGray))
-                            }
-                            .buttonStyle(.plain)
-                        }
                     }
                     Spacer()
                     // Leave
@@ -641,23 +654,7 @@ struct ContentView: View {
 
     @ViewBuilder
     private var bottomButton: some View {
-        if location.isTracking {
-            Button { showStopConfirm = true } label: {
-                Text("Stop").frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.borderedProminent)
-            .tint(.red)
-            .controlSize(.large)
-            .alert("Stop tracking?", isPresented: $showStopConfirm) {
-                Button("Stop & Leave", role: .destructive) {
-                    Task { await location.stopAndLeave() }
-                }
-                Button("Cancel", role: .cancel) {}
-            } message: {
-                let name = location.activeMembership?.sessionName ?? "this session"
-                Text("This will stop tracking and remove you from \(name). You can rejoin later using the invite code.")
-            }
-        } else if !location.isAuthenticated {
+        if !location.isAuthenticated {
             Button { showAuth = true } label: {
                 Text("Sign in").frame(maxWidth: .infinity)
             }
