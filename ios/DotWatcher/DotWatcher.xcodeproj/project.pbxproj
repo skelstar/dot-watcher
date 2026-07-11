@@ -286,6 +286,8 @@
 				DEVELOPMENT_TEAM = 8A9JZATC8G;
 				DOTWATCHER_API_BASE_URL = "http://localhost:8080";
 				DOTWATCHER_STAGING_API_BASE_URL = "http://localhost:8080";
+				DOTWATCHER_WEB_BASE_URL = "http://localhost:5173";
+				DOTWATCHER_STAGING_WEB_BASE_URL = "http://localhost:5173";
 				ENABLE_PREVIEWS = YES;
 				INFOPLIST_FILE = DotWatcher/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.6;
@@ -315,6 +317,8 @@
 				DEVELOPMENT_TEAM = 8A9JZATC8G;
 				DOTWATCHER_API_BASE_URL = "https://dot-watcher.skelstar.io/api";
 				DOTWATCHER_STAGING_API_BASE_URL = "https://dot-watcher-staging.skelstar.io/api";
+				DOTWATCHER_WEB_BASE_URL = "https://dot-watcher.skelstar.io";
+				DOTWATCHER_STAGING_WEB_BASE_URL = "https://dot-watcher-staging.skelstar.io";
 				ENABLE_PREVIEWS = YES;
 				INFOPLIST_FILE = DotWatcher/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.6;
@@ -408,6 +412,8 @@
 				DEVELOPMENT_TEAM = 8A9JZATC8G;
 				DOTWATCHER_API_BASE_URL = "http://jakkuu.local:8080";
 				DOTWATCHER_STAGING_API_BASE_URL = "http://jakkuu.local:8080";
+				DOTWATCHER_WEB_BASE_URL = "http://jakkuu.local:5173";
+				DOTWATCHER_STAGING_WEB_BASE_URL = "http://jakkuu.local:5173";
 				ENABLE_PREVIEWS = YES;
 				INFOPLIST_FILE = DotWatcher/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.6;
