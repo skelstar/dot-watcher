@@ -86,6 +86,9 @@ app.Use(async (ctx, next) =>
         if (ctx.GetRouteValue("sessionId") is string sessionId)
             log = log.ForContext("SessionId", sessionId);
 
+        if (ctx.Request.Headers.TryGetValue("X-Device-Name", out var deviceName) && !string.IsNullOrWhiteSpace(deviceName))
+            log = log.ForContext("DeviceName", deviceName.ToString());
+
         var userAuth = ctx.RequestServices.GetRequiredService<UserTokenAuth>();
         if (userAuth.TryAuthenticate(ctx.Request, out var user))
         {
