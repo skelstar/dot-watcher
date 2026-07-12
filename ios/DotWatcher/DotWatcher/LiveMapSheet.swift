@@ -9,13 +9,17 @@ struct LiveMapSheet: View {
         GeometryReader { proxy in
             let isPeeking = proxy.size.height <= Self.peekHeight
             VStack(spacing: 0) {
-                header
+                if isPeeking {
+                    header
+                        .transition(.opacity)
+                }
                 if !isPeeking, let url = mapURL {
                     LiveMapWebView(url: url)
                 } else {
                     Color.clear
                 }
             }
+            .animation(.easeInOut(duration: 0.15), value: isPeeking)
         }
     }
 

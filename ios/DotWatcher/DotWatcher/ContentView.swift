@@ -253,33 +253,33 @@ struct ContentView: View {
     // MARK: - Session View
 
     private var sessionView: some View {
-        ScrollView {
-            VStack(spacing: 16) {
-                headerSection
-                runnerRow
-                sessionNameCard
+        ZStack(alignment: .bottom) {
+            ScrollView {
+                VStack(spacing: 16) {
+                    headerSection
+                    runnerRow
+                    sessionNameCard
+                }
+                .padding()
             }
-            .padding()
-        }
-        .refreshable {
-            await location.loadSessions()
-            await location.loadSessionRunners()
-        }
-        .safeAreaInset(edge: .bottom) {
-            if !location.isTracking {
-                bottomButton
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 12)
-                    .frame(maxWidth: .infinity)
-                    .background(.regularMaterial)
+            .refreshable {
+                await location.loadSessions()
+                await location.loadSessionRunners()
             }
-        }
-        .sheet(isPresented: .constant(location.isTracking)) {
-            LiveMapSheet(location: location)
-                .presentationDetents([.height(LiveMapSheet.peekHeight), .medium, .large])
-                .presentationBackgroundInteraction(.enabled(upThrough: .medium))
-                .interactiveDismissDisabled()
-                .presentationDragIndicator(.visible)
+            .safeAreaInset(edge: .bottom) {
+                if !location.isTracking {
+                    bottomButton
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 12)
+                        .frame(maxWidth: .infinity)
+                        .background(.regularMaterial)
+                }
+            }
+            if location.isTracking {
+                DragSheet(peekHeight: LiveMapSheet.peekHeight) {
+                    LiveMapSheet(location: location)
+                }
+            }
         }
     }
 
