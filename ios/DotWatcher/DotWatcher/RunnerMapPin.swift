@@ -3,11 +3,16 @@ import SwiftUI
 /// A map marker for a runner: the existing `RunnerCircle` avatar, upright and never rotating,
 /// with a small chevron that orbits the circle's edge to show compass heading — mirrors the
 /// web client's `Arrow.tsx` marker (upright dot + orbiting chevron), scaled to `size`.
+///
+/// When `isStale` (no position update for `NativeMapView.staleAfter`), renders the web
+/// client's "sleep" style instead: white fill, colored outline/initials, gently pulsing, no
+/// chevron — signals the runner may have stopped moving or lost signal.
 struct RunnerMapPin: View {
     let name: String
     var size: CGFloat = 36
     var isHighlighted: Bool = false
     var heading: Double?
+    var isStale: Bool = false
 
     /// The circle itself renders smaller than `size` while the label keeps its normal
     /// proportional font size (computed from the full `size`), so shrinking the dot doesn't
@@ -19,22 +24,54 @@ struct RunnerMapPin: View {
     private var dotColor: Color { isHighlighted ? .accentColor : Color(.systemGray4) }
 
     var body: some View {
-        ZStack {
-            RunnerCircle(name: name, size: circleSize, isHighlighted: isHighlighted, fontSize: size * 0.3)
-            if let heading {
-                // The chevron sits near the top of a full-pin-size transparent frame, then the
-                // whole frame rotates around its own center — which is the pin's center — so
-                // the chevron orbits the dot's edge exactly like the web's
-                // `rotate(heading, CX, CY)` transform.
-                ChevronShape()
-                    .stroke(dotColor, style: StrokeStyle(lineWidth: size * 0.09, lineCap: .round, lineJoin: .round))
-                    .frame(width: size * 0.27, height: size * 0.14)
-                    .shadow(color: .black.opacity(0.4), radius: 1, y: 1)
-                    .padding(.top, -size * 0.12)
-                    .frame(width: size, height: size, alignment: .top)
-                    .rotationEffect(.degrees(heading))
+        if isStale {
+            SleepPin(name: name, size: circleSize, color: dotColor)
+        } else {
+            ZStack {
+                RunnerCircle(name: name, size: circleSize, isHighlighted: isHighlighted, fontSize: size * 0.3)
+                if let heading {
+                    // The chevron sits near the top of a full-pin-size transparent frame, then
+                    // the whole frame rotates around its own center — which is the pin's
+                    // center — so the chevron orbits the dot's edge exactly like the web's
+                    // `rotate(heading, CX, CY)` transform.
+                    ChevronShape()
+                        .stroke(dotColor, style: StrokeStyle(lineWidth: size * 0.09, lineCap: .round, lineJoin: .round))
+                        .frame(width: size * 0.27, height: size * 0.14)
+                        .shadow(color: .black.opacity(0.4), radius: 1, y: 1)
+                        .padding(.top, -size * 0.12)
+                        .frame(width: size, height: size, alignment: .top)
+                        .rotationEffect(.degrees(heading))
+                }
             }
         }
+    }
+}
+
+private struct SleepPin: View {
+    let name: String
+    let size: CGFloat
+    let color: Color
+
+    @State private var isPulsing = false
+
+    var body: some View {
+        Circle()
+            .fill(Color.white)
+            .overlay(Circle().stroke(color, lineWidth: 2))
+            .frame(width: size, height: size)
+            .shadow(color: .black.opacity(0.45), radius: 2, y: 1)
+            .overlay {
+                Text(name.trimmingCharacters(in: .whitespaces).isEmpty ? "?" : name)
+                    .font(.system(size: size * 0.3, weight: .bold))
+                    .foregroundStyle(color)
+            }
+            .scaleEffect(isPulsing ? 1.05 : 0.85)
+            .opacity(isPulsing ? 0.7 : 0.35)
+            .onAppear {
+                withAnimation(.easeInOut(duration: 1.4).repeatForever(autoreverses: true)) {
+                    isPulsing = true
+                }
+            }
     }
 }
 
