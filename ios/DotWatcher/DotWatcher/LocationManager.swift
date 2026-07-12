@@ -91,7 +91,6 @@ final class LocationManager {
     private(set) var currentUser: AppUser?
     private(set) var memberships: [SessionMembership] = []
     private(set) var recentSessions: [SessionMembership] = []
-    private(set) var sessionRunnerNames: [String] = []
     private(set) var isOffline = false
     /// Latest known position for every runner in the session, as of the local user's most
     /// recent `POST /location`. Only refreshes on that cadence (every `interval` seconds while
@@ -246,7 +245,6 @@ final class LocationManager {
         currentUser = nil
         memberships = []
         recentSessions = []
-        sessionRunnerNames = []
         sessionId = ""
         Self.storeToken(nil)
         UserDefaults.standard.removeObject(forKey: "currentUser")
@@ -316,7 +314,6 @@ final class LocationManager {
     func selectSession(_ membership: SessionMembership) {
         sessionId = membership.sessionId
         status = membership.role == "viewer" ? "Viewer only" : "Ready"
-        Task { await loadSessionRunners() }
     }
 
     func leaveSession(sessionId code: String) async throws {
@@ -331,22 +328,7 @@ final class LocationManager {
         if sessionId == code {
             sessionId = ""
             participants = []
-            sessionRunnerNames = []
             status = "Idle"
-        }
-    }
-
-    func loadSessionRunners() async {
-        guard let membership = activeMembership else {
-            sessionRunnerNames = []
-            return
-        }
-        do {
-            sessionRunnerNames = try await send(path: "/sessions/\(membership.sessionId)/runners")
-        } catch {
-            // Leave the existing list in place; a transient failure here (e.g. a network blip
-            // right as the app resumes from background) shouldn't hide other runners who were
-            // already known to be in the session, since nothing else re-fetches this list.
         }
     }
 
