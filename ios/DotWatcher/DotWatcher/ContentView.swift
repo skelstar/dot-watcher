@@ -276,7 +276,7 @@ struct ContentView: View {
                 }
             }
             if location.isTracking {
-                DragSheet(peekHeight: LiveMapSheet.peekHeight) {
+                DragSheet(peekHeight: LiveMapSheet.peekHeight) { _ in
                     LiveMapSheet(location: location)
                 }
             }
