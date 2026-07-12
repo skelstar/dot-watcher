@@ -19,16 +19,19 @@ struct RunnerMapPin: View {
     /// shrink the initials.
     private var circleSize: CGFloat { size * 0.75 }
 
-    /// Matches `RunnerCircle`'s own fill color so the chevron reads as part of the same dot
-    /// instead of a separate white shape that's hard to see against light map backgrounds.
-    private var dotColor: Color { isHighlighted ? .accentColor : Color(.systemGray4) }
+    /// The local user's own pin is always black so it's unambiguous at a glance; every other
+    /// runner gets a stable color hashed from their name (`RunnerColorPalette`), matching the
+    /// web client's per-runner coloring. Also used for the chevron so it reads as part of the
+    /// same dot instead of a separate white shape that's hard to see against light map
+    /// backgrounds.
+    private var dotColor: Color { isHighlighted ? .black : RunnerColorPalette.color(for: name) }
 
     var body: some View {
         if isStale {
             SleepPin(name: name, size: circleSize, color: dotColor)
         } else {
             ZStack {
-                RunnerCircle(name: name, size: circleSize, isHighlighted: isHighlighted, fontSize: size * 0.3)
+                RunnerCircle(name: name, size: circleSize, fontSize: size * 0.3, fillColor: dotColor)
                 if let heading {
                     // The chevron sits near the top of a full-pin-size transparent frame, then
                     // the whole frame rotates around its own center — which is the pin's
