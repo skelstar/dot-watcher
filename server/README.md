@@ -189,6 +189,17 @@ Live posts and uploaded NDJSON recordings share the same payload validation. The
 | 401    | Missing or invalid user token |
 | 403    | Authenticated user is not an owner/runner member |
 
+On success, the body is:
+
+```json
+{
+  "participants": ["Alice", "Bob"],
+  "positions": [[{ "runnerName": "Alice", "latitude": -41.17, "longitude": 174.7762, "heading": 270.5, "timestamp": "2024-11-15T09:23:45Z" }]]
+}
+```
+
+`participants` lists display names of active session members. `positions` carries each runner's latest position (same shape as `GET /locations/{sessionCode}`) so a client can render a map without a separate request.
+
 ---
 
 ### `GET /locations/{sessionCode}`
