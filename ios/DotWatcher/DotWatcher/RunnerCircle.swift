@@ -7,17 +7,21 @@ struct RunnerCircle: View {
     /// Overrides the label's font size, decoupling it from `size` (the circle's diameter).
     /// Defaults to the usual proportional sizing.
     var fontSize: CGFloat?
+    /// Overrides the circle's fill color (and switches the label to white for contrast).
+    /// Defaults to the usual accent/gray behavior driven by `isHighlighted`.
+    var fillColor: Color?
 
     private static let highlightColor = Color.accentColor
 
     var body: some View {
+        let color = fillColor ?? (isHighlighted ? Self.highlightColor : Color(.systemGray4))
         ZStack {
             Circle()
-                .fill(isHighlighted ? Self.highlightColor : Color(.systemGray4))
+                .fill(color)
                 .frame(width: size, height: size)
             Text(name.trimmingCharacters(in: .whitespaces).isEmpty ? "?" : name)
                 .font(.system(size: fontSize ?? size * 0.3, weight: .bold))
-                .foregroundStyle(isHighlighted ? .white : .primary)
+                .foregroundStyle(fillColor != nil || isHighlighted ? .white : .primary)
         }
     }
 }
