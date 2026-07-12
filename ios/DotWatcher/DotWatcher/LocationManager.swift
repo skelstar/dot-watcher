@@ -104,6 +104,15 @@ final class LocationManager {
     fileprivate var latestLocation: CLLocation?
     fileprivate var oneShotLocationContinuation: CheckedContinuation<CLLocation?, Never>?
 
+    /// The phone's own current position, straight from CoreLocation — not from the last
+    /// `POST /location` response. Used to render the local user's own map pin immediately,
+    /// without waiting for a round-trip to the server.
+    var currentCoordinate: CLLocationCoordinate2D? { latestLocation?.coordinate }
+    var currentHeading: Double? {
+        guard let course = latestLocation?.course, course >= 0 else { return nil }
+        return course
+    }
+
     private let clManager = CLLocationManager()
     private let locationDelegate = LocationDelegate()
     private var trackingTask: Task<Void, Never>?
