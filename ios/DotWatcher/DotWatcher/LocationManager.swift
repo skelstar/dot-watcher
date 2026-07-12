@@ -637,6 +637,10 @@ struct RunnerPositionResponse: Codable {
     let longitude: Double
     let heading: Double?
     let timestamp: String
+
+    var parsedTimestamp: Date? {
+        ISO8601DateFormatter().date(from: timestamp)
+    }
 }
 
 private final class LocationDelegate: NSObject, CLLocationManagerDelegate {

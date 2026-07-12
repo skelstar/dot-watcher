@@ -2,6 +2,10 @@ import MapKit
 import SwiftUI
 
 struct NativeMapView: View {
+    /// A runner with no position update for longer than this is considered stale/stationary
+    /// and rendered with the dimmed "sleep" pin style, matching the web client's 30s threshold.
+    static let staleAfter: TimeInterval = 30
+
     var positions: [RunnerPositionResponse]
     var currentRunnerName: String
     /// The phone's own live coordinate (from CoreLocation), rendered in place of whatever
@@ -17,23 +21,30 @@ struct NativeMapView: View {
         let coordinate: CLLocationCoordinate2D
         let heading: Double?
         let isCurrentRunner: Bool
+        /// `nil` for the local user's own live pin, which is never considered stale.
+        let timestamp: Date?
     }
 
     private var pins: [Pin] {
         var result = positions
             .filter { $0.runnerName != currentRunnerName }
-            .map { Pin(id: $0.runnerName, coordinate: $0.coordinate, heading: $0.heading, isCurrentRunner: false) }
+            .map {
+                Pin(id: $0.runnerName, coordinate: $0.coordinate, heading: $0.heading, isCurrentRunner: false, timestamp: $0.parsedTimestamp)
+            }
         if let currentCoordinate {
-            result.append(Pin(id: currentRunnerName, coordinate: currentCoordinate, heading: currentHeading, isCurrentRunner: true))
+            result.append(Pin(id: currentRunnerName, coordinate: currentCoordinate, heading: currentHeading, isCurrentRunner: true, timestamp: nil))
         }
         return result
     }
 
     var body: some View {
-        Map(position: $cameraPosition) {
-            ForEach(pins) { pin in
-                Annotation("", coordinate: pin.coordinate) {
-                    RunnerMapPin(name: pin.id, isHighlighted: pin.isCurrentRunner, heading: pin.heading)
+        TimelineView(.periodic(from: .now, by: 1)) { context in
+            Map(position: $cameraPosition) {
+                ForEach(pins) { pin in
+                    Annotation("", coordinate: pin.coordinate) {
+                        let isStale = pin.timestamp.map { context.date.timeIntervalSince($0) > Self.staleAfter } ?? false
+                        RunnerMapPin(name: pin.id, isHighlighted: pin.isCurrentRunner, heading: pin.heading, isStale: isStale)
+                    }
                 }
             }
         }
