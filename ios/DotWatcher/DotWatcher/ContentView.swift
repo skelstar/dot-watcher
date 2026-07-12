@@ -91,7 +91,7 @@ struct ContentView: View {
                 }
                 Button("Cancel", role: .cancel) {}
             } message: {
-                if let membership = location.activeMembership {
+                if location.activeMembership != nil {
                     Text("Are you sure you want to leave this session? You can rejoin later using the invite code.")
                 }
             }
@@ -313,8 +313,8 @@ struct ContentView: View {
             }
             Spacer()
             if let inviteCode = location.activeMembership?.inviteCode {
-                let sessionUrl = "https://dot-watcher.skelstar.io/code/\(inviteCode)"
-                let shareMessage = "Join my DotWatcher session!\n\nInvite code: \(inviteCode)\n\n\(sessionUrl)"
+                let sessionUrl = location.webBaseURL.appendingPathComponent("code/\(inviteCode)")
+                let shareMessage = "Join my DotWatcher session!\n\nInvite code: \(inviteCode)\n\n\(sessionUrl.absoluteString)"
                 ShareLink(item: shareMessage) {
                     Image(systemName: "square.and.arrow.up")
                         .font(.title2)
@@ -442,8 +442,8 @@ struct ContentView: View {
                 HStack(spacing: 0) {
                     if !location.sessionId.isEmpty,
                        let inviteCode = location.activeMembership?.inviteCode {
-                        let sessionUrl = "https://dot-watcher.skelstar.io/code/\(inviteCode)"
-                        let shareMessage = "Join my DotWatcher session!\n\nInvite code: \(inviteCode)\n\n\(sessionUrl)"
+                        let sessionUrl = location.webBaseURL.appendingPathComponent("code/\(inviteCode)")
+                        let shareMessage = "Join my DotWatcher session!\n\nInvite code: \(inviteCode)\n\n\(sessionUrl.absoluteString)"
                         ShareLink(item: shareMessage) {
                             Image(systemName: "square.and.arrow.up")
                                 .font(.system(size: 22))
@@ -579,74 +579,6 @@ struct ContentView: View {
         .clipShape(RoundedRectangle(cornerRadius: 14))
     }
 
-    // MARK: - Status Card
-
-    private var statusCard: some View {
-        VStack(spacing: 10) {
-            HStack {
-                HStack(spacing: 8) {
-                    Circle()
-                        .fill(statusDotColor)
-                        .frame(width: 10, height: 10)
-                    Text(location.status)
-                        .font(.headline)
-                }
-                Spacer()
-                Text("every 15s")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Button {
-                    Task {
-                        await location.loadSessions()
-                    }
-                } label: {
-                    Image(systemName: "arrow.clockwise")
-                        .font(.system(size: 18, weight: .semibold))
-                        .foregroundStyle(.secondary)
-                        .frame(width: 40, height: 40)
-                        .background(Color(.white), in: Circle())
-                }
-                .buttonStyle(.plain)
-            }
-            HStack {
-                if batteryLevel >= 0 {
-                    Label("\(Int(batteryLevel * 100))%", systemImage: batteryIcon)
-                        .font(.caption)
-                        .foregroundStyle(batteryLevel < 0.2 ? .red : .secondary)
-                }
-                Spacer()
-                if let sent = location.lastSent {
-                    Text("Last sent \(sent.formatted(date: .omitted, time: .standard))")
-                        .font(.caption)
-                        .foregroundStyle(.tertiary)
-                }
-            }
-        }
-        .padding(16)
-        .background(Color(.secondarySystemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 14))
-    }
-
-    // MARK: - Participants Card
-
-    // MARK: - Status Bar (no-session bottom)
-
-    private var statusBarContent: some View {
-        HStack {
-            HStack(spacing: 8) {
-                Circle()
-                    .fill(statusDotColor)
-                    .frame(width: 10, height: 10)
-                Text(location.status)
-                    .font(.headline)
-            }
-            Spacer()
-            Text("every 15s")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        }
-    }
-
     // MARK: - Bottom Button
 
     @ViewBuilder
@@ -714,14 +646,6 @@ struct ContentView: View {
         return .orange
     }
 
-    private var batteryIcon: String {
-        switch batteryLevel {
-        case ..<0.25: return "battery.25"
-        case ..<0.50: return "battery.50"
-        case ..<0.75: return "battery.75"
-        default:      return "battery.100"
-        }
-    }
 }
 
 #Preview {
