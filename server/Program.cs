@@ -78,8 +78,10 @@ app.Use(async (ctx, next) =>
         }
 
         var status = ctx.Response.StatusCode;
+        var requestUrl = $"{ctx.Request.Scheme}://{ctx.Request.Host}{ctx.Request.PathBase}{ctx.Request.Path}{ctx.Request.QueryString}";
         var log = Log.ForContext("RequestMethod", method)
                      .ForContext("RequestPath", path)
+                     .ForContext("RequestUrl", requestUrl)
                      .ForContext("StatusCode", status)
                      .ForContext("Elapsed", sw.Elapsed.TotalMilliseconds);
 

@@ -151,10 +151,6 @@ final class LocationManager {
         activeMembership?.role == "runner"
     }
 
-    func liveMapURL(inviteCode: String) -> URL? {
-        URL(string: "code/\(inviteCode)", relativeTo: webBaseURL)
-    }
-
     func nextPostAt(from now: Date = Date()) -> Date {
         let seconds = now.timeIntervalSince1970
         let nextEpoch = (floor(seconds / interval) + 1) * interval
@@ -179,8 +175,9 @@ final class LocationManager {
         clManager.showsBackgroundLocationIndicator = true
 
         pathMonitor.pathUpdateHandler = { [weak self] path in
-            Task { @MainActor in
-                self?.isOffline = path.status != .satisfied
+            guard let self else { return }
+            Task { @MainActor [self] in
+                self.isOffline = path.status != .satisfied
             }
         }
         pathMonitor.start(queue: pathMonitorQueue)
@@ -198,7 +195,8 @@ final class LocationManager {
         refreshConnectivity()
         connectivityPollTimer?.invalidate()
         connectivityPollTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
-            Task { @MainActor in self?.refreshConnectivity() }
+            guard let self else { return }
+            Task { @MainActor [self] in self.refreshConnectivity() }
         }
     }
 
@@ -393,23 +391,6 @@ final class LocationManager {
                 heading: heading,
                 timestamp: loc.timestamp)
         }
-    }
-
-    func refresh() async {
-        let loc: CLLocation?
-        if let existing = latestLocation {
-            loc = existing
-        } else {
-            clManager.requestLocation()
-            loc = await withCheckedContinuation { continuation in
-                oneShotLocationContinuation = continuation
-            }
-        }
-        if let loc {
-            let heading: Double? = loc.course >= 0 ? loc.course : nil
-            await post(lat: loc.coordinate.latitude, lon: loc.coordinate.longitude, heading: heading, timestamp: loc.timestamp)
-        }
-        await loadSessions()
     }
 
     private func post(lat: Double, lon: Double, heading: Double?, timestamp: Date) async {

@@ -48,3 +48,5 @@ android/captures/
 !.ai/reviews/.gitkeep
 .ai/pr-descriptions/*.md
 !.ai/pr-descriptions/.gitkeep
+.ai/plans/*.md
+!.ai/plans/.gitkeep
