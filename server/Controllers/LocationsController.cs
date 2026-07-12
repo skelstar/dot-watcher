@@ -39,7 +39,8 @@ public class LocationsController(
         HttpContext.Items["Log:Heading"] = validatedUpdate.Heading.HasValue ? $"{validatedUpdate.Heading:F1}°" : "n/a";
         HttpContext.Items["Log:LocationTimestamp"] = validatedUpdate.Timestamp.ToString("HH:mm:ss");
         var participants = store.GetParticipants(validatedUpdate.SessionId);
-        return Ok(new { participants });
+        var positions = store.GetLatestPositions(validatedUpdate.SessionId);
+        return Ok(new { participants, positions });
     }
 
     [HttpGet("/locations/{sessionId}")]
