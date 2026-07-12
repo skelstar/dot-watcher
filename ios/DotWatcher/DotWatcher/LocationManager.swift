@@ -51,6 +51,12 @@ struct SessionMembership: Codable, Identifiable {
 
 private struct LocationPostResponse: Codable {
     let participants: [String]
+    /// Latest position for every runner in the session, included so the app can eventually
+    /// render a native map without a separate `GET /locations/{sessionId}` round-trip. Each
+    /// inner array holds exactly one position (the runner's latest), matching the shape
+    /// `GET /locations/{sessionId}` already returns. Unused today — reserved for a future
+    /// native map view.
+    let positions: [[RunnerPositionResponse]]?
 }
 
 private struct ServerErrorBody: Decodable {
