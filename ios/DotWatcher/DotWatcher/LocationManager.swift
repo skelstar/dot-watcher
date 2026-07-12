@@ -93,6 +93,10 @@ final class LocationManager {
     private(set) var recentSessions: [SessionMembership] = []
     private(set) var sessionRunnerNames: [String] = []
     private(set) var isOffline = false
+    /// Latest known position for every runner in the session, as of the local user's most
+    /// recent `POST /location`. Only refreshes on that cadence (every `interval` seconds while
+    /// tracking) — there's no separate polling of `GET /locations/{sessionId}`.
+    private(set) var runnerPositions: [RunnerPositionResponse] = []
 
     var participants: [String] = []
     private var lastParticipantCount = 0
@@ -437,6 +441,7 @@ final class LocationManager {
                 lastParticipantCount = response.participants.count
                 participants = response.participants
             }
+            runnerPositions = (response.positions ?? []).flatMap { $0 }
         } catch {
             guard sessionId == targetSessionId else { return }
             status = error.localizedDescription
@@ -617,7 +622,7 @@ final class LocationManager {
     }
 }
 
-private struct RunnerPositionResponse: Codable {
+struct RunnerPositionResponse: Codable {
     let runnerName: String
     let latitude: Double
     let longitude: Double
