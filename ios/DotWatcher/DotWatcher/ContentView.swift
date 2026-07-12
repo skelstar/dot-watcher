@@ -264,7 +264,6 @@ struct ContentView: View {
             }
             .refreshable {
                 await location.loadSessions()
-                await location.loadSessionRunners()
             }
             .safeAreaInset(edge: .bottom) {
                 if !location.isTracking {
@@ -276,7 +275,7 @@ struct ContentView: View {
                 }
             }
             if location.isTracking {
-                DragSheet(peekHeight: LiveMapSheet.peekHeight) { _ in
+                DragSheet {
                     LiveMapSheet(location: location)
                 }
             }
@@ -399,7 +398,6 @@ struct ContentView: View {
                 Button {
                     Task {
                         await location.loadSessions()
-                        await location.loadSessionRunners()
                     }
                 } label: {
                     Image(systemName: "arrow.clockwise")
@@ -555,23 +553,23 @@ struct ContentView: View {
                 .fontWeight(.semibold)
                 .foregroundStyle(.secondary)
 
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 56))], spacing: 10) {
-                if location.sessionRunnerNames.isEmpty {
-                    RunnerCircle(name: location.runnerName, size: 56, isHighlighted: true)
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 38))], spacing: 10) {
+                if location.participants.isEmpty {
+                    RunnerCircle(name: location.runnerName, size: 38, fillColor: .black)
                 } else {
-                    ForEach(location.sessionRunnerNames, id: \.self) { name in
+                    ForEach(location.participants, id: \.self) { name in
                         RunnerCircle(
                             name: name,
-                            size: 56,
-                            isHighlighted: location.participants.contains(name) || name == location.runnerName
+                            size: 38,
+                            fillColor: name == location.runnerName ? .black : RunnerColorPalette.color(for: name)
                         )
                     }
                 }
-                let filledCount = max(1, location.sessionRunnerNames.count)
+                let filledCount = max(1, location.participants.count)
                 ForEach(0..<max(0, 5 - filledCount), id: \.self) { _ in
                     Circle()
                         .stroke(Color(.systemGray3), style: StrokeStyle(lineWidth: 2, dash: [4, 4]))
-                        .frame(width: 56, height: 56)
+                        .frame(width: 38, height: 38)
                 }
             }
         }
@@ -600,7 +598,6 @@ struct ContentView: View {
                 Button {
                     Task {
                         await location.loadSessions()
-                        await location.loadSessionRunners()
                     }
                 } label: {
                     Image(systemName: "arrow.clockwise")
