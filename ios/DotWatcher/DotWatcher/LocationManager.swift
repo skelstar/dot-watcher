@@ -350,6 +350,9 @@ final class LocationManager {
         isTracking = true
         status = "Tracking..."
         trackingTask = Task { [weak self] in await self?.trackingLoop() }
+        if latestLocation == nil {
+            latestLocation = clManager.location ?? CLLocation(latitude: 0, longitude: 0)
+        }
         captureAndPost()
     }
 
