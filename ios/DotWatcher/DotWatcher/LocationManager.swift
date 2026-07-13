@@ -361,13 +361,6 @@ final class LocationManager {
         status = "Stopped"
     }
 
-    func stopAndLeave() async {
-        let id = sessionId
-        stop()
-        guard !id.isEmpty else { return }
-        try? await leaveSession(sessionId: id)
-    }
-
     private func trackingLoop() async {
         while !Task.isCancelled {
             let delay = nextPostAt().timeIntervalSinceNow
