@@ -7,7 +7,12 @@ public class LocationsController(
     SessionStore store,
     UserTokenAuth userAuth) : ControllerBase
 {
+    /// <summary>Records a runner's position and returns the session's active participant names plus latest positions.</summary>
     [HttpPost("/location")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
     public IActionResult AddLocation([FromBody] LocationUpdate? update)
     {
         if (!userAuth.TryAuthenticate(Request, out var user))
@@ -43,7 +48,12 @@ public class LocationsController(
         return Ok(new { participants, positions });
     }
 
+    /// <summary>Gets the latest live position per runner for a session.</summary>
     [HttpGet("/locations/{sessionId}")]
+    [ProducesResponseType(typeof(IReadOnlyList<RunnerPosition[]>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
     public IActionResult GetLatestPositions(string sessionId)
     {
         if (!userAuth.TryAuthenticate(Request, out var user))

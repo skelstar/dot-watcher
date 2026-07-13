@@ -10,7 +10,10 @@ public class SessionsController(
     UserTokenAuth userAuth,
     ILogger<SessionsController> logger) : ControllerBase
 {
+    /// <summary>Lists the caller's active session memberships.</summary>
     [HttpGet("/me/sessions")]
+    [ProducesResponseType(typeof(IReadOnlyList<SessionMembership>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     public IActionResult GetMySessions()
     {
         if (!userAuth.TryAuthenticate(Request, out var user))
@@ -19,7 +22,10 @@ public class SessionsController(
         return Ok(store.GetSessionsForUser(user.UserId));
     }
 
+    /// <summary>Lists sessions the caller recently left, most recent first.</summary>
     [HttpGet("/me/sessions/recent")]
+    [ProducesResponseType(typeof(IReadOnlyList<SessionMembership>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     public IActionResult GetMyRecentSessions()
     {
         if (!userAuth.TryAuthenticate(Request, out var user))
@@ -28,7 +34,10 @@ public class SessionsController(
         return Ok(store.GetRecentLeftSessions(user.UserId));
     }
 
+    /// <summary>Admin/ops: lists IDs of all sessions with a saved recording, newest first.</summary>
     [HttpGet("/sessions")]
+    [ProducesResponseType(typeof(IReadOnlyList<string>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     public IActionResult GetSessions()
     {
         if (!auth.IsAuthorized(Request))
@@ -37,7 +46,12 @@ public class SessionsController(
         return Ok(store.GetRecordedSessions());
     }
 
+    /// <summary>Creates a session and returns the caller's runner membership for it.</summary>
     [HttpPost("/sessions")]
+    [ProducesResponseType(typeof(SessionMembership), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
     public IActionResult CreateSession([FromBody] CreateSessionRequest? request)
     {
         if (!userAuth.TryAuthenticate(Request, out var user))
@@ -61,7 +75,16 @@ public class SessionsController(
             : Ok(membership);
     }
 
+    /// <summary>
+    /// Joins a session by invite code and returns the membership, plus a Participants array
+    /// (session-joined runners, not just currently-tracking ones) as an additive field.
+    /// </summary>
     [HttpPost("/session-invites/{inviteCode}/join")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status410Gone)]
     public IActionResult JoinSession(string inviteCode, [FromBody] JoinSessionRequest? request)
     {
         if (!userAuth.TryAuthenticate(Request, out var user))
@@ -106,7 +129,10 @@ public class SessionsController(
         });
     }
 
+    /// <summary>Gets the latest live position per runner for a session, by invite code. No auth required.</summary>
     [HttpGet("/session-invites/{inviteCode}/locations")]
+    [ProducesResponseType(typeof(IReadOnlyList<RunnerPosition[]>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
     public IActionResult GetLocationsByInviteCode(string inviteCode)
     {
         var sessionId = store.GetSessionIdByInviteCode(inviteCode);
@@ -116,7 +142,10 @@ public class SessionsController(
         return Ok(store.GetLatestPositions(sessionId));
     }
 
+    /// <summary>Downloads the session's recording as NDJSON (application/x-ndjson), by invite code. No auth required.</summary>
     [HttpGet("/session-invites/{inviteCode}/recording")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
     public IActionResult GetRecordingByInviteCode(string inviteCode, DateTimeOffset? since, DateTimeOffset? until)
     {
         var sessionId = store.GetSessionIdByInviteCode(inviteCode);
@@ -129,7 +158,10 @@ public class SessionsController(
         return RecordingResult(sessionId, since, until);
     }
 
+    /// <summary>Gets recording start/latest timestamps for a session, by invite code. No auth required.</summary>
     [HttpGet("/session-invites/{inviteCode}/recording/meta")]
+    [ProducesResponseType(typeof(RecordingMeta), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
     public IActionResult GetRecordingMetaByInviteCode(string inviteCode)
     {
         var sessionId = store.GetSessionIdByInviteCode(inviteCode);
@@ -140,7 +172,11 @@ public class SessionsController(
         return meta is null ? NotFound() : Ok(meta);
     }
 
+    /// <summary>Lists display names of runners who have joined the session (not just those actively tracking).</summary>
     [HttpGet("/sessions/{sessionId}/runners")]
+    [ProducesResponseType(typeof(IReadOnlyList<string>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
     public IActionResult GetSessionRunners(string sessionId)
     {
         if (!userAuth.TryAuthenticate(Request, out var user))
@@ -152,7 +188,11 @@ public class SessionsController(
         return Ok(store.GetSessionRunners(sessionId));
     }
 
+    /// <summary>Removes the caller's own membership from a session.</summary>
     [HttpDelete("/me/sessions/{sessionId}/membership")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
     public IActionResult LeaveSession(string sessionId)
     {
         if (!userAuth.TryAuthenticate(Request, out var user))
@@ -161,7 +201,11 @@ public class SessionsController(
         return store.LeaveSession(sessionId, user.UserId) ? NoContent() : NotFound();
     }
 
+    /// <summary>Admin/ops: replaces a session's saved recording with an uploaded NDJSON body (any Content-Type; the body is read raw).</summary>
     [HttpPost("/sessions/{sessionId}/recording")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     public async Task<IActionResult> UploadRecording(string sessionId)
     {
         if (!auth.IsAuthorized(Request))
@@ -190,7 +234,13 @@ public class SessionsController(
         return Ok(new { sessionId = sessionId });
     }
 
+    /// <summary>Downloads a session's recording as NDJSON (application/x-ndjson). Accepts either the admin bearer token or a member's user token.</summary>
     [HttpGet("/sessions/{sessionId}/recording")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
     public IActionResult DownloadRecording(string sessionId, DateTimeOffset? since, DateTimeOffset? until)
     {
         if (!auth.IsAuthorized(Request))
@@ -215,7 +265,13 @@ public class SessionsController(
         return RecordingResult(sessionId, since, until);
     }
 
+    /// <summary>Gets a session's recording start/latest timestamps. Accepts either the admin bearer token or a member's user token.</summary>
     [HttpGet("/sessions/{sessionId}/recording/meta")]
+    [ProducesResponseType(typeof(RecordingMeta), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
     public IActionResult GetRecordingMeta(string sessionId)
     {
         if (!auth.IsAuthorized(Request))
@@ -238,7 +294,12 @@ public class SessionsController(
         return meta is null ? NotFound() : Ok(meta);
     }
 
+    /// <summary>Admin/ops: deletes a session's saved recording.</summary>
     [HttpDelete("/sessions/{sessionId}/recording")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
     public IActionResult DeleteRecording(string sessionId)
     {
         if (!auth.IsAuthorized(Request))
@@ -254,7 +315,11 @@ public class SessionsController(
         return NoContent();
     }
 
+    /// <summary>Admin/ops: clears live positions for a session. The saved recording is untouched.</summary>
     [HttpDelete("/sessions/{sessionId}")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     public IActionResult ClearSession(string sessionId)
     {
         if (!auth.IsAuthorized(Request))
@@ -267,7 +332,12 @@ public class SessionsController(
         return NoContent();
     }
 
+    /// <summary>Admin/ops: merges a source session's recorded records into a target session, then removes the source recording.</summary>
     [HttpPost("/sessions/{targetId}/merge-from/{sourceId}")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
     public IActionResult MergeSession(string targetId, string sourceId)
     {
         if (!auth.IsAuthorized(Request))
