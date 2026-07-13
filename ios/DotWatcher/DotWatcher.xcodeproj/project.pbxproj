@@ -131,6 +131,7 @@
 /* Begin PBXShellScriptBuildPhase section */
 		497F89ED2FDCE39200022FF1 /* Stamp Git Commit SHA */ = {
 			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
 			buildActionMask = 2147483647;
 			files = (
 			);
