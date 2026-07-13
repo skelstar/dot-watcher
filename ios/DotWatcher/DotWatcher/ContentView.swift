@@ -9,15 +9,12 @@ struct ContentView: View {
     @State private var nameInput: String = ""
     @State private var showHelp: Bool = false
     @State private var showAuth: Bool = false
-    @State private var showStopConfirm: Bool = false
     @State private var showLeaveConfirm: Bool = false
     @State private var showCreateSession: Bool = false
     @State private var noSessionCreateCode = ""
     @State private var noSessionInviteCode = ""
     @State private var isBusy = false
     @State private var formError: String?
-    @State private var sessionRowSwipeOffset: CGFloat = 0
-    @GestureState private var sessionRowDragOffset: CGFloat = 0
 
     var body: some View {
         mainContent
@@ -92,7 +89,8 @@ struct ContentView: View {
                 Button("Cancel", role: .cancel) {}
             } message: {
                 if location.activeMembership != nil {
-                    Text("Are you sure you want to leave this session? You can rejoin later using the invite code.")
+                    let suffix = location.isTracking ? " This will also stop tracking." : ""
+                    Text("Are you sure you want to leave this session?\(suffix) You can rejoin later using the invite code.")
                 }
             }
     }
@@ -374,9 +372,9 @@ struct ContentView: View {
                 }
             }
             Spacer()
-            if location.isTracking {
-                Button { showStopConfirm = true } label: {
-                    Text("Stop")
+            if location.activeMembership != nil {
+                Button { showLeaveConfirm = true } label: {
+                    Text("Leave")
                         .font(.system(size: 16, weight: .semibold))
                         .foregroundStyle(.white)
                         .frame(height: 48)
@@ -384,15 +382,6 @@ struct ContentView: View {
                         .background(Color.red, in: RoundedRectangle(cornerRadius: 12))
                 }
                 .buttonStyle(.plain)
-                .alert("Stop tracking?", isPresented: $showStopConfirm) {
-                    Button("Stop & Leave", role: .destructive) {
-                        Task { await location.stopAndLeave() }
-                    }
-                    Button("Cancel", role: .cancel) {}
-                } message: {
-                    let name = location.activeMembership?.sessionName ?? "this session"
-                    Text("This will stop tracking and remove you from \(name). You can rejoin later using the invite code.")
-                }
             }
             if location.activeMembership != nil {
                 Button {
@@ -434,104 +423,26 @@ struct ContentView: View {
                 .fontWeight(.semibold)
                 .foregroundStyle(.secondary)
 
-            let rightActionW: CGFloat = 72
-            let btnW: CGFloat = 64
-            let leftActionW: CGFloat = btnW
-            ZStack(alignment: .leading) {
-                // Single background: share on left, Leave on right
-                HStack(spacing: 0) {
-                    if !location.sessionId.isEmpty,
-                       let inviteCode = location.activeMembership?.inviteCode {
-                        let sessionUrl = location.webBaseURL.appendingPathComponent("code/\(inviteCode)")
-                        let shareMessage = "Join my DotWatcher session!\n\nInvite code: \(inviteCode)\n\n\(sessionUrl.absoluteString)"
-                        ShareLink(item: shareMessage) {
-                            Image(systemName: "square.and.arrow.up")
-                                .font(.system(size: 22))
-                                .foregroundStyle(Color(.label))
-                                .frame(width: btnW)
-                                .frame(maxHeight: .infinity)
-                                .background(Color(.systemBackground))
-                        }
-                        .simultaneousGesture(TapGesture().onEnded {
-                            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) { sessionRowSwipeOffset = 0 }
-                        })
-                    }
-                    Spacer()
-                    // Leave
-                    Button {
-                        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) { sessionRowSwipeOffset = 0 }
-                        showLeaveConfirm = true
-                    } label: {
-                        Image(systemName: "rectangle.portrait.and.arrow.right")
-                            .font(.system(size: 22))
-                            .foregroundStyle(.white)
-                            .frame(width: rightActionW)
-                            .frame(maxHeight: .infinity)
-                            .background(Color(.systemRed))
-                    }
-                    .buttonStyle(.plain)
+            HStack {
+                if location.sessionId.isEmpty {
+                    Text("Tap to set")
+                        .font(.title3.monospaced())
+                        .foregroundStyle(.tertiary)
+                } else {
+                    Text(location.activeMembership?.sessionName ?? "")
+                        .font(.title3.bold().monospaced())
+                        .foregroundStyle(.primary)
                 }
-                .frame(maxHeight: .infinity)
-
-                // Foreground row content
-                HStack {
-                    if location.sessionId.isEmpty {
-                        Text("Tap to set")
-                            .font(.title3.monospaced())
-                            .foregroundStyle(.tertiary)
-                    } else {
-                        Text(location.activeMembership?.sessionName ?? "")
-                            .font(.title3.bold().monospaced())
-                            .foregroundStyle(.primary)
-                    }
-                    Spacer()
-                    if location.activeMembership == nil {
-                        Image(systemName: "lock")
-                            .font(.subheadline)
-                            .foregroundStyle(.tertiary)
-                    }
+                Spacer()
+                if location.activeMembership == nil {
+                    Image(systemName: "lock")
+                        .font(.subheadline)
+                        .foregroundStyle(.tertiary)
                 }
-                .padding(.horizontal, 28)
-                .padding(.vertical, 14)
-                .background(Color(.tertiarySystemBackground))
-                .overlay(alignment: .leading) {
-                    let opacity = max(0.0, 1.0 - abs(sessionRowSwipeOffset + sessionRowDragOffset) / 20.0)
-                    Image(systemName: "chevron.left")
-                        .font(.system(size: 16, weight: .light))
-                        .foregroundStyle(Color(.systemGray2))
-                        .padding(.leading, 8)
-                        .opacity(opacity)
-                }
-                .overlay(alignment: .trailing) {
-                    let opacity = max(0.0, 1.0 - abs(sessionRowSwipeOffset + sessionRowDragOffset) / 20.0)
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 16, weight: .light))
-                        .foregroundStyle(Color(.systemGray2))
-                        .padding(.trailing, 8)
-                        .opacity(opacity)
-                }
-                .offset(x: max(-rightActionW, min(leftActionW, sessionRowSwipeOffset + sessionRowDragOffset)))
-                .gesture(
-                    DragGesture(minimumDistance: 10)
-                        .updating($sessionRowDragOffset) { value, state, _ in
-                            state = value.translation.width
-                        }
-                        .onEnded { value in
-                            let current = max(-rightActionW, min(leftActionW, sessionRowSwipeOffset + value.translation.width))
-                            let projected = current + value.velocity.width * 0.15
-                            sessionRowSwipeOffset = current
-                            withAnimation(.spring(response: 0.3, dampingFraction: 0.9)) {
-                                if projected < -20 {
-                                    sessionRowSwipeOffset = -rightActionW
-                                } else if projected > 20 {
-                                    sessionRowSwipeOffset = leftActionW
-                                } else {
-                                    sessionRowSwipeOffset = 0
-                                }
-                            }
-                        }
-                )
             }
+            .padding(.horizontal, 28)
+            .padding(.vertical, 14)
+            .background(Color(.tertiarySystemBackground))
             .clipShape(RoundedRectangle(cornerRadius: 10))
 
             if let inviteCode = location.activeMembership?.inviteCode {
