@@ -231,12 +231,17 @@ struct ContentView: View {
                         }
                         Spacer()
                         Button {
-                            UIPasteboard.general.string = membership.inviteCode
+                            Task { await rejoinSession(inviteCode: membership.inviteCode) }
                         } label: {
-                            Image(systemName: "doc.on.doc")
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
+                            Text("Rejoin")
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 8)
+                                .background(Color.accentColor, in: RoundedRectangle(cornerRadius: 8))
                         }
+                        .buttonStyle(.plain)
+                        .disabled(isBusy)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, 16)
@@ -533,6 +538,17 @@ struct ContentView: View {
         do {
             try await location.joinInvite(code: noSessionInviteCode, displayName: location.runnerName)
             noSessionInviteCode = ""
+        } catch {
+            formError = error.localizedDescription
+        }
+        isBusy = false
+    }
+
+    private func rejoinSession(inviteCode: String) async {
+        isBusy = true
+        formError = nil
+        do {
+            try await location.joinInvite(code: inviteCode, displayName: location.runnerName)
         } catch {
             formError = error.localizedDescription
         }
