@@ -47,6 +47,9 @@ struct SessionMembership: Codable, Identifiable {
     let inviteCode: String
     let role: String
     let displayName: String
+    /// Only present on the join-session response (`POST /session-invites/{code}/join`); nil for
+    /// membership objects that don't carry it (e.g. `GET /me/sessions`).
+    let participants: [String]?
 }
 
 private struct LocationPostResponse: Codable {
@@ -126,6 +129,7 @@ final class LocationManager {
         didSet {
             UserDefaults.standard.set(sessionId, forKey: "sessionId")
             participants = []
+            runnerPositions = []
             lastParticipantCount = 0
             if isTracking { captureAndPost() }
         }
@@ -270,6 +274,46 @@ final class LocationManager {
         }
     }
 
+    // Manual/refresh-triggered pull of who's joined and their latest positions — unlike
+    // `runnerPositions`/`participants`, which otherwise only update as a side effect of this
+    // device's own `POST /location`. Includes runners who joined but have never posted (not even
+    // the placeholder (0,0) `start()` sends), so they still appear — just with no position yet.
+    func loadLatestPositions() async {
+        guard !sessionId.isEmpty else { return }
+        let targetSessionId = sessionId
+
+        // Run concurrently, not sequentially: when this is awaited from `.refreshable`, SwiftUI
+        // ties the pull-to-refresh spinner's lifetime to this function's Task, and a second
+        // `await` in tail position can get cancelled once the system decides the gesture-driven
+        // refresh is "done" — seen in practice as the /runners call finishing with NSURLErrorDomain
+        // -999 "cancelled" while /locations completed fine. Racing them removes that tail-position
+        // risk for both.
+        async let positionsResult: Result<[[RunnerPositionResponse]], Error> = {
+            do {
+                return .success(try await send(path: "/locations/\(targetSessionId)"))
+            } catch {
+                return .failure(error)
+            }
+        }()
+        async let runnersResult: Result<[String], Error> = {
+            do {
+                return .success(try await send(path: "/sessions/\(targetSessionId)/runners"))
+            } catch {
+                return .failure(error)
+            }
+        }()
+
+        let (positions, runners) = await (positionsResult, runnersResult)
+
+        guard sessionId == targetSessionId else { return }
+        if case .success(let positions) = positions {
+            runnerPositions = positions.compactMap(\.last)
+        }
+        if case .success(let runners) = runners {
+            participants = runners
+        }
+    }
+
     // Sessions the user has left; the server keeps these as archived (left_at set)
     // memberships rather than deleting them, so this survives across devices/reinstalls.
     func loadRecentSessions() async {
@@ -307,6 +351,9 @@ final class LocationManager {
             ])
         upsertMembership(membership)
         selectSession(membership)
+        if let joinParticipants = membership.participants {
+            participants = joinParticipants
+        }
     }
 
     func selectSession(_ membership: SessionMembership) {
@@ -405,11 +452,19 @@ final class LocationManager {
             guard sessionId == targetSessionId else { return }
             status = "Sent"
             lastSent = Date()
+            // `response.participants`/`positions` only cover runners who have actually posted —
+            // merge rather than replace, so runners already known to have joined (but still "in
+            // lobby") from the last roster refresh aren't wiped out by this device's own post.
             if response.participants.count != lastParticipantCount {
                 lastParticipantCount = response.participants.count
-                participants = response.participants
+                participants = Array(Set(participants).union(response.participants)).sorted()
             }
-            runnerPositions = (response.positions ?? []).flatMap { $0 }
+            let posted = (response.positions ?? []).flatMap { $0 }
+            var mergedPositions = Dictionary(uniqueKeysWithValues: runnerPositions.map { ($0.runnerName, $0) })
+            for position in posted {
+                mergedPositions[position.runnerName] = position
+            }
+            runnerPositions = Array(mergedPositions.values)
         } catch {
             guard sessionId == targetSessionId else { return }
             status = error.localizedDescription

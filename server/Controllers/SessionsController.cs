@@ -57,7 +57,7 @@ public class SessionsController(
 
         var membership = store.CreateSessionForUser(user.UserId, displayName, request.SessionName);
         return membership is null
-            ? Conflict(new { error = "A session with that name already exists." })
+            ? Conflict(new { error = "A session with that name already exists. Try entering the invite code." })
             : Ok(membership);
     }
 
@@ -86,9 +86,24 @@ public class SessionsController(
         if (archived)
             return StatusCode(StatusCodes.Status410Gone, new { error = "This session has ended and can no longer be joined." });
 
-        return membership is null
-            ? NotFound(new { error = "Invite not found." })
-            : Ok(membership);
+        if (membership is null)
+            return NotFound(new { error = "Invite not found." });
+
+        // Additive field alongside the existing SessionMembership shape (not a replacement) so
+        // older clients that decode a fixed SessionMembership struct are unaffected. Uses the
+        // joined-runners roster (GetSessionRunners), not GetParticipants (who's actively
+        // posting) — the point is for a new joiner to immediately see everyone already in the
+        // session, even ones who haven't started tracking yet.
+        var participants = store.GetSessionRunners(membership.SessionId);
+        return Ok(new
+        {
+            membership.SessionId,
+            membership.SessionName,
+            membership.InviteCode,
+            membership.Role,
+            membership.DisplayName,
+            Participants = participants,
+        });
     }
 
     [HttpGet("/session-invites/{inviteCode}/locations")]

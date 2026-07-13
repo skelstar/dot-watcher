@@ -266,7 +266,16 @@ struct ContentView: View {
                 .padding()
             }
             .refreshable {
-                await location.loadSessions()
+                // Detached: `.refreshable` cancels its closure's Task as soon as the pull
+                // gesture's spinner dismisses, which on a fast local server can race ahead of
+                // the network calls actually completing and cancel them mid-flight (seen as
+                // NSURLErrorDomain -999 "cancelled" even though the server had already
+                // responded). A detached Task isn't a child of that Task, so releasing the
+                // gesture early no longer aborts the underlying requests.
+                await Task {
+                    await location.loadSessions()
+                    await location.loadLatestPositions()
+                }.value
             }
             .safeAreaInset(edge: .bottom) {
                 if !location.isTracking {
@@ -392,6 +401,7 @@ struct ContentView: View {
                 Button {
                     Task {
                         await location.loadSessions()
+                        await location.loadLatestPositions()
                     }
                 } label: {
                     Image(systemName: "arrow.clockwise")
@@ -471,13 +481,18 @@ struct ContentView: View {
 
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 38))], spacing: 10) {
                 if location.participants.isEmpty {
-                    RunnerCircle(name: location.runnerName, size: 38, fillColor: .black)
+                    RunnerCircle(name: location.runnerName, size: 38, fillColor: Color(.systemGray3))
                 } else {
                     ForEach(location.participants, id: \.self) { name in
+                        // In lobby = joined but not actually tracking: either no position posted
+                        // yet at all, or (0, 0) — the placeholder Start posts when no real GPS
+                        // fix is available yet.
+                        let position = location.runnerPositions.first { $0.runnerName == name }
+                        let isInLobby = position == nil || (position!.latitude == 0 && position!.longitude == 0)
                         RunnerCircle(
                             name: name,
                             size: 38,
-                            fillColor: name == location.runnerName ? .black : RunnerColorPalette.color(for: name)
+                            fillColor: isInLobby ? Color(.systemGray3) : (name == location.runnerName ? .black : RunnerColorPalette.color(for: name))
                         )
                     }
                 }
