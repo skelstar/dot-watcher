@@ -423,6 +423,8 @@ public class SessionStore(string dbPath)
         return ReadMemberships(cmd);
     }
 
+    private static readonly TimeSpan RecentSessionActiveWindow = TimeSpan.FromSeconds(45);
+
     public IReadOnlyList<SessionMembership> GetRecentLeftSessions(string userId, int limit = 3)
     {
         using var conn = Connect();
@@ -432,10 +434,15 @@ public class SessionStore(string dbPath)
             FROM session_members m
             JOIN app_sessions s ON s.id = m.session_id
             WHERE m.user_id = $userId AND m.left_at IS NOT NULL
+              AND EXISTS (
+                  SELECT 1 FROM location_updates l
+                  WHERE l.session_id = s.id AND l.timestamp >= $since
+              )
             ORDER BY m.left_at DESC
             LIMIT $limit
             """;
         cmd.Parameters.AddWithValue("$userId", userId);
+        cmd.Parameters.AddWithValue("$since", (DateTime.UtcNow - RecentSessionActiveWindow).ToString("O"));
         cmd.Parameters.AddWithValue("$limit", limit);
         return ReadMemberships(cmd);
     }
@@ -608,6 +615,9 @@ public class SessionStore(string dbPath)
         cmd.Parameters.AddWithValue("$userId", userId);
         if (cmd.ExecuteNonQuery() == 0)
             return false;
+
+        if (_sessions.TryGetValue(sessionId, out var session))
+            session.TryRemove(userId, out _);
 
         // Once the last runner is gone the run is over: archive the session so nobody can
         // join or rejoin it. Replay stays available (recording endpoints don't check this).
