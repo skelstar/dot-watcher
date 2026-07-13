@@ -8,7 +8,11 @@ public class AuthController(
     UserTokenAuth tokenAuth,
     AuthAttemptLimiter attemptLimiter) : ControllerBase
 {
+    /// <summary>Creates a new account and returns an access token.</summary>
     [HttpPost("/auth/register")]
+    [ProducesResponseType(typeof(AuthResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
     public IActionResult Register([FromBody] RegisterRequest? request)
     {
         if (request is null)
@@ -38,7 +42,12 @@ public class AuthController(
         return Ok(ToResponse(account));
     }
 
+    /// <summary>Exchanges credentials for an access token. Locks out after repeated failures.</summary>
     [HttpPost("/auth/login")]
+    [ProducesResponseType(typeof(AuthResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status429TooManyRequests)]
     public IActionResult Login([FromBody] LoginRequest? request)
     {
         if (request is null)
@@ -66,7 +75,9 @@ public class AuthController(
         return Ok(ToResponse(account));
     }
 
+    /// <summary>Revokes the caller's current access token.</summary>
     [HttpPost("/auth/logout")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
     public IActionResult Logout()
     {
         if (tokenAuth.TryAuthenticate(Request, out _, out var token))
@@ -75,7 +86,10 @@ public class AuthController(
         return NoContent();
     }
 
+    /// <summary>Permanently deletes the caller's account and any sessions it owns.</summary>
     [HttpDelete("/me")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     public IActionResult DeleteAccount()
     {
         if (!tokenAuth.TryAuthenticate(Request, out var user, out var token))

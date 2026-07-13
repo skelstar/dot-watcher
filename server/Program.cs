@@ -1,6 +1,8 @@
 using DotWatcher.Server;
+using Microsoft.OpenApi.Models;
 using Serilog;
 using System.Diagnostics;
+using System.Reflection;
 using System.Text.Json;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -41,7 +43,46 @@ builder.Services.AddCors(options =>
     options.AddDefaultPolicy(policy =>
         policy.AllowAnyOrigin().AllowAnyHeader().AllowAnyMethod()));
 
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen(options =>
+{
+    options.SwaggerDoc("v1", new OpenApiInfo
+    {
+        Title = "DotWatcher API",
+        Version = "v1",
+        Description = "REST API consumed by the DotWatcher web, iOS, and Android clients, plus " +
+            "the bearer-token-authenticated admin/ops endpoints.",
+    });
+
+    var bearerScheme = new OpenApiSecurityScheme
+    {
+        Name = "Authorization",
+        In = ParameterLocation.Header,
+        Type = SecuritySchemeType.Http,
+        Scheme = "bearer",
+        BearerFormat = "JWT",
+        Description = "Either a user access token from /auth/login (most endpoints) or the " +
+            "shared admin bearer token (admin/ops endpoints).",
+    };
+    options.AddSecurityDefinition("Bearer", bearerScheme);
+    options.AddSecurityRequirement(new OpenApiSecurityRequirement
+    {
+        [new OpenApiSecurityScheme { Reference = new OpenApiReference { Type = ReferenceType.SecurityScheme, Id = "Bearer" } }] = [],
+    });
+
+    var xmlPath = Path.Combine(AppContext.BaseDirectory, $"{Assembly.GetExecutingAssembly().GetName().Name}.xml");
+    if (File.Exists(xmlPath))
+        options.IncludeXmlComments(xmlPath);
+});
+
 var app = builder.Build();
+
+if (app.Environment.IsDevelopment())
+{
+    app.UseSwagger();
+    app.UseSwaggerUI();
+}
+
 app.UseDefaultFiles();
 app.UseStaticFiles();
 app.UseCors();
