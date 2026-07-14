@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import type { SessionMembership } from './types.ts'
+import { apiHeaders } from './apiHeaders.ts'
 
 interface Props {
   serverUrl: string
@@ -54,7 +55,7 @@ export default function SessionPrompt({
 
   async function refreshMemberships() {
     const response = await fetch(`${serverUrl}/me/sessions`, {
-      headers: { 'Authorization': `Bearer ${accessToken}` },
+      headers: apiHeaders(accessToken),
     })
     if (!response.ok) return
     onMembershipsChanged(await response.json() as SessionMembership[])
@@ -72,10 +73,7 @@ export default function SessionPrompt({
     try {
       const response = await fetch(`${serverUrl}/sessions`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${accessToken}`,
-        },
+        headers: { ...apiHeaders(accessToken), 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       })
 
@@ -104,10 +102,7 @@ export default function SessionPrompt({
     try {
       const response = await fetch(`${serverUrl}/session-invites/${code}/join`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${accessToken}`,
-        },
+        headers: { ...apiHeaders(accessToken), 'Content-Type': 'application/json' },
         body: JSON.stringify({ displayName: joinName.trim() || null }),
       })
 

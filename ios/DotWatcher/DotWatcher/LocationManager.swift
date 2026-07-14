@@ -88,6 +88,10 @@ enum DotWatcherAPIError: LocalizedError {
 final class LocationManager {
     private static let tokenAccount = "DotWatcherUserAccessToken"
 
+    // Bump when a change could break old clients — renamed fields, changed validation,
+    // reinterpreted values — not just additions. Paired with server config MinimumApiVersion.
+    private let apiVersion = 1
+
     private(set) var status = "Idle"
     private(set) var lastSent: Date?
     private(set) var isTracking = false
@@ -497,6 +501,7 @@ final class LocationManager {
         var request = URLRequest(url: url)
         request.httpMethod = method
         request.setValue(UIDevice.current.name, forHTTPHeaderField: "X-Device-Name")
+        request.setValue(String(apiVersion), forHTTPHeaderField: "X-Api-Version")
         if authorized {
             guard let accessToken else { throw DotWatcherAPIError.missingToken }
             request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
@@ -530,6 +535,7 @@ final class LocationManager {
         request.httpMethod = "POST"
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         request.setValue(UIDevice.current.name, forHTTPHeaderField: "X-Device-Name")
+        request.setValue(String(apiVersion), forHTTPHeaderField: "X-Api-Version")
         _ = try? await URLSession.shared.data(for: request)
     }
 
@@ -543,6 +549,7 @@ final class LocationManager {
         request.httpMethod = method
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         request.setValue(UIDevice.current.name, forHTTPHeaderField: "X-Device-Name")
+        request.setValue(String(apiVersion), forHTTPHeaderField: "X-Api-Version")
 
         do {
             let (_, response) = try await URLSession.shared.data(for: request)

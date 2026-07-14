@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react'
 import type { AuthResponse } from './types.ts'
+import { apiHeaders } from './apiHeaders.ts'
 
 interface Props {
   serverUrl: string
@@ -24,7 +25,7 @@ export default function AuthPrompt({ serverUrl, onAuth }: Props) {
     try {
       const response = await fetch(`${serverUrl}/auth/${mode}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { ...apiHeaders(), 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       })
 
