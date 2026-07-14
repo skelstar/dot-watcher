@@ -16,6 +16,7 @@ import AccountSettings from './AccountSettings.tsx'
 import LandingPage from './LandingPage.tsx'
 import { useRunnerMarkers } from './useRunnerMarkers.ts'
 import { useSessionTimeline } from './useSessionTimeline.ts'
+import { apiHeaders } from './apiHeaders.ts'
 import { canManageMembersForRole, canWriteLocationForRole, shouldShowAuthPrompt, shouldShowSessionPrompt } from './sessionState.ts'
 import type { AuthResponse, AuthenticatedUser, SessionMembership } from './types.ts'
 
@@ -141,7 +142,7 @@ export default function App() {
     async function loadMemberships() {
       try {
         const response = await fetch(`${SERVER_URL}/me/sessions`, {
-          headers: { 'Authorization': `Bearer ${accessToken}` },
+          headers: apiHeaders(accessToken),
         })
 
         if (cancelled) return
@@ -202,8 +203,8 @@ export default function App() {
     await fetch(`${SERVER_URL}/location`, {
       method: 'POST',
       headers: {
+        ...apiHeaders(accessToken),
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${accessToken}`,
       },
       body: JSON.stringify({
         runnerName: 'Chester',
@@ -229,7 +230,7 @@ export default function App() {
     if (tokenToRevoke) {
       void fetch(`${SERVER_URL}/auth/logout`, {
         method: 'POST',
-        headers: { 'Authorization': `Bearer ${tokenToRevoke}` },
+        headers: apiHeaders(tokenToRevoke),
       }).catch(() => undefined)
     }
 
@@ -247,7 +248,7 @@ export default function App() {
     try {
       response = await fetch(`${SERVER_URL}/me`, {
         method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${accessToken}` },
+        headers: apiHeaders(accessToken),
       })
     } catch {
       window.alert('Delete account failed: network error')
