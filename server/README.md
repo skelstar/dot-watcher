@@ -11,6 +11,7 @@
 - [Configuration](#configuration)
 - [Running locally](#running-locally)
 - [API](#api)
+  - [Client compatibility (`X-Api-Version`)](#client-compatibility-x-api-version)
   - [`POST /location`](#post-location)
   - [`GET /locations/{sessionCode}`](#get-locationssessioncode)
   - [`GET /sessions`](#get-sessions)
@@ -80,6 +81,7 @@
 | `AuthMaxTrackedAttempts` | `10000` | Maximum username/IP failed-login keys retained by the process-local limiter |
 | `DbPath` | `dotwatcher.db` | SQLite database file used for persisted session recordings |
 | `RecordingsPath` | `recordings` | Directory scanned on startup for legacy NDJSON recordings to import into SQLite |
+| `MinimumApiVersion` | `1` | Minimum `X-Api-Version` a client must send. See [Client compatibility](#client-compatibility-x-api-version) |
 
 The server requires two separate secrets:
 
@@ -119,6 +121,8 @@ dotnet run
 
 `dotnet run` picks up `Properties/launchSettings.json`, which sets `ASPNETCORE_ENVIRONMENT=Development` so that `appsettings.Development.json` (with `BearerToken: dev-token`) is loaded automatically.
 
+In Development, Swagger UI is available at `/swagger` (and the raw spec at `/swagger/v1/swagger.json`) for exploring and trying endpoints. It's disabled outside Development (the deployed container doesn't set `ASPNETCORE_ENVIRONMENT`, so it defaults to Production).
+
 The server starts on `http://localhost:5000` by default. Override the port:
 
 ```bash
@@ -149,6 +153,18 @@ dotnet build --no-incremental && dotnet run --no-build --urls "http://0.0.0.0:80
 ## API
 
 The API routes are implemented as ASP.NET Core controllers under `Controllers/`. Routes use absolute attributes so existing client URIs remain unchanged.
+
+### Client compatibility (`X-Api-Version`)
+
+The iOS and web clients send an `X-Api-Version: <int>` header on every request — a small integer hardcoded in each client, bumped only when that client adopts a change that could break against an older/newer server (a renamed or removed field, a reinterpreted value or validation rule — not just an additive change). The server compares it against the configured `MinimumApiVersion` floor:
+
+- Header missing, unparseable, or ≥ the floor → request proceeds normally.
+- Header present and below the floor → `426 Upgrade Required` with `{ "error": "Please update the app to continue." }`, before the request reaches any controller.
+- Requests authenticated with the admin `BearerToken` always bypass the check — admin/ops tooling (Bruno, the simulator, `live-run.sh`) has no independent release cadence and never sends this header.
+
+The floor starts at `1` and both clients ship `1` today, so this is currently a no-op — nothing gets rejected until a future breaking change bumps the client constant and the server's `MinimumApiVersion` together. See `tests/DotWatcher.Server.Tests/ApiVersionGateTests.cs` for the exact behavior and `server/Program.cs` for the middleware.
+
+On iOS, a `426` response shows a blocking "Update Required" screen (`UpdateRequiredView.swift`) with no in-app fix except installing a newer build.
 
 ### `POST /location`
 
@@ -614,6 +630,7 @@ JwtSigningKey=your-long-random-jwt-signing-key
 
 ## Notes
 
+- `tests/DotWatcher.Server.Tests/ContractTests.cs` locks the exact JSON field names of client-facing requests/responses by reading and writing raw JSON, not the shared C# record types. The rest of the test suite round-trips through those shared types, so a renamed property recompiles cleanly on both sides and passes silently — it only breaks real clients that hardcode the field name as a string. This file exists specifically to catch that.
 - Restarting the server clears live session state (in-memory), but recordings on disk survive. After a restart, admin-authenticated `GET /sessions` calls will still list past sessions and their recordings will still be downloadable.
 - Recordings are **not** persisted across container redeployments by default — `dotwatcher.db` lives inside the container. Mount a volume for `DbPath` if you need recordings to survive deploys.
 - The `timestamp` field in a `POST /location` request should be the **GPS capture time**, not the time the request was sent. Phone apps record the timestamp when the position fix is taken; the POST may be delayed or retried. Storing the capture time means the viewer always reflects where runners actually were at a given moment.
