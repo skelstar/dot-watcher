@@ -1,6 +1,7 @@
 using DotWatcher.Server;
 using Microsoft.OpenApi.Models;
 using Serilog;
+using Serilog.Context;
 using System.Diagnostics;
 using System.Reflection;
 using System.Text.Json;
@@ -91,6 +92,7 @@ app.Use(async (ctx, next) =>
     var sw = Stopwatch.StartNew();
     var path = ctx.Request.Path.Value ?? "/";
     var method = ctx.Request.Method;
+    var requestUrl = $"{ctx.Request.Scheme}://{ctx.Request.Host}{ctx.Request.PathBase}{ctx.Request.Path}{ctx.Request.QueryString}";
 
     var captureBody = !path.StartsWith("/auth") && !path.EndsWith("/recording");
     var originalBody = ctx.Response.Body;
@@ -100,6 +102,11 @@ app.Use(async (ctx, next) =>
         capture = new MemoryStream();
         ctx.Response.Body = capture;
     }
+
+    // Pushed to the ambient LogContext (rather than only attached to the summary log below) so
+    // every log statement emitted while handling this request - including ILogger calls from
+    // controllers - carries the RequestUrl that produced them.
+    using var _ = LogContext.PushProperty("RequestUrl", requestUrl);
 
     try { await next(); }
     finally
@@ -119,10 +126,8 @@ app.Use(async (ctx, next) =>
         }
 
         var status = ctx.Response.StatusCode;
-        var requestUrl = $"{ctx.Request.Scheme}://{ctx.Request.Host}{ctx.Request.PathBase}{ctx.Request.Path}{ctx.Request.QueryString}";
         var log = Log.ForContext("RequestMethod", method)
                      .ForContext("RequestPath", path)
-                     .ForContext("RequestUrl", requestUrl)
                      .ForContext("StatusCode", status)
                      .ForContext("Elapsed", sw.Elapsed.TotalMilliseconds);
 
