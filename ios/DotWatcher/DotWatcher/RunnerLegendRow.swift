@@ -19,7 +19,7 @@ struct RunnerLegendRow: View {
                     name: name,
                     size: Self.badgeSize,
                     fontSize: Self.badgeSize * 0.34,
-                    fillColor: name == currentRunnerName ? .black : RunnerColorPalette.color(for: name)
+                    fillColor: name == currentRunnerName ? RunnerColorPalette.currentUser : RunnerColorPalette.color(for: name)
                 )
                 .overlay(
                     Circle()

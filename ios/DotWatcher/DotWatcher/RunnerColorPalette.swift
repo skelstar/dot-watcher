@@ -4,8 +4,12 @@ import SwiftUI
 /// the web client's `runnerColour()` (`client/src/useRunnerMarkers.ts`) so the same runner shows
 /// the same color on both the web viewer and the native map.
 enum RunnerColorPalette {
+    /// The color used to mark the local user's own dot/badge everywhere (map pin, legend row,
+    /// app title badge) so it's unambiguous at a glance and consistent across the app.
+    static let currentUser: Color = .blue
+
     private static let colors: [Color] = [
-        Color(red: 0x25 / 255, green: 0x63 / 255, blue: 0xeb / 255), // blue
+        Color(red: 0x25 / 255, green: 0x63 / 255, blue: 0xeb / 255), // blue — reserved for currentUser, see color(for:)
         Color(red: 0xdc / 255, green: 0x26 / 255, blue: 0x26 / 255), // red
         Color(red: 0x16 / 255, green: 0xa3 / 255, blue: 0x4a / 255), // green
         Color(red: 0xd9 / 255, green: 0x77 / 255, blue: 0x06 / 255), // amber
@@ -15,8 +19,14 @@ enum RunnerColorPalette {
         Color(red: 0xea / 255, green: 0x58 / 255, blue: 0x0c / 255), // orange
     ]
 
+    /// Other runners hash into the same 8-color palette the web client uses, so index 0 (blue)
+    /// can land on someone other than the current user. Since `currentUser` always renders as
+    /// blue, a colliding runner is bumped to the next slot so no two participants are ever the
+    /// same color on screen — this bump is local-only and doesn't need to match the web client,
+    /// which never highlights a "current user" the same way.
     static func color(for name: String) -> Color {
-        colors[Int(hash(name) % UInt32(colors.count))]
+        let index = Int(hash(name) % UInt32(colors.count))
+        return index == 0 ? colors[1] : colors[index]
     }
 
     /// Matches the web's `h = (h * 31 + charCode) >>> 0` string hash exactly, so the same name

@@ -19,12 +19,12 @@ struct RunnerMapPin: View {
     /// shrink the initials.
     private var circleSize: CGFloat { size * 0.75 }
 
-    /// The local user's own pin is always black so it's unambiguous at a glance; every other
-    /// runner gets a stable color hashed from their name (`RunnerColorPalette`), matching the
-    /// web client's per-runner coloring. Also used for the chevron so it reads as part of the
-    /// same dot instead of a separate white shape that's hard to see against light map
-    /// backgrounds.
-    private var dotColor: Color { isHighlighted ? .black : RunnerColorPalette.color(for: name) }
+    /// The local user's own pin always uses `RunnerColorPalette.currentUser` (matching the app
+    /// title badge) so it's unambiguous at a glance; every other runner gets a stable color
+    /// hashed from their name (`RunnerColorPalette`), matching the web client's per-runner
+    /// coloring. Also used for the chevron so it reads as part of the same dot instead of a
+    /// separate white shape that's hard to see against light map backgrounds.
+    private var dotColor: Color { isHighlighted ? RunnerColorPalette.currentUser : RunnerColorPalette.color(for: name) }
 
     var body: some View {
         if isStale {
