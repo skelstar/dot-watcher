@@ -7,12 +7,17 @@ import SwiftUI
 /// When `isStale` (no position update for `NativeMapView.staleAfter`), renders the web
 /// client's "sleep" style instead: white fill, colored outline/initials, gently pulsing, no
 /// chevron — signals the runner may have stopped moving or lost signal.
+///
+/// When `isDisconnected` (no position update for `NativeMapView.disconnectedAfter`, a longer
+/// threshold than `isStale`), renders a further, static style instead: transparent fill, dashed
+/// outline, initials, no pulse — signals the runner likely isn't sending data at all anymore.
 struct RunnerMapPin: View {
     let name: String
     var size: CGFloat = 36
     var isHighlighted: Bool = false
     var heading: Double?
     var isStale: Bool = false
+    var isDisconnected: Bool = false
 
     /// The circle itself renders smaller than `size` while the label keeps its normal
     /// proportional font size (computed from the full `size`), so shrinking the dot doesn't
@@ -27,7 +32,9 @@ struct RunnerMapPin: View {
     private var dotColor: Color { isHighlighted ? RunnerColorPalette.currentUser : RunnerColorPalette.color(for: name) }
 
     var body: some View {
-        if isStale {
+        if isDisconnected {
+            RunnerCircle(name: name, size: circleSize, fontSize: size * 0.3, fillColor: dotColor, isDisconnected: true)
+        } else if isStale {
             SleepPin(name: name, size: circleSize, color: dotColor)
         } else {
             ZStack {

@@ -10,18 +10,29 @@ struct RunnerCircle: View {
     /// Overrides the circle's fill color (and switches the label to white for contrast).
     /// Defaults to the usual accent/gray behavior driven by `isHighlighted`.
     var fillColor: Color?
+    /// When true, renders a dashed outline with a transparent fill instead of `fillColor` —
+    /// signals this runner hasn't sent a position in a while (see `NativeMapView.disconnectedAfter`).
+    /// The initials stay visible, colored with `fillColor`, so who-is-who is still readable.
+    var isDisconnected: Bool = false
 
     private static let highlightColor = Color.accentColor
 
     var body: some View {
         let color = fillColor ?? (isHighlighted ? Self.highlightColor : Color(.systemGray4))
         ZStack {
-            Circle()
-                .fill(color)
-                .frame(width: size, height: size)
+            if isDisconnected {
+                Circle()
+                    .fill(Color.clear)
+                    .overlay(Circle().stroke(color, style: StrokeStyle(lineWidth: 2, dash: [4, 4])))
+                    .frame(width: size, height: size)
+            } else {
+                Circle()
+                    .fill(color)
+                    .frame(width: size, height: size)
+            }
             Text(name.trimmingCharacters(in: .whitespaces).isEmpty ? "?" : name)
                 .font(.system(size: fontSize ?? size * 0.3, weight: .bold))
-                .foregroundStyle(fillColor != nil || isHighlighted ? .white : .primary)
+                .foregroundStyle(isDisconnected ? color : (fillColor != nil || isHighlighted ? .white : .primary))
         }
     }
 }

@@ -467,7 +467,10 @@ final class LocationManager {
                 participants = Array(Set(participants).union(response.participants)).sorted()
             }
             let posted = (response.positions ?? []).flatMap { $0 }
-            var mergedPositions = Dictionary(uniqueKeysWithValues: runnerPositions.map { ($0.runnerName, $0) })
+            // `uniquingKeysWith:` (keep the later value) rather than `uniqueKeysWithValues:`,
+            // which traps if `runnerPositions` ever contains a duplicate runnerName — seen in
+            // practice from a duplicated server roster entry.
+            var mergedPositions = Dictionary(runnerPositions.map { ($0.runnerName, $0) }, uniquingKeysWith: { _, latest in latest })
             for position in posted {
                 mergedPositions[position.runnerName] = position
             }
