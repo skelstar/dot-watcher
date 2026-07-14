@@ -375,6 +375,10 @@ struct ContentView: View {
                             .font(.headline)
                             .fontWeight(.bold)
                         PostCountdownRing(fraction: fraction)
+                        Text("\(Int(remaining.rounded(.up)))s")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .monospacedDigit()
                     }
                     .onTapGesture {
                         nameInput = location.runnerName
