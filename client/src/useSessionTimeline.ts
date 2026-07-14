@@ -15,6 +15,7 @@ import {
   type TimeRange,
 } from './useSessionTimelineLogic.ts'
 import { isSessionLive, LIVE_STALE_MS } from './sessionLiveness.ts'
+import { apiHeaders } from './apiHeaders.ts'
 
 const TICK_MS = 100
 const WINDOW_MS = 10 * 60 * 1000 // default backward-fetch window when scrubbing into uncached history
@@ -84,7 +85,7 @@ export function useSessionTimeline(
     : sessionId
     ? `${serverUrl}/sessions/${sessionId}`
     : null
-  const authHeaders = byInvite ? {} : { 'Authorization': `Bearer ${accessToken}` }
+  const headers = apiHeaders(byInvite ? undefined : accessToken)
 
   // Reset all cached state when switching sessions/invites.
   useEffect(() => {
@@ -104,7 +105,7 @@ export function useSessionTimeline(
     if (!active || !recordingBase) return
     let cancelled = false
 
-    fetch(`${recordingBase}/recording/meta`, { headers: authHeaders })
+    fetch(`${recordingBase}/recording/meta`, { headers })
       .then(res => {
         if (cancelled) return null
         if (res.status === 404) return null
@@ -133,8 +134,8 @@ export function useSessionTimeline(
     async function fetchAndUpdate() {
       try {
         const res = byInvite
-          ? await fetch(`${serverUrl}/session-invites/${inviteCode}/locations`)
-          : await fetch(`${serverUrl}/locations/${sessionId}`, { headers: authHeaders })
+          ? await fetch(`${serverUrl}/session-invites/${inviteCode}/locations`, { headers })
+          : await fetch(`${serverUrl}/locations/${sessionId}`, { headers })
         if (cancelled) return
         if (!res.ok) {
           setError(livePollingError(res.status))
@@ -175,7 +176,7 @@ export function useSessionTimeline(
     const until = new Date(untilMs).toISOString()
 
     fetch(`${recordingBase}/recording?since=${encodeURIComponent(since)}&until=${encodeURIComponent(until)}`, {
-      headers: authHeaders,
+      headers,
     })
       .then(async res => {
         if (!res.ok) throw new Error(`Failed to load recording window: HTTP ${res.status}`)

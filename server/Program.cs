@@ -132,6 +132,9 @@ app.Use(async (ctx, next) =>
         if (ctx.Request.Headers.TryGetValue("X-Device-Name", out var deviceName) && !string.IsNullOrWhiteSpace(deviceName))
             log = log.ForContext("DeviceName", deviceName.ToString());
 
+        if (ctx.Request.Headers.TryGetValue("X-Api-Version", out var apiVersion) && !string.IsNullOrWhiteSpace(apiVersion))
+            log = log.ForContext("ApiVersion", apiVersion.ToString());
+
         var userAuth = ctx.RequestServices.GetRequiredService<UserTokenAuth>();
         if (userAuth.TryAuthenticate(ctx.Request, out var user))
         {
@@ -164,6 +167,28 @@ app.Use(async (ctx, next) =>
         }
     }
 });
+
+// Rejects requests from clients whose X-Api-Version is below the configured floor. A missing/
+// unparseable header is always allowed — every currently-installed client predates this header,
+// and dev/ops tooling (Bruno, the simulator, live-run.sh) never sends it. Admin-bearer-authenticated
+// traffic bypasses the check entirely since it's internal tooling, not an app-store-released client.
+var minimumApiVersion = app.Configuration.GetValue<int>("MinimumApiVersion", 1);
+app.Use(async (ctx, next) =>
+{
+    var bearerAuth = ctx.RequestServices.GetRequiredService<BearerTokenAuth>();
+    if (!bearerAuth.IsAuthorized(ctx.Request)
+        && ctx.Request.Headers.TryGetValue("X-Api-Version", out var versionHeader)
+        && int.TryParse(versionHeader, out var clientVersion)
+        && clientVersion < minimumApiVersion)
+    {
+        ctx.Response.StatusCode = StatusCodes.Status426UpgradeRequired;
+        await ctx.Response.WriteAsJsonAsync(new { error = "Please update the app to continue." });
+        return;
+    }
+
+    await next();
+});
+
 app.MapControllers();
 
 _ = app.Services.GetRequiredService<BearerTokenAuth>();

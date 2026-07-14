@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { SessionMember, SessionMembership } from './types.ts'
+import { apiHeaders } from './apiHeaders.ts'
 
 interface Props {
   serverUrl: string
@@ -20,7 +21,7 @@ export default function MemberManager({ serverUrl, accessToken, membership, onCl
       setError(null)
       try {
         const response = await fetch(`${serverUrl}/sessions/${membership.sessionId}/members`, {
-          headers: { 'Authorization': `Bearer ${accessToken}` },
+          headers: apiHeaders(accessToken),
         })
         if (cancelled) return
         if (!response.ok) {
@@ -45,10 +46,7 @@ export default function MemberManager({ serverUrl, accessToken, membership, onCl
         `${serverUrl}/sessions/${membership.sessionId}/members/${member.userId}/role`,
         {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${accessToken}`,
-          },
+          headers: { ...apiHeaders(accessToken), 'Content-Type': 'application/json' },
           body: JSON.stringify({ role }),
         },
       )
