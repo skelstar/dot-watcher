@@ -414,14 +414,12 @@ struct ContentView: View {
                 }
                 .buttonStyle(.plain)
             }
-            if location.activeMembership != nil {
+            if let inviteCode = location.activeMembership?.inviteCode {
                 Button {
-                    Task {
-                        await location.loadSessions()
-                        await location.loadLatestPositions()
-                    }
+                    let sessionUrl = location.webBaseURL.appendingPathComponent("code/\(inviteCode)")
+                    UIApplication.shared.open(sessionUrl)
                 } label: {
-                    Image(systemName: "arrow.clockwise")
+                    Image(systemName: "safari")
                         .font(.system(size: 20))
                         .foregroundStyle(.secondary)
                         .frame(width: 48, height: 48)
