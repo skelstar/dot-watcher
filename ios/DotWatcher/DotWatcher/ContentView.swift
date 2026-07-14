@@ -453,27 +453,25 @@ struct ContentView: View {
                 .fontWeight(.semibold)
                 .foregroundStyle(.secondary)
 
-            HStack {
-                if location.sessionId.isEmpty {
+            if location.sessionId.isEmpty {
+                HStack {
                     Text("Tap to set")
                         .font(.title3.monospaced())
                         .foregroundStyle(.tertiary)
-                } else {
-                    Text(location.activeMembership?.sessionName ?? "")
-                        .font(.title3.bold().monospaced())
-                        .foregroundStyle(.primary)
+                    Spacer()
+                    if location.activeMembership == nil {
+                        Image(systemName: "lock")
+                            .font(.subheadline)
+                            .foregroundStyle(.tertiary)
+                    }
                 }
-                Spacer()
-                if location.activeMembership == nil {
-                    Image(systemName: "lock")
-                        .font(.subheadline)
-                        .foregroundStyle(.tertiary)
-                }
+                .padding(.horizontal, 28)
+                .padding(.vertical, 14)
+                .background(Color(.tertiarySystemBackground))
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+            } else {
+                CodeBoxDisplay(text: location.activeMembership?.sessionName ?? "")
             }
-            .padding(.horizontal, 28)
-            .padding(.vertical, 14)
-            .background(Color(.tertiarySystemBackground))
-            .clipShape(RoundedRectangle(cornerRadius: 10))
 
             if let inviteCode = location.activeMembership?.inviteCode {
                 HStack(spacing: 6) {
