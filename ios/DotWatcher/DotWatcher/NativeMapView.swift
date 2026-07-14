@@ -17,6 +17,10 @@ struct NativeMapView: View {
     /// participants grid. Cleared (by this view) once that runner no longer has a live pin,
     /// so the selection UI upstream never points at a runner who's stopped tracking.
     @Binding var followedRunnerName: String?
+    /// Bumped by `FitAllButton` to force a fit-all-runners recenter on demand, independent of
+    /// whether a follow is currently active — a plain equality check on `followedRunnerName`
+    /// wouldn't fire if it's already `nil` (e.g. after manually panning the map).
+    var fitAllTrigger: Int
 
     @State private var cameraPosition: MapCameraPosition = .automatic
     @State private var followSpan = MKCoordinateSpan(latitudeDelta: 0.01, longitudeDelta: 0.01)
@@ -76,6 +80,10 @@ struct NativeMapView: View {
             } else {
                 fitCamera()
             }
+        }
+        .onChange(of: fitAllTrigger) { _, _ in
+            followedRunnerName = nil
+            fitCamera()
         }
     }
 

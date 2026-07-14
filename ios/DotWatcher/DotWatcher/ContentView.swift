@@ -19,6 +19,8 @@ struct ContentView: View {
     /// The runner the live map is currently centered on and tracking, set by tapping their
     /// avatar in the participants grid while they're actively posting a position.
     @State private var followedRunnerName: String?
+    /// Incremented to tell the live map to snap back to fitting every runner in frame.
+    @State private var fitAllTrigger = 0
 
     var body: some View {
         mainContent
@@ -299,7 +301,7 @@ struct ContentView: View {
             }
             if location.isTracking {
                 DragSheet {
-                    LiveMapSheet(location: location, followedRunnerName: $followedRunnerName)
+                    LiveMapSheet(location: location, followedRunnerName: $followedRunnerName, fitAllTrigger: fitAllTrigger)
                 }
             }
         }
@@ -526,6 +528,11 @@ struct ContentView: View {
                     Circle()
                         .stroke(Color(.systemGray3), style: StrokeStyle(lineWidth: 2, dash: [4, 4]))
                         .frame(width: 38, height: 38)
+                }
+                if location.isTracking {
+                    FitAllButton {
+                        fitAllTrigger += 1
+                    }
                 }
             }
         }
