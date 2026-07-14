@@ -3,6 +3,7 @@ import SwiftUI
 struct LiveMapSheet: View {
     var location: LocationManager
     @Binding var followedRunnerName: String?
+    var fitAllTrigger: Int
 
     var body: some View {
         if location.activeMembership != nil {
@@ -11,7 +12,8 @@ struct LiveMapSheet: View {
                 currentRunnerName: location.runnerName,
                 currentCoordinate: location.currentCoordinate,
                 currentHeading: location.currentHeading,
-                followedRunnerName: $followedRunnerName
+                followedRunnerName: $followedRunnerName,
+                fitAllTrigger: fitAllTrigger
             )
         } else {
             Color.clear
