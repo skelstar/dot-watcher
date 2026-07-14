@@ -324,7 +324,7 @@ struct ContentView: View {
                             .font(.callout.bold())
                             .foregroundStyle(.white)
                             .frame(width: 38, height: 38)
-                            .background(Circle().fill(Color.blue))
+                            .background(Circle().fill(RunnerColorPalette.currentUser))
                     } else {
                         Text("o")
                             .font(.largeTitle.bold())
@@ -523,7 +523,7 @@ struct ContentView: View {
                         RunnerCircle(
                             name: name,
                             size: 38,
-                            fillColor: isInLobby ? Color(.systemGray3) : (name == location.runnerName ? .black : RunnerColorPalette.color(for: name))
+                            fillColor: isInLobby ? Color(.systemGray3) : (name == location.runnerName ? RunnerColorPalette.currentUser : RunnerColorPalette.color(for: name))
                         )
                         .overlay(
                             Circle()
