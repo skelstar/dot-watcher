@@ -21,6 +21,12 @@ struct NativeMapView: View {
     /// whether a follow is currently active — a plain equality check on `followedRunnerName`
     /// wouldn't fire if it's already `nil` (e.g. after manually panning the map).
     var fitAllTrigger: Int
+    /// Fraction of this view's own height currently visible above the enclosing `DragSheet`'s
+    /// clip (1.0 = fully expanded, ~0.5 at the medium detent). The map is always laid out at
+    /// its full large-detent size regardless of detent, so without this, centering math for a
+    /// half-open sheet would place pins under the clipped-off bottom half. Used to bias the
+    /// fitted/followed region so pins land within the visible top slice instead.
+    var visibleFraction: CGFloat
 
     @State private var cameraPosition: MapCameraPosition = .automatic
     @State private var followSpan = MKCoordinateSpan(latitudeDelta: 0.01, longitudeDelta: 0.01)
@@ -63,6 +69,24 @@ struct NativeMapView: View {
             }
             .onChange(of: context.date) { _, _ in followCameraIfNeeded() }
         }
+        .overlay(alignment: .topLeading) {
+            // Only once the sheet is dragged open enough that the map fills most of the
+            // screen — at the medium detent there's no room and the participants grid below
+            // already serves this purpose.
+            if visibleFraction > 0.9 {
+                RunnerLegendRow(
+                    names: pins.map(\.id),
+                    currentRunnerName: currentRunnerName,
+                    followedRunnerName: $followedRunnerName,
+                    onFitAll: {
+                        followedRunnerName = nil
+                        fitCamera()
+                    }
+                )
+                .padding(.top, 12)
+                .padding(.leading, 12)
+            }
+        }
         .onAppear { fitCamera() }
         .onChange(of: pins.map(\.id)) { _, _ in
             if followedRunnerName != nil && followedPin == nil {
@@ -92,18 +116,22 @@ struct NativeMapView: View {
     /// as a new position lands, without a separate polling loop.
     private func followCameraIfNeeded() {
         guard let followedPin else { return }
-        cameraPosition = .region(MKCoordinateRegion(center: followedPin.coordinate, span: followSpan))
+        withAnimation(.easeInOut(duration: 0.6)) {
+            cameraPosition = .region(visibleRegion(centeredOn: followedPin.coordinate, span: followSpan))
+        }
     }
 
     private func fitCamera() {
         guard !pins.isEmpty else { return }
         if pins.count == 1 {
-            cameraPosition = .region(
-                MKCoordinateRegion(
-                    center: pins[0].coordinate,
-                    span: MKCoordinateSpan(latitudeDelta: 0.01, longitudeDelta: 0.01)
+            withAnimation(.easeInOut(duration: 0.6)) {
+                cameraPosition = .region(
+                    visibleRegion(
+                        centeredOn: pins[0].coordinate,
+                        span: MKCoordinateSpan(latitudeDelta: 0.01, longitudeDelta: 0.01)
+                    )
                 )
-            )
+            }
             return
         }
 
@@ -113,15 +141,36 @@ struct NativeMapView: View {
         let minLon = coordinates.map(\.longitude).min()!
         let maxLon = coordinates.map(\.longitude).max()!
 
-        let center = CLLocationCoordinate2D(
-            latitude: (minLat + maxLat) / 2,
-            longitude: (minLon + maxLon) / 2
-        )
+        let paddedMinLat = minLat - (maxLat - minLat) * 0.2
+        let paddedMaxLat = maxLat + (maxLat - minLat) * 0.2
         let span = MKCoordinateSpan(
-            latitudeDelta: max(0.01, (maxLat - minLat) * 1.4),
+            latitudeDelta: max(0.01, paddedMaxLat - paddedMinLat),
             longitudeDelta: max(0.01, (maxLon - minLon) * 1.4)
         )
-        cameraPosition = .region(MKCoordinateRegion(center: center, span: span))
+        withAnimation(.easeInOut(duration: 0.6)) {
+            cameraPosition = .region(
+                visibleRegion(topLatitude: paddedMaxLat, centerLongitude: (minLon + maxLon) / 2, span: span)
+            )
+        }
+    }
+
+    /// Builds a region whose visible-top-slice fraction (`visibleFraction`) frames the given
+    /// point/content, by inflating the region's latitude span so the true (always-full-size)
+    /// map view's clipped-off bottom sits below what's on screen, then shifting the center
+    /// north so the wanted content still lands within the visible slice.
+    private func visibleRegion(centeredOn coordinate: CLLocationCoordinate2D, span: MKCoordinateSpan) -> MKCoordinateRegion {
+        visibleRegion(topLatitude: coordinate.latitude + span.latitudeDelta / 2, centerLongitude: coordinate.longitude, span: span)
+    }
+
+    private func visibleRegion(topLatitude: Double, centerLongitude: Double, span: MKCoordinateSpan) -> MKCoordinateRegion {
+        let fraction = min(max(visibleFraction, 0.01), 1)
+        let fullLatitudeDelta = span.latitudeDelta / fraction
+        let center = CLLocationCoordinate2D(
+            latitude: topLatitude - fullLatitudeDelta / 2,
+            longitude: centerLongitude
+        )
+        let fullSpan = MKCoordinateSpan(latitudeDelta: fullLatitudeDelta, longitudeDelta: span.longitudeDelta)
+        return MKCoordinateRegion(center: center, span: fullSpan)
     }
 }
 
