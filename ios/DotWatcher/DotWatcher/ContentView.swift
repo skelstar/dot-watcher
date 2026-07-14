@@ -16,6 +16,9 @@ struct ContentView: View {
     @State private var noSessionInviteCode = ""
     @State private var isBusy = false
     @State private var formError: String?
+    /// The runner the live map is currently centered on and tracking, set by tapping their
+    /// avatar in the participants grid while they're actively posting a position.
+    @State private var followedRunnerName: String?
 
     var body: some View {
         mainContent
@@ -296,7 +299,7 @@ struct ContentView: View {
             }
             if location.isTracking {
                 DragSheet {
-                    LiveMapSheet(location: location)
+                    LiveMapSheet(location: location, followedRunnerName: $followedRunnerName)
                 }
             }
         }
@@ -506,6 +509,16 @@ struct ContentView: View {
                             size: 38,
                             fillColor: isInLobby ? Color(.systemGray3) : (name == location.runnerName ? .black : RunnerColorPalette.color(for: name))
                         )
+                        .overlay(
+                            Circle()
+                                .stroke(Color.accentColor, lineWidth: 2.5)
+                                .opacity(followedRunnerName == name ? 1 : 0)
+                                .padding(-3)
+                        )
+                        .onTapGesture {
+                            guard !isInLobby, location.isTracking else { return }
+                            followedRunnerName = followedRunnerName == name ? nil : name
+                        }
                     }
                 }
                 let filledCount = max(1, location.participants.count)
