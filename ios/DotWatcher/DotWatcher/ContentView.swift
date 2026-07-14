@@ -519,50 +519,66 @@ struct ContentView: View {
                 let spacing: CGFloat = 10
                 let slotsPerRow = max(1, Int((geometry.size.width + spacing) / (cellWidth + spacing)))
 
-                LazyVGrid(columns: Array(repeating: GridItem(.fixed(cellWidth), spacing: spacing), count: slotsPerRow), spacing: 10) {
-                    if location.participants.isEmpty {
-                        RunnerCircle(name: location.runnerName, size: 38, fillColor: RunnerColorPalette.currentUser)
-                    } else {
-                        ForEach(location.participants, id: \.self) { name in
-                            // In lobby = joined but not actually tracking: either no position posted
-                            // yet at all, or (0, 0) — the placeholder Start posts when no real GPS
-                            // fix is available yet. Still used to gate the tap-to-follow gesture
-                            // below (nothing to follow yet), just not to change the dot's color.
-                            let position = location.runnerPositions.first { $0.runnerName == name }
-                            let isInLobby = position == nil || (position!.latitude == 0 && position!.longitude == 0)
-                            RunnerCircle(
-                                name: name,
-                                size: 38,
-                                fillColor: name == location.runnerName ? RunnerColorPalette.currentUser : RunnerColorPalette.color(for: name)
-                            )
-                            .overlay(
-                                Circle()
-                                    .stroke(Color.accentColor, lineWidth: 2.5)
-                                    .opacity(followedRunnerName == name ? 1 : 0)
-                                    .padding(-3)
-                            )
-                            .onTapGesture {
-                                guard !isInLobby, location.isTracking else { return }
-                                followedRunnerName = followedRunnerName == name ? nil : name
+                // Drives `isDisconnected` below to re-check every second — without this, the row
+                // only re-renders when observable state (participants/positions) changes, so a
+                // runner crossing the disconnected threshold with no new data arriving wouldn't
+                // visually update until something else happened to trigger a redraw. Mirrors
+                // NativeMapView's identical use of TimelineView for its own stale/disconnected pins.
+                TimelineView(.periodic(from: .now, by: 1)) { context in
+                    LazyVGrid(columns: Array(repeating: GridItem(.fixed(cellWidth), spacing: spacing), count: slotsPerRow), spacing: 10) {
+                        if location.participants.isEmpty {
+                            RunnerCircle(name: location.runnerName, size: 38, fillColor: RunnerColorPalette.currentUser)
+                        } else {
+                            ForEach(location.participants, id: \.self) { name in
+                                // In lobby = joined but not actually tracking: either no position posted
+                                // yet at all, or (0, 0) — the placeholder Start posts when no real GPS
+                                // fix is available yet. Still used to gate the tap-to-follow gesture
+                                // below (nothing to follow yet), just not to change the dot's color.
+                                let position = location.runnerPositions.first { $0.runnerName == name }
+                                let isInLobby = position == nil || (position!.latitude == 0 && position!.longitude == 0)
+                                // Mirrors the map pin's `isDisconnected` (NativeMapView.disconnectedAfter):
+                                // no position for a minute or more renders dashed/transparent here too,
+                                // same as on the map. The current user's own row never counts as
+                                // disconnected — `position` reflects `runnerPositions`, a server round
+                                // trip that this device's own live GPS fix doesn't wait on.
+                                let positionAge = position?.parsedTimestamp.map { context.date.timeIntervalSince($0) }
+                                let isDisconnected = name != location.runnerName
+                                    && (positionAge.map { $0 > NativeMapView.disconnectedAfter } ?? false)
+                                RunnerCircle(
+                                    name: name,
+                                    size: 38,
+                                    fillColor: name == location.runnerName ? RunnerColorPalette.currentUser : RunnerColorPalette.color(for: name),
+                                    isDisconnected: isDisconnected
+                                )
+                                .overlay(
+                                    Circle()
+                                        .stroke(Color.accentColor, lineWidth: 2.5)
+                                        .opacity(followedRunnerName == name ? 1 : 0)
+                                        .padding(-3)
+                                )
+                                .onTapGesture {
+                                    guard !isInLobby, location.isTracking else { return }
+                                    followedRunnerName = followedRunnerName == name ? nil : name
+                                }
                             }
                         }
-                    }
-                    // The row always totals exactly `slotsPerRow` cells: every rendered participant
-                    // (deduplicated, so it matches the count `ForEach` above actually produced) plus
-                    // enough dashed placeholders to fill out the row, with room reserved for the
-                    // FitAllButton when it's showing so it never gets pushed onto its own row.
-                    let uniqueParticipants = Set(location.participants).count
-                    let filledCount = max(1, uniqueParticipants)
-                    let reservedForButton = location.isTracking ? 1 : 0
-                    let emptySlots = max(0, slotsPerRow - filledCount - reservedForButton)
-                    ForEach(0..<emptySlots, id: \.self) { _ in
-                        Circle()
-                            .stroke(Color(.systemGray3), style: StrokeStyle(lineWidth: 2, dash: [4, 4]))
-                            .frame(width: 38, height: 38)
-                    }
-                    if location.isTracking {
-                        FitAllButton {
-                            fitAllTrigger += 1
+                        // The row always totals exactly `slotsPerRow` cells: every rendered participant
+                        // (deduplicated, so it matches the count `ForEach` above actually produced) plus
+                        // enough dashed placeholders to fill out the row, with room reserved for the
+                        // FitAllButton when it's showing so it never gets pushed onto its own row.
+                        let uniqueParticipants = Set(location.participants).count
+                        let filledCount = max(1, uniqueParticipants)
+                        let reservedForButton = location.isTracking ? 1 : 0
+                        let emptySlots = max(0, slotsPerRow - filledCount - reservedForButton)
+                        ForEach(0..<emptySlots, id: \.self) { _ in
+                            Circle()
+                                .stroke(Color(.systemGray3), style: StrokeStyle(lineWidth: 2, dash: [4, 4]))
+                                .frame(width: 38, height: 38)
+                        }
+                        if location.isTracking {
+                            FitAllButton {
+                                fitAllTrigger += 1
+                            }
                         }
                     }
                 }

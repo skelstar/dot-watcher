@@ -5,6 +5,9 @@ struct NativeMapView: View {
     /// A runner with no position update for longer than this is considered stale/stationary
     /// and rendered with the dimmed "sleep" pin style, matching the web client's 30s threshold.
     static let staleAfter: TimeInterval = 30
+    /// A runner with no position update for longer than this is considered disconnected —
+    /// rendered with a dashed outline and transparent fill instead of the pulsing sleep style.
+    static let disconnectedAfter: TimeInterval = 60
 
     var positions: [RunnerPositionResponse]
     var currentRunnerName: String
@@ -62,8 +65,10 @@ struct NativeMapView: View {
             Map(position: $cameraPosition) {
                 ForEach(pins) { pin in
                     Annotation("", coordinate: pin.coordinate) {
-                        let isStale = pin.timestamp.map { context.date.timeIntervalSince($0) > Self.staleAfter } ?? false
-                        RunnerMapPin(name: pin.id, isHighlighted: pin.isCurrentRunner, heading: pin.heading, isStale: isStale)
+                        let age = pin.timestamp.map { context.date.timeIntervalSince($0) }
+                        let isStale = age.map { $0 > Self.staleAfter } ?? false
+                        let isDisconnected = age.map { $0 > Self.disconnectedAfter } ?? false
+                        RunnerMapPin(name: pin.id, isHighlighted: pin.isCurrentRunner, heading: pin.heading, isStale: isStale, isDisconnected: isDisconnected)
                     }
                 }
             }
