@@ -9,6 +9,7 @@ struct ContentView: View {
     @State private var nameInput: String = ""
     @State private var showHelp: Bool = false
     @State private var showAuth: Bool = false
+    @State private var showUpdateRequired: Bool = false
     @State private var showLeaveConfirm: Bool = false
     @State private var showCreateSession: Bool = false
     @State private var noSessionCreateCode = ""
@@ -81,6 +82,13 @@ struct ContentView: View {
                 if location.runnerName.trimmingCharacters(in: .whitespaces).isEmpty {
                     showNameEntry = true
                 }
+            }
+            .fullScreenCover(isPresented: $showUpdateRequired) {
+                UpdateRequiredView()
+                    .preferredColorScheme(location.appearanceMode.colorScheme)
+            }
+            .onChange(of: location.updateRequired) { _, updateRequired in
+                if updateRequired { showUpdateRequired = true }
             }
             .alert("Leave session?", isPresented: $showLeaveConfirm) {
                 Button("Leave", role: .destructive) {
