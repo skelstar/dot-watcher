@@ -21,6 +21,10 @@ struct ContentView: View {
     @State private var followedRunnerName: String?
     /// Incremented to tell the live map to snap back to fitting every runner in frame.
     @State private var fitAllTrigger = 0
+    /// How much of the map sheet's full height is currently visible above the drag sheet's
+    /// clip (1.0 = fully expanded, ~0.5 at the medium detent). Lets the map bias its fit-all
+    /// and follow framing so pins land in the visible slice instead of the sheet's true center.
+    @State private var mapVisibleFraction: CGFloat = 1
 
     var body: some View {
         mainContent
@@ -300,8 +304,8 @@ struct ContentView: View {
                 }
             }
             if location.isTracking {
-                DragSheet {
-                    LiveMapSheet(location: location, followedRunnerName: $followedRunnerName, fitAllTrigger: fitAllTrigger)
+                DragSheet(onVisibleFractionChange: { mapVisibleFraction = $0 }) {
+                    LiveMapSheet(location: location, followedRunnerName: $followedRunnerName, fitAllTrigger: fitAllTrigger, visibleFraction: mapVisibleFraction)
                 }
             }
         }
@@ -414,12 +418,26 @@ struct ContentView: View {
                 }
                 .buttonStyle(.plain)
             }
-            if let inviteCode = location.activeMembership?.inviteCode {
+            if let inviteCode = location.activeMembership?.inviteCode, location.isTracking {
                 Button {
                     let sessionUrl = location.webBaseURL.appendingPathComponent("code/\(inviteCode)")
                     UIApplication.shared.open(sessionUrl)
                 } label: {
                     Image(systemName: "safari")
+                        .font(.system(size: 20))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 48, height: 48)
+                        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 12))
+                }
+                .buttonStyle(.plain)
+            } else if location.activeMembership != nil {
+                Button {
+                    Task {
+                        await location.loadSessions()
+                        await location.loadLatestPositions()
+                    }
+                } label: {
+                    Image(systemName: "arrow.clockwise")
                         .font(.system(size: 20))
                         .foregroundStyle(.secondary)
                         .frame(width: 48, height: 48)
