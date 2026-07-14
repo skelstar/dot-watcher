@@ -87,12 +87,24 @@ if (app.Environment.IsDevelopment())
 app.UseDefaultFiles();
 app.UseStaticFiles();
 app.UseCors();
+
+// Environment isn't set via ASPNETCORE_ENVIRONMENT in deployed containers, so it's derived from the
+// request host instead, matching the "main" -> dot-watcher-server / "staging" -> dot-watcher-server-staging
+// deployment naming convention.
+static string ResolveEnvironment(string host) =>
+    host.Equals("localhost", StringComparison.OrdinalIgnoreCase) || host.StartsWith("127.0.0.1")
+        ? "Local"
+        : host.Contains("staging", StringComparison.OrdinalIgnoreCase)
+            ? "Staging"
+            : "Production";
+
 app.Use(async (ctx, next) =>
 {
     var sw = Stopwatch.StartNew();
     var path = ctx.Request.Path.Value ?? "/";
     var method = ctx.Request.Method;
     var requestUrl = $"{ctx.Request.Scheme}://{ctx.Request.Host}{ctx.Request.PathBase}{ctx.Request.Path}{ctx.Request.QueryString}";
+    var environment = ResolveEnvironment(ctx.Request.Host.Host);
 
     var captureBody = !path.StartsWith("/auth") && !path.EndsWith("/recording");
     var originalBody = ctx.Response.Body;
@@ -105,8 +117,9 @@ app.Use(async (ctx, next) =>
 
     // Pushed to the ambient LogContext (rather than only attached to the summary log below) so
     // every log statement emitted while handling this request - including ILogger calls from
-    // controllers - carries the RequestUrl that produced them.
+    // controllers - carries the RequestUrl and Environment that produced them.
     using var _ = LogContext.PushProperty("RequestUrl", requestUrl);
+    using var __ = LogContext.PushProperty("Environment", environment);
 
     try { await next(); }
     finally
