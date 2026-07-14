@@ -63,6 +63,7 @@ A lightweight .NET Core minimal API.
 - Store latest live positions in memory and persisted history in SQLite
 - Serve current runner positions to authenticated session members (`GET /locations/{sessionCode}`)
 - No geometry or bearing logic — that is handled by the client
+- Serves Swagger/OpenAPI docs at `/swagger` in Development for exploring and trying endpoints
 
 **Auth**
 
@@ -218,6 +219,16 @@ Session codes are identifiers, not credentials. Membership is granted via:
         | upload/delete/merge         |
         +-----------------------------+
 ```
+
+---
+
+## Client compatibility
+
+Every request from the iOS and web clients includes an `X-Api-Version: <int>` header — a small integer hardcoded in each client, bumped only when that client adopts a change that could break against the server (a renamed/removed field, a reinterpreted value or validation rule), not on every release. The server compares it against a configured `MinimumApiVersion` floor and rejects older clients with `426 Upgrade Required`; requests with a missing header, or authenticated with the admin bearer token, always pass through unaffected — this covers every client that predates the feature, plus admin/ops tooling that will never send it.
+
+Both clients currently ship version `1` and the server's floor is `1`, so nothing is rejected today — this is deliberately a no-op until a future breaking change raises both together. See `server/README.md#client-compatibility-x-api-version` for the full contract and `tests/DotWatcher.Server.Tests/ApiVersionGateTests.cs` for the exact behavior. On iOS, a `426` shows a blocking "Update Required" screen (`ios/DotWatcher/DotWatcher/UpdateRequiredView.swift`); the web client has no equivalent UI yet.
+
+This complements `tests/DotWatcher.Server.Tests/ContractTests.cs`, which catches *accidental* breaking changes to the API's JSON shape at CI time (a renamed field silently passing every test because both sides share the same C# record type). The version gate instead protects against *deliberate* breaking changes reaching clients that haven't updated yet — an iOS build stuck in App Store/TestFlight review, or a stale web tab.
 
 ---
 

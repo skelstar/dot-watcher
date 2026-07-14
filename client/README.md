@@ -61,6 +61,7 @@ Public legal pages are available at `/privacy` and `/terms`. These should be rev
 - Joining from an invite calls `POST /session-invites/{inviteCode}/join`. Invite joins create `viewer` membership for new members and preserve existing roles; invite codes do not grant runner or owner privileges.
 - Owners can open the member manager, load `GET /sessions/{sessionCode}/members`, and call `POST /sessions/{sessionCode}/members/{userId}/role` to promote viewers to runners or demote runners to viewers.
 - A raw session code in the URL is only an identifier. If the user lacks membership, protected server endpoints return `403`.
+- Requests include an `X-Api-Version` header via the `apiHeaders()` helper (`client/src/apiHeaders.ts`), bumped only when the web client adopts a change that could break against the server. The server may reject an outdated version with `426 Upgrade Required`; there is currently no dedicated UI for this on the web client (see `ios/README.md` for the iOS equivalent, `UpdateRequiredView.swift`).
 
 ## CI
 

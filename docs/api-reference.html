@@ -226,11 +226,12 @@
 
     <header>
       <h1>DotWatcher — iOS API Reference</h1>
-      <p>All network calls made by the iOS app to the DotWatcher REST API.</p>
+      <p>All network calls made by the iOS app to the DotWatcher REST API. For the complete, always-current API surface (including admin/ops endpoints not used by the app), see the server's generated Swagger UI at <code>/swagger</code> in Development.</p>
       <p class="meta">
         Base URL: <code>https://dot-watcher.skelstar.io/api</code> &nbsp;·&nbsp;
         Auth: Bearer token in <code>Authorization</code> header &nbsp;·&nbsp;
-        Token stored in Keychain
+        Token stored in Keychain &nbsp;·&nbsp;
+        Every request sends <code>X-Api-Version</code>
       </p>
     </header>
 
@@ -243,6 +244,16 @@
         <li><a href="#members" class="toc-members">Members</a></li>
         <li><a href="#location" class="toc-location">Location Tracking</a></li>
       </ul>
+    </div>
+
+    <div class="notes" style="margin-bottom: 2rem;">
+      <strong>Client compatibility:</strong> every call above also sends <code>X-Api-Version: &lt;int&gt;</code>
+      (the <code>apiVersion</code> constant in <code>LocationManager.swift</code>), bumped only when the app
+      adopts a change that could break against the server — not on every release. If the server's configured
+      floor is above what this build sends, it responds <code>426 Upgrade Required</code> and the app shows a
+      blocking "Update Required" screen (<code>UpdateRequiredView.swift</code>) instead of the normal response
+      shown for each endpoint below. See <code>server/README.md#client-compatibility-x-api-version</code> for
+      the full server-side contract.
     </div>
 
 
@@ -529,18 +540,20 @@
         <div class="detail-block">
           <h4>Response — LocationPostResponse</h4>
           <pre>{
-  "participants": [{
+  "participants": ["string"],
+  "positions": [[{
     "runnerName": "string",
     "latitude": number,
     "longitude": number,
     "heading": number,
     "timestamp": "ISO8601"
-  }]
+  }]]
 }</pre>
         </div>
       </div>
       <div class="notes">
         <strong>Role requirement:</strong> Only users with role <code>owner</code> or <code>runner</code> can post location updates.
+        <code>positions</code> is the same shape as <code>GET /locations/{sessionId}</code>, included here so the app can render the map from this response alone.
       </div>
     </div>
 

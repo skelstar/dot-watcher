@@ -66,6 +66,7 @@ The session row (once in a session) is swipeable:
 - The app can post locations only when the selected membership role is `owner` or `runner`.
 - `POST /location` must send `Authorization: Bearer <user access token>`. The server stores the authenticated member display name and ignores any client-supplied runner name.
 - `GET /locations/{sessionCode}` returns `403` for valid-looking session codes where the signed-in user is not a member.
+- Every request also sends `X-Api-Version: <int>` (the `apiVersion` constant in `LocationManager.swift`), bumped only when this client adopts a change that could break against the server — not on every release. If the server rejects a request with `426` (client below its configured floor), `LocationManager.updateRequired` flips to `true` and `ContentView` presents a blocking "Update Required" screen (`UpdateRequiredView.swift`) — there's no in-app fix, only installing a newer build via TestFlight.
 
 ---
 
@@ -73,7 +74,7 @@ The session row (once in a session) is swipeable:
 
 GitHub Actions does not currently build or run the iOS project. iOS verification is manual because it depends on local Xcode, signing, simulator/device availability, Keychain behavior, background-location permissions, and real GPS/background execution.
 
-Manual pre-release checks should cover sign-in/register, Keychain persistence, logout revocation, create session, join via invite, owner/runner-only posting, `401`/`403` handling, background location, clock-aligned posting, offline retry, and TestFlight packaging.
+Manual pre-release checks should cover sign-in/register, Keychain persistence, logout revocation, create session, join via invite, owner/runner-only posting, `401`/`403` handling, the `426` update-required screen, background location, clock-aligned posting, offline retry, and TestFlight packaging.
 
 The app links to:
 
