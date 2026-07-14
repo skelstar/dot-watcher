@@ -99,6 +99,9 @@ final class LocationManager {
     private(set) var memberships: [SessionMembership] = []
     private(set) var recentSessions: [SessionMembership] = []
     private(set) var isOffline = false
+    /// Set once the server rejects a request with 426 (client below its MinimumApiVersion floor).
+    /// Sticky for the rest of the session — the only fix is installing a newer build.
+    private(set) var updateRequired = false
     /// Latest known position for every runner in the session, as of the local user's most
     /// recent `POST /location`. Only refreshes on that cadence (every `interval` seconds while
     /// tracking) — there's no separate polling of `GET /locations/{sessionId}`.
@@ -515,6 +518,7 @@ final class LocationManager {
             let (data, response) = try await URLSession.shared.data(for: request)
             let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
             guard (200..<300).contains(statusCode) else {
+                if statusCode == 426 { updateRequired = true }
                 let message = try? JSONDecoder().decode(ServerErrorBody.self, from: data)
                 throw DotWatcherAPIError.badResponse(statusCode, message?.error)
             }
@@ -555,6 +559,7 @@ final class LocationManager {
             let (_, response) = try await URLSession.shared.data(for: request)
             let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
             guard (200..<300).contains(statusCode) else {
+                if statusCode == 426 { updateRequired = true }
                 throw DotWatcherAPIError.badResponse(statusCode, nil)
             }
         } catch let error as DotWatcherAPIError {
