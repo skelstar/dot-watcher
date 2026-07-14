@@ -83,8 +83,22 @@ old server behavior even though the client rebuilt fine.
 
 ## Driving taps (optional)
 
-`simctl` alone can't send taps. If a scenario needs actual UI interaction
-(not just visual inspection after manually navigating), `idb` is installed —
-see project memory / prior session notes for setup
-(`idb_companion --udid <UDID> &`, then `idb connect localhost <port from
-companion log>`, then `idb ui tap <x> <y>` / `idb ui describe-all`).
+`simctl` alone can't send taps. If a scenario needs actual UI interaction (not
+just visual inspection after manually navigating), `idb` (fb-idb) is
+pip-installed and `~/.zshrc` puts its CLI on PATH for interactive shells — but
+run this skill's helper to be safe in non-interactive shells and to start/wire
+up `idb_companion` for the target simulator:
+
+```bash
+/Users/skelstar/Documents/GitHub/dot-watcher/.claude/skills/build-ios-simulator/idb-connect.sh <UDID>
+```
+
+Then get exact tap coordinates from the accessibility tree instead of
+eyeballing a screenshot (screenshot coordinates are in pixels; `idb ui tap`
+takes points, and scaling from a screenshot is error-prone):
+
+```bash
+export PATH="/Users/skelstar/Library/Python/3.9/bin:$PATH"
+idb ui describe-all --udid <UDID>   # lists every element with its point-space frame
+idb ui tap --udid <UDID> <x> <y>    # tap the center of the element you want
+```
