@@ -510,45 +510,64 @@ struct ContentView: View {
                 .fontWeight(.semibold)
                 .foregroundStyle(.secondary)
 
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 38))], spacing: 10) {
-                if location.participants.isEmpty {
-                    RunnerCircle(name: location.runnerName, size: 38, fillColor: Color(.systemGray3))
-                } else {
-                    ForEach(location.participants, id: \.self) { name in
-                        // In lobby = joined but not actually tracking: either no position posted
-                        // yet at all, or (0, 0) — the placeholder Start posts when no real GPS
-                        // fix is available yet.
-                        let position = location.runnerPositions.first { $0.runnerName == name }
-                        let isInLobby = position == nil || (position!.latitude == 0 && position!.longitude == 0)
-                        RunnerCircle(
-                            name: name,
-                            size: 38,
-                            fillColor: isInLobby ? Color(.systemGray3) : (name == location.runnerName ? RunnerColorPalette.currentUser : RunnerColorPalette.color(for: name))
-                        )
-                        .overlay(
-                            Circle()
-                                .stroke(Color.accentColor, lineWidth: 2.5)
-                                .opacity(followedRunnerName == name ? 1 : 0)
-                                .padding(-3)
-                        )
-                        .onTapGesture {
-                            guard !isInLobby, location.isTracking else { return }
-                            followedRunnerName = followedRunnerName == name ? nil : name
+            // Single-row grid: rather than a fixed slot count, measure the available width and
+            // compute how many 38pt circles (10pt spacing) actually fit, so the row is always
+            // exactly full — however many that is on this device/orientation — instead of a
+            // guessed constant that's too few on wide screens or wraps on narrow ones.
+            GeometryReader { geometry in
+                let cellWidth: CGFloat = 38
+                let spacing: CGFloat = 10
+                let slotsPerRow = max(1, Int((geometry.size.width + spacing) / (cellWidth + spacing)))
+
+                LazyVGrid(columns: Array(repeating: GridItem(.fixed(cellWidth), spacing: spacing), count: slotsPerRow), spacing: 10) {
+                    if location.participants.isEmpty {
+                        RunnerCircle(name: location.runnerName, size: 38, fillColor: RunnerColorPalette.currentUser)
+                    } else {
+                        ForEach(location.participants, id: \.self) { name in
+                            // In lobby = joined but not actually tracking: either no position posted
+                            // yet at all, or (0, 0) — the placeholder Start posts when no real GPS
+                            // fix is available yet. Still used to gate the tap-to-follow gesture
+                            // below (nothing to follow yet), just not to change the dot's color.
+                            let position = location.runnerPositions.first { $0.runnerName == name }
+                            let isInLobby = position == nil || (position!.latitude == 0 && position!.longitude == 0)
+                            RunnerCircle(
+                                name: name,
+                                size: 38,
+                                fillColor: name == location.runnerName ? RunnerColorPalette.currentUser : RunnerColorPalette.color(for: name)
+                            )
+                            .overlay(
+                                Circle()
+                                    .stroke(Color.accentColor, lineWidth: 2.5)
+                                    .opacity(followedRunnerName == name ? 1 : 0)
+                                    .padding(-3)
+                            )
+                            .onTapGesture {
+                                guard !isInLobby, location.isTracking else { return }
+                                followedRunnerName = followedRunnerName == name ? nil : name
+                            }
+                        }
+                    }
+                    // The row always totals exactly `slotsPerRow` cells: every rendered participant
+                    // (deduplicated, so it matches the count `ForEach` above actually produced) plus
+                    // enough dashed placeholders to fill out the row, with room reserved for the
+                    // FitAllButton when it's showing so it never gets pushed onto its own row.
+                    let uniqueParticipants = Set(location.participants).count
+                    let filledCount = max(1, uniqueParticipants)
+                    let reservedForButton = location.isTracking ? 1 : 0
+                    let emptySlots = max(0, slotsPerRow - filledCount - reservedForButton)
+                    ForEach(0..<emptySlots, id: \.self) { _ in
+                        Circle()
+                            .stroke(Color(.systemGray3), style: StrokeStyle(lineWidth: 2, dash: [4, 4]))
+                            .frame(width: 38, height: 38)
+                    }
+                    if location.isTracking {
+                        FitAllButton {
+                            fitAllTrigger += 1
                         }
                     }
                 }
-                let filledCount = max(1, location.participants.count)
-                ForEach(0..<max(0, 5 - filledCount), id: \.self) { _ in
-                    Circle()
-                        .stroke(Color(.systemGray3), style: StrokeStyle(lineWidth: 2, dash: [4, 4]))
-                        .frame(width: 38, height: 38)
-                }
-                if location.isTracking {
-                    FitAllButton {
-                        fitAllTrigger += 1
-                    }
-                }
             }
+            .frame(height: 38)
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
         .padding(16)

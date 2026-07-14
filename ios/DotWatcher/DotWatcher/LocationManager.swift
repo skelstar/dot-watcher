@@ -317,7 +317,7 @@ final class LocationManager {
             runnerPositions = positions.compactMap(\.last)
         }
         if case .success(let runners) = runners {
-            participants = runners
+            participants = Array(Set(runners)).sorted()
         }
     }
 
@@ -359,7 +359,7 @@ final class LocationManager {
         upsertMembership(membership)
         selectSession(membership)
         if let joinParticipants = membership.participants {
-            participants = joinParticipants
+            participants = Array(Set(joinParticipants)).sorted()
         }
     }
 
