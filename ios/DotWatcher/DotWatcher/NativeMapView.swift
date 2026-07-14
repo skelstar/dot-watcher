@@ -13,8 +13,13 @@ struct NativeMapView: View {
     /// `POST /location` round-trip.
     var currentCoordinate: CLLocationCoordinate2D?
     var currentHeading: Double?
+    /// The runner the map should stay centered on, set by tapping their avatar in the
+    /// participants grid. Cleared (by this view) once that runner no longer has a live pin,
+    /// so the selection UI upstream never points at a runner who's stopped tracking.
+    @Binding var followedRunnerName: String?
 
     @State private var cameraPosition: MapCameraPosition = .automatic
+    @State private var followSpan = MKCoordinateSpan(latitudeDelta: 0.01, longitudeDelta: 0.01)
 
     private struct Pin: Identifiable {
         let id: String
@@ -37,6 +42,11 @@ struct NativeMapView: View {
         return result
     }
 
+    private var followedPin: Pin? {
+        guard let followedRunnerName else { return nil }
+        return pins.first { $0.id == followedRunnerName }
+    }
+
     var body: some View {
         TimelineView(.periodic(from: .now, by: 1)) { context in
             Map(position: $cameraPosition) {
@@ -47,9 +57,34 @@ struct NativeMapView: View {
                     }
                 }
             }
+            .onChange(of: context.date) { _, _ in followCameraIfNeeded() }
         }
         .onAppear { fitCamera() }
-        .onChange(of: pins.map(\.id)) { _, _ in fitCamera() }
+        .onChange(of: pins.map(\.id)) { _, _ in
+            if followedRunnerName != nil && followedPin == nil {
+                // Followed runner dropped out of the pin list (e.g. left the session) — hand
+                // back to fit-all via the followedRunnerName change handler below.
+                followedRunnerName = nil
+            } else if followedRunnerName == nil {
+                fitCamera()
+            }
+        }
+        .onChange(of: followedRunnerName) { _, newValue in
+            if newValue != nil {
+                followSpan = MKCoordinateSpan(latitudeDelta: 0.01, longitudeDelta: 0.01)
+                followCameraIfNeeded()
+            } else {
+                fitCamera()
+            }
+        }
+    }
+
+    /// Re-centers on the followed runner's current pin, keeping whatever zoom `followSpan`
+    /// holds — called every second from the map's own timer so movement is picked up as soon
+    /// as a new position lands, without a separate polling loop.
+    private func followCameraIfNeeded() {
+        guard let followedPin else { return }
+        cameraPosition = .region(MKCoordinateRegion(center: followedPin.coordinate, span: followSpan))
     }
 
     private func fitCamera() {
