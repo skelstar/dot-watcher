@@ -4,6 +4,7 @@ struct LiveMapSheet: View {
     var location: LocationManager
     @Binding var followedRunnerName: String?
     var fitAllTrigger: Int
+    var visibleFraction: CGFloat
 
     var body: some View {
         if location.activeMembership != nil {
@@ -13,7 +14,8 @@ struct LiveMapSheet: View {
                 currentCoordinate: location.currentCoordinate,
                 currentHeading: location.currentHeading,
                 followedRunnerName: $followedRunnerName,
-                fitAllTrigger: fitAllTrigger
+                fitAllTrigger: fitAllTrigger,
+                visibleFraction: visibleFraction
             )
         } else {
             Color.clear

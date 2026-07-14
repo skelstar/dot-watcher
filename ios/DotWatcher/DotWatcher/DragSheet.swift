@@ -13,6 +13,11 @@ import SwiftUI
 /// slice. This keeps drags perfectly smooth even when `content` embeds something expensive to
 /// relayout (like a `WKWebView`), since that view's own frame never changes after first layout.
 struct DragSheet<Content: View>: View {
+    /// Reports how much of `content`'s full (large-detent) height is currently visible above
+    /// the clip, as a fraction from `mediumHeight/largeHeight` up to `1.0`. Lets content that
+    /// cares where its own bottom edge is being clipped (e.g. a map fitting pins into the
+    /// visible slice) react to drags and detent changes without being resized itself.
+    var onVisibleFractionChange: ((CGFloat) -> Void)?
     @ViewBuilder var content: () -> Content
 
     @State private var detent: Detent = .medium
@@ -31,6 +36,7 @@ struct DragSheet<Content: View>: View {
 
             let settledHeight: CGFloat = detent == .medium ? mediumHeight : largeHeight
             let cardHeight = min(largeHeight, max(mediumHeight, settledHeight - dragTranslation))
+            let settledFraction = largeHeight > 0 ? settledHeight / largeHeight : 1
 
             VStack(spacing: 0) {
                 Capsule()
@@ -65,6 +71,8 @@ struct DragSheet<Content: View>: View {
             .animation(.spring(response: 0.35, dampingFraction: 0.85), value: detent)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
             .ignoresSafeArea(edges: .bottom)
+            .onAppear { onVisibleFractionChange?(settledFraction) }
+            .onChange(of: settledFraction) { _, newValue in onVisibleFractionChange?(newValue) }
         }
     }
 }
