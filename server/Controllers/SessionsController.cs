@@ -172,6 +172,20 @@ public class SessionsController(
         return meta is null ? NotFound() : Ok(meta);
     }
 
+    /// <summary>Downloads the session's GPX route (application/gpx+xml), by invite code. No auth required.</summary>
+    [HttpGet("/session-invites/{inviteCode}/route")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public IActionResult GetRouteByInviteCode(string inviteCode)
+    {
+        var sessionId = store.GetSessionIdByInviteCode(inviteCode);
+        if (sessionId is null)
+            return NotFound(new { error = "Invite not found." });
+
+        var gpx = store.GetRoute(sessionId);
+        return gpx is null ? NotFound() : Content(gpx, "application/gpx+xml");
+    }
+
     /// <summary>Lists display names of runners who have joined the session (not just those actively tracking).</summary>
     [HttpGet("/sessions/{sessionId}/runners")]
     [ProducesResponseType(typeof(IReadOnlyList<string>), StatusCodes.Status200OK)]
@@ -312,6 +326,96 @@ public class SessionsController(
             return NotFound();
 
         logger.LogInformation("Deleted recording for {Session}", sessionId);
+        return NoContent();
+    }
+
+    /// <summary>Replaces a session's GPX route with an uploaded body (raw XML text). Accepts either the admin bearer token or the session owner's user token.</summary>
+    [HttpPost("/sessions/{sessionId}/route")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    public async Task<IActionResult> UploadRoute(string sessionId)
+    {
+        if (!auth.IsAuthorized(Request))
+        {
+            if (!userAuth.TryAuthenticate(Request, out var user))
+                return Unauthorized();
+
+            if (string.IsNullOrWhiteSpace(sessionId))
+                return BadRequest(new { error = "Invalid session ID." });
+
+            if (!store.CanManageRoute(sessionId, user.UserId))
+                return StatusCode(StatusCodes.Status403Forbidden);
+        }
+        else if (string.IsNullOrWhiteSpace(sessionId))
+        {
+            return BadRequest(new { error = "Invalid session ID." });
+        }
+
+        using var reader = new StreamReader(Request.Body);
+        var content = await reader.ReadToEndAsync();
+
+        try
+        {
+            store.SaveRoute(sessionId, content);
+        }
+        catch (ArgumentException)
+        {
+            return BadRequest(new { error = "Invalid GPX route." });
+        }
+
+        logger.LogInformation("Uploaded route for {Session} ({Bytes} bytes)", sessionId, content.Length);
+        return Ok(new { sessionId = sessionId });
+    }
+
+    /// <summary>Downloads a session's GPX route (application/gpx+xml). Accepts either the admin bearer token or a member's user token.</summary>
+    [HttpGet("/sessions/{sessionId}/route")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public IActionResult DownloadRoute(string sessionId)
+    {
+        if (!auth.IsAuthorized(Request))
+        {
+            if (!userAuth.TryAuthenticate(Request, out var user))
+                return Unauthorized();
+
+            if (string.IsNullOrWhiteSpace(sessionId))
+                return BadRequest(new { error = "Invalid session ID." });
+
+            if (!store.CanReadSession(sessionId, user.UserId))
+                return StatusCode(StatusCodes.Status403Forbidden);
+        }
+        else if (string.IsNullOrWhiteSpace(sessionId))
+        {
+            return BadRequest(new { error = "Invalid session ID." });
+        }
+
+        var gpx = store.GetRoute(sessionId);
+        return gpx is null ? NotFound() : Content(gpx, "application/gpx+xml");
+    }
+
+    /// <summary>Admin/ops: deletes a session's saved GPX route.</summary>
+    [HttpDelete("/sessions/{sessionId}/route")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public IActionResult DeleteRoute(string sessionId)
+    {
+        if (!auth.IsAuthorized(Request))
+            return Unauthorized();
+
+        if (string.IsNullOrWhiteSpace(sessionId))
+            return BadRequest(new { error = "Invalid session ID." });
+
+        if (!store.DeleteRoute(sessionId))
+            return NotFound();
+
+        logger.LogInformation("Deleted route for {Session}", sessionId);
         return NoContent();
     }
 
