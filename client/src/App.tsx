@@ -9,13 +9,16 @@ import MemberManager from './MemberManager.tsx'
 import ReplayControls from './ReplayControls.tsx'
 import ReplayPicker from './ReplayPicker.tsx'
 import MapPlayButton from './MapPlayButton.tsx'
+import LoadRouteButton from './LoadRouteButton.tsx'
 import AuthPrompt from './AuthPrompt.tsx'
 import LegalPage from './LegalPage.tsx'
 import AdminPanel from './AdminPanel.tsx'
 import AccountSettings from './AccountSettings.tsx'
 import LandingPage from './LandingPage.tsx'
 import { useRunnerMarkers } from './useRunnerMarkers.ts'
+import { useRouteLayer } from './useRouteLayer.ts'
 import { useSessionTimeline } from './useSessionTimeline.ts'
+import { parseGpxCoordinates } from './gpx.ts'
 import { apiHeaders } from './apiHeaders.ts'
 import { canManageMembersForRole, canWriteLocationForRole, shouldShowAuthPrompt, shouldShowSessionPrompt } from './sessionState.ts'
 import type { AuthResponse, AuthenticatedUser, SessionMembership } from './types.ts'
@@ -99,6 +102,7 @@ export default function App() {
   const [menu, setMenu] = useState<{ x: number; y: number; lng: number; lat: number } | null>(null)
   const [showMembers, setShowMembers] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
+  const [routeCoordinates, setRouteCoordinates] = useState<[number, number][] | null>(null)
   const accessToken = auth?.accessToken ?? null
 
   useEffect(() => {
@@ -187,6 +191,48 @@ export default function App() {
   )
 
   const { allRunners, followRunner, fitAll } = useRunnerMarkers(mapRef, timeline.positions, timeline.virtualNowMs)
+  useRouteLayer(mapRef, routeCoordinates)
+
+  const routeBase = !accessToken && inviteCode
+    ? `${SERVER_URL}/session-invites/${inviteCode}`
+    : hasSessionMembership && sessionId
+    ? `${SERVER_URL}/sessions/${sessionId}`
+    : null
+
+  useEffect(() => {
+    setRouteCoordinates(null)
+    if (!routeBase) return
+
+    let cancelled = false
+    async function loadRoute() {
+      const response = await fetch(`${routeBase}/route`, {
+        headers: apiHeaders(accessToken),
+      })
+      if (cancelled || !response.ok) return
+      const gpx = await response.text()
+      setRouteCoordinates(parseGpxCoordinates(gpx))
+    }
+
+    void loadRoute()
+    return () => { cancelled = true }
+  }, [routeBase, accessToken])
+
+  async function uploadRoute(file: File) {
+    if (!sessionId || !accessToken) return
+    const gpxText = await file.text()
+    const response = await fetch(`${SERVER_URL}/sessions/${sessionId}/route`, {
+      method: 'POST',
+      headers: apiHeaders(accessToken),
+      body: gpxText,
+    })
+    if (response.ok) {
+      setRouteCoordinates(parseGpxCoordinates(gpxText))
+    } else if (response.status === 403) {
+      window.alert('Only the session owner can set the route.')
+    } else {
+      window.alert('Failed to upload route.')
+    }
+  }
 
   // A `/replay` deep link means "open this session already scrubbed to its start" rather than a
   // distinct mode — seed the scrub once the run's start time is known, then forget about it.
@@ -305,6 +351,7 @@ export default function App() {
           {canManageMembers && (
             <button type="button" style={signOutButton} onClick={() => setShowMembers(true)}>Members</button>
           )}
+          {hasSessionMembership && <LoadRouteButton onLoadRoute={uploadRoute} style={signOutButton} />}
           <button type="button" style={signOutButton} onClick={() => setShowSettings(true)}>Settings</button>
           <button type="button" style={signOutButton} onClick={handleSignOut}>Sign out</button>
         </div>
@@ -314,7 +361,10 @@ export default function App() {
         <MapMenu
           x={menu.x}
           y={menu.y}
+          canSendChester={canWriteLocation}
+          canLoadRoute={canWriteLocation}
           onSendChester={() => sendChester(menu.lng, menu.lat)}
+          onLoadRoute={uploadRoute}
           onClose={() => setMenu(null)}
         />
       )}
