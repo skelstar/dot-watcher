@@ -63,7 +63,7 @@ export function useRouteLayer(mapRef: RefObject<mapboxgl.Map | null>, coordinate
         source: SOURCE_ID,
         layout: {
           'symbol-placement': 'line',
-          'symbol-spacing': 80,
+          'symbol-spacing': 200,
           'icon-image': ARROW_IMAGE_ID,
           'icon-size': 1,
           'icon-rotation-alignment': 'map',
