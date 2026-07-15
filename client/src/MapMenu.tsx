@@ -1,18 +1,33 @@
 interface Props {
   x: number
   y: number
+  canSendChester: boolean
+  canLoadRoute: boolean
   onSendChester: () => void
+  onLoadRoute: (file: File) => void
   onClose: () => void
 }
 
-export default function MapMenu({ x, y, onSendChester, onClose }: Props) {
+export default function MapMenu({ x, y, canSendChester, canLoadRoute, onSendChester, onLoadRoute, onClose }: Props) {
+  function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (file) onLoadRoute(file)
+    onClose()
+  }
+
   return (
     <>
       <div onClick={onClose} style={backdrop} />
       <div style={{ ...container, left: x, top: y }}>
-        <div style={item} onClick={() => { onSendChester(); onClose() }}>Send Chester</div>
-        <div style={item} onClick={onClose}>Option 2</div>
-        <div style={item} onClick={onClose}>Option 3</div>
+        {canSendChester && (
+          <div style={item} onClick={() => { onSendChester(); onClose() }}>Send Chester</div>
+        )}
+        {canLoadRoute && (
+          <label style={item}>
+            Load route (GPX)
+            <input type="file" accept=".gpx" onChange={handleFile} style={{ display: 'none' }} />
+          </label>
+        )}
       </div>
     </>
   )
@@ -35,6 +50,7 @@ const container: React.CSSProperties = {
 }
 
 const item: React.CSSProperties = {
+  display: 'block',
   padding: '15px 24px',
   fontSize: 21,
   fontFamily: 'system-ui, sans-serif',

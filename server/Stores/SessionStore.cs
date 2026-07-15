@@ -79,6 +79,13 @@ public class SessionStore(string dbPath)
                 revoked_at TEXT NOT NULL
             );
             CREATE INDEX IF NOT EXISTS idx_revoked_user_tokens_expires_at ON revoked_user_tokens(expires_at);
+
+            CREATE TABLE IF NOT EXISTS session_routes (
+                session_id  TEXT PRIMARY KEY,
+                gpx_content TEXT NOT NULL,
+                uploaded_at TEXT NOT NULL,
+                FOREIGN KEY(session_id) REFERENCES app_sessions(id)
+            );
             """;
         cmd.ExecuteNonQuery();
 
@@ -292,6 +299,14 @@ public class SessionStore(string dbPath)
                 cmd.Parameters.AddWithValue("$sessionId", sessionId);
                 cmd.ExecuteNonQuery();
             }
+
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.Transaction = tx;
+                cmd.CommandText = "DELETE FROM session_routes WHERE session_id = $sessionId";
+                cmd.Parameters.AddWithValue("$sessionId", sessionId);
+                cmd.ExecuteNonQuery();
+            }
         }
 
         using (var cmd = conn.CreateCommand())
@@ -498,6 +513,19 @@ public class SessionStore(string dbPath)
         return membership?.Role == "runner";
     }
 
+    // Route management is an ownership action, not a membership role — session_members.role is
+    // only ever "runner"/"viewer" (see UpsertMembership), while app_sessions.owner_user_id is the
+    // actual creator/owner concept.
+    public bool CanManageRoute(string sessionId, string userId)
+    {
+        using var conn = Connect();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT COUNT(1) FROM app_sessions WHERE id = $sessionId AND owner_user_id = $userId";
+        cmd.Parameters.AddWithValue("$sessionId", sessionId);
+        cmd.Parameters.AddWithValue("$userId", userId);
+        return (long)(cmd.ExecuteScalar() ?? 0L) > 0;
+    }
+
     public IReadOnlyList<string> GetSessionRunners(string sessionId)
     {
         using var conn = Connect();
@@ -643,7 +671,7 @@ public class SessionStore(string dbPath)
         using var conn = Connect();
         using var tx = conn.BeginTransaction();
 
-        foreach (var table in new[] { "location_updates", "session_members" })
+        foreach (var table in new[] { "location_updates", "session_members", "session_routes" })
         {
             using var cmd = conn.CreateCommand();
             cmd.Transaction = tx;
@@ -976,6 +1004,53 @@ public class SessionStore(string dbPath)
 
     public void ClearSession(string sessionId) =>
         _sessions.TryRemove(sessionId, out _);
+
+    public bool HasRoute(string sessionId)
+    {
+        using var conn = Connect();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT COUNT(1) FROM session_routes WHERE session_id = $code";
+        cmd.Parameters.AddWithValue("$code", sessionId);
+        return (long)(cmd.ExecuteScalar() ?? 0L) > 0;
+    }
+
+    public string? GetRoute(string sessionId)
+    {
+        using var conn = Connect();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT gpx_content FROM session_routes WHERE session_id = $code";
+        cmd.Parameters.AddWithValue("$code", sessionId);
+        return cmd.ExecuteScalar() as string;
+    }
+
+    public void SaveRoute(string sessionId, string gpxContent)
+    {
+        if (string.IsNullOrWhiteSpace(gpxContent))
+            throw new ArgumentException("GPX content is required.", nameof(gpxContent));
+
+        using var conn = Connect();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = """
+            INSERT INTO session_routes (session_id, gpx_content, uploaded_at)
+            VALUES ($code, $gpx, $uploadedAt)
+            ON CONFLICT(session_id) DO UPDATE SET
+                gpx_content = excluded.gpx_content,
+                uploaded_at = excluded.uploaded_at
+            """;
+        cmd.Parameters.AddWithValue("$code", sessionId);
+        cmd.Parameters.AddWithValue("$gpx", gpxContent);
+        cmd.Parameters.AddWithValue("$uploadedAt", DateTimeOffset.UtcNow.ToString("O"));
+        cmd.ExecuteNonQuery();
+    }
+
+    public bool DeleteRoute(string sessionId)
+    {
+        using var conn = Connect();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "DELETE FROM session_routes WHERE session_id = $code";
+        cmd.Parameters.AddWithValue("$code", sessionId);
+        return cmd.ExecuteNonQuery() > 0;
+    }
 
     public int MergeSession(string sourceId, string targetId)
     {
