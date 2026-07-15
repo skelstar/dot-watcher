@@ -2,7 +2,6 @@ using DotWatcher.Server;
 using Microsoft.OpenApi.Models;
 using Serilog;
 using Serilog.Context;
-using System.Diagnostics;
 using System.Reflection;
 using System.Text.Json;
 
@@ -100,7 +99,6 @@ static string ResolveEnvironment(string host) =>
 
 app.Use(async (ctx, next) =>
 {
-    var sw = Stopwatch.StartNew();
     var path = ctx.Request.Path.Value ?? "/";
     var method = ctx.Request.Method;
     var requestUrl = $"{ctx.Request.Scheme}://{ctx.Request.Host}{ctx.Request.PathBase}{ctx.Request.Path}{ctx.Request.QueryString}";
@@ -124,8 +122,6 @@ app.Use(async (ctx, next) =>
     try { await next(); }
     finally
     {
-        sw.Stop();
-
         string? responseBody = null;
         if (capture != null)
         {
@@ -141,8 +137,7 @@ app.Use(async (ctx, next) =>
         var status = ctx.Response.StatusCode;
         var log = Log.ForContext("RequestMethod", method)
                      .ForContext("RequestPath", path)
-                     .ForContext("StatusCode", status)
-                     .ForContext("Elapsed", sw.Elapsed.TotalMilliseconds);
+                     .ForContext("StatusCode", status);
 
         if (ctx.GetRouteValue("sessionId") is string sessionId)
             log = log.ForContext("SessionId", sessionId);
@@ -155,10 +150,7 @@ app.Use(async (ctx, next) =>
 
         var userAuth = ctx.RequestServices.GetRequiredService<UserTokenAuth>();
         if (userAuth.TryAuthenticate(ctx.Request, out var user))
-        {
-            log = log.ForContext("UserId", user.UserId);
             log = log.ForContext("Username", user.Username);
-        }
 
         foreach (var (key, value) in ctx.Items)
             if (key is string k && k.StartsWith("Log:") && value is not null)
@@ -169,7 +161,8 @@ app.Use(async (ctx, next) =>
 
         if (path != "/log") // skip noisy debug-panel polling
         {
-            var message = $"{method} {path}";
+            var hasRunner = ctx.Items.TryGetValue("Log:Runner", out var logRunner);
+            var message = hasRunner ? $"{method} {path} - {logRunner}" : $"{method} {path}";
             if (status >= 500) log.Error(message);
             else if (status >= 400) log.Warning(message);
             else log.Information(message);
@@ -178,8 +171,7 @@ app.Use(async (ctx, next) =>
             var buffer = ctx.RequestServices.GetRequiredService<LogBuffer>();
             var level = status >= 500 ? "ERR" : status >= 400 ? "WRN" : "INF";
             var contextSuffix = "";
-            if (ctx.Items.TryGetValue("Log:Session", out var logSession) &&
-                ctx.Items.TryGetValue("Log:Runner", out var logRunner))
+            if (ctx.Items.TryGetValue("Log:Session", out var logSession) && hasRunner)
                 contextSuffix = $" [{logSession}] {logRunner}";
             buffer.Add($"[{DateTimeOffset.UtcNow:HH:mm:ss} {level}] {message}{contextSuffix}");
         }
