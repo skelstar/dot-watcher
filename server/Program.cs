@@ -145,6 +145,12 @@ app.Use(async (ctx, next) =>
         if (ctx.Request.Headers.TryGetValue("X-Device-Name", out var deviceName) && !string.IsNullOrWhiteSpace(deviceName))
             log = log.ForContext("DeviceName", deviceName.ToString());
 
+        if (ctx.Request.Headers.TryGetValue("X-Device-Id", out var deviceId) && !string.IsNullOrWhiteSpace(deviceId))
+            log = log.ForContext("DeviceId", deviceId.ToString());
+
+        if (ctx.Request.Headers.TryGetValue("X-Browser-Id", out var browserId) && !string.IsNullOrWhiteSpace(browserId))
+            log = log.ForContext("BrowserId", browserId.ToString());
+
         if (ctx.Request.Headers.TryGetValue("X-Api-Version", out var apiVersion) && !string.IsNullOrWhiteSpace(apiVersion))
             log = log.ForContext("ApiVersion", apiVersion.ToString());
 
