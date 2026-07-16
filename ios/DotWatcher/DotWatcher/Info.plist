@@ -15,7 +15,7 @@
 	<key>CFBundleShortVersionString</key>
 	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleVersion</key>
-	<string>271</string>
+	<string>272</string>
 	<key>DotWatcherAPIBaseURL</key>
 	<string>$(DOTWATCHER_API_BASE_URL)</string>
 	<key>DotWatcherStagingAPIBaseURL</key>
@@ -25,7 +25,7 @@
 	<key>DotWatcherWebBaseURL</key>
 	<string>$(DOTWATCHER_WEB_BASE_URL)</string>
 	<key>GitCommitSHA</key>
-	<string>3e54e8f</string>
+	<string>1080f9d</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 	<key>LSApplicationQueriesSchemes</key>
