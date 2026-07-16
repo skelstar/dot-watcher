@@ -148,6 +148,9 @@ app.Use(async (ctx, next) =>
         if (ctx.Request.Headers.TryGetValue("X-Api-Version", out var apiVersion) && !string.IsNullOrWhiteSpace(apiVersion))
             log = log.ForContext("ApiVersion", apiVersion.ToString());
 
+        if (ctx.Request.Headers.TryGetValue("X-Client-Id", out var clientId) && !string.IsNullOrWhiteSpace(clientId))
+            log = log.ForContext("ClientId", clientId.ToString());
+
         var userAuth = ctx.RequestServices.GetRequiredService<UserTokenAuth>();
         if (userAuth.TryAuthenticate(ctx.Request, out var user))
             log = log.ForContext("Username", user.Username);

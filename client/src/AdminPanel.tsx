@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useState, type FormEvent, Fragment } from 'react'
+import { apiHeaders } from './apiHeaders'
 
 interface AdminUser {
   id: string
@@ -60,7 +61,7 @@ export default function AdminPanel({ serverUrl }: { serverUrl: string }) {
     setLoading(true)
     setError(null)
     try {
-      const headers = { Authorization: `Bearer ${bearerToken}` }
+      const headers = apiHeaders(bearerToken, 'web-admin')
       const [usersRes, sessionsRes] = await Promise.all([
         fetch(`${serverUrl}/admin/users`, { headers }),
         fetch(`${serverUrl}/admin/sessions`, { headers }),
@@ -127,7 +128,7 @@ export default function AdminPanel({ serverUrl }: { serverUrl: string }) {
     setBulkDeletingUsers(true)
     try {
       const results = await Promise.all(ids.map(id =>
-        fetch(`${serverUrl}/admin/users/${id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } })
+        fetch(`${serverUrl}/admin/users/${id}`, { method: 'DELETE', headers: apiHeaders(token, 'web-admin') })
           .then(r => ({ id, ok: r.ok }))
           .catch(() => ({ id, ok: false }))
       ))
@@ -147,7 +148,7 @@ export default function AdminPanel({ serverUrl }: { serverUrl: string }) {
     setBulkDeletingSessions(true)
     try {
       const results = await Promise.all(ids.map(id =>
-        fetch(`${serverUrl}/admin/sessions/${id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } })
+        fetch(`${serverUrl}/admin/sessions/${id}`, { method: 'DELETE', headers: apiHeaders(token, 'web-admin') })
           .then(r => ({ id, ok: r.ok }))
           .catch(() => ({ id, ok: false }))
       ))
@@ -165,7 +166,7 @@ export default function AdminPanel({ serverUrl }: { serverUrl: string }) {
     setMemberStats(prev => ({ ...prev, [sessionId]: 'loading' }))
     try {
       const r = await fetch(`${serverUrl}/admin/sessions/${sessionId}/member-stats`, {
-        headers: { Authorization: `Bearer ${token}` },
+        headers: apiHeaders(token, 'web-admin'),
       })
       if (!r.ok) {
         setMemberStats(prev => ({ ...prev, [sessionId]: { error: `HTTP ${r.status}` } }))
@@ -194,7 +195,7 @@ export default function AdminPanel({ serverUrl }: { serverUrl: string }) {
     try {
       const r = await fetch(`${serverUrl}/sessions/${sessionId}/recording`, {
         method: 'DELETE',
-        headers: { Authorization: `Bearer ${token}` },
+        headers: apiHeaders(token, 'web-admin'),
       })
       if (r.ok || r.status === 204) {
         await loadMemberStats(sessionId)

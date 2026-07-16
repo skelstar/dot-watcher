@@ -514,6 +514,7 @@ final class LocationManager {
         request.httpMethod = method
         request.setValue(UIDevice.current.name, forHTTPHeaderField: "X-Device-Name")
         request.setValue(String(apiVersion), forHTTPHeaderField: "X-Api-Version")
+        request.setValue("ios", forHTTPHeaderField: "X-Client-Id")
         if authorized {
             guard let accessToken else { throw DotWatcherAPIError.missingToken }
             request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
@@ -549,6 +550,7 @@ final class LocationManager {
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         request.setValue(UIDevice.current.name, forHTTPHeaderField: "X-Device-Name")
         request.setValue(String(apiVersion), forHTTPHeaderField: "X-Api-Version")
+        request.setValue("ios", forHTTPHeaderField: "X-Client-Id")
         _ = try? await URLSession.shared.data(for: request)
     }
 
@@ -563,6 +565,7 @@ final class LocationManager {
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         request.setValue(UIDevice.current.name, forHTTPHeaderField: "X-Device-Name")
         request.setValue(String(apiVersion), forHTTPHeaderField: "X-Api-Version")
+        request.setValue("ios", forHTTPHeaderField: "X-Client-Id")
 
         do {
             let (_, response) = try await URLSession.shared.data(for: request)
