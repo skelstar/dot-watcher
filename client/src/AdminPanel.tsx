@@ -35,11 +35,13 @@ export default function AdminPanel({ serverUrl }: { serverUrl: string }) {
   const [sessions, setSessions] = useState<AdminSession[]>([])
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
-  const [deletingId, setDeletingId] = useState<string | null>(null)
-  const [deletingSessionId, setDeletingSessionId] = useState<string | null>(null)
   const [expandedSessionId, setExpandedSessionId] = useState<string | null>(null)
   const [memberStats, setMemberStats] = useState<Record<string, MemberStatsState>>({})
   const [clearingRecordsId, setClearingRecordsId] = useState<string | null>(null)
+  const [selectedUserIds, setSelectedUserIds] = useState<Set<string>>(new Set())
+  const [selectedSessionIds, setSelectedSessionIds] = useState<Set<string>>(new Set())
+  const [bulkDeletingUsers, setBulkDeletingUsers] = useState(false)
+  const [bulkDeletingSessions, setBulkDeletingSessions] = useState(false)
 
   useLayoutEffect(() => {
     const root = document.getElementById('root')
@@ -73,6 +75,8 @@ export default function AdminPanel({ serverUrl }: { serverUrl: string }) {
       }
       setUsers(await usersRes.json() as AdminUser[])
       setSessions(await sessionsRes.json() as AdminSession[])
+      setSelectedUserIds(new Set())
+      setSelectedSessionIds(new Set())
     } catch {
       setError('Network error.')
     } finally {
@@ -92,44 +96,68 @@ export default function AdminPanel({ serverUrl }: { serverUrl: string }) {
     void loadAll(t)
   }
 
-  async function handleDeleteSession(session: AdminSession) {
-    if (!window.confirm(`Delete session "${session.sessionName}"? This removes all members and location data. This cannot be undone.`)) return
-    setDeletingSessionId(session.sessionId)
+  function toggleUserSelected(id: string) {
+    setSelectedUserIds(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id); else next.add(id)
+      return next
+    })
+  }
+
+  function toggleAllUsersSelected() {
+    setSelectedUserIds(prev => prev.size === users.length ? new Set() : new Set(users.map(u => u.id)))
+  }
+
+  function toggleSessionSelected(id: string) {
+    setSelectedSessionIds(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id); else next.add(id)
+      return next
+    })
+  }
+
+  function toggleAllSessionsSelected() {
+    setSelectedSessionIds(prev => prev.size === sessions.length ? new Set() : new Set(sessions.map(s => s.sessionId)))
+  }
+
+  async function handleBulkDeleteUsers() {
+    const ids = Array.from(selectedUserIds)
+    if (ids.length === 0) return
+    if (!window.confirm(`Delete ${ids.length} user${ids.length !== 1 ? 's' : ''}? This removes their accounts, sessions, and all location data. This cannot be undone.`)) return
+    setBulkDeletingUsers(true)
     try {
-      const response = await fetch(`${serverUrl}/admin/sessions/${session.sessionId}`, {
-        method: 'DELETE',
-        headers: { Authorization: `Bearer ${token}` },
-      })
-      if (response.ok) {
-        setSessions(prev => prev.filter(s => s.sessionId !== session.sessionId))
-        if (expandedSessionId === session.sessionId) setExpandedSessionId(null)
-      } else {
-        setError(`Delete failed (HTTP ${response.status}).`)
-      }
-    } catch {
-      setError('Network error.')
+      const results = await Promise.all(ids.map(id =>
+        fetch(`${serverUrl}/admin/users/${id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } })
+          .then(r => ({ id, ok: r.ok }))
+          .catch(() => ({ id, ok: false }))
+      ))
+      const succeeded = new Set(results.filter(r => r.ok).map(r => r.id))
+      setUsers(prev => prev.filter(u => !succeeded.has(u.id)))
+      setSelectedUserIds(prev => new Set(Array.from(prev).filter(id => !succeeded.has(id))))
+      if (succeeded.size < ids.length) setError(`${ids.length - succeeded.size} user delete(s) failed.`)
     } finally {
-      setDeletingSessionId(null)
+      setBulkDeletingUsers(false)
     }
   }
 
-  async function handleDelete(user: AdminUser) {
-    if (!window.confirm(`Delete user "${user.username}"? This removes their account, sessions, and all location data. This cannot be undone.`)) return
-    setDeletingId(user.id)
+  async function handleBulkDeleteSessions() {
+    const ids = Array.from(selectedSessionIds)
+    if (ids.length === 0) return
+    if (!window.confirm(`Delete ${ids.length} session${ids.length !== 1 ? 's' : ''}? This removes all members and location data. This cannot be undone.`)) return
+    setBulkDeletingSessions(true)
     try {
-      const response = await fetch(`${serverUrl}/admin/users/${user.id}`, {
-        method: 'DELETE',
-        headers: { Authorization: `Bearer ${token}` },
-      })
-      if (response.ok) {
-        setUsers(prev => prev.filter(u => u.id !== user.id))
-      } else {
-        setError(`Delete failed (HTTP ${response.status}).`)
-      }
-    } catch {
-      setError('Network error.')
+      const results = await Promise.all(ids.map(id =>
+        fetch(`${serverUrl}/admin/sessions/${id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } })
+          .then(r => ({ id, ok: r.ok }))
+          .catch(() => ({ id, ok: false }))
+      ))
+      const succeeded = new Set(results.filter(r => r.ok).map(r => r.id))
+      setSessions(prev => prev.filter(s => !succeeded.has(s.sessionId)))
+      setSelectedSessionIds(prev => new Set(Array.from(prev).filter(id => !succeeded.has(id))))
+      if (succeeded.has(expandedSessionId ?? '')) setExpandedSessionId(null)
+      if (succeeded.size < ids.length) setError(`${ids.length - succeeded.size} session delete(s) failed.`)
     } finally {
-      setDeletingId(null)
+      setBulkDeletingSessions(false)
     }
   }
 
@@ -229,32 +257,49 @@ export default function AdminPanel({ serverUrl }: { serverUrl: string }) {
 
       {error && <p style={errorText}>{error}</p>}
 
-      <h2 style={subheading}>Users</h2>
+      <div style={subheadingRow}>
+        <h2 style={subheadingNoMargin}>Users</h2>
+        {selectedUserIds.size > 0 && (
+          <button
+            style={deleteBtn}
+            onClick={() => void handleBulkDeleteUsers()}
+            disabled={bulkDeletingUsers}
+          >
+            {bulkDeletingUsers ? '…' : `Delete selected (${selectedUserIds.size})`}
+          </button>
+        )}
+      </div>
       {users.length > 0 && (
         <table style={table}>
           <thead>
             <tr>
+              <th style={checkboxTh}>
+                <input
+                  type="checkbox"
+                  checked={selectedUserIds.size === users.length}
+                  onChange={toggleAllUsersSelected}
+                  aria-label="Select all users"
+                />
+              </th>
               <th style={th}>Username</th>
               <th style={th}>Display name</th>
               <th style={th}>Created</th>
-              <th style={th}></th>
             </tr>
           </thead>
           <tbody>
             {users.map(user => (
               <tr key={user.id} style={tr}>
+                <td style={checkboxTd}>
+                  <input
+                    type="checkbox"
+                    checked={selectedUserIds.has(user.id)}
+                    onChange={() => toggleUserSelected(user.id)}
+                    aria-label={`Select ${user.username}`}
+                  />
+                </td>
                 <td style={td}>{user.username}</td>
                 <td style={td}>{user.displayName}</td>
                 <td style={td}>{timeAgo(user.createdAt)}</td>
-                <td style={actionTd}>
-                  <button
-                    style={deleteBtn}
-                    onClick={() => void handleDelete(user)}
-                    disabled={deletingId === user.id}
-                  >
-                    {deletingId === user.id ? '…' : 'Delete'}
-                  </button>
-                </td>
               </tr>
             ))}
           </tbody>
@@ -265,17 +310,35 @@ export default function AdminPanel({ serverUrl }: { serverUrl: string }) {
         <p style={emptyText}>No users.</p>
       )}
 
-      <h2 style={subheading}>Sessions</h2>
+      <div style={subheadingRow}>
+        <h2 style={subheadingNoMargin}>Sessions</h2>
+        {selectedSessionIds.size > 0 && (
+          <button
+            style={deleteBtn}
+            onClick={() => void handleBulkDeleteSessions()}
+            disabled={bulkDeletingSessions}
+          >
+            {bulkDeletingSessions ? '…' : `Delete selected (${selectedSessionIds.size})`}
+          </button>
+        )}
+      </div>
       {sessions.length > 0 && (
         <table style={table}>
           <thead>
             <tr>
+              <th style={checkboxTh}>
+                <input
+                  type="checkbox"
+                  checked={selectedSessionIds.size === sessions.length}
+                  onChange={toggleAllSessionsSelected}
+                  aria-label="Select all sessions"
+                />
+              </th>
               <th style={th}>Name</th>
               <th style={th}>Invite code</th>
               <th style={th}>Owner</th>
               <th style={th}>Members</th>
               <th style={th}>Created</th>
-              <th style={th}></th>
             </tr>
           </thead>
           <tbody>
@@ -287,6 +350,14 @@ export default function AdminPanel({ serverUrl }: { serverUrl: string }) {
                     style={{ ...tr, cursor: 'pointer', background: isExpanded ? '#f8fafc' : undefined }}
                     onClick={() => void handleSessionRowClick(session)}
                   >
+                    <td style={checkboxTd} onClick={e => e.stopPropagation()}>
+                      <input
+                        type="checkbox"
+                        checked={selectedSessionIds.has(session.sessionId)}
+                        onChange={() => toggleSessionSelected(session.sessionId)}
+                        aria-label={`Select ${session.sessionName}`}
+                      />
+                    </td>
                     <td style={td}>{session.sessionName}</td>
                     <td style={td}>
                       {session.inviteCode}
@@ -304,15 +375,6 @@ export default function AdminPanel({ serverUrl }: { serverUrl: string }) {
                     <td style={td}>{session.ownerUsername}</td>
                     <td style={td}>{session.memberCount}</td>
                     <td style={td}>{timeAgo(session.createdAt)}</td>
-                    <td style={actionTd} onClick={e => e.stopPropagation()}>
-                      <button
-                        style={deleteBtn}
-                        onClick={() => void handleDeleteSession(session)}
-                        disabled={deletingSessionId === session.sessionId}
-                      >
-                        {deletingSessionId === session.sessionId ? '…' : 'Delete'}
-                      </button>
-                    </td>
                   </tr>
                   {isExpanded && (
                     <tr>
@@ -396,6 +458,19 @@ const page: React.CSSProperties = {
 const subheading: React.CSSProperties = {
   fontSize: '1.1rem',
   fontWeight: 700,
+  margin: '2rem 0 0.75rem',
+}
+
+const subheadingNoMargin: React.CSSProperties = {
+  ...subheading,
+  margin: 0,
+}
+
+const subheadingRow: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  gap: '0.75rem',
   margin: '2rem 0 0.75rem',
 }
 
@@ -500,9 +575,14 @@ const td: React.CSSProperties = {
   verticalAlign: 'middle',
 }
 
-const actionTd: React.CSSProperties = {
+const checkboxTh: React.CSSProperties = {
+  ...th,
+  width: '1%',
+  whiteSpace: 'nowrap',
+}
+
+const checkboxTd: React.CSSProperties = {
   ...td,
-  textAlign: 'right',
   width: '1%',
   whiteSpace: 'nowrap',
 }
