@@ -62,6 +62,7 @@
 ## Prerequisites
 
 - [.NET 9 SDK](https://dotnet.microsoft.com/download/dotnet/9.0)
+- [Docker](https://www.docker.com/) — only needed to run the local Postgres instance (see [Local Postgres](#local-postgres-migration-in-progress)) used by the in-progress Postgres migration.
 
 ---
 
@@ -79,7 +80,7 @@
 | `AuthLockoutMinutes` | `15` | Temporary login lockout duration after repeated failures |
 | `AuthAttemptWindowMinutes` | `15` | Idle failed-login attempt window lifetime before process-local limiter state is pruned |
 | `AuthMaxTrackedAttempts` | `10000` | Maximum username/IP failed-login keys retained by the process-local limiter |
-| `DbPath` | `dotwatcher.db` | SQLite database file used for persisted session recordings |
+| `DbPath` | `dotwatcher.db` | SQLite database file used for persisted session recordings. Being replaced by a shared Postgres database — see [Local Postgres](#local-postgres-migration-in-progress) |
 | `RecordingsPath` | `recordings` | Directory scanned on startup for legacy NDJSON recordings to import into SQLite |
 | `MinimumApiVersion` | `1` | Minimum `X-Api-Version` a client must send. See [Client compatibility](#client-compatibility-x-api-version) |
 
@@ -147,6 +148,26 @@ dotnet build --no-incremental && dotnet run --no-build --urls "http://0.0.0.0:80
 > ```powershell
 > $env:ASPNETCORE_ENVIRONMENT="Development"; dotnet run
 > ```
+
+---
+
+## Local Postgres (migration in progress)
+
+Staging and Production currently run as separate deployments with their own private SQLite files, which means a Staging user and a Production user can never share a session. The fix in progress is a single shared Postgres database behind both, with Local, Staging, and Production all speaking the same engine — no SQLite/Postgres split to maintain.
+
+Start local Postgres from the repo root:
+
+```bash
+docker compose up -d
+```
+
+This starts Postgres on `localhost:5432` (database `dotwatcher`, user `dotwatcher`, password `dotwatcher-dev` — local dev only, not used anywhere else). Data persists in a named Docker volume across restarts; run `docker compose down -v` to reset it.
+
+`SessionStore` doesn't talk to Postgres yet — it's still backed by SQLite via `DbPath` while the rewrite is in progress. Once wired up, the target local connection string will be:
+
+```
+Host=localhost;Port=5432;Database=dotwatcher;Username=dotwatcher;Password=dotwatcher-dev
+```
 
 ---
 
