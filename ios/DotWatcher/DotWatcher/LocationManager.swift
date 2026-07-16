@@ -435,11 +435,17 @@ final class LocationManager {
 
         let heading: Double? = loc.course >= 0 ? loc.course : nil
         Task {
+            // Post the current time, not loc.timestamp: while stationary, CoreLocation's
+            // distanceFilter withholds new fixes entirely, so latestLocation (and its original
+            // GPS timestamp) can go stale for as long as the device doesn't move. Re-sending that
+            // stale timestamp every heartbeat made the server/web client see no recent activity
+            // and incorrectly mark the session as no longer live, even though tracking was still
+            // active and posting successfully every interval.
             await post(
                 lat: loc.coordinate.latitude,
                 lon: loc.coordinate.longitude,
                 heading: heading,
-                timestamp: loc.timestamp)
+                timestamp: Date())
         }
     }
 
