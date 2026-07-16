@@ -124,6 +124,16 @@ export function useSessionTimeline(
     return () => { cancelled = true }
   }, [active, recordingBase]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Independent wall clock, decoupled from poll success/failure. Previously `nowMs` was only
+  // advanced inside a successful poll response, so a stalled poll (network blip, throttled
+  // background tab, anything) froze `nowMs` at its last successful value — leaving `isLive`
+  // stuck showing whatever it was right before the outage instead of correctly going stale.
+  useEffect(() => {
+    if (!active) return
+    const id = setInterval(() => setNowMs(Date.now()), 1000)
+    return () => clearInterval(id)
+  }, [active])
+
   // Live-follow polling — only runs while following (scrubTimeMs === null).
   useEffect(() => {
     if (!active || scrubTimeMs !== null) return
@@ -149,7 +159,6 @@ export function useSessionTimeline(
         const runnerGroups: RunnerPosition[][] = await res.json()
         if (cancelled) return
         setError(null)
-        setNowMs(Date.now())
         setByRunner(prev => mergeIntoByRunner(prev, runnerGroups.flat()))
       } catch {
         if (!cancelled) setError('Network error while loading live positions.')
