@@ -50,3 +50,4 @@ android/captures/
 !.ai/pr-descriptions/.gitkeep
 .ai/plans/*.md
 !.ai/plans/.gitkeep
+media-files/*.gpx
