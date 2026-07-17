@@ -423,6 +423,15 @@ public class SessionStore(string dbPath)
         return cmd.ExecuteScalar() as string;
     }
 
+    public string? GetInviteCodeBySessionId(string sessionId)
+    {
+        using var conn = Connect();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT invite_code FROM app_sessions WHERE id = $sessionId";
+        cmd.Parameters.AddWithValue("$sessionId", sessionId);
+        return cmd.ExecuteScalar() as string;
+    }
+
     public IReadOnlyList<SessionMembership> GetSessionsForUser(string userId)
     {
         using var conn = Connect();
