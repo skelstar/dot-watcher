@@ -171,7 +171,10 @@ app.Use(async (ctx, next) =>
         if (path != "/log") // skip noisy debug-panel polling
         {
             var hasRunner = ctx.Items.TryGetValue("Log:Runner", out var logRunner);
-            var message = hasRunner ? $"{method} {path} - {logRunner}" : $"{method} {path}";
+            var hasCode = ctx.Items.TryGetValue("Log:Code", out var logCode);
+            var message = hasRunner
+                ? hasCode ? $"{method} {path} - {logRunner} - {logCode}" : $"{method} {path} - {logRunner}"
+                : $"{method} {path}";
             if (status >= 500) log.Error(message);
             else if (status >= 400) log.Warning(message);
             else log.Information(message);

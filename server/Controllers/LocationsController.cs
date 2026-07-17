@@ -42,6 +42,8 @@ public class LocationsController(
         HttpContext.Items["Log:Session"] = validatedUpdate.SessionId;
         HttpContext.Items["Log:Runner"] = validatedUpdate.RunnerName;
         HttpContext.Items["Log:LocationTimestamp"] = validatedUpdate.Timestamp.ToString("HH:mm:ss");
+        if (store.GetInviteCodeBySessionId(validatedUpdate.SessionId) is string inviteCode)
+            HttpContext.Items["Log:Code"] = inviteCode;
         var participants = store.GetParticipants(validatedUpdate.SessionId);
         var positions = store.GetLatestPositions(validatedUpdate.SessionId);
         return Ok(new { participants, positions });
