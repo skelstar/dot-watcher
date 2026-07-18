@@ -9,7 +9,6 @@ interface Props {
   requestedSessionName?: string | null
   initialInviteCode?: string | null
   autoJoinDisplayName?: string
-  isReplay?: boolean
   onSelect: (membership: SessionMembership) => void
   onMembershipsChanged: (memberships: SessionMembership[]) => void
 }
@@ -23,7 +22,6 @@ export default function SessionPrompt({
   requestedSessionName,
   initialInviteCode,
   autoJoinDisplayName,
-  isReplay = false,
   onSelect,
   onMembershipsChanged,
 }: Props) {
@@ -107,7 +105,9 @@ export default function SessionPrompt({
       })
 
       if (!response.ok) {
-        setError(response.status === 404 ? 'Invite not found.' : `Join failed: HTTP ${response.status}`)
+        if (response.status === 404) setError('Invite not found.')
+        else if (response.status === 410) setError('This session has ended.')
+        else setError(`Join failed: HTTP ${response.status}`)
         return
       }
 
@@ -124,7 +124,7 @@ export default function SessionPrompt({
   return (
     <div style={overlay}>
       <div style={card}>
-        <h1 style={heading}>{isReplay ? 'Replay Session' : 'Dot Watcher'}</h1>
+        <h1 style={heading}>Dot Watcher</h1>
         {requestedSessionName && !memberships.some(m => m.sessionName === requestedSessionName) && (
           <p style={notice}>No membership for {requestedSessionName}.</p>
         )}
