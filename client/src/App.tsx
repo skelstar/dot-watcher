@@ -4,7 +4,6 @@ import 'mapbox-gl/dist/mapbox-gl.css'
 import SessionPrompt from './SessionPrompt.tsx'
 import InvalidInvitePrompt from './InvalidInvitePrompt.tsx'
 import Legend from './Legend.tsx'
-import MapMenu from './MapMenu.tsx'
 import MemberManager from './MemberManager.tsx'
 import ReplayControls from './ReplayControls.tsx'
 import MapPlayButton from './MapPlayButton.tsx'
@@ -19,7 +18,7 @@ import { useRouteLayer } from './useRouteLayer.ts'
 import { useSessionTimeline } from './useSessionTimeline.ts'
 import { parseGpxCoordinates } from './gpx.ts'
 import { apiHeaders } from './apiHeaders.ts'
-import { canManageMembersForRole, canWriteLocationForRole, shouldShowAuthPrompt, shouldShowSessionPrompt } from './sessionState.ts'
+import { canManageMembersForRole, shouldShowAuthPrompt, shouldShowSessionPrompt } from './sessionState.ts'
 import type { AuthResponse, AuthenticatedUser, SessionMembership } from './types.ts'
 
 mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN as string
@@ -96,7 +95,6 @@ export default function App() {
   const [auth, setAuth] = useState<AuthResponse | null>(() => readStoredAuth())
   const [memberships, setMemberships] = useState<SessionMembership[]>([])
   const [membershipsLoaded, setMembershipsLoaded] = useState(false)
-  const [menu, setMenu] = useState<{ x: number; y: number; lng: number; lat: number } | null>(null)
   const [showMembers, setShowMembers] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
   const [routeCoordinates, setRouteCoordinates] = useState<[number, number][] | null>(null)
@@ -110,11 +108,6 @@ export default function App() {
       style: 'mapbox://styles/mapbox/streets-v12',
       center: [174.7762, -41.2865], // Wellington, NZ - default before any session/positions load
       zoom: 13,
-    })
-
-    map.doubleClickZoom.disable()
-    map.on('dblclick', (e) => {
-      setMenu({ x: e.point.x, y: e.point.y, lng: e.lngLat.lng, lat: e.lngLat.lat })
     })
 
     map.addControl(new mapboxgl.NavigationControl(), 'top-right')
@@ -173,7 +166,6 @@ export default function App() {
   ) ?? null
   const sessionId = activeMembership?.sessionId ?? null
   const hasSessionMembership = (sessionName || inviteCode) ? activeMembership !== null : false
-  const canWriteLocation = canWriteLocationForRole(activeMembership?.role)
   const canManageMembers = canManageMembersForRole(activeMembership?.role)
   const showSessionPrompt = shouldShowSessionPrompt({
     accessToken,
@@ -233,25 +225,6 @@ export default function App() {
     } else {
       window.alert('Failed to upload route.')
     }
-  }
-
-  async function sendChester(lng: number, lat: number) {
-    if (!sessionId || !accessToken || !canWriteLocation) return
-    await fetch(`${SERVER_URL}/location`, {
-      method: 'POST',
-      headers: {
-        ...apiHeaders(accessToken),
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        runnerName: 'Chester',
-        sessionId,
-        latitude: lat,
-        longitude: lng,
-        heading: null,
-        timestamp: new Date().toISOString(),
-      }),
-    })
   }
 
   function handleAuth(nextAuth: AuthResponse) {
@@ -343,17 +316,6 @@ export default function App() {
         </div>
       )}
       <Legend runners={allRunners} onRunnerClick={followRunner} onFitAll={fitAll} belowAccountBar={!!auth} />
-      {menu && canWriteLocation && (
-        <MapMenu
-          x={menu.x}
-          y={menu.y}
-          canSendChester={canWriteLocation}
-          canLoadRoute={canWriteLocation}
-          onSendChester={() => sendChester(menu.lng, menu.lat)}
-          onLoadRoute={uploadRoute}
-          onClose={() => setMenu(null)}
-        />
-      )}
       {!timeline.invalidInvite && timeline.runStartMs !== null && (sessionName || (!accessToken && inviteCode)) && (
         <>
           <ReplayControls timeline={timeline} />
