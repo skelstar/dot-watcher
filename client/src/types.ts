@@ -24,6 +24,7 @@ export interface SessionMembership {
   inviteCode: string
   role: 'owner' | 'runner' | 'viewer'
   displayName: string
+  ownerDisplayName: string
 }
 
 export interface SessionMember {

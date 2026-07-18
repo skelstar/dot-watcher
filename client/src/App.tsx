@@ -13,6 +13,7 @@ import LegalPage from './LegalPage.tsx'
 import AdminPanel from './AdminPanel.tsx'
 import AccountSettings from './AccountSettings.tsx'
 import LandingPage from './LandingPage.tsx'
+import InitialsBadge from './components/InitialsBadge.tsx'
 import { useRunnerMarkers } from './useRunnerMarkers.ts'
 import { useRouteLayer } from './useRouteLayer.ts'
 import { useSessionTimeline } from './useSessionTimeline.ts'
@@ -210,6 +211,24 @@ export default function App() {
     return () => { cancelled = true }
   }, [routeBase, accessToken])
 
+  // Membership already carries ownerDisplayName once the viewer has one; an unauthenticated
+  // invite-code viewer has no membership at all, so fetch the same info from the tokenless
+  // session-info endpoint instead.
+  const [inviteOwnerDisplayName, setInviteOwnerDisplayName] = useState<string | null>(null)
+  useEffect(() => {
+    setInviteOwnerDisplayName(null)
+    if (accessToken || !inviteCode) return
+
+    let cancelled = false
+    fetch(`${SERVER_URL}/session-invites/${inviteCode}`)
+      .then(res => (res.ok ? res.json() as Promise<{ ownerDisplayName: string }> : null))
+      .then(info => { if (!cancelled && info) setInviteOwnerDisplayName(info.ownerDisplayName) })
+      .catch(() => undefined)
+    return () => { cancelled = true }
+  }, [accessToken, inviteCode])
+
+  const ownerDisplayName = activeMembership?.ownerDisplayName ?? inviteOwnerDisplayName
+
   async function uploadRoute(file: File) {
     if (!sessionId || !accessToken) return
     const gpxText = await file.text()
@@ -324,7 +343,15 @@ export default function App() {
       )}
       {!timeline.invalidInvite && !timeline.error && timeline.runStartMs === null &&
         (sessionName || (!accessToken && inviteCode)) && (
-        <div style={notStartedToast}>The session hasn&rsquo;t started yet.</div>
+        <div style={notStartedToast}>
+          {ownerDisplayName && (
+            <div style={notStartedToastLine}>
+              <InitialsBadge name={ownerDisplayName} />
+              <span>Created by {ownerDisplayName}</span>
+            </div>
+          )}
+          <div style={notStartedToastLine}>The session hasn&rsquo;t started yet.</div>
+        </div>
       )}
       {timeline.error && !timeline.invalidInvite && (hasSessionMembership || (!accessToken && inviteCode)) && (
         <div style={statusToast}>{timeline.error}</div>
@@ -427,7 +454,10 @@ const notStartedToast: React.CSSProperties = {
   transform: 'translateX(-50%)',
   zIndex: 8,
   maxWidth: '92vw',
-  whiteSpace: 'nowrap',
+  display: 'flex',
+  flexDirection: 'column',
+  alignItems: 'center',
+  gap: 4,
   background: '#fff',
   color: '#57606a',
   borderRadius: 6,
@@ -435,6 +465,13 @@ const notStartedToast: React.CSSProperties = {
   padding: '8px 14px',
   fontFamily: 'system-ui, sans-serif',
   fontSize: '0.9rem',
+}
+
+const notStartedToastLine: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 6,
+  whiteSpace: 'nowrap',
 }
 
 const statusToast: React.CSSProperties = {
