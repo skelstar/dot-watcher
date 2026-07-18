@@ -168,9 +168,14 @@ export default function App() {
     return () => { cancelled = true }
   }, [accessToken])
 
-  const activeMembership = memberships.find(membership => membership.sessionName === sessionName) ?? null
+  // Invite-code URLs (/code/{code}) never carry a sessionName, so a membership from before the
+  // session ended can only be found by matching the invite code itself — otherwise a returning
+  // member always falls through to a fresh join, which 410s once the session is archived.
+  const activeMembership = memberships.find(membership =>
+    inviteCode ? membership.inviteCode === inviteCode : membership.sessionName === sessionName,
+  ) ?? null
   const sessionId = activeMembership?.sessionId ?? null
-  const hasSessionMembership = sessionName ? activeMembership !== null : false
+  const hasSessionMembership = (sessionName || inviteCode) ? activeMembership !== null : false
   const canWriteLocation = canWriteLocationForRole(activeMembership?.role)
   const canManageMembers = canManageMembersForRole(activeMembership?.role)
   const showSessionPrompt = shouldShowSessionPrompt({
