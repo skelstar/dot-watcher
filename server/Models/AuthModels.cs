@@ -57,7 +57,8 @@ public record SessionMembership(
     string SessionName,
     string InviteCode,
     string Role,
-    string DisplayName
+    string DisplayName,
+    string OwnerDisplayName
 );
 
 public record AdminUserSummary(
