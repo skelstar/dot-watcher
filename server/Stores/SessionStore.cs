@@ -377,7 +377,7 @@ public class SessionStore(string dbPath)
 
         UpsertMembership(conn, sessionId, userId, "runner", displayName, now);
 
-        return new SessionMembership(sessionId, sessionName, inviteCode, "runner", displayName);
+        return new SessionMembership(sessionId, sessionName, inviteCode, "runner", displayName, displayName);
     }
 
     public (SessionMembership? Membership, bool Archived) JoinSessionByInvite(string inviteCode, string userId, string displayName, string role = "viewer")
@@ -432,14 +432,36 @@ public class SessionStore(string dbPath)
         return cmd.ExecuteScalar() as string;
     }
 
+    // Public, tokenless summary for the no-login invite-code viewing path (web client's
+    // /code/{code}) — just enough to show who created the session before any positions exist.
+    public SessionInfo? GetSessionInfoByInviteCode(string inviteCode)
+    {
+        var normalizedInvite = NormalizeSessionName(inviteCode);
+        if (normalizedInvite is null)
+            return null;
+
+        using var conn = Connect();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = """
+            SELECT s.session_name, owner.display_name
+            FROM app_sessions s
+            JOIN session_members owner ON owner.session_id = s.id AND owner.user_id = s.owner_user_id
+            WHERE s.invite_code = $inviteCode
+            """;
+        cmd.Parameters.AddWithValue("$inviteCode", normalizedInvite);
+        using var reader = cmd.ExecuteReader();
+        return reader.Read() ? new SessionInfo(reader.GetString(0), reader.GetString(1)) : null;
+    }
+
     public IReadOnlyList<SessionMembership> GetSessionsForUser(string userId)
     {
         using var conn = Connect();
         using var cmd = conn.CreateCommand();
         cmd.CommandText = """
-            SELECT s.id, s.session_name, s.invite_code, m.role, m.display_name
+            SELECT s.id, s.session_name, s.invite_code, m.role, m.display_name, owner.display_name
             FROM session_members m
             JOIN app_sessions s ON s.id = m.session_id
+            JOIN session_members owner ON owner.session_id = s.id AND owner.user_id = s.owner_user_id
             WHERE m.user_id = $userId AND m.left_at IS NULL
             ORDER BY m.joined_at DESC
             """;
@@ -454,9 +476,10 @@ public class SessionStore(string dbPath)
         using var conn = Connect();
         using var cmd = conn.CreateCommand();
         cmd.CommandText = """
-            SELECT s.id, s.session_name, s.invite_code, m.role, m.display_name
+            SELECT s.id, s.session_name, s.invite_code, m.role, m.display_name, owner.display_name
             FROM session_members m
             JOIN app_sessions s ON s.id = m.session_id
+            JOIN session_members owner ON owner.session_id = s.id AND owner.user_id = s.owner_user_id
             WHERE m.user_id = $userId AND m.left_at IS NOT NULL
               AND EXISTS (
                   SELECT 1 FROM location_updates l
@@ -481,7 +504,8 @@ public class SessionStore(string dbPath)
                 reader.GetString(1),
                 reader.GetString(2),
                 reader.GetString(3),
-                reader.GetString(4)));
+                reader.GetString(4),
+                reader.GetString(5)));
 
         return sessions;
     }
@@ -500,16 +524,17 @@ public class SessionStore(string dbPath)
     {
         using var cmd = conn.CreateCommand();
         cmd.CommandText = """
-            SELECT s.id, s.session_name, s.invite_code, m.role, m.display_name
+            SELECT s.id, s.session_name, s.invite_code, m.role, m.display_name, owner.display_name
             FROM session_members m
             JOIN app_sessions s ON s.id = m.session_id
+            JOIN session_members owner ON owner.session_id = s.id AND owner.user_id = s.owner_user_id
             WHERE m.session_id = $sessionId AND m.user_id = $userId AND m.left_at IS NULL
             """;
         cmd.Parameters.AddWithValue("$sessionId", sessionId);
         cmd.Parameters.AddWithValue("$userId", userId);
         using var reader = cmd.ExecuteReader();
         return reader.Read()
-            ? new SessionMembership(reader.GetString(0), reader.GetString(1), inviteCode ?? reader.GetString(2), reader.GetString(3), reader.GetString(4))
+            ? new SessionMembership(reader.GetString(0), reader.GetString(1), inviteCode ?? reader.GetString(2), reader.GetString(3), reader.GetString(4), reader.GetString(5))
             : null;
     }
 

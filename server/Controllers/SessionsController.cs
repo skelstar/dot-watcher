@@ -125,8 +125,19 @@ public class SessionsController(
             membership.InviteCode,
             membership.Role,
             membership.DisplayName,
+            membership.OwnerDisplayName,
             Participants = participants,
         });
+    }
+
+    /// <summary>Gets basic public info (session name, creator) for a session, by invite code. No auth required.</summary>
+    [HttpGet("/session-invites/{inviteCode}")]
+    [ProducesResponseType(typeof(SessionInfo), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public IActionResult GetSessionInfoByInviteCode(string inviteCode)
+    {
+        var info = store.GetSessionInfoByInviteCode(inviteCode);
+        return info is null ? NotFound(new { error = "Invite not found." }) : Ok(info);
     }
 
     /// <summary>Gets the latest live position per runner for a session, by invite code. No auth required.</summary>
