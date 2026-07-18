@@ -26,7 +26,13 @@ function makeArrowImage(): { width: number; height: number; data: Uint8Array } {
   return { width: size, height: size, data: new Uint8Array(data.buffer) }
 }
 
-export function useRouteLayer(mapRef: RefObject<mapboxgl.Map | null>, coordinates: [number, number][] | null) {
+export function useRouteLayer(
+  mapRef: RefObject<mapboxgl.Map | null>,
+  coordinates: [number, number][] | null,
+  // Runner positions take priority once they exist (useRunnerMarkers fits to those); this only
+  // claims the viewport while there's nothing else to show, e.g. before a run has started.
+  fitToRoute = false,
+) {
   useEffect(() => {
     const map = mapRef.current
     if (!map) return
@@ -37,6 +43,14 @@ export function useRouteLayer(mapRef: RefObject<mapboxgl.Map | null>, coordinate
         type: 'Feature',
         properties: {},
         geometry: { type: 'LineString', coordinates: coordinates ?? [] },
+      }
+
+      if (fitToRoute && coordinates && coordinates.length > 1) {
+        const bounds = coordinates.reduce(
+          (b, c) => b.extend(c),
+          new mapboxgl.LngLatBounds(coordinates[0], coordinates[0]),
+        )
+        map!.fitBounds(bounds, { padding: 80, maxZoom: 16, duration: 0 })
       }
 
       if (source) {
@@ -80,7 +94,7 @@ export function useRouteLayer(mapRef: RefObject<mapboxgl.Map | null>, coordinate
       map.once('load', applyRoute)
       return () => { map.off('load', applyRoute) }
     }
-  }, [mapRef, coordinates])
+  }, [mapRef, coordinates, fitToRoute])
 
   useEffect(() => {
     const map = mapRef.current
