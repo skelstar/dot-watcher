@@ -108,7 +108,7 @@ export default function App() {
     const map = new mapboxgl.Map({
       container: containerRef.current,
       style: 'mapbox://styles/mapbox/streets-v12',
-      center: [151.2093, -33.8688],
+      center: [174.7762, -41.2865], // Wellington, NZ - default before any session/positions load
       zoom: 13,
     })
 
@@ -354,11 +354,15 @@ export default function App() {
           onClose={() => setMenu(null)}
         />
       )}
-      {!timeline.invalidInvite && (sessionName || (!accessToken && inviteCode)) && (
+      {!timeline.invalidInvite && timeline.runStartMs !== null && (sessionName || (!accessToken && inviteCode)) && (
         <>
           <ReplayControls timeline={timeline} />
           {!timeline.following && !timeline.playing && <MapPlayButton onPlay={timeline.play} />}
         </>
+      )}
+      {!timeline.invalidInvite && !timeline.error && timeline.runStartMs === null &&
+        (sessionName || (!accessToken && inviteCode)) && (
+        <div style={notStartedToast}>The session hasn&rsquo;t started yet.</div>
       )}
       {timeline.error && !timeline.invalidInvite && (hasSessionMembership || (!accessToken && inviteCode)) && (
         <div style={statusToast}>{timeline.error}</div>
@@ -452,6 +456,23 @@ const signOutButton: React.CSSProperties = {
   fontFamily: 'system-ui, sans-serif',
   fontSize: '0.8rem',
   padding: '3px 6px',
+}
+
+const notStartedToast: React.CSSProperties = {
+  position: 'absolute',
+  left: '50%',
+  bottom: 44,
+  transform: 'translateX(-50%)',
+  zIndex: 8,
+  maxWidth: '92vw',
+  whiteSpace: 'nowrap',
+  background: '#fff',
+  color: '#57606a',
+  borderRadius: 6,
+  boxShadow: '0 0 0 2px rgba(0,0,0,0.1)',
+  padding: '8px 14px',
+  fontFamily: 'system-ui, sans-serif',
+  fontSize: '0.9rem',
 }
 
 const statusToast: React.CSSProperties = {
