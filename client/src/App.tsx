@@ -192,7 +192,7 @@ export default function App() {
   )
 
   const { allRunners, followRunner, fitAll } = useRunnerMarkers(mapRef, timeline.positions, timeline.virtualNowMs)
-  useRouteLayer(mapRef, routeCoordinates)
+  useRouteLayer(mapRef, routeCoordinates, timeline.runStartMs === null)
 
   const routeBase = !accessToken && inviteCode
     ? `${SERVER_URL}/session-invites/${inviteCode}`
@@ -461,7 +461,7 @@ const signOutButton: React.CSSProperties = {
 const notStartedToast: React.CSSProperties = {
   position: 'absolute',
   left: '50%',
-  bottom: 44,
+  bottom: 100,
   transform: 'translateX(-50%)',
   zIndex: 8,
   maxWidth: '92vw',
