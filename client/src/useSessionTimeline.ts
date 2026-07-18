@@ -30,6 +30,7 @@ export interface SessionTimelineState {
   virtualNowMs: number
   isLive: boolean
   lastActivityMs: number | null
+  pollIntervalMs: number
   playing: boolean
   speed: number
   loading: boolean
@@ -287,6 +288,7 @@ export function useSessionTimeline(
     virtualNowMs,
     isLive,
     lastActivityMs,
+    pollIntervalMs,
     playing,
     speed,
     loading,
