@@ -5,7 +5,6 @@ type SessionRole = SessionMembership['role'] | undefined
 interface PromptState {
   accessToken: string | null
   membershipsLoaded: boolean
-  isReplay: boolean
   inviteCode: string | null
   sessionName: string | null
   hasSessionMembership: boolean
@@ -26,6 +25,5 @@ export function shouldShowAuthPrompt(accessToken: string | null, inviteCode: str
 export function shouldShowSessionPrompt(state: PromptState): boolean {
   if (!state.accessToken || !state.membershipsLoaded) return false
   if (state.inviteCode) return !state.hasSessionMembership
-  if (state.isReplay) return false
   return !state.sessionName || !state.hasSessionMembership
 }
