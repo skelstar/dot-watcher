@@ -49,3 +49,6 @@ android/captures/
 .ai/pr-descriptions/*.md
 !.ai/pr-descriptions/.gitkeep
 media-files/*.gpx
+
+# ─── Downloaded session data (scripts/download-session.sh) ──────────────────
+scripts/data/

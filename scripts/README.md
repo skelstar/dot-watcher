@@ -1,5 +1,78 @@
 # scripts
 
+## download-session.sh
+
+Downloads a session's data from a server (staging by default) using just its
+invite code, and saves it locally. No login/access token is needed — every
+`/session-invites/{code}/...` route is unauthenticated by design, since
+that's what lets a viewer open a shared link without an account.
+
+### Usage
+
+```bash
+scripts/download-session.sh CODE
+scripts/download-session.sh CODE --out data/sessions
+SERVER_URL=http://localhost:8080 scripts/download-session.sh CODE
+```
+
+Saves into `<out>/<CODE>/` (default `data/sessions/<CODE>/`):
+
+- `info.json` — `SessionInfo` (sessionName, ownerDisplayName)
+- `meta.json` — `RecordingMeta` (runStartTimestamp, latestTimestamp)
+- `recording.ndjson` — the full latest-run recording, one JSON object per line
+- `route.gpx` — the saved route, if the session has one
+
+Each file is fetched independently and skipped (with a warning) rather than
+failing the whole script if that particular piece 404s — e.g. a session
+with no saved route just won't get a `route.gpx`.
+
+Defaults to the staging server (`https://dot-watcher-staging.skelstar.io/api`);
+override with the `SERVER_URL` env var to point at local dev or production.
+
+## import-session.sh
+
+Re-imports data previously saved by `download-session.sh` into a local
+server, so it shows up in *that* server's own admin panel and is replayable
+through the normal app UI. Downloading only saves files locally — it never
+touches any server's database, so a session downloaded from staging won't
+appear in `localhost`'s admin panel until it's recreated there.
+
+Creates a brand-new local session (a new sessionId/inviteCode — the
+original staging IDs aren't reused) using the downloaded session's name and
+owner display name, then uploads the downloaded recording and route via the
+existing admin-token-protected bulk endpoints.
+
+### Usage
+
+```bash
+scripts/import-session.sh CODE
+scripts/import-session.sh CODE --dir data/sessions
+SERVER_URL=http://localhost:8080 ADMIN_TOKEN=dev-token scripts/import-session.sh CODE
+```
+
+Defaults to `http://localhost:8080` and the local dev admin token
+(`dev-token`, from `server/appsettings.Development.json`).
+
+### Notes
+
+- Requires `data/sessions/CODE/` to already exist (i.e. run
+  `download-session.sh CODE` first).
+- Session names must be unique per server — if you've already imported a
+  given code once, re-running will fail at the "create session" step with
+  a 409 rather than silently duplicating it. Use the admin panel (or the
+  admin API) to delete the old session first if you want a clean re-import.
+- The recording/route uploads must be sent with an explicit non-form
+  `Content-Type` (`application/x-ndjson` / `application/gpx+xml`) — a plain
+  `curl --data-binary` defaults to `application/x-www-form-urlencoded`,
+  which ASP.NET then tries to parse as form data and rejects.
+- Caveat: the recording upload endpoint doesn't associate rows to a user,
+  so the admin panel's per-member position counts will read as zero for
+  imported data even though the session, recording, and route all replay
+  correctly on the map.
+- Leaves behind a throwaway owner account (`import_<code>_<timestamp>`) so
+  the session has a valid owner; delete it via `DELETE /me` with that
+  user's token if you don't want it kept around.
+
 ## simulate-gps-track.ps1
 
 Simulates a live Dot Watcher session for testing the GPS signal-loss warning,

@@ -1,6 +1,8 @@
 // Chevron-satellite marker (concept 1d)
 // The dot stays upright at all times — only the chevron orbits to show heading.
 
+import { initialsFor } from './InitialsBadge.tsx'
+
 // Circle centre in SVG/element coordinates (element anchors at its centre)
 const CX = 24
 const CY = 24
@@ -17,6 +19,7 @@ interface Props {
   colour: string
   label?: string  // overrides display name; '' hides the label
   stationary?: boolean
+  missing?: boolean
   signalLoss?: boolean
   onClick?: () => void
 }
@@ -44,10 +47,57 @@ function SignalLossBadge({ cx, cy, r }: { cx: number; cy: number; r: number }) {
   )
 }
 
-export default function Arrow({ name, heading, colour, label, stationary, signalLoss, onClick }: Props) {
+export default function Arrow({ name, heading, colour, label, stationary, missing, signalLoss, onClick }: Props) {
   const displayLabel = label !== undefined ? label : name
   // Only show the label when it's a cluster label (multiple runners merged)
   const showLabel = displayLabel !== '' && displayLabel !== name
+
+  // No position at the current playhead despite the runner having reported both before and
+  // after it (see findRunnersWithGap) — a real gap in the track, not just an old-but-valid fix.
+  // Drawn hollow/dashed rather than filled so it reads as "unknown right now", not as data.
+  if (missing) {
+    return (
+      <div style={{ position: 'relative', width: 28, height: 28 }} onClick={onClick}>
+        <div style={{
+          width: 28,
+          height: 28,
+          borderRadius: '50%',
+          background: '#ffffff',
+          border: `2px dashed ${colour}`,
+          boxShadow: '0 1px 4px rgba(0,0,0,0.45)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          fontSize: 10,
+          fontFamily: 'system-ui, sans-serif',
+          fontWeight: 700,
+          color: colour,
+          cursor: onClick ? 'pointer' : undefined,
+        }}>
+          {initialsFor(name)}
+        </div>
+        {showLabel && (
+          <div style={{
+            position: 'absolute',
+            top: 32,
+            left: '50%',
+            transform: 'translateX(-50%)',
+            fontSize: 11,
+            fontFamily: 'system-ui, sans-serif',
+            fontWeight: 600,
+            color: '#1e293b',
+            background: 'rgba(255,255,255,0.85)',
+            padding: '1px 5px',
+            borderRadius: 4,
+            whiteSpace: 'nowrap',
+            boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+          }}>
+            {displayLabel}
+          </div>
+        )}
+      </div>
+    )
+  }
 
   if (stationary) {
     return (
