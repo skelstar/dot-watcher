@@ -184,7 +184,12 @@ export default function App() {
     !accessToken ? inviteCode : null,
   )
 
-  const { allRunners, followRunner, fitAll } = useRunnerMarkers(mapRef, timeline.positions, timeline.virtualNowMs)
+  const { allRunners, followRunner, fitAll } = useRunnerMarkers(
+    mapRef,
+    timeline.positions,
+    timeline.virtualNowMs,
+    timeline.runnersWithGpsSignalLoss,
+  )
   useRouteLayer(mapRef, routeCoordinates, timeline.runStartMs === null)
 
   const routeBase = !accessToken && inviteCode
@@ -342,7 +347,20 @@ export default function App() {
         </>
       )}
       {timeline.gpsWarning && !timeline.invalidInvite && (hasSessionMembership || (!accessToken && inviteCode)) && (
-        <div style={gpsWarningToast}>⚠ {timeline.gpsWarning}</div>
+        <div style={gpsWarningToast}>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0 }}>
+            <path
+              d="M12 3.5 L22 20.5 H2 Z"
+              fill="none"
+              stroke="#fff"
+              strokeWidth="2"
+              strokeLinejoin="round"
+            />
+            <rect x="11.1" y="9.5" width="1.8" height="6" rx="0.9" fill="#fff" />
+            <circle cx="12" cy="17.5" r="1.1" fill="#fff" />
+          </svg>
+          <span>{timeline.gpsWarning}</span>
+        </div>
       )}
       {!timeline.invalidInvite && !timeline.error && timeline.runStartMs === null &&
         (sessionName || (!accessToken && inviteCode)) && (
@@ -500,8 +518,11 @@ const gpsWarningToast: React.CSSProperties = {
   transform: 'translateX(-50%)',
   zIndex: 8,
   maxWidth: 'min(420px, 92vw)',
-  background: '#fff',
-  color: '#92400e',
+  display: 'flex',
+  alignItems: 'center',
+  gap: 6,
+  background: '#dc2626',
+  color: '#fff',
   borderRadius: 6,
   boxShadow: '0 0 0 2px rgba(0,0,0,0.1)',
   padding: '8px 12px',
