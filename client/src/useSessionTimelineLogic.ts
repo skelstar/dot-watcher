@@ -173,20 +173,13 @@ function currentSignalLossForRunner(positions: RunnerPosition[]): { timestamp: s
   return lastLoss !== null && goodStreak < GPS_JUMP_CLEAR_STREAK ? lastLoss : null
 }
 
-// Whether any runner currently has unreliable GPS (see currentSignalLossForRunner). When
-// multiple runners are affected at once, returns whichever lost heading most recently.
-export function findGpsSignalLoss(
-  byRunner: Map<string, RunnerPosition[]>,
-): { runnerName: string; timestamp: string } | null {
-  let latest: { runnerName: string; timestamp: string } | null = null
-
+// Every runner currently affected by GPS signal loss (see currentSignalLossForRunner), so both
+// the summary toast and each runner's own marker badge can reflect the same "currently degraded"
+// state rather than each re-deriving it differently.
+export function findGpsSignalLoss(byRunner: Map<string, RunnerPosition[]>): Set<string> {
+  const affected = new Set<string>()
   for (const [runnerName, positions] of byRunner) {
-    const loss = currentSignalLossForRunner(positions)
-    if (!loss) continue
-    if (latest === null || new Date(loss.timestamp).getTime() > new Date(latest.timestamp).getTime()) {
-      latest = { runnerName, ...loss }
-    }
+    if (currentSignalLossForRunner(positions)) affected.add(runnerName)
   }
-
-  return latest
+  return affected
 }

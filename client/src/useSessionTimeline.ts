@@ -34,6 +34,7 @@ export interface SessionTimelineState {
   lastActivityMs: number | null
   pollIntervalMs: number
   gpsWarning: string | null
+  runnersWithGpsSignalLoss: Set<string>
   playing: boolean
   speed: number
   loading: boolean
@@ -282,18 +283,19 @@ export function useSessionTimeline(
   const lastActivityMs = useMemo(() => maxOrNull(polledLatestMs, metaLatestMs), [polledLatestMs, metaLatestMs])
   const isLive = useMemo(() => isSessionLive(lastActivityMs, nowMs, LIVE_STALE_MS), [lastActivityMs, nowMs])
 
-  // Flags a runner whose device can't currently determine a heading — CoreLocation reports
+  // Flags runners whose device can't currently determine a heading — CoreLocation reports
   // heading as null when its course confidence is too low, which tends to coincide with the
   // position itself being untrustworthy (confirmed against a real session: the runner's dot
   // was visibly in the wrong place with no direction arrow at the same time). Not a Dot Watcher
   // bug, but worth telling viewers about so a wrong/frozen-looking dot doesn't look like the app
-  // lost the plot. Stays up until GPS_JUMP_CLEAR_STREAK consecutive readings with a real heading
-  // follow (see findGpsSignalLoss), not just the next single good one.
+  // lost the plot. Stays flagged per-runner until GPS_JUMP_CLEAR_STREAK consecutive readings
+  // with a real heading follow (see findGpsSignalLoss), not just the next single good one.
+  const runnersWithGpsSignalLoss = useMemo(() => findGpsSignalLoss(byRunner), [byRunner])
   const gpsWarning = useMemo(() => {
-    const loss = findGpsSignalLoss(byRunner)
-    if (!loss) return null
-    return `Possible GPS signal loss for ${initialsFor(loss.runnerName)}.`
-  }, [byRunner])
+    if (runnersWithGpsSignalLoss.size === 0) return null
+    const initials = [...runnersWithGpsSignalLoss].map(initialsFor).join(', ')
+    return `Possible signal loss: ${initials}`
+  }, [runnersWithGpsSignalLoss])
 
   return {
     positions,
@@ -306,6 +308,7 @@ export function useSessionTimeline(
     lastActivityMs,
     pollIntervalMs,
     gpsWarning,
+    runnersWithGpsSignalLoss,
     playing,
     speed,
     loading,

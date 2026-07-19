@@ -28,12 +28,15 @@ export function useRunnerMarkers(
   mapRef: RefObject<mapboxgl.Map | null>,
   positions: RunnerPosition[][] | undefined,
   nowMs: number,
+  runnersWithGpsSignalLoss: Set<string> = new Set(),
 ): RunnerMarkersResult {
   const markersRef = useRef<Record<string, MarkerEntry>>({})
   const hasLocatedRef = useRef(false)
   const latestPositionsRef = useRef<Record<string, [number, number]>>({})
   const latestMarkerRef = useRef<Record<string, { root: Root; heading: number | null; colour: string; timestamp: string }>>({})
   const virtualNowRef = useRef<number | null>(null)
+  const signalLossRef = useRef<Set<string>>(runnersWithGpsSignalLoss)
+  signalLossRef.current = runnersWithGpsSignalLoss
   const pendingUnmountsRef = useRef<Root[]>([])
   const [visibleRunners, setVisibleRunners] = useState<string[]>([])
   const [offScreenRunners, setOffScreenRunners] = useState<string[]>([])
@@ -223,6 +226,7 @@ export function useRunnerMarkers(
         colour: info.colour,
         label,
         stationary,
+        signalLoss: signalLossRef.current.has(name),
         onClick: () => followRunner(name),
       }))
     }

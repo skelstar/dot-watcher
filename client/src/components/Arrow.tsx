@@ -17,12 +17,34 @@ interface Props {
   colour: string
   label?: string  // overrides display name; '' hides the label
   stationary?: boolean
+  signalLoss?: boolean
   onClick?: () => void
 }
 
 export { ARROW_SIZE }
 
-export default function Arrow({ name, heading, colour, label, stationary, onClick }: Props) {
+// Small red exclamation badge, bottom-right of the dot, flagging that this runner's position may
+// currently be unreliable (see findGpsSignalLoss in useSessionTimelineLogic.ts).
+function SignalLossBadge({ cx, cy, r }: { cx: number; cy: number; r: number }) {
+  return (
+    <g style={{ filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.4))' }}>
+      <circle cx={cx} cy={cy} r={r} fill="#dc2626" stroke="#ffffff" strokeWidth="1.5" />
+      <text
+        x={cx}
+        y={cy + r * 0.38}
+        fontFamily="Arial, 'Helvetica Neue', sans-serif"
+        fontWeight="bold"
+        fontSize={r * 1.3}
+        fill="#ffffff"
+        textAnchor="middle"
+      >
+        !
+      </text>
+    </g>
+  )
+}
+
+export default function Arrow({ name, heading, colour, label, stationary, signalLoss, onClick }: Props) {
   const displayLabel = label !== undefined ? label : name
   // Only show the label when it's a cluster label (multiple runners merged)
   const showLabel = displayLabel !== '' && displayLabel !== name
@@ -48,6 +70,29 @@ export default function Arrow({ name, heading, colour, label, stationary, onClic
         }}>
           {name}
         </div>
+        {signalLoss && (
+          <div style={{
+            position: 'absolute',
+            bottom: -2,
+            right: -2,
+            width: 12,
+            height: 12,
+            borderRadius: '50%',
+            background: '#dc2626',
+            border: '1.5px solid #ffffff',
+            boxShadow: '0 1px 2px rgba(0,0,0,0.4)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontSize: 8,
+            fontFamily: 'Arial, sans-serif',
+            fontWeight: 700,
+            color: '#ffffff',
+            lineHeight: 1,
+          }}>
+            !
+          </div>
+        )}
         {showLabel && (
           <div style={{
             position: 'absolute',
@@ -112,6 +157,10 @@ export default function Arrow({ name, heading, colour, label, stationary, onClic
             />
           </g>
         )}
+
+        {/* Bottom-right badge flagging unreliable GPS — rendered last so it sits above the
+            chevron if the two ever overlap. */}
+        {signalLoss && <SignalLossBadge cx={CX + 8.5} cy={CY + 8.5} r={6} />}
       </svg>
 
       {showLabel && (
