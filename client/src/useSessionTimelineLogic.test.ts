@@ -127,14 +127,14 @@ test('maxOrNull falls back to whichever side is known when the other is null', (
   assert.equal(maxOrNull(null, null), null)
 })
 
-test('findGpsSignalLoss returns null when every reading has a real heading', () => {
+test('findGpsSignalLoss returns an empty set when every reading has a real heading', () => {
   const byRunner = new Map([
     ['Alice', [
       { runnerName: 'Alice', latitude: -41.2865, longitude: 174.7762, heading: 90, timestamp: '2024-01-01T00:00:00Z' },
       { runnerName: 'Alice', latitude: -41.28605, longitude: 174.7762, heading: 91, timestamp: '2024-01-01T00:00:15Z' },
     ]],
   ])
-  assert.equal(findGpsSignalLoss(byRunner), null)
+  assert.deepEqual(findGpsSignalLoss(byRunner), new Set())
 })
 
 test('findGpsSignalLoss flags a runner whose latest reading has a null heading', () => {
@@ -144,27 +144,25 @@ test('findGpsSignalLoss flags a runner whose latest reading has a null heading',
       { runnerName: 'Alice', latitude: -41.28605, longitude: 174.7762, heading: null, timestamp: '2024-01-01T00:00:15Z' },
     ]],
   ])
-  const loss = findGpsSignalLoss(byRunner)
-  assert.equal(loss?.runnerName, 'Alice')
-  assert.equal(loss?.timestamp, '2024-01-01T00:00:15Z')
+  assert.deepEqual(findGpsSignalLoss(byRunner), new Set(['Alice']))
 })
 
-test('findGpsSignalLoss reports whichever currently-affected runner lost heading most recently', () => {
+test('findGpsSignalLoss includes every currently-affected runner, not just one', () => {
   const byRunner = new Map([
     ['Alice', [
       { runnerName: 'Alice', latitude: -41.2865, longitude: 174.7762, heading: 90, timestamp: '2024-01-01T00:00:00Z' },
-      // Alice lost heading at 00:00:15.
       { runnerName: 'Alice', latitude: -41.28605, longitude: 174.7762, heading: null, timestamp: '2024-01-01T00:00:15Z' },
     ]],
     ['Bob', [
       { runnerName: 'Bob', latitude: 0, longitude: 0, heading: 180, timestamp: '2024-01-01T00:00:00Z' },
-      // Bob lost heading more recently (00:01:00) - this one should win.
       { runnerName: 'Bob', latitude: 0.0001, longitude: 0, heading: null, timestamp: '2024-01-01T00:01:00Z' },
     ]],
+    ['Carol', [
+      { runnerName: 'Carol', latitude: 10, longitude: 10, heading: 45, timestamp: '2024-01-01T00:00:00Z' },
+      { runnerName: 'Carol', latitude: 10.0001, longitude: 10, heading: 46, timestamp: '2024-01-01T00:01:00Z' },
+    ]],
   ])
-  const loss = findGpsSignalLoss(byRunner)
-  assert.equal(loss?.runnerName, 'Bob')
-  assert.equal(loss?.timestamp, '2024-01-01T00:01:00Z')
+  assert.deepEqual(findGpsSignalLoss(byRunner), new Set(['Alice', 'Bob']))
 })
 
 test('findGpsSignalLoss stays flagged until GPS_JUMP_CLEAR_STREAK readings with a real heading follow', () => {
@@ -176,15 +174,15 @@ test('findGpsSignalLoss stays flagged until GPS_JUMP_CLEAR_STREAK readings with 
     // ...one reading with a real heading isn't enough to clear it...
     { ...base, heading: 91, timestamp: '2024-01-01T00:00:30Z' },
   ]
-  assert.notEqual(findGpsSignalLoss(new Map([['Alice', positions]])), null)
+  assert.deepEqual(findGpsSignalLoss(new Map([['Alice', positions]])), new Set(['Alice']))
 
   // ...nor two...
   const twoGood = [...positions, { ...base, heading: 92, timestamp: '2024-01-01T00:00:45Z' }]
-  assert.notEqual(findGpsSignalLoss(new Map([['Alice', twoGood]])), null)
+  assert.deepEqual(findGpsSignalLoss(new Map([['Alice', twoGood]])), new Set(['Alice']))
 
   // ...but a third consecutive reading with a real heading clears it.
   const threeGood = [...twoGood, { ...base, heading: 93, timestamp: '2024-01-01T00:01:00Z' }]
-  assert.equal(findGpsSignalLoss(new Map([['Alice', threeGood]])), null)
+  assert.deepEqual(findGpsSignalLoss(new Map([['Alice', threeGood]])), new Set())
 })
 
 test('findGpsSignalLoss resets the clear-streak if heading is lost again before it fully clears', () => {
@@ -197,9 +195,7 @@ test('findGpsSignalLoss resets the clear-streak if heading is lost again before 
     // Heading lost again before streak reaches 3 - resets the streak, so it's still flagged.
     { ...base, heading: null, timestamp: '2024-01-01T00:01:00Z' },
   ]
-  const loss = findGpsSignalLoss(new Map([['Alice', positions]]))
-  assert.notEqual(loss, null)
-  assert.equal(loss?.timestamp, '2024-01-01T00:01:00Z')
+  assert.deepEqual(findGpsSignalLoss(new Map([['Alice', positions]])), new Set(['Alice']))
 })
 
 test('positionsAtCutoff returns the last position at or before cutoff, omitting runners with none yet', () => {
