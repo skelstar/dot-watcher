@@ -3,6 +3,8 @@ import type { RunnerPosition } from './types.ts'
 import {
   earliestActivityMs,
   findGpsSignalLoss,
+  findRunnersWithGap,
+  findSleepingRunners,
   isRangeCovered,
   latestActivityMs,
   livePollingError,
@@ -35,6 +37,8 @@ export interface SessionTimelineState {
   pollIntervalMs: number
   gpsWarning: string | null
   runnersWithGpsSignalLoss: Set<string>
+  runnersWithGap: Set<string>
+  runnersSleeping: Set<string>
   playing: boolean
   speed: number
   loading: boolean
@@ -84,6 +88,24 @@ export function useSessionTimeline(
   const fetchedRangesRef = useRef<TimeRange[]>([])
   fetchedRangesRef.current = fetchedRanges
   const inFlightRef = useRef<Set<string>>(new Set())
+
+  // Live-polling and scrub-driven window fetches both refetch overlapping ranges by design
+  // (e.g. every live poll re-requests the same "latest position" endpoint), so logging every
+  // update as it arrives would print the same points repeatedly. Tracking what's already been
+  // logged per runner keeps the debug output to one line per genuinely new location.
+  const loggedTimestampsRef = useRef<Map<string, Set<string>>>(new Map())
+  function logNewPositions(updates: RunnerPosition[]) {
+    for (const p of updates) {
+      let seen = loggedTimestampsRef.current.get(p.runnerName)
+      if (!seen) {
+        seen = new Set()
+        loggedTimestampsRef.current.set(p.runnerName, seen)
+      }
+      if (seen.has(p.timestamp)) continue
+      seen.add(p.timestamp)
+      console.debug(`[location] ${p.runnerName} lat=${p.latitude} lon=${p.longitude} heading=${p.heading} timestamp=${p.timestamp}`)
+    }
+  }
 
   const recordingBase = byInvite
     ? `${serverUrl}/session-invites/${inviteCode}`
@@ -164,7 +186,9 @@ export function useSessionTimeline(
         const runnerGroups: RunnerPosition[][] = await res.json()
         if (cancelled) return
         setError(null)
-        setByRunner(prev => mergeIntoByRunner(prev, runnerGroups.flat()))
+        const updates = runnerGroups.flat()
+        logNewPositions(updates)
+        setByRunner(prev => mergeIntoByRunner(prev, updates))
       } catch {
         if (!cancelled) setError('Network error while loading live positions.')
       }
@@ -196,6 +220,7 @@ export function useSessionTimeline(
         if (!res.ok) throw new Error(`Failed to load recording window: HTTP ${res.status}`)
         const text = await res.text()
         const updates = parseNdjson(text)
+        logNewPositions(updates)
         setByRunner(prev => mergeIntoByRunner(prev, updates))
         setFetchedRanges(prev => mergeRange(prev, { since: sinceMs, until: untilMs }))
       })
@@ -291,6 +316,17 @@ export function useSessionTimeline(
   // lost the plot. Stays flagged per-runner until GPS_JUMP_CLEAR_STREAK consecutive readings
   // with a real heading follow (see findGpsSignalLoss), not just the next single good one.
   const runnersWithGpsSignalLoss = useMemo(() => findGpsSignalLoss(byRunner), [byRunner])
+
+  // Runners with a genuine mid-track gap right at the current playhead — see findRunnersWithGap
+  // for why this is distinct from "hasn't reported yet" (already omitted from `positions`) and
+  // from GPS signal loss (which is heading-quality based, not a data-gap check).
+  const runnersWithGap = useMemo(() => findRunnersWithGap(byRunner, virtualNowMs), [byRunner, virtualNowMs])
+
+  // Runners actively reporting but barely moving over the last SLEEPING_WINDOW_MS — distance
+  // based, not elapsed-time based, so it never overlaps with runnersWithGap (which only fires on
+  // absence of data): a runner can't be judged "not moving" from data that doesn't exist.
+  const runnersSleeping = useMemo(() => findSleepingRunners(byRunner, virtualNowMs), [byRunner, virtualNowMs])
+
   const gpsWarning = useMemo(() => {
     if (runnersWithGpsSignalLoss.size === 0) return null
     const initials = [...runnersWithGpsSignalLoss].map(initialsFor).join(', ')
@@ -309,6 +345,8 @@ export function useSessionTimeline(
     pollIntervalMs,
     gpsWarning,
     runnersWithGpsSignalLoss,
+    runnersWithGap,
+    runnersSleeping,
     playing,
     speed,
     loading,
