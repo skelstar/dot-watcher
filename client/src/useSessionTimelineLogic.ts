@@ -146,82 +146,45 @@ export function maxOrNull(a: number | null, b: number | null): number | null {
   return Math.max(a, b)
 }
 
-const EARTH_RADIUS_M = 6_371_000
-
-// Great-circle distance in metres between two lat/lng points.
-export function haversineMeters(a: RunnerPosition, b: RunnerPosition): number {
-  const toRad = (deg: number) => (deg * Math.PI) / 180
-  const dLat = toRad(b.latitude - a.latitude)
-  const dLng = toRad(b.longitude - a.longitude)
-  const lat1 = toRad(a.latitude)
-  const lat2 = toRad(b.latitude)
-  const h = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2
-  return 2 * EARTH_RADIUS_M * Math.asin(Math.sqrt(h))
-}
-
-// Above this implied speed between two consecutive pings, treat the jump as an erratic/unreliable
-// GPS reading rather than real movement. 30 km/h is well above any running pace (even a fast
-// trail km is ~3min/km = 20km/h) but far below what a real jump in position over one poll
-// interval would need to be to be genuine — so this catches a single bad reading without
-// tripping on a strong sprint.
-export const GPS_JUMP_SPEED_KMH = 30
-
-// How many consecutive plausible transitions are needed after a jump before the warning clears.
-// A single good reading right after a glitch isn't enough evidence the GPS has actually
-// recovered — erratic readings often bounce good/bad/good before settling.
+// How many consecutive readings with a real heading are needed after a null-heading reading
+// before the warning clears. A single good reading right after a glitch isn't enough evidence
+// the GPS has actually recovered — erratic readings often bounce good/bad/good before settling.
 export const GPS_JUMP_CLEAR_STREAK = 3
 
-// Null when the pair is a plausible move; otherwise the implied speed in km/h, for the warning
-// copy. Two pings at (or reported as) the same instant are treated as a jump only if they're
-// also apart in space — a zero/near-zero time delta can't imply a finite speed.
-export function impliedSpeedKmh(from: RunnerPosition, to: RunnerPosition): number | null {
-  const dtMs = new Date(to.timestamp).getTime() - new Date(from.timestamp).getTime()
-  if (dtMs <= 0) return null
-  const metres = haversineMeters(from, to)
-  const kmh = (metres / 1000) / (dtMs / 3_600_000)
-  return kmh
-}
-
-export function isGpsJump(from: RunnerPosition, to: RunnerPosition): boolean {
-  const kmh = impliedSpeedKmh(from, to)
-  return kmh !== null && kmh > GPS_JUMP_SPEED_KMH
-}
-
-// Whether a runner's GPS is *currently* erratic — a jump happened recently enough that fewer
-// than GPS_JUMP_CLEAR_STREAK plausible transitions have followed it since. Walks the runner's
+// Whether a runner's GPS is *currently* unreliable — the device couldn't determine a heading
+// (CoreLocation reports heading as null when its course confidence is too low, which tends to
+// coincide with the position itself being untrustworthy) recently enough that fewer than
+// GPS_JUMP_CLEAR_STREAK readings with a real heading have followed since. Walks the runner's
 // whole history each call rather than storing a running streak, since byRunner is already the
 // source of truth and re-deriving keeps this a pure function of the data, not stateful.
-function currentJumpForRunner(
-  positions: RunnerPosition[],
-): { timestamp: string; speedKmh: number } | null {
-  let lastJump: { timestamp: string; speedKmh: number } | null = null
+function currentSignalLossForRunner(positions: RunnerPosition[]): { timestamp: string } | null {
+  let lastLoss: { timestamp: string } | null = null
   let goodStreak = 0
 
-  for (let i = 1; i < positions.length; i++) {
-    const speedKmh = impliedSpeedKmh(positions[i - 1], positions[i])
-    if (speedKmh !== null && speedKmh > GPS_JUMP_SPEED_KMH) {
-      lastJump = { timestamp: positions[i].timestamp, speedKmh }
+  for (const pos of positions) {
+    if (pos.heading === null) {
+      lastLoss = { timestamp: pos.timestamp }
       goodStreak = 0
     } else {
       goodStreak++
     }
   }
 
-  return lastJump !== null && goodStreak < GPS_JUMP_CLEAR_STREAK ? lastJump : null
+  return lastLoss !== null && goodStreak < GPS_JUMP_CLEAR_STREAK ? lastLoss : null
 }
 
-// Whether any runner currently has erratic GPS (see currentJumpForRunner). When multiple runners
-// are affected at once, returns whichever jumped most recently.
-export function findLatestGpsJump(
+// Whether any runner currently has unreliable GPS (see currentSignalLossForRunner). When
+// multiple runners are affected at once, returns whichever lost heading most recently.
+export function findGpsSignalLoss(
   byRunner: Map<string, RunnerPosition[]>,
-): { runnerName: string; timestamp: string; speedKmh: number } | null {
-  let latest: { runnerName: string; timestamp: string; speedKmh: number } | null = null
+): { runnerName: string; timestamp: string } | null {
+  let latest: { runnerName: string; timestamp: string } | null = null
 
   for (const [runnerName, positions] of byRunner) {
-    const jump = currentJumpForRunner(positions)
-    if (!jump) continue
-    if (latest === null || new Date(jump.timestamp).getTime() > new Date(latest.timestamp).getTime()) {
-      latest = { runnerName, ...jump }
+    const loss = currentSignalLossForRunner(positions)
+    if (!loss) continue
+    if (latest === null || new Date(loss.timestamp).getTime() > new Date(latest.timestamp).getTime()) {
+      latest = { runnerName, ...loss }
     }
   }
 
