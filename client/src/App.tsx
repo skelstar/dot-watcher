@@ -349,8 +349,8 @@ export default function App() {
         <div style={notStartedToast}>
           {ownerDisplayName && (
             <div style={notStartedToastLine}>
+              <span>Created by </span>
               <InitialsBadge name={ownerDisplayName} />
-              <span>Created by {ownerDisplayName}</span>
             </div>
           )}
           <div style={notStartedToastLine}>The session hasn&rsquo;t started yet.</div>
