@@ -2,10 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
   earliestActivityMs,
-  findLatestGpsJump,
-  haversineMeters,
-  impliedSpeedKmh,
-  isGpsJump,
+  findGpsSignalLoss,
   isRangeCovered,
   latestActivityMs,
   livePollingError,
@@ -130,101 +127,79 @@ test('maxOrNull falls back to whichever side is known when the other is null', (
   assert.equal(maxOrNull(null, null), null)
 })
 
-test('haversineMeters is ~0 for the same point and matches a known distance', () => {
-  const wellington = { runnerName: 'A', latitude: -41.2865, longitude: 174.7762, heading: null, timestamp: 't0' }
-  assert.ok(haversineMeters(wellington, wellington) < 1)
-
-  // Wellington to Auckland is ~495km as the crow flies.
-  const auckland = { runnerName: 'A', latitude: -36.8485, longitude: 174.7633, heading: null, timestamp: 't1' }
-  const metres = haversineMeters(wellington, auckland)
-  assert.ok(metres > 490_000 && metres < 500_000, `expected ~495km, got ${metres / 1000}km`)
-})
-
-test('impliedSpeedKmh is null for a non-positive time delta, otherwise distance over time', () => {
-  const a = { runnerName: 'A', latitude: 0, longitude: 0, heading: null, timestamp: '2024-01-01T00:00:10Z' }
-  const bSameInstant = { runnerName: 'A', latitude: 1, longitude: 1, heading: null, timestamp: '2024-01-01T00:00:10Z' }
-  const bEarlier = { runnerName: 'A', latitude: 1, longitude: 1, heading: null, timestamp: '2024-01-01T00:00:00Z' }
-  assert.equal(impliedSpeedKmh(a, bSameInstant), null)
-  assert.equal(impliedSpeedKmh(a, bEarlier), null)
-
-  // 1km in 60 seconds = 60 km/h.
-  const start = { runnerName: 'A', latitude: 0, longitude: 0, heading: null, timestamp: '2024-01-01T00:00:00Z' }
-  const oneKmNorth = { runnerName: 'A', latitude: 0.008993, longitude: 0, heading: null, timestamp: '2024-01-01T00:01:00Z' }
-  const kmh = impliedSpeedKmh(start, oneKmNorth)!
-  assert.ok(kmh > 55 && kmh < 65, `expected ~60km/h, got ${kmh}`)
-})
-
-test('isGpsJump flags implausible speed and passes a plausible move', () => {
-  const start = { runnerName: 'A', latitude: -41.2865, longitude: 174.7762, heading: null, timestamp: '2024-01-01T00:00:00Z' }
-  // A brisk 12 km/h jog for 15 seconds covers ~50m - plausible.
-  const jogStep = { runnerName: 'A', latitude: -41.28605, longitude: 174.7762, heading: null, timestamp: '2024-01-01T00:00:15Z' }
-  assert.equal(isGpsJump(start, jogStep), false)
-
-  // Wellington to Auckland (~495km) in 15 seconds implies ~119,000 km/h - a GPS glitch, not a run.
-  const auckland = { runnerName: 'A', latitude: -36.8485, longitude: 174.7633, heading: null, timestamp: '2024-01-01T00:00:15Z' }
-  assert.equal(isGpsJump(start, auckland), true)
-})
-
-test('findLatestGpsJump returns null when every runner only makes plausible moves', () => {
+test('findGpsSignalLoss returns null when every reading has a real heading', () => {
   const byRunner = new Map([
     ['Alice', [
-      { runnerName: 'Alice', latitude: -41.2865, longitude: 174.7762, heading: null, timestamp: '2024-01-01T00:00:00Z' },
+      { runnerName: 'Alice', latitude: -41.2865, longitude: 174.7762, heading: 90, timestamp: '2024-01-01T00:00:00Z' },
+      { runnerName: 'Alice', latitude: -41.28605, longitude: 174.7762, heading: 91, timestamp: '2024-01-01T00:00:15Z' },
+    ]],
+  ])
+  assert.equal(findGpsSignalLoss(byRunner), null)
+})
+
+test('findGpsSignalLoss flags a runner whose latest reading has a null heading', () => {
+  const byRunner = new Map([
+    ['Alice', [
+      { runnerName: 'Alice', latitude: -41.2865, longitude: 174.7762, heading: 90, timestamp: '2024-01-01T00:00:00Z' },
       { runnerName: 'Alice', latitude: -41.28605, longitude: 174.7762, heading: null, timestamp: '2024-01-01T00:00:15Z' },
     ]],
   ])
-  assert.equal(findLatestGpsJump(byRunner), null)
+  const loss = findGpsSignalLoss(byRunner)
+  assert.equal(loss?.runnerName, 'Alice')
+  assert.equal(loss?.timestamp, '2024-01-01T00:00:15Z')
 })
 
-test('findLatestGpsJump reports whichever currently-glitching runner glitched most recently', () => {
+test('findGpsSignalLoss reports whichever currently-affected runner lost heading most recently', () => {
   const byRunner = new Map([
     ['Alice', [
-      { runnerName: 'Alice', latitude: -41.2865, longitude: 174.7762, heading: null, timestamp: '2024-01-01T00:00:00Z' },
-      // Alice is currently glitching, as of 00:00:15.
-      { runnerName: 'Alice', latitude: -36.8485, longitude: 174.7633, heading: null, timestamp: '2024-01-01T00:00:15Z' },
+      { runnerName: 'Alice', latitude: -41.2865, longitude: 174.7762, heading: 90, timestamp: '2024-01-01T00:00:00Z' },
+      // Alice lost heading at 00:00:15.
+      { runnerName: 'Alice', latitude: -41.28605, longitude: 174.7762, heading: null, timestamp: '2024-01-01T00:00:15Z' },
     ]],
     ['Bob', [
-      { runnerName: 'Bob', latitude: 0, longitude: 0, heading: null, timestamp: '2024-01-01T00:00:00Z' },
-      // Bob is also currently glitching, more recently (00:01:00) - this one should win.
-      { runnerName: 'Bob', latitude: 10, longitude: 10, heading: null, timestamp: '2024-01-01T00:01:00Z' },
+      { runnerName: 'Bob', latitude: 0, longitude: 0, heading: 180, timestamp: '2024-01-01T00:00:00Z' },
+      // Bob lost heading more recently (00:01:00) - this one should win.
+      { runnerName: 'Bob', latitude: 0.0001, longitude: 0, heading: null, timestamp: '2024-01-01T00:01:00Z' },
     ]],
   ])
-  const jump = findLatestGpsJump(byRunner)
-  assert.equal(jump?.runnerName, 'Bob')
-  assert.equal(jump?.timestamp, '2024-01-01T00:01:00Z')
+  const loss = findGpsSignalLoss(byRunner)
+  assert.equal(loss?.runnerName, 'Bob')
+  assert.equal(loss?.timestamp, '2024-01-01T00:01:00Z')
 })
 
-test('findLatestGpsJump stays flagged until GPS_JUMP_CLEAR_STREAK plausible readings follow the jump', () => {
-  const glitchPoint = { runnerName: 'Alice', latitude: -36.8485, longitude: 174.7633 }
+test('findGpsSignalLoss stays flagged until GPS_JUMP_CLEAR_STREAK readings with a real heading follow', () => {
+  const base = { runnerName: 'Alice', latitude: -41.2865, longitude: 174.7762 }
   const positions = [
-    { runnerName: 'Alice', latitude: -41.2865, longitude: 174.7762, heading: null, timestamp: '2024-01-01T00:00:00Z' },
-    // A glitch here...
-    { ...glitchPoint, heading: null, timestamp: '2024-01-01T00:00:15Z' },
-    // ...one plausible reading isn't enough to clear it...
-    { ...glitchPoint, latitude: -36.84845, heading: null, timestamp: '2024-01-01T00:00:30Z' },
+    { ...base, heading: 90, timestamp: '2024-01-01T00:00:00Z' },
+    // Heading lost here...
+    { ...base, heading: null, timestamp: '2024-01-01T00:00:15Z' },
+    // ...one reading with a real heading isn't enough to clear it...
+    { ...base, heading: 91, timestamp: '2024-01-01T00:00:30Z' },
   ]
-  assert.notEqual(findLatestGpsJump(new Map([['Alice', positions]])), null)
+  assert.notEqual(findGpsSignalLoss(new Map([['Alice', positions]])), null)
 
   // ...nor two...
-  const twoGood = [...positions, { ...glitchPoint, latitude: -36.8484, heading: null, timestamp: '2024-01-01T00:00:45Z' }]
-  assert.notEqual(findLatestGpsJump(new Map([['Alice', twoGood]])), null)
+  const twoGood = [...positions, { ...base, heading: 92, timestamp: '2024-01-01T00:00:45Z' }]
+  assert.notEqual(findGpsSignalLoss(new Map([['Alice', twoGood]])), null)
 
-  // ...but a third consecutive plausible reading clears it.
-  const threeGood = [...twoGood, { ...glitchPoint, latitude: -36.84835, heading: null, timestamp: '2024-01-01T00:01:00Z' }]
-  assert.equal(findLatestGpsJump(new Map([['Alice', threeGood]])), null)
+  // ...but a third consecutive reading with a real heading clears it.
+  const threeGood = [...twoGood, { ...base, heading: 93, timestamp: '2024-01-01T00:01:00Z' }]
+  assert.equal(findGpsSignalLoss(new Map([['Alice', threeGood]])), null)
 })
 
-test('findLatestGpsJump resets the clear-streak if another jump happens before it fully clears', () => {
+test('findGpsSignalLoss resets the clear-streak if heading is lost again before it fully clears', () => {
+  const base = { runnerName: 'Alice', latitude: -41.2865, longitude: 174.7762 }
   const positions = [
-    { runnerName: 'Alice', latitude: -41.2865, longitude: 174.7762, heading: null, timestamp: '2024-01-01T00:00:00Z' },
-    { runnerName: 'Alice', latitude: -36.8485, longitude: 174.7633, heading: null, timestamp: '2024-01-01T00:00:15Z' }, // jump 1
-    { runnerName: 'Alice', latitude: -36.84845, longitude: 174.7633, heading: null, timestamp: '2024-01-01T00:00:30Z' }, // good (streak 1)
-    { runnerName: 'Alice', latitude: -36.8484, longitude: 174.7633, heading: null, timestamp: '2024-01-01T00:00:45Z' }, // good (streak 2)
-    // Another jump before streak reaches 3 - resets the streak, so it's still flagged.
-    { runnerName: 'Alice', latitude: 0, longitude: 0, heading: null, timestamp: '2024-01-01T00:01:00Z' },
+    { ...base, heading: 90, timestamp: '2024-01-01T00:00:00Z' },
+    { ...base, heading: null, timestamp: '2024-01-01T00:00:15Z' }, // lost
+    { ...base, heading: 91, timestamp: '2024-01-01T00:00:30Z' }, // good (streak 1)
+    { ...base, heading: 92, timestamp: '2024-01-01T00:00:45Z' }, // good (streak 2)
+    // Heading lost again before streak reaches 3 - resets the streak, so it's still flagged.
+    { ...base, heading: null, timestamp: '2024-01-01T00:01:00Z' },
   ]
-  const jump = findLatestGpsJump(new Map([['Alice', positions]]))
-  assert.notEqual(jump, null)
-  assert.equal(jump?.timestamp, '2024-01-01T00:01:00Z')
+  const loss = findGpsSignalLoss(new Map([['Alice', positions]]))
+  assert.notEqual(loss, null)
+  assert.equal(loss?.timestamp, '2024-01-01T00:01:00Z')
 })
 
 test('positionsAtCutoff returns the last position at or before cutoff, omitting runners with none yet', () => {
