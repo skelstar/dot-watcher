@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { RunnerPosition } from './types.ts'
 import {
   earliestActivityMs,
+  findLatestGpsJump,
   isRangeCovered,
   latestActivityMs,
   livePollingError,
@@ -31,6 +32,7 @@ export interface SessionTimelineState {
   isLive: boolean
   lastActivityMs: number | null
   pollIntervalMs: number
+  gpsWarning: string | null
   playing: boolean
   speed: number
   loading: boolean
@@ -279,6 +281,16 @@ export function useSessionTimeline(
   const lastActivityMs = useMemo(() => maxOrNull(polledLatestMs, metaLatestMs), [polledLatestMs, metaLatestMs])
   const isLive = useMemo(() => isSessionLive(lastActivityMs, nowMs, LIVE_STALE_MS), [lastActivityMs, nowMs])
 
+  // Flags an implausible jump between two consecutive pings as erratic/unreliable GPS rather
+  // than real movement — not a Dot Watcher bug, but worth telling viewers about so a wrong dot
+  // doesn't look like the app lost the plot. Stays up until GPS_JUMP_CLEAR_STREAK consecutive
+  // plausible readings follow (see findLatestGpsJump), not just the next single good one.
+  const gpsWarning = useMemo(() => {
+    const jump = findLatestGpsJump(byRunner)
+    if (!jump) return null
+    return `Erratic GPS readings for ${jump.runnerName} — position may be inaccurate.`
+  }, [byRunner])
+
   return {
     positions,
     following: scrubTimeMs === null,
@@ -289,6 +301,7 @@ export function useSessionTimeline(
     isLive,
     lastActivityMs,
     pollIntervalMs,
+    gpsWarning,
     playing,
     speed,
     loading,
