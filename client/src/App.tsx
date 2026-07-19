@@ -189,6 +189,8 @@ export default function App() {
     timeline.positions,
     timeline.virtualNowMs,
     timeline.runnersWithGpsSignalLoss,
+    timeline.runnersWithGap,
+    timeline.runnersSleeping,
   )
   useRouteLayer(mapRef, routeCoordinates, timeline.runStartMs === null)
 
