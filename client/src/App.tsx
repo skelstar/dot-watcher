@@ -341,6 +341,9 @@ export default function App() {
           {!timeline.following && !timeline.playing && <MapPlayButton onPlay={timeline.play} />}
         </>
       )}
+      {timeline.gpsWarning && !timeline.invalidInvite && (hasSessionMembership || (!accessToken && inviteCode)) && (
+        <div style={gpsWarningToast}>⚠ {timeline.gpsWarning}</div>
+      )}
       {!timeline.invalidInvite && !timeline.error && timeline.runStartMs === null &&
         (sessionName || (!accessToken && inviteCode)) && (
         <div style={notStartedToast}>
@@ -488,4 +491,20 @@ const statusToast: React.CSSProperties = {
   padding: '8px 12px',
   fontFamily: 'system-ui, sans-serif',
   fontSize: '0.9rem',
+}
+
+const gpsWarningToast: React.CSSProperties = {
+  position: 'absolute',
+  left: '50%',
+  bottom: 130,
+  transform: 'translateX(-50%)',
+  zIndex: 8,
+  maxWidth: 'min(420px, 92vw)',
+  background: '#fff',
+  color: '#92400e',
+  borderRadius: 6,
+  boxShadow: '0 0 0 2px rgba(0,0,0,0.1)',
+  padding: '8px 12px',
+  fontFamily: 'system-ui, sans-serif',
+  fontSize: '0.85rem',
 }
