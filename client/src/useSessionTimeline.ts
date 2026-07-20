@@ -20,6 +20,7 @@ import {
 import { isSessionLive, LIVE_STALE_MS } from './sessionLiveness.ts'
 import { apiHeaders } from './apiHeaders.ts'
 import { initialsFor } from './components/InitialsBadge.tsx'
+import { usePageVisible } from './usePageVisible.ts'
 
 const TICK_MS = 100
 const WINDOW_MS = 10 * 60 * 1000 // default backward-fetch window when scrubbing into uncached history
@@ -62,6 +63,7 @@ export function useSessionTimeline(
   const byInvite = shouldPollLivePositionsByInvite(inviteCode ?? null, accessToken)
   const byMembership = shouldPollLivePositions(sessionId, accessToken)
   const active = byInvite || byMembership
+  const pageVisible = usePageVisible()
 
   const [byRunner, setByRunner] = useState<Map<string, RunnerPosition[]>>(new Map())
   const [fetchedRanges, setFetchedRanges] = useState<TimeRange[]>([])
@@ -161,9 +163,12 @@ export function useSessionTimeline(
     return () => clearInterval(id)
   }, [active])
 
-  // Live-follow polling — only runs while following (scrubTimeMs === null).
+  // Live-follow polling — only runs while following (scrubTimeMs === null) and the page is
+  // actually visible. Pausing on hidden/backgrounded/locked (rather than just slowing down)
+  // stops wasted requests outright; re-showing the page re-runs this effect, which fetches
+  // immediately and resumes the normal interval, so the view catches back up right away.
   useEffect(() => {
-    if (!active || scrubTimeMs !== null) return
+    if (!active || scrubTimeMs !== null || !pageVisible) return
     let cancelled = false
     let stopped = false
     let id: ReturnType<typeof setInterval> | undefined
@@ -201,7 +206,7 @@ export function useSessionTimeline(
       cancelled = true
       clearInterval(id)
     }
-  }, [active, scrubTimeMs, sessionId, serverUrl, accessToken, pollIntervalMs, byInvite, inviteCode]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [active, scrubTimeMs, pageVisible, sessionId, serverUrl, accessToken, pollIntervalMs, byInvite, inviteCode]) // eslint-disable-line react-hooks/exhaustive-deps
 
   function fetchWindow(sinceMs: number, untilMs: number) {
     if (!recordingBase) return
