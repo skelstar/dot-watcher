@@ -2,14 +2,15 @@ import { useState } from 'react'
 import GpxConverterPage from './GpxConverterPage'
 import RoutesPage from './RoutesPage'
 import LocationPage from './LocationPage'
+import ConvergencePage from './ConvergencePage'
 
-type Tab = 'gpx' | 'routes' | 'location'
+type Tab = 'gpx' | 'routes' | 'location' | 'convergence'
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<Tab>('routes')
 
   return (
-    <div style={page}>
+    <div style={page(activeTab)}>
       <header style={header}>
         <h1 style={title}>Dot Watcher — Simulator</h1>
         <nav style={tabBar}>
@@ -22,20 +23,24 @@ export default function App() {
           <button style={tabBtn(activeTab === 'location')} onClick={() => setActiveTab('location')}>
             Location
           </button>
+          <button style={tabBtn(activeTab === 'convergence')} onClick={() => setActiveTab('convergence')}>
+            Convergence
+          </button>
         </nav>
       </header>
       {activeTab === 'gpx' && <GpxConverterPage />}
       {activeTab === 'routes' && <RoutesPage />}
       {activeTab === 'location' && <LocationPage />}
+      {activeTab === 'convergence' && <ConvergencePage />}
     </div>
   )
 }
 
-const page: React.CSSProperties = {
-  maxWidth: 700,
+const page = (tab: Tab): React.CSSProperties => ({
+  maxWidth: tab === 'convergence' ? 900 : 700,
   margin: '0 auto',
   padding: '1.5rem 1rem',
-}
+})
 
 const header: React.CSSProperties = {
   marginBottom: '1.5rem',

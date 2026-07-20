@@ -66,6 +66,33 @@ xcrun simctl privacy <udid> reset all io.skelstar.DotWatcher
 
 ---
 
+### Convergence
+
+Simulates any number of independent "phones" that each join a session over the real
+auth/session/location API (not the admin bearer token) and move toward a shared point on the
+map, for exercising multi-runner scenarios without needing physical devices.
+
+- **Session** — creates a session (registering a throwaway organizer account under the hood)
+  and shows its invite code. Purely local UI state, not tied to any one session — you can also
+  point individual phones at an invite code from a real session created via the iOS or web app.
+- **Convergence point** — click the map (centered on Wellington, NZ) to choose where phones
+  with "Good" GPS head towards.
+- **Movement** — shared speed (walk/jog/run) and update-interval controls used by every phone.
+- **Phones** — click **+ Add phone** to add a card. Each phone independently:
+  - Registers its own throwaway account and joins a session by invite code (`runner` role)
+  - Picks its own starting point on a mini map
+  - Starts/pauses sending live `POST /location` updates once it has a start point and the
+    session has a convergence point
+  - Can be switched between **Good** (heads straight for the convergence point, heading set to
+    the bearing of travel — and stops reporting heading once "arrived", matching the real
+    app's behaviour when stationary), **Bad GPS** (wanders randomly instead of converging, with
+    heading always omitted — this is what the client's GPS-signal-loss indicator keys off), or
+    **Missing** (stops sending updates entirely, so the client's data-gap "missing" indicator
+    kicks in after ~60s)
+  - Can leave the session independently at any time
+
+---
+
 ### GPX Converter
 
 Converts a GPX file into the JSON position format used by the simulator and server.
