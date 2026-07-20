@@ -281,8 +281,11 @@ export function useSessionTimeline(
   }
 
   // Virtual clock driving playback once scrubbed. Rejoins live when it catches up to "now".
+  // Also pauses (without touching `playing`/`scrubTimeMs`) while the page is hidden, so a
+  // backgrounded replay doesn't keep ticking and issuing window fetches unseen — it resumes
+  // from exactly where it left off once the page is visible again.
   useEffect(() => {
-    if (!playing) return
+    if (!playing || !pageVisible) return
     playingRef.current = true
     const id = setInterval(() => {
       if (!playingRef.current) return
@@ -299,7 +302,7 @@ export function useSessionTimeline(
       })
     }, TICK_MS)
     return () => { playingRef.current = false; clearInterval(id) }
-  }, [playing, nowMs]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [playing, nowMs, pageVisible]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // The playhead time: wall-clock while following live, the scrub position while replaying.
   const virtualNowMs = scrubTimeMs ?? nowMs
