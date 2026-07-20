@@ -6,6 +6,7 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
   const appVersion = env.VITE_APP_VERSION ?? `v-${shortCommitId()}`
   const appUpdatedAt = env.VITE_APP_UPDATED_AT ?? `Updated ${formatNzBuildTime(new Date())}`
+  const serverPort = env.VITE_SERVER_PORT ?? '8080'
 
   return {
     plugins: [react()],
@@ -16,7 +17,7 @@ export default defineConfig(({ mode }) => {
     server: {
       proxy: {
         '/api': {
-          target: 'http://localhost:8080',
+          target: `http://localhost:${serverPort}`,
           changeOrigin: true,
           rewrite: (path) => path.replace(/^\/api/, ''),
         },
