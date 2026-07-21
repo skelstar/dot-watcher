@@ -49,7 +49,6 @@ export default function PhoneSimulator({
   const convergenceRef = useRef(convergencePoint)
   const inFlightRef = useRef(false)
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
-  const hasRequestedStartPointRef = useRef(false)
   const hasAutoJoinedRef = useRef(false)
 
   const color = runnerColour(displayName)
@@ -64,17 +63,6 @@ export default function PhoneSimulator({
   }, [id, displayName, status, quality, position, heading])
 
   useEffect(() => () => { if (intervalRef.current) clearInterval(intervalRef.current) }, [])
-
-  // Prompts for a starting point as soon as this phone exists — skips the old inline mini-map.
-  // Guarded by a ref (not just the empty deps array) because StrictMode double-invokes mount
-  // effects in dev, and this one has no cleanup to make that double-invoke harmless on its own —
-  // without the guard, every phone queues two picker requests instead of one.
-  useEffect(() => {
-    if (hasRequestedStartPointRef.current) return
-    hasRequestedStartPointRef.current = true
-    onRequestStartPoint(id, displayName)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
 
   async function handleJoin() {
     if (!inviteCode.trim()) return
