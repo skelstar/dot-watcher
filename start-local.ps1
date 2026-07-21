@@ -21,12 +21,16 @@ function Read-DotEnvValue {
 
 $serverPort = [int](Read-DotEnvValue -Path (Join-Path $root '.env') -Key 'VITE_SERVER_PORT' -Default '8080')
 
+# $IsWindows/$IsMacOS are only defined under PowerShell Core (6+) - Windows PowerShell 5.1
+# (the powershell.exe preinstalled on Windows) doesn't have them at all, so check the edition too.
+$IsWindowsPlatform = $IsWindows -or $PSVersionTable.PSEdition -eq 'Desktop'
+
 # Returns the PID listening on $port, or $null if nothing is. Windows uses Get-NetTCPConnection;
 # macOS/Linux don't have that cmdlet, so fall back to lsof.
 function Get-PortOwnerPid {
     param([int]$Port)
 
-    if ($IsWindows) {
+    if ($IsWindowsPlatform) {
         $conns = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue
         return $conns.OwningProcess | Select-Object -Unique -First 1
     }
@@ -85,7 +89,7 @@ if (-not $serverPort) {
 function Start-InNewWindow {
     param([string]$Title, [string]$Command)
 
-    if ($IsWindows) {
+    if ($IsWindowsPlatform) {
         Start-Process powershell -ArgumentList @(
             '-NoExit', '-Command',
             "`$Host.UI.RawUI.WindowTitle = '$Title'; $Command"

@@ -16,6 +16,7 @@ import LandingPage from './LandingPage.tsx'
 import InitialsBadge from './components/InitialsBadge.tsx'
 import { useRunnerMarkers } from './useRunnerMarkers.ts'
 import { useRouteLayer } from './useRouteLayer.ts'
+import { useSimulatorRouteOverlay } from './useSimulatorRouteOverlay.ts'
 import { useSessionTimeline } from './useSessionTimeline.ts'
 import { parseGpxCoordinates } from './gpx.ts'
 import { apiHeaders } from './apiHeaders.ts'
@@ -191,6 +192,7 @@ export default function App() {
     timeline.runnersSleeping,
   )
   useRouteLayer(mapRef, routeCoordinates, timeline.runStartMs === null)
+  useSimulatorRouteOverlay(mapRef)
 
   const routeBase = !accessToken && inviteCode
     ? `${SERVER_URL}/session-invites/${inviteCode}`
