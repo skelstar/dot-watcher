@@ -1,13 +1,11 @@
 import { useState } from 'react'
 import GpxConverterPage from './GpxConverterPage'
-import RoutesPage from './RoutesPage'
-import LocationPage from './LocationPage'
 import ConvergencePage from './ConvergencePage'
 
-type Tab = 'gpx' | 'routes' | 'location' | 'convergence'
+type Tab = 'gpx' | 'session'
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<Tab>('routes')
+  const [activeTab, setActiveTab] = useState<Tab>('session')
 
   return (
     <div style={page(activeTab)}>
@@ -17,27 +15,19 @@ export default function App() {
           <button style={tabBtn(activeTab === 'gpx')} onClick={() => setActiveTab('gpx')}>
             Importer
           </button>
-          <button style={tabBtn(activeTab === 'routes')} onClick={() => setActiveTab('routes')}>
-            Routes
-          </button>
-          <button style={tabBtn(activeTab === 'location')} onClick={() => setActiveTab('location')}>
-            Location
-          </button>
-          <button style={tabBtn(activeTab === 'convergence')} onClick={() => setActiveTab('convergence')}>
-            Convergence
+          <button style={tabBtn(activeTab === 'session')} onClick={() => setActiveTab('session')}>
+            Session
           </button>
         </nav>
       </header>
       {activeTab === 'gpx' && <GpxConverterPage />}
-      {activeTab === 'routes' && <RoutesPage />}
-      {activeTab === 'location' && <LocationPage />}
-      {activeTab === 'convergence' && <ConvergencePage />}
+      {activeTab === 'session' && <ConvergencePage />}
     </div>
   )
 }
 
 const page = (tab: Tab): React.CSSProperties => ({
-  maxWidth: tab === 'convergence' ? 1200 : 700,
+  maxWidth: tab === 'session' ? 1200 : 700,
   margin: '0 auto',
   padding: '1.5rem 1rem',
 })
