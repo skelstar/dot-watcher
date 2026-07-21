@@ -575,7 +575,7 @@ public class SessionStore(string connectionString)
             FROM app_sessions s
             JOIN users u ON u.id = s.owner_user_id
             LEFT JOIN session_members m ON m.session_id = s.id AND m.left_at IS NULL
-            GROUP BY s.id
+            GROUP BY s.id, u.username
             ORDER BY s.created_at DESC
             """;
         using var reader = cmd.ExecuteReader();
