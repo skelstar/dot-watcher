@@ -172,6 +172,13 @@ export default function GpxConverterPage() {
 
   return (
     <div>
+      <p style={hint}>
+        Converts one or more GPX files into a combined session recording. Add a runner name and
+        GPX file per slot below (files without real timestamps get one generated from the start
+        time and interval), then download the merged, time-sorted <code>{'{code}'}.ndjson</code>{' '}
+        — e.g. to upload via <code>POST /sessions/{'{sessionId}'}/recording</code>.
+      </p>
+
       <div style={topRow}>
         <label style={fieldLabel}>
           Session code
@@ -341,6 +348,8 @@ function fmt(iso: string) {
 }
 
 // ── Styles ──────────────────────────────────────────────────────────────────
+
+const hint: React.CSSProperties = { fontSize: '0.82rem', color: '#64748b', marginBottom: '1rem' }
 
 const topRow: React.CSSProperties = {
   display: 'flex',

@@ -1,6 +1,6 @@
 # Simulator
 
-React + Vite dev tool for testing the Dot Watcher server locally. Lets you replay GPS position data without a phone.
+React + Vite dev tool for testing the Dot Watcher server locally, without needing a phone.
 
 ---
 
@@ -31,8 +31,7 @@ Copy `.env.example` to `.env` and set:
 | Variable            | Description                                                              | Default                                     |
 | ------------------- | ------------------------------------------------------------------------- | -------------------------------------------- |
 | `VITE_SERVER_URL`   | Full URL of the Dot Watcher server — overrides the port-derived default entirely | `http://localhost:<VITE_SERVER_PORT>`         |
-| `VITE_SESSION_CODE` | Session code shared with the map viewer                                  | —                                            |
-| `VITE_BEARER_TOKEN` | Bearer token matching the server config                                  | —                                            |
+| `VITE_CLIENT_URL`   | URL of the main web client's dev server, for the Session tab's embedded live view | `http://localhost:5173`                       |
 
 `VITE_SERVER_PORT` isn't set in this tool's own `.env` — it's read from the **repo root's**
 `.env` (copy `../../.env.example`), shared with `start-local.ps1` and `client/`, so every local
@@ -43,36 +42,7 @@ taken on your machine.
 
 ## Tabs
 
-### Stepper
-
-Replays pre-loaded position data for two runners (Sean and David) in a step-by-step table. Each row represents one position update; click a checkbox to POST it to the server. Rows must be submitted in order.
-
-- Position data is loaded from `src/positions.json` (Sean) and `data/routes/` (David).
-- **Reset** clears the session on the server and resets the UI.
-
-### Location
-
-Sets the simulated GPS location of a booted iOS simulator by clicking on a map.
-
-- Lists all **booted simulators** via `xcrun simctl list devices`.
-- Select a simulator from the dropdown, then **click anywhere on the map** to teleport it to that location.
-- Uses [OpenStreetMap](https://www.openstreetmap.org/) tiles via Leaflet — no API key required.
-
-**First-time setup** — the app must have location permission on the simulator. Grant it without a prompt via:
-
-```bash
-xcrun simctl privacy <udid> grant location io.skelstar.DotWatcher
-```
-
-Or reset all permissions so the app re-prompts on next launch:
-
-```bash
-xcrun simctl privacy <udid> reset all io.skelstar.DotWatcher
-```
-
----
-
-### Convergence
+### Session
 
 Simulates any number of independent "phones" that each join a session over the real
 auth/session/location API (not the admin bearer token) and move toward a shared point on the
@@ -113,33 +83,17 @@ map, for exercising multi-runner scenarios without needing physical devices.
 
 ---
 
-### GPX Converter
+### GPX Converter (Importer)
 
-Converts a GPX file into the JSON position format used by the simulator and server.
+Converts one or more GPX files into a combined session recording — for producing NDJSON test
+data to upload as a session recording, rather than for live simulation (see Session above
+for that).
 
-- **Drag and drop** a `.gpx` file onto the drop zone (or use the file picker).
-- Points are **compressed to one-per-minute** intervals when the file contains real timestamps.
-- Files **without timestamps** (route files rather than recorded activities) show a notice with configurable start time and interval controls to generate timestamps.
-- The converted JSON is **automatically saved** to `data/routes/<filename>.json` via a Vite dev-server middleware.
-  - If the file already exists you are asked whether to replace it.
-- **Copy JSON** and **Download JSON** buttons are also available for manual export.
-
-#### Output format
-
-Each point in the exported JSON matches the format expected by `POST /location`:
-
-```json
-[
-  {
-    "latitude": -41.284898,
-    "longitude": 174.756829,
-    "heading": 90.0,
-    "timestamp": "2026-06-07T04:08:43.000Z"
-  }
-]
-```
-
-Headings are computed automatically from bearing between consecutive points. The first point always has `heading: null`.
+- Add a **runner name** and **GPX file** per slot (drag-and-drop or file picker); **+ Add runner** adds more slots.
+- A shared **session code** and replay **interval** (15s/30s/1min/5min) apply to every slot.
+- Points are **compressed to the chosen interval** and thinned to at least 10m apart when the file contains real timestamps.
+- Files **without timestamps** (route files rather than recorded activities) get one generated per point from a configurable start time (plus an optional 12h shift).
+- **Download NDJSON** merges every named, non-empty slot into one time-sorted `{code}.ndjson` file — the format expected by `POST /sessions/{sessionId}/recording`.
 
 ---
 
@@ -147,16 +101,17 @@ Headings are computed automatically from bearing between consecutive points. The
 
 Exports reusable utilities for position data manipulation:
 
-| Export              | Description                                                                 |
-| ------------------- | --------------------------------------------------------------------------- |
-| `Position`          | TypeScript interface: `{ latitude, longitude, heading, timestamp }`         |
-| `compressToMinutes` | Thins an array of positions to one per minute (by timestamp)                |
-| `computeBearing`    | Returns compass bearing (0–360°) between two lat/lon pairs                  |
+| Export               | Description                                                                 |
+| -------------------- | --------------------------------------------------------------------------- |
+| `Position`           | TypeScript interface: `{ latitude, longitude, heading, timestamp }`         |
+| `compressToInterval`  | Thins an array of positions to one per interval (by timestamp)              |
+| `filterByDistance`    | Drops consecutive positions closer together than a minimum distance         |
+| `computeBearing`      | Returns compass bearing (0–360°) between two lat/lon pairs                  |
 
 Import in any simulator page:
 
 ```ts
-import { type Position, compressToMinutes, computeBearing } from './lib/positions'
+import { type Position, compressToInterval, filterByDistance, computeBearing } from './lib/positions'
 ```
 
 ---
@@ -171,16 +126,4 @@ Writes a JSON file to `data/routes/`. Returns `409` if the file exists and `forc
 
 ```json
 { "filename": "my-route.json", "content": "...", "force": false }
-```
-
-### `GET /api/simulators`
-
-Returns all booted simulators as `[{ udid, name, runtime }]` by calling `xcrun simctl list devices --json`.
-
-### `POST /api/simulators/:udid/location`
-
-Teleports a simulator to the given coordinates via `xcrun simctl location <udid> set <lat>,<lon>`.
-
-```json
-{ "lat": 37.7749, "lon": -122.4194 }
 ```
