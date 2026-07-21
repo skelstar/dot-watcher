@@ -64,9 +64,19 @@ export function advanceAlongRoute(
     const a = route[segmentIndex]
     const b = route[segmentIndex + 1]
     const segLen = distanceMeters(a.lat, a.lon, b.lat, b.lon)
-    const toGo = Math.max(segLen - distanceIntoSegment, 0)
 
-    if (segLen === 0 || remaining < toGo) {
+    // Consecutive duplicate trackpoints are common in real GPX exports (a paused GPS fix, a
+    // dwell at a light) and have a well-defined zero length — skip straight past them instead of
+    // stalling here forever (bearing is undefined between two identical points, so there's
+    // nothing meaningful to walk towards anyway).
+    if (segLen === 0) {
+      segmentIndex += 1
+      distanceIntoSegment = 0
+      continue
+    }
+
+    const toGo = segLen - distanceIntoSegment
+    if (remaining < toGo) {
       distanceIntoSegment += remaining
       remaining = 0
     } else {
