@@ -26,6 +26,25 @@ const TICK_MS = 100
 const WINDOW_MS = 10 * 60 * 1000 // default backward-fetch window when scrubbing into uncached history
 const DRAG_SETTLE_MS = 500 // how long to wait after the user releases the scrubber before fetching
 
+// Mirrors the hardcoded `interval` in ios/DotWatcher/DotWatcher/LocationManager.swift:154 —
+// phones snap their sends to wall-clock boundaries (:00/:15/:30/:45 for 15s, via the same
+// epoch-floor math as that file's `nextPostAt`), so polling shortly after each boundary reliably
+// catches fresh data instead of polling on an arbitrary independent phase. This is expected to
+// become configurable per-race later (e.g. 5 min for long races); when it does, this needs to
+// come from the session/server, not stay a fixed client-side assumption — and if different
+// runners in the same session could ever use different intervals, a single shared boundary
+// target here won't cleanly serve all of them.
+const PHONE_SEND_INTERVAL_MS = 15_000
+const POLL_BOUNDARY_BUFFER_MS = 2_000 // grace period for the phone's POST to land before we fetch
+
+// The next moment the client should poll: the first phone-send boundary after `now`, plus the
+// buffer above. Recomputed fresh each cycle (see the live-poll effect) rather than accumulated
+// from a fixed-period timer, the same self-correcting approach as LocationManager's tracking loop.
+function msUntilNextPollBoundary(nowMs: number): number {
+  const nextBoundary = (Math.floor(nowMs / PHONE_SEND_INTERVAL_MS) + 1) * PHONE_SEND_INTERVAL_MS
+  return nextBoundary + POLL_BOUNDARY_BUFFER_MS - nowMs
+}
+
 export interface SessionTimelineState {
   positions: RunnerPosition[][] | undefined
   following: boolean
@@ -57,7 +76,6 @@ export function useSessionTimeline(
   sessionId: string | null,
   serverUrl: string,
   accessToken: string | null,
-  pollIntervalMs: number,
   inviteCode?: string | null,
 ): SessionTimelineState {
   const byInvite = shouldPollLivePositionsByInvite(inviteCode ?? null, accessToken)
@@ -166,12 +184,16 @@ export function useSessionTimeline(
   // Live-follow polling — only runs while following (scrubTimeMs === null) and the page is
   // actually visible. Pausing on hidden/backgrounded/locked (rather than just slowing down)
   // stops wasted requests outright; re-showing the page re-runs this effect, which fetches
-  // immediately and resumes the normal interval, so the view catches back up right away.
+  // immediately and resumes from the next aligned boundary, so the view catches back up right
+  // away. Schedules itself via a self-correcting setTimeout targeting each next phone-send
+  // boundary (see msUntilNextPollBoundary) rather than a fixed-period setInterval, so it stays
+  // aligned to :00/:15/:30/:45 instead of drifting to whatever arbitrary phase this effect
+  // happened to first run at.
   useEffect(() => {
     if (!active || scrubTimeMs !== null || !pageVisible) return
     let cancelled = false
     let stopped = false
-    let id: ReturnType<typeof setInterval> | undefined
+    let timerId: ReturnType<typeof setTimeout> | undefined
 
     async function fetchAndUpdate() {
       try {
@@ -184,7 +206,6 @@ export function useSessionTimeline(
           if (byInvite && res.status === 404) {
             stopped = true
             setInvalidInvite(true)
-            clearInterval(id)
           }
           return
         }
@@ -199,14 +220,20 @@ export function useSessionTimeline(
       }
     }
 
-    fetchAndUpdate().then(() => {
-      if (!cancelled && !stopped) id = setInterval(fetchAndUpdate, pollIntervalMs)
-    })
+    function scheduleNext() {
+      if (cancelled || stopped) return
+      timerId = setTimeout(async () => {
+        await fetchAndUpdate()
+        scheduleNext()
+      }, msUntilNextPollBoundary(Date.now()))
+    }
+
+    fetchAndUpdate().then(scheduleNext)
     return () => {
       cancelled = true
-      clearInterval(id)
+      clearTimeout(timerId)
     }
-  }, [active, scrubTimeMs, pageVisible, sessionId, serverUrl, accessToken, pollIntervalMs, byInvite, inviteCode]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [active, scrubTimeMs, pageVisible, sessionId, serverUrl, accessToken, byInvite, inviteCode]) // eslint-disable-line react-hooks/exhaustive-deps
 
   function fetchWindow(sinceMs: number, untilMs: number) {
     if (!recordingBase) return
@@ -350,7 +377,7 @@ export function useSessionTimeline(
     virtualNowMs,
     isLive,
     lastActivityMs,
-    pollIntervalMs,
+    pollIntervalMs: PHONE_SEND_INTERVAL_MS,
     gpsWarning,
     runnersWithGpsSignalLoss,
     runnersWithGap,

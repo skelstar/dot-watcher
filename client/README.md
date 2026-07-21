@@ -14,7 +14,6 @@ Create a `.env` file in this directory:
 ```
 VITE_MAPBOX_TOKEN=your_mapbox_public_token_here
 VITE_SERVER_URL=/api
-VITE_POLL_INTERVAL_MS=2000
 ```
 
 Install dependencies (first time only):
@@ -37,7 +36,6 @@ The app will be available at `http://localhost:5173` by default.
 | ---------------------- | -------- | ----------------------- | -------------------------------------------------------- |
 | `VITE_MAPBOX_TOKEN`    | Yes      | —                       | Mapbox public access token for rendering the map         |
 | `VITE_SERVER_URL`      | No       | `/api`                  | Base URL of the dot-watcher server                       |
-| `VITE_POLL_INTERVAL_MS`| No       | `2000`                  | How often (ms) to poll the server for updated positions  |
 | `VITE_APP_VERSION`    | No       | `v-{git-sha}-beta`      | Version label shown in the client footer                 |
 | `VITE_APP_UPDATED_AT` | No       | `Updated {NZ datetime}` | Build/update timestamp shown in the client footer        |
 
@@ -62,6 +60,10 @@ Public legal pages are available at `/privacy` and `/terms`. These should be rev
 - Owners can open the member manager, load `GET /sessions/{sessionCode}/members`, and call `POST /sessions/{sessionCode}/members/{userId}/role` to promote viewers to runners or demote runners to viewers.
 - A raw session code in the URL is only an identifier. If the user lacks membership, protected server endpoints return `403`.
 - Requests include an `X-Api-Version` header via the `apiHeaders()` helper (`client/src/apiHeaders.ts`), bumped only when the web client adopts a change that could break against the server. The server may reject an outdated version with `426 Upgrade Required`; there is currently no dedicated UI for this on the web client (see `ios/README.md` for the iOS equivalent, `UpdateRequiredView.swift`).
+
+## Live polling
+
+While following live (not scrubbing history), the client polls `GET /locations/{sessionId}` (or the invite-code equivalent) shortly after each wall-clock boundary the phones send on — currently every 15s (`PHONE_SEND_INTERVAL_MS` in `useSessionTimeline.ts`), matching the hardcoded interval in `ios/DotWatcher/DotWatcher/LocationManager.swift`, plus a small buffer for the POST to land. This isn't independently configurable via an env var (it was, via the now-removed `VITE_POLL_INTERVAL_MS`) because it only makes sense synced to whatever interval the phones are actually sending on. When that interval becomes configurable per-race, this needs to come from the session/server rather than staying a fixed client-side assumption.
 
 ## CI
 
