@@ -163,6 +163,7 @@ export default function ConvergencePage() {
 
   const activePhones = phones.map(p => snapshots[p.id]).filter((s): s is PhoneSnapshot => !!s)
   const liveClientUrl = session ? `${CLIENT_URL}/code/${session.inviteCode}` : null
+  const showingLiveClient = !!(session && showLiveClient && liveClientUrl)
 
   return (
     <div>
@@ -228,59 +229,93 @@ export default function ConvergencePage() {
         </div>
       </section>
 
-      <section style={panel}>
-        <div style={phonesHeader}>
-          <h2 style={panelTitle}>Live client view</h2>
-          <label style={liveClientToggle}>
-            <input type="checkbox" checked={showLiveClient} onChange={e => setShowLiveClient(e.target.checked)} disabled={!session} />
-            Show
-          </label>
-        </div>
-        {!session && <p style={hint}>Create a session above to embed the real web client here, viewing that session.</p>}
-        {session && showLiveClient && liveClientUrl && (
+      {(() => {
+        const liveClientHeader = (
+          <div style={phonesHeader}>
+            <h2 style={panelTitle}>Live client view</h2>
+            <label style={liveClientToggle}>
+              <input type="checkbox" checked={showLiveClient} onChange={e => setShowLiveClient(e.target.checked)} disabled={!session} />
+              Show
+            </label>
+          </div>
+        )
+        const liveClientBody = showingLiveClient && (
           <>
             <iframe
               key={liveClientUrl}
-              src={liveClientUrl}
+              src={liveClientUrl!}
               style={clientFrame}
               title="Dot Watcher client"
             />
             <p style={hint}>
               Loads <code>{liveClientUrl}</code> unauthenticated (the invite-code URL form skips
               sign-in). Requires the client's own dev server running separately (<code>cd client &amp;&amp; npm run dev</code>) —
-              blank/failed to load usually means it isn't. <a href={liveClientUrl} target="_blank" rel="noreferrer">Open in a new tab</a> instead.
+              blank/failed to load usually means it isn't. <a href={liveClientUrl!} target="_blank" rel="noreferrer">Open in a new tab</a> instead.
             </p>
           </>
-        )}
-      </section>
+        )
+        const phonesHeaderEl = (
+          <div style={phonesHeader}>
+            <h2 style={panelTitle}>Phones ({activePhones.length})</h2>
+            <button style={addBtn} onClick={addPhone}>+ Add phone</button>
+          </div>
+        )
+        const phoneCards = phones.map((p, i) => (
+          <PhoneSimulator
+            key={p.id}
+            id={p.id}
+            index={i}
+            initialDisplayName={p.initialName}
+            autoJoin={p.autoJoin}
+            defaultInviteCode={session?.inviteCode ?? ''}
+            position={positions[p.id] ?? null}
+            convergencePoint={convergencePoint}
+            speedMps={speedMps}
+            tickMs={tickMs}
+            onSnapshot={handleSnapshot}
+            onPositionChange={handlePositionChange}
+            onRequestStartPoint={handleRequestStartPoint}
+            onRemove={removePhone}
+          />
+        ))
 
-      <section style={panel}>
-        <div style={phonesHeader}>
-          <h2 style={panelTitle}>Phones ({activePhones.length})</h2>
-          <button style={addBtn} onClick={addPhone}>+ Add phone</button>
-        </div>
-        {phones.length === 0 && <p style={hint}>Add a phone, then join it to a session using an invite code.</p>}
-        <div style={phonesGrid}>
-          {phones.map((p, i) => (
-            <PhoneSimulator
-              key={p.id}
-              id={p.id}
-              index={i}
-              initialDisplayName={p.initialName}
-              autoJoin={p.autoJoin}
-              defaultInviteCode={session?.inviteCode ?? ''}
-              position={positions[p.id] ?? null}
-              convergencePoint={convergencePoint}
-              speedMps={speedMps}
-              tickMs={tickMs}
-              onSnapshot={handleSnapshot}
-              onPositionChange={handlePositionChange}
-              onRequestStartPoint={handleRequestStartPoint}
-              onRemove={removePhone}
-            />
-          ))}
-        </div>
-      </section>
+        // Once there's a live client to look at, the phones form a single vertical column
+        // to its right instead of a wrapping grid below it — the iframe stretches (flex
+        // align-items: stretch) to match whatever height that column naturally needs, so it's
+        // 3 phones deep by default and grows taller as more are added, no hardcoded pixel height.
+        if (showingLiveClient) {
+          return (
+            <section style={panel}>
+              <div style={sideBySideRow}>
+                <div style={liveClientColumn}>
+                  {liveClientHeader}
+                  {liveClientBody}
+                </div>
+                <div style={phonesColumn}>
+                  {phonesHeaderEl}
+                  {phones.length === 0 && <p style={hint}>Add a phone, then join it to a session using an invite code.</p>}
+                  <div style={phonesStack}>{phoneCards}</div>
+                </div>
+              </div>
+            </section>
+          )
+        }
+
+        return (
+          <>
+            <section style={panel}>
+              {liveClientHeader}
+              {!session && <p style={hint}>Create a session above to embed the real web client here, viewing that session.</p>}
+              {liveClientBody}
+            </section>
+            <section style={panel}>
+              {phonesHeaderEl}
+              {phones.length === 0 && <p style={hint}>Add a phone, then join it to a session using an invite code.</p>}
+              <div style={phonesGrid}>{phoneCards}</div>
+            </section>
+          </>
+        )
+      })()}
 
       {activePicker?.kind === 'convergence' && (
         <MapPickerModal
@@ -338,4 +373,15 @@ const phonesHeader: React.CSSProperties = { display: 'flex', alignItems: 'center
 const addBtn: React.CSSProperties = { padding: '0.4rem 0.9rem', borderRadius: 6, border: 'none', background: '#2563eb', color: '#fff', fontWeight: 700, fontSize: '0.85rem', cursor: 'pointer' }
 const phonesGrid: React.CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(230px, 1fr))', gap: '0.75rem' }
 const liveClientToggle: React.CSSProperties = { display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.85rem', color: '#475569', cursor: 'pointer' }
-const clientFrame: React.CSSProperties = { width: '100%', height: 520, border: '1px solid #e2e8f0', borderRadius: 8 }
+const clientFrame: React.CSSProperties = { width: '100%', flex: 1, minHeight: 0, border: '1px solid #e2e8f0', borderRadius: 8 }
+
+// Once a session exists, the client iframe and the phone list sit side by side instead of
+// stacked — the phones form a single vertical column (not the wrapping grid used when there's
+// no iframe alongside them) and the iframe stretches (via flex align-items: stretch) to match
+// whatever height that column naturally needs. 3 seeded phones by default, growing taller with
+// each one added, rather than a hardcoded pixel height.
+const PHONE_COLUMN_WIDTH = 260
+const sideBySideRow: React.CSSProperties = { display: 'flex', alignItems: 'stretch', gap: '1rem' }
+const liveClientColumn: React.CSSProperties = { flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }
+const phonesColumn: React.CSSProperties = { flexShrink: 0, width: PHONE_COLUMN_WIDTH, display: 'flex', flexDirection: 'column' }
+const phonesStack: React.CSSProperties = { display: 'flex', flexDirection: 'column', gap: '0.75rem' }
