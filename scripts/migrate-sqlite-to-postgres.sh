@@ -56,8 +56,19 @@ TABLES_WITH_ID_COPY="users app_sessions session_members revoked_user_tokens sess
 SQL_FILE="$WORKDIR/migration.sql"
 : > "$SQL_FILE"
 
+table_exists() {
+  local db="$1" table="$2"
+  local result
+  result=$(sqlite3 "$db" "SELECT name FROM sqlite_master WHERE type='table' AND name='$table';")
+  [[ -n "$result" ]]
+}
+
 dump_table() {
   local db="$1" table="$2"
+  if ! table_exists "$db" "$table"; then
+    echo "  [skip] $table not present in $db (schema drift between environments — not a bug, just older/newer deploy)" >&2
+    return 0
+  fi
   # .mode insert emits standard `INSERT INTO table VALUES (...)` statements with proper quoting.
   sqlite3 "$db" <<SQL >> "$SQL_FILE"
 .mode insert $table
@@ -67,6 +78,10 @@ SQL
 
 dump_location_updates() {
   local db="$1"
+  if ! table_exists "$db" "location_updates"; then
+    echo "  [skip] location_updates not present in $db" >&2
+    return 0
+  fi
   # Explicit column list, omitting id, so Postgres's IDENTITY column generates fresh ids.
   sqlite3 "$db" <<SQL >> "$SQL_FILE"
 .mode insert location_updates
