@@ -1,11 +1,11 @@
 # Plan: Staging/Production shared-database cutover
 
-Status: Steps 1-3 done, and Step 4 partially done, as of 2026-07-22. Written 2026-07-20. The
-shared Postgres instance is live and has real Staging+Production data copied into it, but
-**Staging and Production are still both running on their own private SQLite files** — no
-`ConnectionString` secret has been wired in and neither has been redeployed yet, so nothing
-user-facing has changed. The actual cutover (Step 4, items 2 and 4-6) is still pending and should
-happen as a deliberate maintenance-window action.
+Status: **CUTOVER COMPLETE as of 2026-07-22.** Written 2026-07-20. Both Staging and Production are
+now deployed on the Postgres-backed build and pointed at the one shared Postgres instance.
+Verified via `GET /sessions` against both `dot-watcher-staging.skelstar.io` and
+`dot-watcher.skelstar.io` returning the identical set of 4 session IDs — proof both environments
+are reading the same database. Remaining work is just cleanup (old SQLite PVCs) and the async
+`SessionStore` risk noted below, not core to the cutover itself.
 
 ## Goal
 
@@ -122,10 +122,16 @@ found (consistent with the Step 2 audit), and every table copied cleanly. Final 
    PR #74). Confirmed reachable cross-namespace from `dot-watcher-server-staging` at
    `postgres.dot-watcher-db.svc.cluster.local:5432` via a live `psql SELECT 1` test. Schema
    created via `scripts/init-postgres-schema.sh`.
-2. **Not yet done** — Add `ConnectionString` to the existing `dot-watcher-server-secrets` k8s
-   secret (and create the equivalent secret for Staging), following the same
-   `kubectl create secret generic ... --from-env-file=...` pattern already documented in
-   `server/README.md`'s Deployment section.
+2. **DONE (2026-07-22)** — Added `ConnectionString` to both `dot-watcher-server-secrets` secrets
+   (Production and Staging namespaces) via `kubectl patch` (surgical add of one key, preserving
+   the existing `BearerToken`/`JwtSigningKey`), rather than recreating the secret from scratch.
+   Value uses the in-cluster DNS name:
+   `Host=postgres.dot-watcher-db.svc.cluster.local;Port=5432;Database=dotwatcher;Username=dotwatcher;Password=<...>`.
+   **Gotcha hit during execution**: adding the key to the *secret* alone did not make it reach the
+   container — each Deployment's pod spec only had explicit `env` entries with `secretKeyRef` for
+   `BearerToken`/`JwtSigningKey`; `ConnectionString` needed its own new `env` entry added via
+   `kubectl patch deployment ... --type=json -p='[{"op":"add","path":"/spec/template/spec/containers/0/env/-",...}]'`
+   in both namespaces before the app would actually see it.
 3. **DONE (2026-07-22)** — Ran the migration script against the real (not copied) SQLite data
    from both environments, against the real shared Postgres instance (not the local dry-run one).
    Zero collisions, no errors. Final counts in the shared instance: 9 users, 5 app_sessions, 8
@@ -136,15 +142,46 @@ found (consistent with the Step 2 audit), and every table copied cleanly. Final 
    each environment's SQLite file for any writes that happen between this copy and Step 4's actual
    cutover (step 4 below) — a final delta/re-sync (or re-running this step) right before cutover
    is worth considering if there's a gap in time.
-4. **Not yet done** — Redeploy both `dot-watcher-server` and `dot-watcher-server-staging` pointing
-   at the new `ConnectionString`. This is the actual cutover moment — the point where a bug in the
-   new code path affects real users immediately. Do this as a deliberate maintenance-window action,
-   not casually.
-5. **Not yet done** — Verify via the admin `GET /sessions` endpoint and Seq logs
-   (`https://seq.skelstar.io`) that both environments see the same session/user data and that new
-   writes from either environment show up for the other.
+4. **DONE (2026-07-22)** — Redeployed Staging first, verified healthy, then Production, each onto
+   the Postgres-backed build with `ConnectionString` wired. Both came up clean after the env-var
+   patch (0 restarts). The `libgssapi_krb5.so.2 cannot open shared object file` message seen in
+   both pods' startup logs is a harmless Npgsql GSSAPI-auth-probe warning (the connection uses
+   plain username/password auth, not GSSAPI) — not an error, and not worth fixing.
+5. **DONE (2026-07-22)** — Verified via the admin `GET /sessions` endpoint: both
+   `https://dot-watcher-staging.skelstar.io/api/sessions` and
+   `https://dot-watcher.skelstar.io/api/sessions` return the **identical** set of 4 session IDs
+   (`FRIC0001`, `COMMUTE1`, `WAIMAP2`, `WUU2K65` — the 5th session, `TEST1`, is unarchived and
+   excluded from this endpoint's results, which is pre-existing filtering behavior, not a bug).
+   This is definitive proof both environments are reading the same shared database. Did not
+   separately verify Seq logs — the `GET /sessions` match was conclusive enough on its own.
 6. **Not yet done** — Keep the old SQLite PVCs mounted-but-unused (don't delete) for a rollback
-   window before cleaning them up.
+   window before cleaning them up. Since both environments' code no longer reads SQLite at all,
+   these PVCs are now just inert leftover storage — safe to leave as-is; revisit deleting them
+   once confident no rollback will be needed.
+
+## Follow-up needed: `server/.deploy.yaml` is now out of sync with the live cluster state
+
+The live `dot-watcher-server` and `dot-watcher-server-staging` Deployments were patched directly
+via `kubectl patch` to add the `ConnectionString` env var (see Step 4.2 above) — but
+`server/.deploy.yaml`, the source file the `/deploy` skill uses to (re)create this deployment,
+was **not** updated to match. It still only has `DbPath` (the old SQLite path, now dead) and no
+`ConnectionString` entry at all. It also still has the stale hostname
+`dot-watcher-server.skelstar.io` flagged back in Step 1 (Production's real hostname is
+`dot-watcher.skelstar.io`).
+
+**Risk**: if `/deploy update dot-watcher-server` (or a from-scratch deploy after a namespace
+teardown) ever regenerates the Deployment from this file, it would recreate it *without* the
+`ConnectionString` env var — silently reintroducing the exact startup crash this whole cutover
+was meant to fix, since the live patch would be overwritten/not reapplied.
+
+**Not fixed here** because the `/deploy` skill's `.deploy.yaml` schema wasn't confirmed to support
+`valueFrom.secretKeyRef`-style env vars (only plain `value: ...` literals appear in the file
+today) — writing a `ConnectionString` entry into this file without knowing whether the skill can
+express "pull from a secret key" risks baking in something that looks right but silently deploys
+wrong (e.g. a literal, hardcoded connection string checked into the repo, which would be a real
+credential leak). Whoever picks this up next should check the `/deploy` skill's actual schema
+support before editing this file, then fix both the missing `ConnectionString` entry and the
+stale hostname together.
 
 ## Named risk to flag for whoever executes this, not fixed in Phase 2
 
