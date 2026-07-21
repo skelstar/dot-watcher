@@ -111,12 +111,16 @@ export function phoneMarkerIcon(phone: {
   heading: number | null
   position: LatLon | null
   convergencePoint: LatLon | null
+  route?: LatLon[] | null
 }): L.DivIcon {
   const missing = phone.quality === 'missing' || phone.status === 'left'
+  // A phone following a route arrives at the route's last point, not the shared convergence
+  // point — the two are mutually exclusive targets (see PhoneSimulator's tick()).
+  const target = phone.route && phone.route.length > 0 ? phone.route[phone.route.length - 1] : phone.convergencePoint
   // Gated on 'running' so a phone that merely picked a start point (heading still null because
   // it hasn't sent a reading yet) doesn't pre-emptively look arrived/signal-lost before Start.
-  const arrived = !missing && phone.status === 'running' && phone.quality === 'good' && phone.position && phone.convergencePoint
-    ? distanceMeters(phone.position.lat, phone.position.lon, phone.convergencePoint.lat, phone.convergencePoint.lon) <= ARRIVE_METERS
+  const arrived = !missing && phone.status === 'running' && phone.quality === 'good' && phone.position && target
+    ? distanceMeters(phone.position.lat, phone.position.lon, target.lat, target.lon) <= ARRIVE_METERS
     : false
   const signalLoss = !missing && phone.status === 'running' && phone.heading === null
 

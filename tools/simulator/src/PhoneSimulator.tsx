@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { initialsFor, runnerColour } from './lib/icons'
-import { computeBearing, distanceMeters, destinationPoint, ARRIVE_METERS } from './lib/geo'
+import { computeBearing, distanceMeters, destinationPoint, advanceAlongRoute, ROUTE_START_PROGRESS, ARRIVE_METERS, type RouteProgress } from './lib/geo'
+import { parseGpxTrackpoints } from './lib/gpx'
 import {
   registerParticipant,
   joinSession,
@@ -20,17 +21,19 @@ type Props = {
   defaultInviteCode: string
   position: LatLon | null
   convergencePoint: LatLon | null
+  route: LatLon[] | null
   speedMps: number
   tickMs: number
   onSnapshot: (snapshot: PhoneSnapshot) => void
   onPositionChange: (id: number, point: LatLon) => void
   onRequestStartPoint: (id: number, displayName: string) => void
+  onRouteChange: (id: number, route: LatLon[] | null) => void
   onRemove: (id: number) => void
 }
 
 export default function PhoneSimulator({
-  id, index, initialDisplayName, autoJoin, defaultInviteCode, position, convergencePoint, speedMps, tickMs,
-  onSnapshot, onPositionChange, onRequestStartPoint, onRemove,
+  id, index, initialDisplayName, autoJoin, defaultInviteCode, position, convergencePoint, route, speedMps, tickMs,
+  onSnapshot, onPositionChange, onRequestStartPoint, onRouteChange, onRemove,
 }: Props) {
   // Short by default — this is the actual displayName registered with the server, so it's
   // what the real client (and its own marker labels) will show too, not just a local label.
@@ -41,12 +44,16 @@ export default function PhoneSimulator({
   const [heading, setHeading] = useState<number | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [lastSentAt, setLastSentAt] = useState<string | null>(null)
+  const [routeFileName, setRouteFileName] = useState<string | null>(null)
+  const [routeError, setRouteError] = useState<string | null>(null)
 
   const userRef = useRef<AuthedUser | null>(null)
   const sessionIdRef = useRef<string | null>(null)
   const qualityRef = useRef(quality)
   const positionRef = useRef(position)
   const convergenceRef = useRef(convergencePoint)
+  const routeRef = useRef(route)
+  const routeProgressRef = useRef<RouteProgress>(ROUTE_START_PROGRESS)
   const inFlightRef = useRef(false)
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const hasAutoJoinedRef = useRef(false)
@@ -56,6 +63,12 @@ export default function PhoneSimulator({
   useEffect(() => { qualityRef.current = quality }, [quality])
   useEffect(() => { positionRef.current = position }, [position])
   useEffect(() => { convergenceRef.current = convergencePoint }, [convergencePoint])
+  // A new/cleared route always restarts progress from its first point — resuming mid-route from
+  // a stale index would make no sense once the underlying path itself has changed.
+  useEffect(() => {
+    routeRef.current = route
+    routeProgressRef.current = ROUTE_START_PROGRESS
+  }, [route])
 
   useEffect(() => {
     onSnapshot({ id, displayName, status, quality, position, heading })
@@ -104,9 +117,17 @@ export default function PhoneSimulator({
     let next: LatLon
     let nextHeading: number | null
     const target = convergenceRef.current
+    const activeRoute = routeRef.current
     const stepMeters = speedMps * (tickMs / 1000)
 
-    if (qualityRef.current === 'good' && target) {
+    if (qualityRef.current === 'good' && activeRoute && activeRoute.length > 1) {
+      // A route takes priority over the convergence point when both are set — it's the more
+      // specific instruction for this phone.
+      const result = advanceAlongRoute(activeRoute, routeProgressRef.current, stepMeters)
+      next = result.position
+      nextHeading = result.heading
+      routeProgressRef.current = result.progress
+    } else if (qualityRef.current === 'good' && target) {
       const dist = distanceMeters(cur.lat, cur.lon, target.lat, target.lon)
       if (dist <= ARRIVE_METERS) {
         next = cur
@@ -171,12 +192,45 @@ export default function PhoneSimulator({
     onRemove(id)
   }
 
-  const canStart = status === 'ready' && position !== null && convergencePoint !== null
+  function handleRouteFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    setRouteError(null)
+    const reader = new FileReader()
+    reader.onload = evt => {
+      try {
+        const points = parseGpxTrackpoints(evt.target?.result as string)
+        if (points.length === 0) {
+          setRouteError('No track points found.')
+          return
+        }
+        setRouteFileName(file.name)
+        onRouteChange(id, points) // a new upload always replaces whatever route this phone had
+      } catch (err) {
+        setRouteError(err instanceof Error ? err.message : 'Failed to parse GPX.')
+      }
+    }
+    reader.readAsText(file)
+  }
+
+  function handleClearRoute() {
+    setRouteFileName(null)
+    setRouteError(null)
+    onRouteChange(id, null)
+  }
+
+  // A route substitutes for the convergence point — a phone following its own path doesn't need
+  // the shared target too.
+  const canStart = status === 'ready' && position !== null && (convergencePoint !== null || (route !== null && route.length > 1))
   const canLeave = status === 'ready' || status === 'running'
   const canPickPosition = status !== 'left'
 
-  const distanceRemaining = position && convergencePoint
-    ? distanceMeters(position.lat, position.lon, convergencePoint.lat, convergencePoint.lon)
+  // A route's own end point is this phone's target once it has one, in place of the shared
+  // convergence point — matches the priority order tick() and canStart use.
+  const target = route && route.length > 0 ? route[route.length - 1] : convergencePoint
+  const distanceRemaining = position && target
+    ? distanceMeters(position.lat, position.lon, target.lat, target.lon)
     : null
 
   return (
@@ -202,6 +256,20 @@ export default function PhoneSimulator({
         </button>
       </div>
 
+      <div style={positionRow}>
+        {routeFileName
+          ? <span style={positionText}>{routeFileName} ({route?.length ?? 0} pts)</span>
+          : <span style={positionMuted}>No route</span>}
+        <label style={changePointBtn}>
+          {routeFileName ? 'Change' : 'Upload GPX'}
+          <input type="file" accept=".gpx" onChange={handleRouteFile} disabled={!canPickPosition} style={{ display: 'none' }} />
+        </label>
+        {routeFileName && (
+          <button style={removeBtn} onClick={handleClearRoute} disabled={!canPickPosition} title="Clear route">×</button>
+        )}
+      </div>
+      {routeError && <div style={errorText}>{routeError}</div>}
+
       {(status === 'idle' || status === 'joining') && (
         <div style={joinRow}>
           <input
@@ -226,8 +294,8 @@ export default function PhoneSimulator({
         <>
           <p style={hint}>
             {status === 'ready' && !position && 'Choose a starting point above.'}
-            {status === 'ready' && position && !convergencePoint && 'Waiting for the convergence point.'}
-            {status === 'ready' && position && convergencePoint && 'Ready — press Start.'}
+            {status === 'ready' && position && !target && 'Waiting for the convergence point (or upload a route).'}
+            {status === 'ready' && position && target && 'Ready — press Start.'}
             {status === 'running' && 'Sending updates…'}
             {status === 'left' && 'Left the session.'}
           </p>

@@ -1,8 +1,9 @@
-import { useRef, useState } from 'react'
-import { convergenceIcon, phoneMarkerIcon } from './lib/icons'
+import { useEffect, useRef, useState } from 'react'
+import { convergenceIcon, phoneMarkerIcon, runnerColour } from './lib/icons'
 import { createSession, deleteSimAccounts, randomSessionName, registerParticipant, SERVER_URL, CLIENT_URL, type SessionMembership } from './lib/dotwatcherApi'
 import PhoneSimulator from './PhoneSimulator'
 import MapPickerModal from './MapPickerModal'
+import SimulatorMap from './SimulatorMap'
 import type { LatLon, PhoneSnapshot } from './lib/types'
 
 const WELLINGTON: LatLon = { lat: -41.2865, lon: 174.7762 }
@@ -10,6 +11,13 @@ const WELLINGTON: LatLon = { lat: -41.2865, lon: 174.7762 }
 // Seeded automatically (and auto-joined) every time a session is created, so you don't have to
 // manually add and join a handful of phones every test run. Add more with "+ Add phone".
 const DEFAULT_PHONE_NAMES = ['SK', 'DH', 'CH']
+
+// Must match client/src/useSimulatorRouteOverlay.ts's MESSAGE_TYPE exactly — that's the only
+// listener, and this is the only sender. Lets each phone's GPX route get drawn, in that phone's
+// own colour, on the real client's own map inside the "Live client view" iframe below — the
+// simulator has no same-origin DOM access into it (separate Vite dev server/origin), so
+// postMessage is the only way in.
+const ROUTE_OVERLAY_MESSAGE_TYPE = 'dotwatcher-simulator-routes'
 
 type PhoneConfig = { id: number; initialName?: string; autoJoin?: boolean }
 
@@ -45,8 +53,10 @@ export default function ConvergencePage() {
 
   const [phones, setPhones] = useState<PhoneConfig[]>([])
   const [positions, setPositions] = useState<Record<number, LatLon | null>>({})
+  const [routes, setRoutes] = useState<Record<number, LatLon[]>>({})
   const nextIdRef = useRef(1)
   const [snapshots, setSnapshots] = useState<Record<number, PhoneSnapshot>>({})
+  const liveClientIframeRef = useRef<HTMLIFrameElement>(null)
 
   // Only one map-picker modal is ever shown at a time — extra requests (e.g. three phones
   // seeded at once, each asking for a start point on mount) queue up behind the current one.
@@ -89,6 +99,7 @@ export default function ConvergencePage() {
       // A new session is a full reset — old phone tiles' accounts just got swept up above.
       setSnapshots({})
       setPositions({})
+      setRoutes({})
       setPhones(DEFAULT_PHONE_NAMES.map(initialName => ({ id: nextIdRef.current++, initialName, autoJoin: true })))
     } catch (err) {
       setCreateError(err instanceof Error ? err.message : 'Failed to create session.')
@@ -151,6 +162,28 @@ export default function ConvergencePage() {
       delete next[id]
       return next
     })
+    setRoutes(prev => {
+      const next = { ...prev }
+      delete next[id]
+      return next
+    })
+  }
+
+  function handleRouteChange(id: number, route: LatLon[] | null) {
+    setRoutes(prev => {
+      if (!route || route.length === 0) {
+        if (!(id in prev)) return prev
+        const next = { ...prev }
+        delete next[id]
+        return next
+      }
+      return { ...prev, [id]: route }
+    })
+    // A route's first point doubles as the phone's start point — matches how "Choose start
+    // point" itself sets position, and means the phone's marker shows up on the map right away.
+    if (route && route.length > 0) {
+      setPositions(prev => ({ ...prev, [id]: route[0] }))
+    }
   }
 
   function handleSnapshot(snapshot: PhoneSnapshot) {
@@ -163,6 +196,32 @@ export default function ConvergencePage() {
 
   const activePhones = phones.map(p => snapshots[p.id]).filter((s): s is PhoneSnapshot => !!s)
   const liveClientUrl = session ? `${CLIENT_URL}/code/${session.inviteCode}` : null
+  const showingLiveClient = !!(session && showLiveClient && liveClientUrl)
+
+  // [lon, lat] to match Mapbox/GeoJSON coordinate order, which is what the client-side listener
+  // (client/src/useSimulatorRouteOverlay.ts) expects to hand straight to a GeoJSON LineString.
+  const overlayRoutes = activePhones
+    .map(phone => ({
+      id: phone.id,
+      color: runnerColour(phone.displayName),
+      points: (routes[phone.id] ?? []).map(p => [p.lon, p.lat] as [number, number]),
+    }))
+    .filter(r => r.points.length > 1)
+
+  function postRoutesToLiveClient() {
+    liveClientIframeRef.current?.contentWindow?.postMessage(
+      { type: ROUTE_OVERLAY_MESSAGE_TYPE, routes: overlayRoutes },
+      CLIENT_URL,
+    )
+  }
+
+  // Re-sent on every route/phone change, not just once — the iframe can (re)load after this
+  // effect first runs (e.g. a slow dev-server compile), which would otherwise drop the message
+  // before the client's listener was ever attached to receive it.
+  useEffect(() => {
+    postRoutesToLiveClient()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [routes, activePhones.map(p => p.id + p.displayName).join(','), liveClientUrl])
 
   return (
     <div>
@@ -207,6 +266,12 @@ export default function ConvergencePage() {
               : <span style={mutedText}>Not set</span>}
             <button style={copyBtn} onClick={handleChangeConvergencePoint}>Change</button>
           </div>
+          <SimulatorMap convergencePoint={convergencePoint} phones={activePhones} routes={routes} />
+          <p style={hint}>
+            Each phone's uploaded GPX route is drawn here in that phone's own colour — upload one
+            from its card below to have it walk the route instead of straight-line towards the
+            convergence point above.
+          </p>
         </section>
       )}
 
@@ -228,59 +293,100 @@ export default function ConvergencePage() {
         </div>
       </section>
 
-      <section style={panel}>
-        <div style={phonesHeader}>
-          <h2 style={panelTitle}>Live client view</h2>
-          <label style={liveClientToggle}>
-            <input type="checkbox" checked={showLiveClient} onChange={e => setShowLiveClient(e.target.checked)} disabled={!session} />
-            Show
-          </label>
-        </div>
-        {!session && <p style={hint}>Create a session above to embed the real web client here, viewing that session.</p>}
-        {session && showLiveClient && liveClientUrl && (
+      {(() => {
+        const liveClientHeader = (
+          <div style={phonesHeader}>
+            <h2 style={panelTitle}>Live client view</h2>
+            <label style={liveClientToggle}>
+              <input type="checkbox" checked={showLiveClient} onChange={e => setShowLiveClient(e.target.checked)} disabled={!session} />
+              Show
+            </label>
+          </div>
+        )
+        const liveClientBody = showingLiveClient && (
           <>
             <iframe
               key={liveClientUrl}
-              src={liveClientUrl}
+              ref={liveClientIframeRef}
+              src={liveClientUrl!}
               style={clientFrame}
               title="Dot Watcher client"
+              onLoad={postRoutesToLiveClient}
             />
             <p style={hint}>
               Loads <code>{liveClientUrl}</code> unauthenticated (the invite-code URL form skips
               sign-in). Requires the client's own dev server running separately (<code>cd client &amp;&amp; npm run dev</code>) —
-              blank/failed to load usually means it isn't. <a href={liveClientUrl} target="_blank" rel="noreferrer">Open in a new tab</a> instead.
+              blank/failed to load usually means it isn't. <a href={liveClientUrl!} target="_blank" rel="noreferrer">Open in a new tab</a> instead.
+              Each phone's uploaded GPX route is drawn here too, in that phone's own colour, via a
+              postMessage the real client listens for — "Open in a new tab" won't get it, only this
+              embedded iframe does.
             </p>
           </>
-        )}
-      </section>
+        )
+        const phonesHeaderEl = (
+          <div style={phonesHeader}>
+            <h2 style={panelTitle}>Phones ({activePhones.length})</h2>
+            <button style={addBtn} onClick={addPhone}>+ Add phone</button>
+          </div>
+        )
+        const phoneCards = phones.map((p, i) => (
+          <PhoneSimulator
+            key={p.id}
+            id={p.id}
+            index={i}
+            initialDisplayName={p.initialName}
+            autoJoin={p.autoJoin}
+            defaultInviteCode={session?.inviteCode ?? ''}
+            position={positions[p.id] ?? null}
+            convergencePoint={convergencePoint}
+            route={routes[p.id] ?? null}
+            speedMps={speedMps}
+            tickMs={tickMs}
+            onSnapshot={handleSnapshot}
+            onPositionChange={handlePositionChange}
+            onRequestStartPoint={handleRequestStartPoint}
+            onRouteChange={handleRouteChange}
+            onRemove={removePhone}
+          />
+        ))
 
-      <section style={panel}>
-        <div style={phonesHeader}>
-          <h2 style={panelTitle}>Phones ({activePhones.length})</h2>
-          <button style={addBtn} onClick={addPhone}>+ Add phone</button>
-        </div>
-        {phones.length === 0 && <p style={hint}>Add a phone, then join it to a session using an invite code.</p>}
-        <div style={phonesGrid}>
-          {phones.map((p, i) => (
-            <PhoneSimulator
-              key={p.id}
-              id={p.id}
-              index={i}
-              initialDisplayName={p.initialName}
-              autoJoin={p.autoJoin}
-              defaultInviteCode={session?.inviteCode ?? ''}
-              position={positions[p.id] ?? null}
-              convergencePoint={convergencePoint}
-              speedMps={speedMps}
-              tickMs={tickMs}
-              onSnapshot={handleSnapshot}
-              onPositionChange={handlePositionChange}
-              onRequestStartPoint={handleRequestStartPoint}
-              onRemove={removePhone}
-            />
-          ))}
-        </div>
-      </section>
+        // Once there's a live client to look at, the phones form a single vertical column
+        // to its right instead of a wrapping grid below it — the iframe stretches (flex
+        // align-items: stretch) to match whatever height that column naturally needs, so it's
+        // 3 phones deep by default and grows taller as more are added, no hardcoded pixel height.
+        if (showingLiveClient) {
+          return (
+            <section style={panel}>
+              <div style={sideBySideRow}>
+                <div style={liveClientColumn}>
+                  {liveClientHeader}
+                  {liveClientBody}
+                </div>
+                <div style={phonesColumn}>
+                  {phonesHeaderEl}
+                  {phones.length === 0 && <p style={hint}>Add a phone, then join it to a session using an invite code.</p>}
+                  <div style={phonesStack}>{phoneCards}</div>
+                </div>
+              </div>
+            </section>
+          )
+        }
+
+        return (
+          <>
+            <section style={panel}>
+              {liveClientHeader}
+              {!session && <p style={hint}>Create a session above to embed the real web client here, viewing that session.</p>}
+              {liveClientBody}
+            </section>
+            <section style={panel}>
+              {phonesHeaderEl}
+              {phones.length === 0 && <p style={hint}>Add a phone, then join it to a session using an invite code.</p>}
+              <div style={phonesGrid}>{phoneCards}</div>
+            </section>
+          </>
+        )
+      })()}
 
       {activePicker?.kind === 'convergence' && (
         <MapPickerModal
@@ -338,4 +444,15 @@ const phonesHeader: React.CSSProperties = { display: 'flex', alignItems: 'center
 const addBtn: React.CSSProperties = { padding: '0.4rem 0.9rem', borderRadius: 6, border: 'none', background: '#2563eb', color: '#fff', fontWeight: 700, fontSize: '0.85rem', cursor: 'pointer' }
 const phonesGrid: React.CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(230px, 1fr))', gap: '0.75rem' }
 const liveClientToggle: React.CSSProperties = { display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.85rem', color: '#475569', cursor: 'pointer' }
-const clientFrame: React.CSSProperties = { width: '100%', height: 520, border: '1px solid #e2e8f0', borderRadius: 8 }
+const clientFrame: React.CSSProperties = { width: '100%', flex: 1, minHeight: 0, border: '1px solid #e2e8f0', borderRadius: 8 }
+
+// Once a session exists, the client iframe and the phone list sit side by side instead of
+// stacked — the phones form a single vertical column (not the wrapping grid used when there's
+// no iframe alongside them) and the iframe stretches (via flex align-items: stretch) to match
+// whatever height that column naturally needs. 3 seeded phones by default, growing taller with
+// each one added, rather than a hardcoded pixel height.
+const PHONE_COLUMN_WIDTH = 260
+const sideBySideRow: React.CSSProperties = { display: 'flex', alignItems: 'stretch', gap: '1rem' }
+const liveClientColumn: React.CSSProperties = { flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }
+const phonesColumn: React.CSSProperties = { flexShrink: 0, width: PHONE_COLUMN_WIDTH, display: 'flex', flexDirection: 'column' }
+const phonesStack: React.CSSProperties = { display: 'flex', flexDirection: 'column', gap: '0.75rem' }
