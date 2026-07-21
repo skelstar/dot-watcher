@@ -1,18 +1,31 @@
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.Configuration;
+using Npgsql;
 
 namespace DotWatcher.Server.Tests;
 
 public sealed class DotWatcherApiFactory : WebApplicationFactory<global::Program>
 {
-    private readonly string _dbPath = Path.Combine(
-        Path.GetTempPath(),
-        $"dotwatcher-tests-{Guid.NewGuid():N}.db");
+    // Matches the local Postgres started by `docker compose up -d` at the repo root (see
+    // server/README.md's "Local Postgres" section) — dev-only credentials, not used anywhere else.
+    private const string BaseConnectionString =
+        "Host=localhost;Port=5432;Database=dotwatcher;Username=dotwatcher;Password=dotwatcher-dev";
+
+    private readonly string _schema = $"test_{Guid.NewGuid():N}";
 
     private readonly string _recordingsPath = Path.Combine(
         Path.GetTempPath(),
         $"dotwatcher-recordings-{Guid.NewGuid():N}");
+
+    public DotWatcherApiFactory()
+    {
+        using var conn = new NpgsqlConnection(BaseConnectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = $"CREATE SCHEMA IF NOT EXISTS \"{_schema}\"";
+        cmd.ExecuteNonQuery();
+    }
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
@@ -22,7 +35,7 @@ public sealed class DotWatcherApiFactory : WebApplicationFactory<global::Program
             {
                 ["BearerToken"] = "test-token",
                 ["JwtSigningKey"] = "test-jwt-signing-key-change-me-32-bytes",
-                ["DbPath"] = _dbPath,
+                ["ConnectionString"] = $"{BaseConnectionString};SearchPath={_schema}",
                 ["RecordingsPath"] = _recordingsPath,
             });
         });
@@ -32,24 +45,21 @@ public sealed class DotWatcherApiFactory : WebApplicationFactory<global::Program
     {
         base.Dispose(disposing);
 
-        TryDelete(_dbPath);
-        TryDelete($"{_dbPath}-shm");
-        TryDelete($"{_dbPath}-wal");
-
+        TryDropSchema(_schema);
         TryDeleteDirectory(_recordingsPath);
     }
 
-    private static void TryDelete(string path)
+    private static void TryDropSchema(string schema)
     {
         try
         {
-            if (File.Exists(path))
-                File.Delete(path);
+            using var conn = new NpgsqlConnection(BaseConnectionString);
+            conn.Open();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = $"DROP SCHEMA IF EXISTS \"{schema}\" CASCADE";
+            cmd.ExecuteNonQuery();
         }
-        catch (IOException)
-        {
-        }
-        catch (UnauthorizedAccessException)
+        catch (NpgsqlException)
         {
         }
     }

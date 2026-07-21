@@ -62,6 +62,7 @@
 ## Prerequisites
 
 - [.NET 9 SDK](https://dotnet.microsoft.com/download/dotnet/9.0)
+- [Docker](https://www.docker.com/) — runs the local Postgres instance (see [Local Postgres](#local-postgres)) that both `dotnet run` and `dotnet test` depend on.
 
 ---
 
@@ -79,8 +80,8 @@
 | `AuthLockoutMinutes` | `15` | Temporary login lockout duration after repeated failures |
 | `AuthAttemptWindowMinutes` | `15` | Idle failed-login attempt window lifetime before process-local limiter state is pruned |
 | `AuthMaxTrackedAttempts` | `10000` | Maximum username/IP failed-login keys retained by the process-local limiter |
-| `DbPath` | `dotwatcher.db` | SQLite database file used for persisted session recordings |
-| `RecordingsPath` | `recordings` | Directory scanned on startup for legacy NDJSON recordings to import into SQLite |
+| `ConnectionString` | *(required)* | Npgsql connection string for the shared Postgres database — see [Local Postgres](#local-postgres) |
+| `RecordingsPath` | `recordings` | Directory scanned on startup for legacy NDJSON recordings to import |
 | `MinimumApiVersion` | `1` | Minimum `X-Api-Version` a client must send. See [Client compatibility](#client-compatibility-x-api-version) |
 
 The server requires two separate secrets:
@@ -106,7 +107,7 @@ JwtSigningKey=your-long-random-jwt-signing-key
 }
 ```
 
-The server will throw on startup if `BearerToken` or `JwtSigningKey` is not configured.
+The server will throw on startup if `BearerToken`, `JwtSigningKey`, or `ConnectionString` is not configured.
 
 > Do not commit a production token to source control.
 
@@ -147,6 +148,22 @@ dotnet build --no-incremental && dotnet run --no-build --urls "http://0.0.0.0:80
 > ```powershell
 > $env:ASPNETCORE_ENVIRONMENT="Development"; dotnet run
 > ```
+
+---
+
+## Local Postgres
+
+Staging and Production currently run as separate deployments with their own private database, which means a Staging user and a Production user can never share a session. The fix is a single shared Postgres database behind both, with Local, Staging, and Production all speaking the same engine. `SessionStore` now talks to Postgres directly via `Npgsql` (no SQLite/Postgres split to maintain) — see [`.ai/plans/shared-database-cutover.md`](../.ai/plans/shared-database-cutover.md) for the design of the remaining Staging/Production cutover, which hasn't happened yet.
+
+Start local Postgres from the repo root:
+
+```bash
+docker compose up -d
+```
+
+This starts Postgres on `localhost:5432` (database `dotwatcher`, user `dotwatcher`, password `dotwatcher-dev` — local dev only, not used anywhere else). Data persists in a named Docker volume across restarts; run `docker compose down -v` to reset it. `appsettings.Development.json` already points `ConnectionString` at this instance, so `dotnet run` works as soon as the container is up.
+
+**`dotnet test` requires this container running too** — unlike the old SQLite-backed tests, `tests/DotWatcher.Server.Tests/DotWatcherApiFactory.cs` connects to this same local Postgres instance (one Postgres schema created and dropped per test for isolation, rather than one temp file per test). Forgetting `docker compose up -d` turns every test into a connection-refused failure before the test body runs.
 
 ---
 
@@ -631,10 +648,11 @@ JwtSigningKey=your-long-random-jwt-signing-key
 ## Notes
 
 - `tests/DotWatcher.Server.Tests/ContractTests.cs` locks the exact JSON field names of client-facing requests/responses by reading and writing raw JSON, not the shared C# record types. The rest of the test suite round-trips through those shared types, so a renamed property recompiles cleanly on both sides and passes silently — it only breaks real clients that hardcode the field name as a string. This file exists specifically to catch that.
-- Restarting the server clears live session state (in-memory), but recordings on disk survive. After a restart, admin-authenticated `GET /sessions` calls will still list past sessions and their recordings will still be downloadable.
-- Recordings are **not** persisted across container redeployments by default — `dotwatcher.db` lives inside the container. Mount a volume for `DbPath` if you need recordings to survive deploys.
+- Restarting the server clears live session state (in-memory), but recordings in Postgres survive. After a restart, admin-authenticated `GET /sessions` calls will still list past sessions and their recordings will still be downloadable.
 - The `timestamp` field in a `POST /location` request should be the **GPS capture time**, not the time the request was sent. Phone apps record the timestamp when the position fix is taken; the POST may be delayed or retried. Storing the capture time means the viewer always reflects where runners actually were at a given moment.
-- Full position history is stored in SQLite per runner per session. The `GET /locations/{sessionCode}` endpoint returns only each runner's latest live position.
+- Full position history is stored in Postgres per runner per session, as an ISO-8601 `TEXT` column rather than native `timestamptz` (a deliberate scope-limiting choice made when `SessionStore` was ported off SQLite, which had no native datetime type — safe today because every write normalizes to UTC first, but a tracked follow-up, not a neutral default). The `GET /locations/{sessionCode}` endpoint returns only each runner's latest live position.
+- **This build has no SQLite fallback** — `SessionStore` requires `ConnectionString` to point at a reachable Postgres instance to start at all. Staging and Production haven't been cut over to shared Postgres yet (see [`.ai/plans/shared-database-cutover.md`](../.ai/plans/shared-database-cutover.md)), so this build must not be deployed to either until that cutover's prep work (provisioning Postgres, wiring the `ConnectionString` secret) is done — deploying it as-is would crash both on startup.
+- `CreateSessionForUser`'s duplicate-name check and insert aren't wrapped in one transaction and `session_name` has no unique constraint, so two truly-concurrent requests for the same name can both pass the check (a known, pre-existing TOCTOU gap, more reachable now that Postgres allows real concurrent writes than it was under SQLite's single-writer locking). Not fixed here; candidate fix is a partial unique index on `session_name WHERE archived_at IS NULL` plus handling the resulting unique-violation error.
 - CORS is open (`AllowAnyOrigin`) — appropriate for a private home lab deployment.
 - Session codes identify sessions but no longer grant access by themselves. Authenticated users must be stored as session members before they can read live locations or recordings.
 - User access tokens are short-lived, include a token ID, and are revoked server-side by `POST /auth/logout` until expiry plus configured clock skew. Token validation also checks that the account row still exists, so `DELETE /me` invalidates other outstanding tokens for the deleted user.

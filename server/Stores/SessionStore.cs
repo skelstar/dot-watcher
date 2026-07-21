@@ -2,11 +2,12 @@ using System.Collections.Concurrent;
 using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using Microsoft.Data.Sqlite;
+using Npgsql;
+using NpgsqlTypes;
 
 namespace DotWatcher.Server;
 
-public class SessionStore(string dbPath)
+public class SessionStore(string connectionString)
 {
     private static readonly JsonSerializerOptions _jsonOptions = new()
     {
@@ -17,22 +18,21 @@ public class SessionStore(string dbPath)
 
     // session id -> user id -> live position history
     private readonly ConcurrentDictionary<string, ConcurrentDictionary<string, List<RunnerPosition>>> _sessions = new();
-    private readonly string _connectionString = $"Data Source={dbPath}";
+    private readonly NpgsqlDataSource _dataSource = new NpgsqlDataSourceBuilder(connectionString).Build();
 
     public void Initialize()
     {
         using var conn = Connect();
         using var cmd = conn.CreateCommand();
         cmd.CommandText = """
-            PRAGMA journal_mode=WAL;
             CREATE TABLE IF NOT EXISTS location_updates (
-                id             INTEGER PRIMARY KEY AUTOINCREMENT,
+                id             BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
                 session_id     TEXT NOT NULL,
                 runner_user_id TEXT,
                 runner_name    TEXT NOT NULL,
-                latitude       REAL NOT NULL,
-                longitude      REAL NOT NULL,
-                heading        REAL,
+                latitude       DOUBLE PRECISION NOT NULL,
+                longitude      DOUBLE PRECISION NOT NULL,
+                heading        DOUBLE PRECISION,
                 timestamp      TEXT NOT NULL
             );
             CREATE INDEX IF NOT EXISTS idx_session        ON location_updates(session_id);
@@ -88,104 +88,24 @@ public class SessionStore(string dbPath)
             );
             """;
         cmd.ExecuteNonQuery();
-
-        // Migration: drop the retired join-request feature's table (invite codes are now the only join path)
-        using (var dropJoinRequests = conn.CreateCommand())
-        {
-            dropJoinRequests.CommandText = "DROP TABLE IF EXISTS join_requests";
-            dropJoinRequests.ExecuteNonQuery();
-        }
-
-        // Migration: session_code → session_id rename + session_name column (commit 6965edb)
-        // If app_sessions still has the old session_code primary key, drop and recreate all
-        // session-related tables. Users and revoked tokens are preserved.
-        using (var check = conn.CreateCommand())
-        {
-            check.CommandText = "SELECT COUNT(*) FROM pragma_table_info('app_sessions') WHERE name = 'session_code'";
-            var hasOldSchema = (long)(check.ExecuteScalar() ?? 0L) > 0;
-            if (hasOldSchema)
-            {
-                using var drop = conn.CreateCommand();
-                drop.CommandText = """
-                    DROP TABLE IF EXISTS join_requests;
-                    DROP TABLE IF EXISTS session_members;
-                    DROP TABLE IF EXISTS location_updates;
-                    DROP TABLE IF EXISTS app_sessions;
-                    CREATE TABLE location_updates (
-                        id             INTEGER PRIMARY KEY AUTOINCREMENT,
-                        session_id     TEXT NOT NULL,
-                        runner_user_id TEXT,
-                        runner_name    TEXT NOT NULL,
-                        latitude       REAL NOT NULL,
-                        longitude      REAL NOT NULL,
-                        heading        REAL,
-                        timestamp      TEXT NOT NULL
-                    );
-                    CREATE INDEX idx_session        ON location_updates(session_id);
-                    CREATE INDEX idx_session_runner ON location_updates(session_id, runner_name);
-                    CREATE TABLE app_sessions (
-                        id            TEXT PRIMARY KEY,
-                        session_name  TEXT NOT NULL,
-                        invite_code   TEXT NOT NULL UNIQUE,
-                        owner_user_id TEXT NOT NULL,
-                        created_at    TEXT NOT NULL,
-                        FOREIGN KEY(owner_user_id) REFERENCES users(id)
-                    );
-                    CREATE INDEX idx_app_sessions_invite ON app_sessions(invite_code);
-                    CREATE TABLE session_members (
-                        session_id   TEXT NOT NULL,
-                        user_id      TEXT NOT NULL,
-                        role         TEXT NOT NULL,
-                        display_name TEXT NOT NULL,
-                        joined_at    TEXT NOT NULL,
-                        PRIMARY KEY(session_id, user_id),
-                        FOREIGN KEY(session_id) REFERENCES app_sessions(id),
-                        FOREIGN KEY(user_id)    REFERENCES users(id)
-                    );
-                    CREATE INDEX idx_session_members_user ON session_members(user_id);
-                    """;
-                drop.ExecuteNonQuery();
-            }
-        }
-
-        // Migration: leaving a session archives the membership (left_at) instead of deleting
-        // it, and a session with no active runners left is archived as a whole (archived_at).
-        AddColumnIfMissing(conn, "session_members", "left_at");
-        AddColumnIfMissing(conn, "app_sessions", "archived_at");
     }
 
-    private static void AddColumnIfMissing(SqliteConnection conn, string table, string column)
-    {
-        using var check = conn.CreateCommand();
-        check.CommandText = $"SELECT COUNT(*) FROM pragma_table_info('{table}') WHERE name = '{column}'";
-        if ((long)(check.ExecuteScalar() ?? 0L) > 0)
-            return;
-
-        using var addColumn = conn.CreateCommand();
-        addColumn.CommandText = $"ALTER TABLE {table} ADD COLUMN {column} TEXT";
-        addColumn.ExecuteNonQuery();
-    }
-
-    private SqliteConnection Connect()
-    {
-        var conn = new SqliteConnection(_connectionString);
-        conn.Open();
-        return conn;
-    }
+    private NpgsqlConnection Connect() => _dataSource.OpenConnection();
 
     public bool CreateUser(UserAccount account)
     {
         using var conn = Connect();
         using var cmd = conn.CreateCommand();
         cmd.CommandText = """
-            INSERT OR IGNORE INTO users (id, username, display_name, password_hash, created_at)
-            VALUES ($id, $username, $displayName, $passwordHash, $createdAt)
+            INSERT INTO users (id, username, display_name, password_hash, created_at)
+            VALUES (@id, @username, @displayName, @passwordHash, @createdAt)
+            ON CONFLICT DO NOTHING
             """;
-        cmd.Parameters.AddWithValue("$id", account.Id);
-        cmd.Parameters.AddWithValue("$username", account.Username);
-        cmd.Parameters.AddWithValue("$displayName", account.DisplayName);
-        cmd.Parameters.AddWithValue("$passwordHash", account.PasswordHash);
-        cmd.Parameters.AddWithValue("$createdAt", DateTimeOffset.UtcNow.ToString("O"));
+        cmd.Parameters.AddWithValue("@id", account.Id);
+        cmd.Parameters.AddWithValue("@username", account.Username);
+        cmd.Parameters.AddWithValue("@displayName", account.DisplayName);
+        cmd.Parameters.AddWithValue("@passwordHash", account.PasswordHash);
+        cmd.Parameters.AddWithValue("@createdAt", DateTimeOffset.UtcNow.ToString("O"));
         return cmd.ExecuteNonQuery() == 1;
     }
 
@@ -196,9 +116,9 @@ public class SessionStore(string dbPath)
         cmd.CommandText = """
             SELECT id, username, display_name, password_hash
             FROM users
-            WHERE username = $username
+            WHERE username = @username
             """;
-        cmd.Parameters.AddWithValue("$username", username);
+        cmd.Parameters.AddWithValue("@username", username);
         using var reader = cmd.ExecuteReader();
         return reader.Read()
             ? new UserAccount(reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetString(3))
@@ -228,9 +148,9 @@ public class SessionStore(string dbPath)
         cmd.CommandText = """
             SELECT 1
             FROM users
-            WHERE id = $userId
+            WHERE id = @userId
             """;
-        cmd.Parameters.AddWithValue("$userId", userId);
+        cmd.Parameters.AddWithValue("@userId", userId);
         return cmd.ExecuteScalar() is not null;
     }
 
@@ -241,12 +161,13 @@ public class SessionStore(string dbPath)
 
         using var cmd = conn.CreateCommand();
         cmd.CommandText = """
-            INSERT OR IGNORE INTO revoked_user_tokens (token_id, expires_at, revoked_at)
-            VALUES ($tokenId, $expiresAt, $revokedAt)
+            INSERT INTO revoked_user_tokens (token_id, expires_at, revoked_at)
+            VALUES (@tokenId, @expiresAt, @revokedAt)
+            ON CONFLICT DO NOTHING
             """;
-        cmd.Parameters.AddWithValue("$tokenId", tokenId);
-        cmd.Parameters.AddWithValue("$expiresAt", expiresAt.ToString("O"));
-        cmd.Parameters.AddWithValue("$revokedAt", DateTimeOffset.UtcNow.ToString("O"));
+        cmd.Parameters.AddWithValue("@tokenId", tokenId);
+        cmd.Parameters.AddWithValue("@expiresAt", expiresAt.ToString("O"));
+        cmd.Parameters.AddWithValue("@revokedAt", DateTimeOffset.UtcNow.ToString("O"));
         cmd.ExecuteNonQuery();
     }
 
@@ -259,10 +180,10 @@ public class SessionStore(string dbPath)
         cmd.CommandText = """
             SELECT COUNT(1)
             FROM revoked_user_tokens
-            WHERE token_id = $tokenId AND expires_at > $now
+            WHERE token_id = @tokenId AND expires_at > @now
             """;
-        cmd.Parameters.AddWithValue("$tokenId", tokenId);
-        cmd.Parameters.AddWithValue("$now", now.ToString("O"));
+        cmd.Parameters.AddWithValue("@tokenId", tokenId);
+        cmd.Parameters.AddWithValue("@now", now.ToString("O"));
         return (long)(cmd.ExecuteScalar() ?? 0L) > 0;
     }
 
@@ -277,8 +198,8 @@ public class SessionStore(string dbPath)
         using (var cmd = conn.CreateCommand())
         {
             cmd.Transaction = tx;
-            cmd.CommandText = "DELETE FROM location_updates WHERE runner_user_id = $userId";
-            cmd.Parameters.AddWithValue("$userId", userId);
+            cmd.CommandText = "DELETE FROM location_updates WHERE runner_user_id = @userId";
+            cmd.Parameters.AddWithValue("@userId", userId);
             cmd.ExecuteNonQuery();
         }
 
@@ -287,24 +208,24 @@ public class SessionStore(string dbPath)
             using (var cmd = conn.CreateCommand())
             {
                 cmd.Transaction = tx;
-                cmd.CommandText = "DELETE FROM location_updates WHERE session_id = $sessionId";
-                cmd.Parameters.AddWithValue("$sessionId", sessionId);
+                cmd.CommandText = "DELETE FROM location_updates WHERE session_id = @sessionId";
+                cmd.Parameters.AddWithValue("@sessionId", sessionId);
                 cmd.ExecuteNonQuery();
             }
 
             using (var cmd = conn.CreateCommand())
             {
                 cmd.Transaction = tx;
-                cmd.CommandText = "DELETE FROM session_members WHERE session_id = $sessionId";
-                cmd.Parameters.AddWithValue("$sessionId", sessionId);
+                cmd.CommandText = "DELETE FROM session_members WHERE session_id = @sessionId";
+                cmd.Parameters.AddWithValue("@sessionId", sessionId);
                 cmd.ExecuteNonQuery();
             }
 
             using (var cmd = conn.CreateCommand())
             {
                 cmd.Transaction = tx;
-                cmd.CommandText = "DELETE FROM session_routes WHERE session_id = $sessionId";
-                cmd.Parameters.AddWithValue("$sessionId", sessionId);
+                cmd.CommandText = "DELETE FROM session_routes WHERE session_id = @sessionId";
+                cmd.Parameters.AddWithValue("@sessionId", sessionId);
                 cmd.ExecuteNonQuery();
             }
         }
@@ -312,16 +233,16 @@ public class SessionStore(string dbPath)
         using (var cmd = conn.CreateCommand())
         {
             cmd.Transaction = tx;
-            cmd.CommandText = "DELETE FROM app_sessions WHERE owner_user_id = $userId";
-            cmd.Parameters.AddWithValue("$userId", userId);
+            cmd.CommandText = "DELETE FROM app_sessions WHERE owner_user_id = @userId";
+            cmd.Parameters.AddWithValue("@userId", userId);
             cmd.ExecuteNonQuery();
         }
 
         using (var cmd = conn.CreateCommand())
         {
             cmd.Transaction = tx;
-            cmd.CommandText = "DELETE FROM session_members WHERE user_id = $userId";
-            cmd.Parameters.AddWithValue("$userId", userId);
+            cmd.CommandText = "DELETE FROM session_members WHERE user_id = @userId";
+            cmd.Parameters.AddWithValue("@userId", userId);
             cmd.ExecuteNonQuery();
         }
 
@@ -329,8 +250,8 @@ public class SessionStore(string dbPath)
         using (var cmd = conn.CreateCommand())
         {
             cmd.Transaction = tx;
-            cmd.CommandText = "DELETE FROM users WHERE id = $userId";
-            cmd.Parameters.AddWithValue("$userId", userId);
+            cmd.CommandText = "DELETE FROM users WHERE id = @userId";
+            cmd.Parameters.AddWithValue("@userId", userId);
             deletedUsers = cmd.ExecuteNonQuery();
         }
 
@@ -358,21 +279,21 @@ public class SessionStore(string dbPath)
         using var conn = Connect();
 
         using var dupCheck = conn.CreateCommand();
-        dupCheck.CommandText = "SELECT 1 FROM app_sessions WHERE session_name = $name";
-        dupCheck.Parameters.AddWithValue("$name", sessionName);
+        dupCheck.CommandText = "SELECT 1 FROM app_sessions WHERE session_name = @name";
+        dupCheck.Parameters.AddWithValue("@name", sessionName);
         if (dupCheck.ExecuteScalar() is not null)
             return null;
 
         using var sessionCmd = conn.CreateCommand();
         sessionCmd.CommandText = """
             INSERT INTO app_sessions (id, session_name, invite_code, owner_user_id, created_at)
-            VALUES ($sessionId, $sessionName, $inviteCode, $ownerUserId, $createdAt)
+            VALUES (@sessionId, @sessionName, @inviteCode, @ownerUserId, @createdAt)
             """;
-        sessionCmd.Parameters.AddWithValue("$sessionId", sessionId);
-        sessionCmd.Parameters.AddWithValue("$sessionName", sessionName);
-        sessionCmd.Parameters.AddWithValue("$inviteCode", inviteCode);
-        sessionCmd.Parameters.AddWithValue("$ownerUserId", userId);
-        sessionCmd.Parameters.AddWithValue("$createdAt", now);
+        sessionCmd.Parameters.AddWithValue("@sessionId", sessionId);
+        sessionCmd.Parameters.AddWithValue("@sessionName", sessionName);
+        sessionCmd.Parameters.AddWithValue("@inviteCode", inviteCode);
+        sessionCmd.Parameters.AddWithValue("@ownerUserId", userId);
+        sessionCmd.Parameters.AddWithValue("@createdAt", now);
         sessionCmd.ExecuteNonQuery();
 
         UpsertMembership(conn, sessionId, userId, "runner", displayName, now);
@@ -391,9 +312,9 @@ public class SessionStore(string dbPath)
         lookup.CommandText = """
             SELECT id, session_name, invite_code, archived_at
             FROM app_sessions
-            WHERE invite_code = $inviteCode
+            WHERE invite_code = @inviteCode
             """;
-        lookup.Parameters.AddWithValue("$inviteCode", normalizedInvite);
+        lookup.Parameters.AddWithValue("@inviteCode", normalizedInvite);
         using var reader = lookup.ExecuteReader();
         if (!reader.Read())
             return (null, false);
@@ -418,8 +339,8 @@ public class SessionStore(string dbPath)
 
         using var conn = Connect();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "SELECT id FROM app_sessions WHERE invite_code = $inviteCode";
-        cmd.Parameters.AddWithValue("$inviteCode", normalizedInvite);
+        cmd.CommandText = "SELECT id FROM app_sessions WHERE invite_code = @inviteCode";
+        cmd.Parameters.AddWithValue("@inviteCode", normalizedInvite);
         return cmd.ExecuteScalar() as string;
     }
 
@@ -427,8 +348,8 @@ public class SessionStore(string dbPath)
     {
         using var conn = Connect();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "SELECT invite_code FROM app_sessions WHERE id = $sessionId";
-        cmd.Parameters.AddWithValue("$sessionId", sessionId);
+        cmd.CommandText = "SELECT invite_code FROM app_sessions WHERE id = @sessionId";
+        cmd.Parameters.AddWithValue("@sessionId", sessionId);
         return cmd.ExecuteScalar() as string;
     }
 
@@ -446,9 +367,9 @@ public class SessionStore(string dbPath)
             SELECT s.session_name, owner.display_name
             FROM app_sessions s
             JOIN session_members owner ON owner.session_id = s.id AND owner.user_id = s.owner_user_id
-            WHERE s.invite_code = $inviteCode
+            WHERE s.invite_code = @inviteCode
             """;
-        cmd.Parameters.AddWithValue("$inviteCode", normalizedInvite);
+        cmd.Parameters.AddWithValue("@inviteCode", normalizedInvite);
         using var reader = cmd.ExecuteReader();
         return reader.Read() ? new SessionInfo(reader.GetString(0), reader.GetString(1)) : null;
     }
@@ -462,10 +383,10 @@ public class SessionStore(string dbPath)
             FROM session_members m
             JOIN app_sessions s ON s.id = m.session_id
             JOIN session_members owner ON owner.session_id = s.id AND owner.user_id = s.owner_user_id
-            WHERE m.user_id = $userId AND m.left_at IS NULL
+            WHERE m.user_id = @userId AND m.left_at IS NULL
             ORDER BY m.joined_at DESC
             """;
-        cmd.Parameters.AddWithValue("$userId", userId);
+        cmd.Parameters.AddWithValue("@userId", userId);
         return ReadMemberships(cmd);
     }
 
@@ -480,21 +401,21 @@ public class SessionStore(string dbPath)
             FROM session_members m
             JOIN app_sessions s ON s.id = m.session_id
             JOIN session_members owner ON owner.session_id = s.id AND owner.user_id = s.owner_user_id
-            WHERE m.user_id = $userId AND m.left_at IS NOT NULL
+            WHERE m.user_id = @userId AND m.left_at IS NOT NULL
               AND EXISTS (
                   SELECT 1 FROM location_updates l
-                  WHERE l.session_id = s.id AND l.timestamp >= $since
+                  WHERE l.session_id = s.id AND l.timestamp >= @since
               )
             ORDER BY m.left_at DESC
-            LIMIT $limit
+            LIMIT @limit
             """;
-        cmd.Parameters.AddWithValue("$userId", userId);
-        cmd.Parameters.AddWithValue("$since", (DateTime.UtcNow - RecentSessionActiveWindow).ToString("O"));
-        cmd.Parameters.AddWithValue("$limit", limit);
+        cmd.Parameters.AddWithValue("@userId", userId);
+        cmd.Parameters.AddWithValue("@since", (DateTime.UtcNow - RecentSessionActiveWindow).ToString("O"));
+        cmd.Parameters.AddWithValue("@limit", limit);
         return ReadMemberships(cmd);
     }
 
-    private static IReadOnlyList<SessionMembership> ReadMemberships(SqliteCommand cmd)
+    private static IReadOnlyList<SessionMembership> ReadMemberships(NpgsqlCommand cmd)
     {
         using var reader = cmd.ExecuteReader();
         var sessions = new List<SessionMembership>();
@@ -517,7 +438,7 @@ public class SessionStore(string dbPath)
     }
 
     private static SessionMembership? GetMembership(
-        SqliteConnection conn,
+        NpgsqlConnection conn,
         string sessionId,
         string userId,
         string? inviteCode = null)
@@ -528,10 +449,10 @@ public class SessionStore(string dbPath)
             FROM session_members m
             JOIN app_sessions s ON s.id = m.session_id
             JOIN session_members owner ON owner.session_id = s.id AND owner.user_id = s.owner_user_id
-            WHERE m.session_id = $sessionId AND m.user_id = $userId AND m.left_at IS NULL
+            WHERE m.session_id = @sessionId AND m.user_id = @userId AND m.left_at IS NULL
             """;
-        cmd.Parameters.AddWithValue("$sessionId", sessionId);
-        cmd.Parameters.AddWithValue("$userId", userId);
+        cmd.Parameters.AddWithValue("@sessionId", sessionId);
+        cmd.Parameters.AddWithValue("@userId", userId);
         using var reader = cmd.ExecuteReader();
         return reader.Read()
             ? new SessionMembership(reader.GetString(0), reader.GetString(1), inviteCode ?? reader.GetString(2), reader.GetString(3), reader.GetString(4), reader.GetString(5))
@@ -554,9 +475,9 @@ public class SessionStore(string dbPath)
     {
         using var conn = Connect();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "SELECT COUNT(1) FROM app_sessions WHERE id = $sessionId AND owner_user_id = $userId";
-        cmd.Parameters.AddWithValue("$sessionId", sessionId);
-        cmd.Parameters.AddWithValue("$userId", userId);
+        cmd.CommandText = "SELECT COUNT(1) FROM app_sessions WHERE id = @sessionId AND owner_user_id = @userId";
+        cmd.Parameters.AddWithValue("@sessionId", sessionId);
+        cmd.Parameters.AddWithValue("@userId", userId);
         return (long)(cmd.ExecuteScalar() ?? 0L) > 0;
     }
 
@@ -567,10 +488,10 @@ public class SessionStore(string dbPath)
         cmd.CommandText = """
             SELECT display_name
             FROM session_members
-            WHERE session_id = $sessionId AND role = 'runner' AND left_at IS NULL
+            WHERE session_id = @sessionId AND role = 'runner' AND left_at IS NULL
             ORDER BY joined_at ASC
             """;
-        cmd.Parameters.AddWithValue("$sessionId", sessionId);
+        cmd.Parameters.AddWithValue("@sessionId", sessionId);
         using var reader = cmd.ExecuteReader();
         var names = new List<string>();
         while (reader.Read())
@@ -596,15 +517,18 @@ public class SessionStore(string dbPath)
         using var cmd = conn.CreateCommand();
         cmd.CommandText = """
             INSERT INTO location_updates (session_id, runner_user_id, runner_name, latitude, longitude, heading, timestamp)
-            VALUES ($sessionId, $userId, $name, $lat, $lon, $heading, $ts)
+            VALUES (@sessionId, @userId, @name, @lat, @lon, @heading, @ts)
             """;
-        cmd.Parameters.AddWithValue("$sessionId", sessionId);
-        cmd.Parameters.AddWithValue("$userId", userId);
-        cmd.Parameters.AddWithValue("$name", update.RunnerName);
-        cmd.Parameters.AddWithValue("$lat", update.Latitude);
-        cmd.Parameters.AddWithValue("$lon", update.Longitude);
-        cmd.Parameters.AddWithValue("$heading", update.Heading.HasValue ? (object)update.Heading.Value : DBNull.Value);
-        cmd.Parameters.AddWithValue("$ts", update.Timestamp.ToString("O"));
+        cmd.Parameters.AddWithValue("@sessionId", sessionId);
+        cmd.Parameters.AddWithValue("@userId", userId);
+        cmd.Parameters.AddWithValue("@name", update.RunnerName);
+        cmd.Parameters.AddWithValue("@lat", update.Latitude);
+        cmd.Parameters.AddWithValue("@lon", update.Longitude);
+        cmd.Parameters.Add(new NpgsqlParameter("heading", NpgsqlDbType.Double)
+        {
+            Value = update.Heading.HasValue ? update.Heading.Value : DBNull.Value
+        });
+        cmd.Parameters.AddWithValue("@ts", update.Timestamp.ToUniversalTime().ToString("O"));
         cmd.ExecuteNonQuery();
     }
 
@@ -657,7 +581,7 @@ public class SessionStore(string dbPath)
         using var reader = cmd.ExecuteReader();
         var sessions = new List<AdminSessionSummary>();
         while (reader.Read())
-            sessions.Add(new AdminSessionSummary(reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetString(3), reader.GetInt32(4), reader.GetString(5)));
+            sessions.Add(new AdminSessionSummary(reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetString(3), (int)reader.GetInt64(4), reader.GetString(5)));
         return sessions;
     }
 
@@ -669,12 +593,12 @@ public class SessionStore(string dbPath)
         using var cmd = conn.CreateCommand();
         cmd.CommandText = """
             UPDATE session_members
-            SET left_at = $leftAt
-            WHERE session_id = $sessionId AND user_id = $userId AND left_at IS NULL
+            SET left_at = @leftAt
+            WHERE session_id = @sessionId AND user_id = @userId AND left_at IS NULL
             """;
-        cmd.Parameters.AddWithValue("$leftAt", now);
-        cmd.Parameters.AddWithValue("$sessionId", sessionId);
-        cmd.Parameters.AddWithValue("$userId", userId);
+        cmd.Parameters.AddWithValue("@leftAt", now);
+        cmd.Parameters.AddWithValue("@sessionId", sessionId);
+        cmd.Parameters.AddWithValue("@userId", userId);
         if (cmd.ExecuteNonQuery() == 0)
             return false;
 
@@ -686,15 +610,15 @@ public class SessionStore(string dbPath)
         using var archive = conn.CreateCommand();
         archive.CommandText = """
             UPDATE app_sessions
-            SET archived_at = $archivedAt
-            WHERE id = $sessionId AND archived_at IS NULL
+            SET archived_at = @archivedAt
+            WHERE id = @sessionId AND archived_at IS NULL
               AND NOT EXISTS (
                   SELECT 1 FROM session_members
-                  WHERE session_id = $sessionId AND role = 'runner' AND left_at IS NULL
+                  WHERE session_id = @sessionId AND role = 'runner' AND left_at IS NULL
               )
             """;
-        archive.Parameters.AddWithValue("$archivedAt", now);
-        archive.Parameters.AddWithValue("$sessionId", sessionId);
+        archive.Parameters.AddWithValue("@archivedAt", now);
+        archive.Parameters.AddWithValue("@sessionId", sessionId);
         archive.ExecuteNonQuery();
 
         return true;
@@ -709,8 +633,8 @@ public class SessionStore(string dbPath)
         {
             using var cmd = conn.CreateCommand();
             cmd.Transaction = tx;
-            cmd.CommandText = $"DELETE FROM {table} WHERE session_id = $sessionId";
-            cmd.Parameters.AddWithValue("$sessionId", sessionId);
+            cmd.CommandText = $"DELETE FROM {table} WHERE session_id = @sessionId";
+            cmd.Parameters.AddWithValue("@sessionId", sessionId);
             cmd.ExecuteNonQuery();
         }
 
@@ -718,8 +642,8 @@ public class SessionStore(string dbPath)
         using (var cmd = conn.CreateCommand())
         {
             cmd.Transaction = tx;
-            cmd.CommandText = "DELETE FROM app_sessions WHERE id = $sessionId";
-            cmd.Parameters.AddWithValue("$sessionId", sessionId);
+            cmd.CommandText = "DELETE FROM app_sessions WHERE id = @sessionId";
+            cmd.Parameters.AddWithValue("@sessionId", sessionId);
             rows = cmd.ExecuteNonQuery();
         }
 
@@ -749,8 +673,8 @@ public class SessionStore(string dbPath)
     {
         using var conn = Connect();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "SELECT COUNT(1) FROM location_updates WHERE session_id = $code";
-        cmd.Parameters.AddWithValue("$code", sessionId);
+        cmd.CommandText = "SELECT COUNT(1) FROM location_updates WHERE session_id = @code";
+        cmd.Parameters.AddWithValue("@code", sessionId);
         return (long)(cmd.ExecuteScalar() ?? 0L) > 0;
     }
 
@@ -784,16 +708,22 @@ public class SessionStore(string dbPath)
         cmd.CommandText = """
             SELECT session_id, runner_name, latitude, longitude, heading, timestamp
             FROM location_updates
-            WHERE session_id = $code
-              AND ($since IS NULL OR timestamp >= $since)
-              AND ($until IS NULL OR timestamp <= $until)
+            WHERE session_id = @code
+              AND (@since IS NULL OR timestamp >= @since)
+              AND (@until IS NULL OR timestamp <= @until)
             ORDER BY timestamp
-            LIMIT $limit
+            LIMIT @limit
             """;
-        cmd.Parameters.AddWithValue("$code", sessionId);
-        cmd.Parameters.AddWithValue("$since", (object?)effectiveSince?.ToString("O") ?? DBNull.Value);
-        cmd.Parameters.AddWithValue("$until", (object?)until?.ToString("O") ?? DBNull.Value);
-        cmd.Parameters.AddWithValue("$limit", MaxRecordingRows + 1);
+        cmd.Parameters.AddWithValue("@code", sessionId);
+        cmd.Parameters.Add(new NpgsqlParameter("since", NpgsqlDbType.Text)
+        {
+            Value = (object?)effectiveSince?.ToString("O") ?? DBNull.Value
+        });
+        cmd.Parameters.Add(new NpgsqlParameter("until", NpgsqlDbType.Text)
+        {
+            Value = (object?)until?.ToString("O") ?? DBNull.Value
+        });
+        cmd.Parameters.AddWithValue("@limit", MaxRecordingRows + 1);
 
         var updates = new List<LocationUpdate>();
         using (var reader = cmd.ExecuteReader())
@@ -829,8 +759,8 @@ public class SessionStore(string dbPath)
 
         using var conn = Connect();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "SELECT MAX(timestamp) FROM location_updates WHERE session_id = $code";
-        cmd.Parameters.AddWithValue("$code", sessionId);
+        cmd.CommandText = "SELECT MAX(timestamp) FROM location_updates WHERE session_id = @code";
+        cmd.Parameters.AddWithValue("@code", sessionId);
         var latest = cmd.ExecuteScalar() as string;
 
         return new RecordingMeta(
@@ -847,10 +777,10 @@ public class SessionStore(string dbPath)
         cmd.CommandText = """
             SELECT timestamp
             FROM location_updates
-            WHERE session_id = $code
+            WHERE session_id = @code
             ORDER BY timestamp DESC
             """;
-        cmd.Parameters.AddWithValue("$code", sessionId);
+        cmd.Parameters.AddWithValue("@code", sessionId);
         using var reader = cmd.ExecuteReader();
 
         DateTimeOffset? previous = null;
@@ -874,10 +804,10 @@ public class SessionStore(string dbPath)
         cmd.CommandText = """
             SELECT session_id, runner_name, latitude, longitude, heading, timestamp
             FROM location_updates
-            WHERE session_id = $code
+            WHERE session_id = @code
             ORDER BY timestamp
             """;
-        cmd.Parameters.AddWithValue("$code", sessionId);
+        cmd.Parameters.AddWithValue("@code", sessionId);
         using var reader = cmd.ExecuteReader();
         var updates = new List<LocationUpdate>();
         while (reader.Read())
@@ -932,22 +862,22 @@ public class SessionStore(string dbPath)
 
         using (var del = conn.CreateCommand())
         {
-            del.CommandText = "DELETE FROM location_updates WHERE session_id = $code";
-            del.Parameters.AddWithValue("$code", sessionId);
+            del.CommandText = "DELETE FROM location_updates WHERE session_id = @code";
+            del.Parameters.AddWithValue("@code", sessionId);
             del.ExecuteNonQuery();
         }
 
         using var cmd = conn.CreateCommand();
         cmd.CommandText = """
             INSERT INTO location_updates (session_id, runner_user_id, runner_name, latitude, longitude, heading, timestamp)
-            VALUES ($code, NULL, $name, $lat, $lon, $heading, $ts)
+            VALUES (@code, NULL, @name, @lat, @lon, @heading, @ts)
             """;
-        var pCode    = cmd.Parameters.Add("$code",    SqliteType.Text);
-        var pName    = cmd.Parameters.Add("$name",    SqliteType.Text);
-        var pLat     = cmd.Parameters.Add("$lat",     SqliteType.Real);
-        var pLon     = cmd.Parameters.Add("$lon",     SqliteType.Real);
-        var pHeading = cmd.Parameters.Add("$heading", SqliteType.Real);
-        var pTs      = cmd.Parameters.Add("$ts",      SqliteType.Text);
+        var pCode    = cmd.Parameters.Add("code",    NpgsqlDbType.Text);
+        var pName    = cmd.Parameters.Add("name",    NpgsqlDbType.Text);
+        var pLat     = cmd.Parameters.Add("lat",     NpgsqlDbType.Double);
+        var pLon     = cmd.Parameters.Add("lon",     NpgsqlDbType.Double);
+        var pHeading = cmd.Parameters.Add("heading", NpgsqlDbType.Double);
+        var pTs      = cmd.Parameters.Add("ts",      NpgsqlDbType.Text);
 
         foreach (var u in updates)
         {
@@ -956,7 +886,7 @@ public class SessionStore(string dbPath)
             pLat.Value     = u.Latitude;
             pLon.Value     = u.Longitude;
             pHeading.Value = u.Heading.HasValue ? (object)u.Heading.Value : DBNull.Value;
-            pTs.Value      = u.Timestamp.ToString("O");
+            pTs.Value      = u.Timestamp.ToUniversalTime().ToString("O");
             cmd.ExecuteNonQuery();
         }
 
@@ -985,12 +915,12 @@ public class SessionStore(string dbPath)
                    COUNT(l.id) AS position_count,
                    MAX(l.timestamp) AS last_position_at
             FROM session_members m
-            LEFT JOIN location_updates l ON l.session_id = $sessionId AND l.runner_user_id = m.user_id
-            WHERE m.session_id = $sessionId
+            LEFT JOIN location_updates l ON l.session_id = @sessionId AND l.runner_user_id = m.user_id
+            WHERE m.session_id = @sessionId
             GROUP BY m.user_id, m.display_name, m.role
             ORDER BY m.joined_at ASC
             """;
-        cmd.Parameters.AddWithValue("$sessionId", sessionId);
+        cmd.Parameters.AddWithValue("@sessionId", sessionId);
         using var reader = cmd.ExecuteReader();
         var stats = new List<AdminMemberStats>();
         while (reader.Read())
@@ -1009,12 +939,12 @@ public class SessionStore(string dbPath)
         cmd.CommandText = """
             SELECT runner_name, latitude, longitude, heading, timestamp
             FROM location_updates
-            WHERE session_id = $sessionId
+            WHERE session_id = @sessionId
             ORDER BY id DESC
-            LIMIT $limit
+            LIMIT @limit
             """;
-        cmd.Parameters.AddWithValue("$sessionId", sessionId);
-        cmd.Parameters.AddWithValue("$limit", limit);
+        cmd.Parameters.AddWithValue("@sessionId", sessionId);
+        cmd.Parameters.AddWithValue("@limit", limit);
         using var reader = cmd.ExecuteReader();
         var records = new List<AdminLocationRecord>();
         while (reader.Read())
@@ -1031,8 +961,8 @@ public class SessionStore(string dbPath)
     {
         using var conn = Connect();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "DELETE FROM location_updates WHERE session_id = $code";
-        cmd.Parameters.AddWithValue("$code", sessionId);
+        cmd.CommandText = "DELETE FROM location_updates WHERE session_id = @code";
+        cmd.Parameters.AddWithValue("@code", sessionId);
         return cmd.ExecuteNonQuery() > 0;
     }
 
@@ -1043,8 +973,8 @@ public class SessionStore(string dbPath)
     {
         using var conn = Connect();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "SELECT COUNT(1) FROM session_routes WHERE session_id = $code";
-        cmd.Parameters.AddWithValue("$code", sessionId);
+        cmd.CommandText = "SELECT COUNT(1) FROM session_routes WHERE session_id = @code";
+        cmd.Parameters.AddWithValue("@code", sessionId);
         return (long)(cmd.ExecuteScalar() ?? 0L) > 0;
     }
 
@@ -1052,8 +982,8 @@ public class SessionStore(string dbPath)
     {
         using var conn = Connect();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "SELECT gpx_content FROM session_routes WHERE session_id = $code";
-        cmd.Parameters.AddWithValue("$code", sessionId);
+        cmd.CommandText = "SELECT gpx_content FROM session_routes WHERE session_id = @code";
+        cmd.Parameters.AddWithValue("@code", sessionId);
         return cmd.ExecuteScalar() as string;
     }
 
@@ -1066,14 +996,14 @@ public class SessionStore(string dbPath)
         using var cmd = conn.CreateCommand();
         cmd.CommandText = """
             INSERT INTO session_routes (session_id, gpx_content, uploaded_at)
-            VALUES ($code, $gpx, $uploadedAt)
+            VALUES (@code, @gpx, @uploadedAt)
             ON CONFLICT(session_id) DO UPDATE SET
                 gpx_content = excluded.gpx_content,
                 uploaded_at = excluded.uploaded_at
             """;
-        cmd.Parameters.AddWithValue("$code", sessionId);
-        cmd.Parameters.AddWithValue("$gpx", gpxContent);
-        cmd.Parameters.AddWithValue("$uploadedAt", DateTimeOffset.UtcNow.ToString("O"));
+        cmd.Parameters.AddWithValue("@code", sessionId);
+        cmd.Parameters.AddWithValue("@gpx", gpxContent);
+        cmd.Parameters.AddWithValue("@uploadedAt", DateTimeOffset.UtcNow.ToString("O"));
         cmd.ExecuteNonQuery();
     }
 
@@ -1081,8 +1011,8 @@ public class SessionStore(string dbPath)
     {
         using var conn = Connect();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "DELETE FROM session_routes WHERE session_id = $code";
-        cmd.Parameters.AddWithValue("$code", sessionId);
+        cmd.CommandText = "DELETE FROM session_routes WHERE session_id = @code";
+        cmd.Parameters.AddWithValue("@code", sessionId);
         return cmd.ExecuteNonQuery() > 0;
     }
 
@@ -1090,9 +1020,9 @@ public class SessionStore(string dbPath)
     {
         using var conn = Connect();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "UPDATE location_updates SET session_id = $tgt WHERE session_id = $src";
-        cmd.Parameters.AddWithValue("$tgt", targetId);
-        cmd.Parameters.AddWithValue("$src", sourceId);
+        cmd.CommandText = "UPDATE location_updates SET session_id = @tgt WHERE session_id = @src";
+        cmd.Parameters.AddWithValue("@tgt", targetId);
+        cmd.Parameters.AddWithValue("@src", sourceId);
         var rows = cmd.ExecuteNonQuery();
 
         if (_sessions.TryRemove(sourceId, out var srcSession))
@@ -1115,7 +1045,7 @@ public class SessionStore(string dbPath)
     // On conflict a rejoin refreshes the membership; preserveExistingRole keeps a role the
     // user already held (e.g. runner) from being downgraded by a plain invite-code rejoin.
     private static void UpsertMembership(
-        SqliteConnection conn,
+        NpgsqlConnection conn,
         string sessionId,
         string userId,
         string role,
@@ -1127,30 +1057,30 @@ public class SessionStore(string dbPath)
         var roleUpdate = preserveExistingRole ? "" : "role = excluded.role,";
         cmd.CommandText = $"""
             INSERT INTO session_members (session_id, user_id, role, display_name, joined_at, left_at)
-            VALUES ($sessionId, $userId, $role, $displayName, $joinedAt, NULL)
+            VALUES (@sessionId, @userId, @role, @displayName, @joinedAt, NULL)
             ON CONFLICT(session_id, user_id)
             DO UPDATE SET {roleUpdate} display_name = excluded.display_name,
                           joined_at = excluded.joined_at, left_at = NULL
             """;
-        cmd.Parameters.AddWithValue("$sessionId", sessionId);
-        cmd.Parameters.AddWithValue("$userId", userId);
-        cmd.Parameters.AddWithValue("$role", role);
-        cmd.Parameters.AddWithValue("$displayName", displayName);
-        cmd.Parameters.AddWithValue("$joinedAt", joinedAt);
+        cmd.Parameters.AddWithValue("@sessionId", sessionId);
+        cmd.Parameters.AddWithValue("@userId", userId);
+        cmd.Parameters.AddWithValue("@role", role);
+        cmd.Parameters.AddWithValue("@displayName", displayName);
+        cmd.Parameters.AddWithValue("@joinedAt", joinedAt);
         cmd.ExecuteNonQuery();
     }
 
     private static IReadOnlyList<SessionMemberForAccountDeletion> GetSessionMembersForUser(
-        SqliteConnection conn,
+        NpgsqlConnection conn,
         string userId)
     {
         using var cmd = conn.CreateCommand();
         cmd.CommandText = """
             SELECT session_id
             FROM session_members
-            WHERE user_id = $userId
+            WHERE user_id = @userId
             """;
-        cmd.Parameters.AddWithValue("$userId", userId);
+        cmd.Parameters.AddWithValue("@userId", userId);
         using var reader = cmd.ExecuteReader();
         var memberships = new List<SessionMemberForAccountDeletion>();
         while (reader.Read())
@@ -1158,15 +1088,15 @@ public class SessionStore(string dbPath)
         return memberships;
     }
 
-    private static HashSet<string> GetOwnedSessionIds(SqliteConnection conn, string userId)
+    private static HashSet<string> GetOwnedSessionIds(NpgsqlConnection conn, string userId)
     {
         using var cmd = conn.CreateCommand();
         cmd.CommandText = """
             SELECT id
             FROM app_sessions
-            WHERE owner_user_id = $userId
+            WHERE owner_user_id = @userId
             """;
-        cmd.Parameters.AddWithValue("$userId", userId);
+        cmd.Parameters.AddWithValue("@userId", userId);
         using var reader = cmd.ExecuteReader();
         var sessionIds = new HashSet<string>(StringComparer.Ordinal);
         while (reader.Read())
@@ -1174,23 +1104,23 @@ public class SessionStore(string dbPath)
         return sessionIds;
     }
 
-    private static bool SessionExists(SqliteConnection conn, string sessionId)
+    private static bool SessionExists(NpgsqlConnection conn, string sessionId)
     {
         using var cmd = conn.CreateCommand();
         cmd.CommandText = """
             SELECT 1
             FROM app_sessions
-            WHERE id = $sessionId
+            WHERE id = @sessionId
             """;
-        cmd.Parameters.AddWithValue("$sessionId", sessionId);
+        cmd.Parameters.AddWithValue("@sessionId", sessionId);
         return cmd.ExecuteScalar() is not null;
     }
 
-    private static void DeleteExpiredRevokedTokens(SqliteConnection conn, DateTimeOffset now)
+    private static void DeleteExpiredRevokedTokens(NpgsqlConnection conn, DateTimeOffset now)
     {
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "DELETE FROM revoked_user_tokens WHERE expires_at <= $now";
-        cmd.Parameters.AddWithValue("$now", now.ToString("O"));
+        cmd.CommandText = "DELETE FROM revoked_user_tokens WHERE expires_at <= @now";
+        cmd.Parameters.AddWithValue("@now", now.ToString("O"));
         cmd.ExecuteNonQuery();
     }
 
