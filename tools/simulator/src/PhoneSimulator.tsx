@@ -2,8 +2,8 @@ import { useEffect, useRef, useState, useCallback } from 'react'
 import { MapContainer, TileLayer, Marker, useMapEvents } from 'react-leaflet'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
-import { dotIcon, convergenceIcon } from './lib/icons'
-import { computeBearing, distanceMeters, destinationPoint } from './lib/geo'
+import { initialsFor, runnerColour, phoneMarkerIcon, convergenceIcon } from './lib/icons'
+import { computeBearing, distanceMeters, destinationPoint, ARRIVE_METERS } from './lib/geo'
 import {
   registerParticipant,
   joinSession,
@@ -11,24 +11,13 @@ import {
   leaveSession,
   type AuthedUser,
 } from './lib/dotwatcherApi'
+import type { LatLon, Quality, PhoneStatus, PhoneSnapshot } from './lib/types'
 
-export type LatLon = { lat: number; lon: number }
-export type Quality = 'good' | 'bad' | 'missing'
-export type PhoneStatus = 'idle' | 'joining' | 'ready' | 'running' | 'left'
-
-export type PhoneSnapshot = {
-  id: number
-  displayName: string
-  color: string
-  status: PhoneStatus
-  quality: Quality
-  position: LatLon | null
-}
+export type { LatLon, Quality, PhoneStatus, PhoneSnapshot }
 
 type Props = {
   id: number
   index: number
-  color: string
   defaultInviteCode: string
   convergencePoint: LatLon | null
   speedMps: number
@@ -38,7 +27,6 @@ type Props = {
 }
 
 const WELLINGTON: [number, number] = [-41.2865, 174.7762]
-const ARRIVE_METERS = 8
 
 function ClickMarker({ enabled, position, icon, onPick }: {
   enabled: boolean
@@ -57,13 +45,16 @@ function ClickMarker({ enabled, position, icon, onPick }: {
 }
 
 export default function PhoneSimulator({
-  id, index, color, defaultInviteCode, convergencePoint, speedMps, tickMs, onSnapshot, onRemove,
+  id, index, defaultInviteCode, convergencePoint, speedMps, tickMs, onSnapshot, onRemove,
 }: Props) {
-  const [displayName, setDisplayName] = useState(`Phone ${index + 1}`)
+  // Short by default — this is the actual displayName registered with the server, so it's
+  // what the real client (and its own marker labels) will show too, not just a local label.
+  const [displayName, setDisplayName] = useState(`P${index + 1}`)
   const [inviteCode, setInviteCode] = useState(defaultInviteCode)
   const [status, setStatus] = useState<PhoneStatus>('idle')
   const [quality, setQuality] = useState<Quality>('good')
   const [position, setPosition] = useState<LatLon | null>(null)
+  const [heading, setHeading] = useState<number | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [lastSentAt, setLastSentAt] = useState<string | null>(null)
 
@@ -75,14 +66,16 @@ export default function PhoneSimulator({
   const inFlightRef = useRef(false)
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
+  const color = runnerColour(displayName)
+
   useEffect(() => { qualityRef.current = quality }, [quality])
   useEffect(() => { positionRef.current = position }, [position])
   useEffect(() => { convergenceRef.current = convergencePoint }, [convergencePoint])
 
   useEffect(() => {
-    onSnapshot({ id, displayName, color, status, quality, position })
+    onSnapshot({ id, displayName, status, quality, position, heading })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id, displayName, color, status, quality, position])
+  }, [id, displayName, status, quality, position, heading])
 
   useEffect(() => () => { if (intervalRef.current) clearInterval(intervalRef.current) }, [])
 
@@ -111,7 +104,7 @@ export default function PhoneSimulator({
     if (!cur || !user || !sessionId) return
 
     let next: LatLon
-    let heading: number | null
+    let nextHeading: number | null
     const target = convergenceRef.current
     const stepMeters = speedMps * (tickMs / 1000)
 
@@ -119,12 +112,12 @@ export default function PhoneSimulator({
       const dist = distanceMeters(cur.lat, cur.lon, target.lat, target.lon)
       if (dist <= ARRIVE_METERS) {
         next = cur
-        heading = null // arrived and stationary — a real phone stops reporting heading when not moving
+        nextHeading = null // arrived and stationary — a real phone stops reporting heading when not moving
       } else {
         const bearing = computeBearing(cur.lat, cur.lon, target.lat, target.lon)
         const step = Math.min(stepMeters, dist)
         next = destinationPoint(cur.lat, cur.lon, bearing, step)
-        heading = bearing
+        nextHeading = bearing
       }
     } else {
       // 'bad' GPS: erratic movement, ignoring the convergence point, with no heading — mirrors
@@ -132,13 +125,14 @@ export default function PhoneSimulator({
       const randomBearing = Math.random() * 360
       const step = stepMeters * (0.2 + Math.random() * 0.8)
       next = destinationPoint(cur.lat, cur.lon, randomBearing, step)
-      heading = null
+      nextHeading = null
     }
 
     inFlightRef.current = true
     try {
-      await postLocation(user, sessionId, next.lat, next.lon, heading)
+      await postLocation(user, sessionId, next.lat, next.lon, nextHeading)
       setPosition(next)
+      setHeading(nextHeading)
       setLastSentAt(new Date().toLocaleTimeString())
       setError(null)
     } catch (err) {
@@ -179,10 +173,8 @@ export default function PhoneSimulator({
     onRemove(id)
   }
 
-  const canJoin = status === 'idle'
   const canPickStart = status === 'ready'
   const canStart = status === 'ready' && position !== null && convergencePoint !== null
-  const canPause = status === 'running'
   const canLeave = status === 'ready' || status === 'running'
 
   const mapCenter: [number, number] = position ? [position.lat, position.lon] : WELLINGTON
@@ -190,16 +182,20 @@ export default function PhoneSimulator({
     ? distanceMeters(position.lat, position.lon, convergencePoint.lat, convergencePoint.lon)
     : null
 
+  const icon = phoneMarkerIcon({ displayName, quality, status, heading, position, convergencePoint })
+
   return (
     <div style={card(color)}>
       <div style={headerRow}>
-        <span style={swatch(color)} />
+        <span style={initialsBadge(color)}>{initialsFor(displayName)}</span>
         {status === 'idle' || status === 'joining'
           ? <input style={nameInput} value={displayName} onChange={e => setDisplayName(e.target.value)} disabled={status === 'joining'} />
           : <span style={nameLabel}>{displayName}</span>
         }
-        <span style={statusPill(status)}>{statusLabel(status)}</span>
         <button style={removeBtn} onClick={handleRemove} title="Remove phone">×</button>
+      </div>
+      <div style={statusPillRow}>
+        <span style={statusPill(status)}>{statusLabel(status)}</span>
       </div>
 
       {(status === 'idle' || status === 'joining') && (
@@ -226,9 +222,9 @@ export default function PhoneSimulator({
         <>
           <p style={hint}>
             {status === 'ready' && !position && 'Click the map to choose a starting point.'}
-            {status === 'ready' && position && !convergencePoint && 'Waiting for the session convergence point to be set.'}
-            {status === 'ready' && position && convergencePoint && 'Ready — press Start when this phone should begin moving.'}
-            {status === 'running' && 'Sending location updates…'}
+            {status === 'ready' && position && !convergencePoint && 'Waiting for the convergence point.'}
+            {status === 'ready' && position && convergencePoint && 'Ready — press Start.'}
+            {status === 'running' && 'Sending updates…'}
             {status === 'left' && 'Left the session.'}
           </p>
 
@@ -238,7 +234,7 @@ export default function PhoneSimulator({
               attribution='&copy; OpenStreetMap contributors'
             />
             {convergencePoint && <Marker position={[convergencePoint.lat, convergencePoint.lon]} icon={convergenceIcon()} />}
-            <ClickMarker enabled={canPickStart} position={position} icon={dotIcon(color)} onPick={(lat, lon) => setPosition({ lat, lon })} />
+            <ClickMarker enabled={canPickStart} position={position} icon={icon} onPick={(lat, lon) => setPosition({ lat, lon })} />
           </MapContainer>
 
           <div style={qualityRow}>
@@ -249,7 +245,7 @@ export default function PhoneSimulator({
                   checked={quality === q}
                   disabled={status === 'left'}
                   onChange={() => setQuality(q)}
-                  style={{ marginRight: '0.35rem' }}
+                  style={{ marginRight: '0.3rem' }}
                 />
                 {qualityText(q)}
               </label>
@@ -261,15 +257,15 @@ export default function PhoneSimulator({
               ? <button style={primaryBtn(!canStart)} disabled={!canStart} onClick={handleStart}>Start</button>
               : <button style={pauseBtn} onClick={handlePause}>Pause</button>
             }
-            <button style={leaveBtn(!canLeave)} disabled={!canLeave} onClick={handleLeave}>Leave session</button>
+            <button style={leaveBtn(!canLeave)} disabled={!canLeave} onClick={handleLeave}>Leave</button>
           </div>
 
           <div style={statusLine}>
-            {position && <span>{position.lat.toFixed(5)}, {position.lon.toFixed(5)}</span>}
+            {position && <div>{position.lat.toFixed(5)}, {position.lon.toFixed(5)}</div>}
             {distanceRemaining !== null && (
-              <span> · {distanceRemaining <= ARRIVE_METERS ? 'Arrived' : `${Math.round(distanceRemaining)}m to go`}</span>
+              <div>{distanceRemaining <= ARRIVE_METERS ? 'Arrived' : `${Math.round(distanceRemaining)}m to go`}</div>
             )}
-            {lastSentAt && <span> · last sent {lastSentAt}</span>}
+            {lastSentAt && <div>last sent {lastSentAt}</div>}
           </div>
         </>
       )}
@@ -297,19 +293,25 @@ function qualityText(q: Quality): string {
 
 const card = (color: string): React.CSSProperties => ({
   border: '1px solid #e2e8f0',
-  borderLeft: `4px solid ${color}`,
+  borderTop: `3px solid ${color}`,
   borderRadius: 8,
-  padding: '0.85rem',
-  marginBottom: '0.85rem',
+  padding: '0.75rem',
   background: '#fff',
+  height: '100%',
+  boxSizing: 'border-box',
 })
 
-const headerRow: React.CSSProperties = { display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }
-const swatch = (color: string): React.CSSProperties => ({ width: 12, height: 12, borderRadius: '50%', background: color, flexShrink: 0 })
-const nameInput: React.CSSProperties = { flex: 1, fontWeight: 600, fontSize: '0.9rem', padding: '0.3rem 0.5rem', border: '1px solid #cbd5e1', borderRadius: 6 }
-const nameLabel: React.CSSProperties = { flex: 1, fontWeight: 600, fontSize: '0.9rem' }
-const removeBtn: React.CSSProperties = { border: 'none', background: 'none', fontSize: '1.1rem', cursor: 'pointer', color: '#94a3b8', lineHeight: 1, padding: '0 0.25rem' }
+const headerRow: React.CSSProperties = { display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.35rem' }
+const initialsBadge = (color: string): React.CSSProperties => ({
+  width: 26, height: 26, borderRadius: '50%', background: color, color: '#fff',
+  display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+  fontSize: '0.7rem', fontWeight: 700, fontFamily: "Arial, 'Helvetica Neue', sans-serif",
+})
+const nameInput: React.CSSProperties = { flex: 1, minWidth: 0, fontWeight: 600, fontSize: '0.85rem', padding: '0.3rem 0.4rem', border: '1px solid #cbd5e1', borderRadius: 6 }
+const nameLabel: React.CSSProperties = { flex: 1, minWidth: 0, fontWeight: 600, fontSize: '0.85rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }
+const removeBtn: React.CSSProperties = { border: 'none', background: 'none', fontSize: '1.1rem', cursor: 'pointer', color: '#94a3b8', lineHeight: 1, padding: '0 0.15rem', flexShrink: 0 }
 
+const statusPillRow: React.CSSProperties = { marginBottom: '0.5rem' }
 const statusPill = (status: PhoneStatus): React.CSSProperties => {
   const colors: Record<PhoneStatus, [string, string]> = {
     idle: ['#f1f5f9', '#64748b'],
@@ -319,30 +321,30 @@ const statusPill = (status: PhoneStatus): React.CSSProperties => {
     left: ['#f1f5f9', '#94a3b8'],
   }
   const [bg, fg] = colors[status]
-  return { background: bg, color: fg, fontSize: '0.72rem', fontWeight: 700, padding: '2px 8px', borderRadius: 999 }
+  return { background: bg, color: fg, fontSize: '0.7rem', fontWeight: 700, padding: '2px 8px', borderRadius: 999 }
 }
 
-const joinRow: React.CSSProperties = { display: 'flex', gap: '0.5rem', marginBottom: '0.5rem', flexWrap: 'wrap' }
-const codeInput: React.CSSProperties = { flex: 1, minWidth: 120, padding: '0.4rem 0.6rem', border: '1px solid #cbd5e1', borderRadius: 6, fontFamily: 'monospace', letterSpacing: '0.05em' }
-const errorText: React.CSSProperties = { color: '#dc2626', fontSize: '0.8rem', marginBottom: '0.5rem' }
-const hint: React.CSSProperties = { fontSize: '0.8rem', color: '#64748b', margin: '0 0 0.5rem' }
-const miniMapStyle: React.CSSProperties = { height: 200, borderRadius: 8, border: '1px solid #e2e8f0', marginBottom: '0.6rem' }
+const joinRow: React.CSSProperties = { display: 'flex', gap: '0.4rem', marginBottom: '0.5rem', flexWrap: 'wrap' }
+const codeInput: React.CSSProperties = { flex: 1, minWidth: 100, padding: '0.35rem 0.5rem', border: '1px solid #cbd5e1', borderRadius: 6, fontFamily: 'monospace', letterSpacing: '0.05em', fontSize: '0.85rem' }
+const errorText: React.CSSProperties = { color: '#dc2626', fontSize: '0.78rem', marginBottom: '0.5rem' }
+const hint: React.CSSProperties = { fontSize: '0.76rem', color: '#64748b', margin: '0 0 0.4rem' }
+const miniMapStyle: React.CSSProperties = { height: 150, borderRadius: 8, border: '1px solid #e2e8f0', marginBottom: '0.5rem' }
 
-const qualityRow: React.CSSProperties = { display: 'flex', gap: '1rem', marginBottom: '0.6rem', fontSize: '0.85rem' }
+const qualityRow: React.CSSProperties = { display: 'flex', gap: '0.6rem', marginBottom: '0.5rem', fontSize: '0.78rem', flexWrap: 'wrap' }
 const qualityLabel = (active: boolean, disabled: boolean): React.CSSProperties => ({
   display: 'flex', alignItems: 'center', cursor: disabled ? 'default' : 'pointer',
   fontWeight: active ? 700 : 400, color: disabled ? '#cbd5e1' : active ? '#1e293b' : '#475569',
 })
 
-const actionRow: React.CSSProperties = { display: 'flex', gap: '0.5rem', marginBottom: '0.5rem' }
+const actionRow: React.CSSProperties = { display: 'flex', gap: '0.4rem', marginBottom: '0.5rem' }
 const primaryBtn = (disabled: boolean): React.CSSProperties => ({
-  padding: '0.4rem 1rem', borderRadius: 6, border: 'none', fontWeight: 700, fontSize: '0.85rem',
+  flex: 1, padding: '0.35rem 0.6rem', borderRadius: 6, border: 'none', fontWeight: 700, fontSize: '0.8rem',
   background: disabled ? '#e2e8f0' : '#16a34a', color: disabled ? '#94a3b8' : '#fff', cursor: disabled ? 'default' : 'pointer',
 })
-const pauseBtn: React.CSSProperties = { padding: '0.4rem 1rem', borderRadius: 6, border: 'none', fontWeight: 700, fontSize: '0.85rem', background: '#f59e0b', color: '#fff', cursor: 'pointer' }
+const pauseBtn: React.CSSProperties = { flex: 1, padding: '0.35rem 0.6rem', borderRadius: 6, border: 'none', fontWeight: 700, fontSize: '0.8rem', background: '#f59e0b', color: '#fff', cursor: 'pointer' }
 const leaveBtn = (disabled: boolean): React.CSSProperties => ({
-  padding: '0.4rem 1rem', borderRadius: 6, border: '1px solid #fca5a5', fontWeight: 600, fontSize: '0.85rem',
+  flex: 1, padding: '0.35rem 0.6rem', borderRadius: 6, border: '1px solid #fca5a5', fontWeight: 600, fontSize: '0.8rem',
   background: '#fff', color: disabled ? '#e2e8f0' : '#dc2626', cursor: disabled ? 'default' : 'pointer', borderColor: disabled ? '#e2e8f0' : '#fca5a5',
 })
-const linkBtn: React.CSSProperties = { border: 'none', background: 'none', color: '#2563eb', fontSize: '0.8rem', cursor: 'pointer', textDecoration: 'underline' }
-const statusLine: React.CSSProperties = { fontSize: '0.78rem', color: '#64748b', fontFamily: 'monospace' }
+const linkBtn: React.CSSProperties = { border: 'none', background: 'none', color: '#2563eb', fontSize: '0.78rem', cursor: 'pointer', textDecoration: 'underline' }
+const statusLine: React.CSSProperties = { fontSize: '0.74rem', color: '#64748b', fontFamily: 'monospace' }

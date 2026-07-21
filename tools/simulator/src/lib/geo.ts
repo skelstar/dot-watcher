@@ -4,6 +4,10 @@ export { computeBearing }
 
 const EARTH_RADIUS_M = 6_371_000
 
+// A "good" phone within this distance of the convergence point is considered arrived and
+// holds position instead of continuing to step towards it.
+export const ARRIVE_METERS = 8
+
 export function distanceMeters(lat1: number, lon1: number, lat2: number, lon2: number): number {
   const toRad = (d: number) => (d * Math.PI) / 180
   const dLat = toRad(lat2 - lat1)
