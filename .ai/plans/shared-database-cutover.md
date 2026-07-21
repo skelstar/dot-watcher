@@ -1,9 +1,11 @@
 # Plan: Staging/Production shared-database cutover
 
-Status: Steps 1-3 done as of 2026-07-22 (cluster inventory, collision audit + merge decision, and
-a verified migration script dry-run). Written 2026-07-20. Step 4 (the actual rollout) has not
-happened — no shared Postgres instance has been provisioned yet, and the migration script has
-only been run against a disposable local Postgres, never a real shared one.
+Status: Steps 1-3 done, and Step 4 partially done, as of 2026-07-22. Written 2026-07-20. The
+shared Postgres instance is live and has real Staging+Production data copied into it, but
+**Staging and Production are still both running on their own private SQLite files** — no
+`ConnectionString` secret has been wired in and neither has been redeployed yet, so nothing
+user-facing has changed. The actual cutover (Step 4, items 2 and 4-6) is still pending and should
+happen as a deliberate maintenance-window action.
 
 ## Goal
 
@@ -114,22 +116,35 @@ found (consistent with the Step 2 audit), and every table copied cleanly. Final 
 
 ## Step 4 — rollout sequence
 
-1. Provision a Postgres instance reachable from both the `dot-watcher-server` and
-   `dot-watcher-server-staging` namespaces (in-cluster deployment with its own PVC, or an external
-   instance) — this becomes the one shared database for both environments.
-2. Add `ConnectionString` to the existing `dot-watcher-server-secrets` k8s secret (and create the
-   equivalent secret for Staging, following the same
+1. **DONE (2026-07-22)** — Provisioned a Postgres instance reachable from both the
+   `dot-watcher-server` and `dot-watcher-server-staging` namespaces: an in-cluster Deployment +
+   PVC + Service in its own `dot-watcher-db` namespace (`scripts/shared-postgres.yaml`, merged via
+   PR #74). Confirmed reachable cross-namespace from `dot-watcher-server-staging` at
+   `postgres.dot-watcher-db.svc.cluster.local:5432` via a live `psql SELECT 1` test. Schema
+   created via `scripts/init-postgres-schema.sh`.
+2. **Not yet done** — Add `ConnectionString` to the existing `dot-watcher-server-secrets` k8s
+   secret (and create the equivalent secret for Staging), following the same
    `kubectl create secret generic ... --from-env-file=...` pattern already documented in
-   `server/README.md`'s Deployment section).
-3. Run the migration script from Step 3 once, against the real (not copied) SQLite data, during a
-   maintenance window.
-4. Redeploy both `dot-watcher-server` and `dot-watcher-server-staging` pointing at the new
-   `ConnectionString`.
-5. Verify via the admin `GET /sessions` endpoint and Seq logs (`https://seq.skelstar.io`) that both
-   environments see the same session/user data and that new writes from either environment show up
-   for the other.
-6. Keep the old SQLite PVCs mounted-but-unused (don't delete) for a rollback window before cleaning
-   them up.
+   `server/README.md`'s Deployment section.
+3. **DONE (2026-07-22)** — Ran the migration script against the real (not copied) SQLite data
+   from both environments, against the real shared Postgres instance (not the local dry-run one).
+   Zero collisions, no errors. Final counts in the shared instance: 9 users, 5 app_sessions, 8
+   session_members, 1833 location_updates, 5 revoked_user_tokens, 1 session_routes — matches the
+   Step 2 audit. **Important nuance**: this only copied data *into* the new instance — Staging and
+   Production are still both running unmodified, still reading/writing their own private SQLite
+   files. Nothing user-facing has changed yet, and the shared instance will drift out of sync with
+   each environment's SQLite file for any writes that happen between this copy and Step 4's actual
+   cutover (step 4 below) — a final delta/re-sync (or re-running this step) right before cutover
+   is worth considering if there's a gap in time.
+4. **Not yet done** — Redeploy both `dot-watcher-server` and `dot-watcher-server-staging` pointing
+   at the new `ConnectionString`. This is the actual cutover moment — the point where a bug in the
+   new code path affects real users immediately. Do this as a deliberate maintenance-window action,
+   not casually.
+5. **Not yet done** — Verify via the admin `GET /sessions` endpoint and Seq logs
+   (`https://seq.skelstar.io`) that both environments see the same session/user data and that new
+   writes from either environment show up for the other.
+6. **Not yet done** — Keep the old SQLite PVCs mounted-but-unused (don't delete) for a rollback
+   window before cleaning them up.
 
 ## Named risk to flag for whoever executes this, not fixed in Phase 2
 
