@@ -21,6 +21,21 @@ function Read-DotEnvValue {
 
 $serverPort = [int](Read-DotEnvValue -Path (Join-Path $root '.env') -Key 'VITE_SERVER_PORT' -Default '8080')
 
+# Returns the PID listening on $port, or $null if nothing is. Windows uses Get-NetTCPConnection;
+# macOS/Linux don't have that cmdlet, so fall back to lsof.
+function Get-PortOwnerPid {
+    param([int]$Port)
+
+    if ($IsWindows) {
+        $conns = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue
+        return $conns.OwningProcess | Select-Object -Unique -First 1
+    }
+
+    $lsofPid = & lsof -nP -iTCP:$Port -sTCP:LISTEN -t 2>$null | Select-Object -First 1
+    if ([string]::IsNullOrWhiteSpace($lsofPid)) { return $null }
+    return [int]$lsofPid
+}
+
 # Left running by a previous crashed/closed session, most often - surface who holds the port
 # and let the caller choose: stop it, use a different port instead, or abort. Returns the port
 # that ended up free, or $null if the user aborted.
@@ -29,10 +44,9 @@ function Resolve-ServerPort {
 
     $port = $PreferredPort
     while ($true) {
-        $conns = Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue
-        if (-not $conns) { return $port }
+        $ownerPid = Get-PortOwnerPid -Port $port
+        if (-not $ownerPid) { return $port }
 
-        $ownerPid = $conns.OwningProcess | Select-Object -Unique -First 1
         $proc = Get-Process -Id $ownerPid -ErrorAction SilentlyContinue
         $name = if ($proc) { $proc.ProcessName } else { 'unknown process' }
         Write-Warning "Port $port is already in use by '$name' (PID $ownerPid)."
@@ -65,15 +79,37 @@ if (-not $serverPort) {
     exit 1
 }
 
-Start-Process powershell -ArgumentList @(
-    '-NoExit', '-Command',
-    "`$Host.UI.RawUI.WindowTitle = 'DotWatcher Server'; Set-Location '$serverDir'; `$env:ASPNETCORE_ENVIRONMENT = 'Development'; dotnet run --urls http://localhost:$serverPort"
-)
+# Opens a new window running $Command, titled $Title. Windows gets its own PowerShell window;
+# macOS has no Start-Process window support, so a new Terminal.app tab is opened via osascript
+# instead. Linux isn't handled - there's no single standard terminal emulator to target.
+function Start-InNewWindow {
+    param([string]$Title, [string]$Command)
 
-Start-Process powershell -ArgumentList @(
-    '-NoExit', '-Command',
-    "`$Host.UI.RawUI.WindowTitle = 'DotWatcher Client'; Set-Location '$clientDir'; `$env:VITE_SERVER_PORT = '$serverPort'; npm run dev"
-)
+    if ($IsWindows) {
+        Start-Process powershell -ArgumentList @(
+            '-NoExit', '-Command',
+            "`$Host.UI.RawUI.WindowTitle = '$Title'; $Command"
+        )
+        return
+    }
+
+    if ($IsMacOS) {
+        # Terminal.app runs `do script` text in the user's default shell (zsh/bash), not
+        # PowerShell, so re-invoke pwsh explicitly to run the (PowerShell-syntax) $Command.
+        $pwshCommand = "pwsh -NoExit -Command `"& { `$Host.UI.RawUI.WindowTitle = '$Title'; $Command }`""
+        $escaped = $pwshCommand.Replace('\', '\\').Replace('"', '\"')
+        $osaScript = "tell application `"Terminal`" to do script `"$escaped`""
+        & osascript -e $osaScript | Out-Null
+        return
+    }
+
+    Write-Error "Start-InNewWindow isn't implemented for this platform - run the following manually:`n$Command"
+    exit 1
+}
+
+Start-InNewWindow -Title 'DotWatcher Server' -Command "cd '$serverDir'; `$env:ASPNETCORE_ENVIRONMENT = 'Development'; dotnet run --urls http://localhost:$serverPort"
+
+Start-InNewWindow -Title 'DotWatcher Client' -Command "cd '$clientDir'; `$env:VITE_SERVER_PORT = '$serverPort'; npm run dev"
 
 Write-Host "Server starting at http://localhost:$serverPort (see 'DotWatcher Server' window)"
 Write-Host "Client starting at http://localhost:5173 (Vite picks the next free port if that's taken, see 'DotWatcher Client' window)"
