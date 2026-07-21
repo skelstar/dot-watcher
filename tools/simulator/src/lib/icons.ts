@@ -14,14 +14,14 @@ export function initialsFor(name: string): string {
 // Mirrors client/src/useRunnerMarkers.ts's hash-based palette assignment, so a runner gets
 // the same marker color here as on the real client for the same name.
 const COLOUR_PALETTE = [
-  '#2563eb', // blue
   '#dc2626', // red
-  '#16a34a', // green
-  '#d97706', // amber
-  '#9333ea', // purple
-  '#db2777', // pink
   '#0891b2', // teal
-  '#ea580c', // orange
+  '#d97706', // amber
+  '#7c3aed', // violet
+  '#16a34a', // green
+  '#db2777', // pink
+  '#2563eb', // blue
+  '#65a30d', // lime
 ]
 
 function nameHash(name: string): number {
