@@ -1,8 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
-import { MapContainer, TileLayer, Marker, useMapEvents } from 'react-leaflet'
-import L from 'leaflet'
-import 'leaflet/dist/leaflet.css'
-import { initialsFor, runnerColour, phoneMarkerIcon, convergenceIcon } from './lib/icons'
+import { initialsFor, runnerColour } from './lib/icons'
 import { computeBearing, distanceMeters, destinationPoint, ARRIVE_METERS } from './lib/geo'
 import {
   registerParticipant,
@@ -18,42 +15,29 @@ export type { LatLon, Quality, PhoneStatus, PhoneSnapshot }
 type Props = {
   id: number
   index: number
+  initialDisplayName?: string
+  autoJoin?: boolean
   defaultInviteCode: string
+  position: LatLon | null
   convergencePoint: LatLon | null
   speedMps: number
   tickMs: number
   onSnapshot: (snapshot: PhoneSnapshot) => void
+  onPositionChange: (id: number, point: LatLon) => void
+  onRequestStartPoint: (id: number, displayName: string) => void
   onRemove: (id: number) => void
 }
 
-const WELLINGTON: [number, number] = [-41.2865, 174.7762]
-
-function ClickMarker({ enabled, position, icon, onPick }: {
-  enabled: boolean
-  position: LatLon | null
-  icon: L.DivIcon
-  onPick: (lat: number, lon: number) => void
-}) {
-  const onPickRef = useRef(onPick)
-  useEffect(() => { onPickRef.current = onPick })
-  useMapEvents({
-    click(e) {
-      if (enabled) onPickRef.current(e.latlng.lat, e.latlng.lng)
-    },
-  })
-  return position ? <Marker position={[position.lat, position.lon]} icon={icon} /> : null
-}
-
 export default function PhoneSimulator({
-  id, index, defaultInviteCode, convergencePoint, speedMps, tickMs, onSnapshot, onRemove,
+  id, index, initialDisplayName, autoJoin, defaultInviteCode, position, convergencePoint, speedMps, tickMs,
+  onSnapshot, onPositionChange, onRequestStartPoint, onRemove,
 }: Props) {
   // Short by default — this is the actual displayName registered with the server, so it's
   // what the real client (and its own marker labels) will show too, not just a local label.
-  const [displayName, setDisplayName] = useState(`P${index + 1}`)
+  const [displayName, setDisplayName] = useState(initialDisplayName ?? `P${index + 1}`)
   const [inviteCode, setInviteCode] = useState(defaultInviteCode)
   const [status, setStatus] = useState<PhoneStatus>('idle')
   const [quality, setQuality] = useState<Quality>('good')
-  const [position, setPosition] = useState<LatLon | null>(null)
   const [heading, setHeading] = useState<number | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [lastSentAt, setLastSentAt] = useState<string | null>(null)
@@ -65,6 +49,8 @@ export default function PhoneSimulator({
   const convergenceRef = useRef(convergencePoint)
   const inFlightRef = useRef(false)
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const hasRequestedStartPointRef = useRef(false)
+  const hasAutoJoinedRef = useRef(false)
 
   const color = runnerColour(displayName)
 
@@ -78,6 +64,17 @@ export default function PhoneSimulator({
   }, [id, displayName, status, quality, position, heading])
 
   useEffect(() => () => { if (intervalRef.current) clearInterval(intervalRef.current) }, [])
+
+  // Prompts for a starting point as soon as this phone exists — skips the old inline mini-map.
+  // Guarded by a ref (not just the empty deps array) because StrictMode double-invokes mount
+  // effects in dev, and this one has no cleanup to make that double-invoke harmless on its own —
+  // without the guard, every phone queues two picker requests instead of one.
+  useEffect(() => {
+    if (hasRequestedStartPointRef.current) return
+    hasRequestedStartPointRef.current = true
+    onRequestStartPoint(id, displayName)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   async function handleJoin() {
     if (!inviteCode.trim()) return
@@ -94,6 +91,19 @@ export default function PhoneSimulator({
       setStatus('idle')
     }
   }
+
+  // Auto-joins once on mount for phones seeded by "Create session" — skips the manual
+  // invite-code-then-Join step for the default set of phones. Guarded the same way as the
+  // start-point request above, otherwise StrictMode's double-invoke would register two
+  // accounts and join twice.
+  useEffect(() => {
+    if (hasAutoJoinedRef.current) return
+    if (autoJoin && defaultInviteCode.trim()) {
+      hasAutoJoinedRef.current = true
+      handleJoin()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const tick = useCallback(async () => {
     if (inFlightRef.current) return
@@ -131,7 +141,7 @@ export default function PhoneSimulator({
     inFlightRef.current = true
     try {
       await postLocation(user, sessionId, next.lat, next.lon, nextHeading)
-      setPosition(next)
+      onPositionChange(id, next)
       setHeading(nextHeading)
       setLastSentAt(new Date().toLocaleTimeString())
       setError(null)
@@ -140,7 +150,7 @@ export default function PhoneSimulator({
     } finally {
       inFlightRef.current = false
     }
-  }, [speedMps, tickMs])
+  }, [id, speedMps, tickMs, onPositionChange])
 
   function handleStart() {
     if (!position || status === 'running') return
@@ -173,16 +183,13 @@ export default function PhoneSimulator({
     onRemove(id)
   }
 
-  const canPickStart = status === 'ready'
   const canStart = status === 'ready' && position !== null && convergencePoint !== null
   const canLeave = status === 'ready' || status === 'running'
+  const canPickPosition = status !== 'left'
 
-  const mapCenter: [number, number] = position ? [position.lat, position.lon] : WELLINGTON
   const distanceRemaining = position && convergencePoint
     ? distanceMeters(position.lat, position.lon, convergencePoint.lat, convergencePoint.lon)
     : null
-
-  const icon = phoneMarkerIcon({ displayName, quality, status, heading, position, convergencePoint })
 
   return (
     <div style={card(color)}>
@@ -196,6 +203,15 @@ export default function PhoneSimulator({
       </div>
       <div style={statusPillRow}>
         <span style={statusPill(status)}>{statusLabel(status)}</span>
+      </div>
+
+      <div style={positionRow}>
+        {position
+          ? <span style={positionText}>{position.lat.toFixed(5)}, {position.lon.toFixed(5)}</span>
+          : <span style={positionMuted}>No start point set</span>}
+        <button style={changePointBtn} disabled={!canPickPosition} onClick={() => onRequestStartPoint(id, displayName)}>
+          {position ? 'Change' : 'Choose start point'}
+        </button>
       </div>
 
       {(status === 'idle' || status === 'joining') && (
@@ -221,21 +237,12 @@ export default function PhoneSimulator({
       {status !== 'idle' && status !== 'joining' && (
         <>
           <p style={hint}>
-            {status === 'ready' && !position && 'Click the map to choose a starting point.'}
+            {status === 'ready' && !position && 'Choose a starting point above.'}
             {status === 'ready' && position && !convergencePoint && 'Waiting for the convergence point.'}
             {status === 'ready' && position && convergencePoint && 'Ready — press Start.'}
             {status === 'running' && 'Sending updates…'}
             {status === 'left' && 'Left the session.'}
           </p>
-
-          <MapContainer center={mapCenter} zoom={13} style={miniMapStyle}>
-            <TileLayer
-              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-              attribution='&copy; OpenStreetMap contributors'
-            />
-            {convergencePoint && <Marker position={[convergencePoint.lat, convergencePoint.lon]} icon={convergenceIcon()} />}
-            <ClickMarker enabled={canPickStart} position={position} icon={icon} onPick={(lat, lon) => setPosition({ lat, lon })} />
-          </MapContainer>
 
           <div style={qualityRow}>
             {(['good', 'bad', 'missing'] as Quality[]).map(q => (
@@ -261,7 +268,6 @@ export default function PhoneSimulator({
           </div>
 
           <div style={statusLine}>
-            {position && <div>{position.lat.toFixed(5)}, {position.lon.toFixed(5)}</div>}
             {distanceRemaining !== null && (
               <div>{distanceRemaining <= ARRIVE_METERS ? 'Arrived' : `${Math.round(distanceRemaining)}m to go`}</div>
             )}
@@ -324,11 +330,18 @@ const statusPill = (status: PhoneStatus): React.CSSProperties => {
   return { background: bg, color: fg, fontSize: '0.7rem', fontWeight: 700, padding: '2px 8px', borderRadius: 999 }
 }
 
+const positionRow: React.CSSProperties = { display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.5rem', flexWrap: 'wrap' }
+const positionText: React.CSSProperties = { fontSize: '0.74rem', color: '#475569', fontFamily: 'monospace' }
+const positionMuted: React.CSSProperties = { fontSize: '0.78rem', color: '#94a3b8' }
+const changePointBtn: React.CSSProperties = {
+  padding: '0.25rem 0.6rem', borderRadius: 6, border: '1px solid #cbd5e1', background: '#fff',
+  color: '#1e293b', fontSize: '0.74rem', fontWeight: 600, cursor: 'pointer',
+}
+
 const joinRow: React.CSSProperties = { display: 'flex', gap: '0.4rem', marginBottom: '0.5rem', flexWrap: 'wrap' }
 const codeInput: React.CSSProperties = { flex: 1, minWidth: 100, padding: '0.35rem 0.5rem', border: '1px solid #cbd5e1', borderRadius: 6, fontFamily: 'monospace', letterSpacing: '0.05em', fontSize: '0.85rem' }
 const errorText: React.CSSProperties = { color: '#dc2626', fontSize: '0.78rem', marginBottom: '0.5rem' }
 const hint: React.CSSProperties = { fontSize: '0.76rem', color: '#64748b', margin: '0 0 0.4rem' }
-const miniMapStyle: React.CSSProperties = { height: 150, borderRadius: 8, border: '1px solid #e2e8f0', marginBottom: '0.5rem' }
 
 const qualityRow: React.CSSProperties = { display: 'flex', gap: '0.6rem', marginBottom: '0.5rem', fontSize: '0.78rem', flexWrap: 'wrap' }
 const qualityLabel = (active: boolean, disabled: boolean): React.CSSProperties => ({
