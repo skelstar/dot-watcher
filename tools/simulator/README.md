@@ -76,10 +76,8 @@ multi-runner scenarios without needing physical devices.
     `initialsFor`/`InitialsBadge`, e.g. "Phone 1" → "P1"), with a marker colour hashed from its
     display name the same way the client colours runners — so a phone gets the same colour and
     initials here as it would as a real runner on the client's map
-  - Pops up the same picker modal for its starting point as soon as it's created (before it's
-    even joined), with a **Choose**/**Change** button to reopen it later. Only one modal is ever
-    shown at once — if several phones are created together (like the seeded default three),
-    their requests queue up one after another instead of stacking.
+  - Picks its starting point via a **Choose**/**Change** button (same picker modal as the
+    convergence point), whenever you're ready — nothing pops up automatically
   - Starts/pauses sending live `POST /location` updates once it has a start point and the
     session has a convergence point
   - Can be switched between **Good** (heads straight for the convergence point, heading set to
