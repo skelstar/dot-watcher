@@ -1,12 +1,17 @@
 import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
 import { execSync } from 'node:child_process'
+import path from 'node:path'
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
+  // Falls back to the repo root's .env so this agrees with start-local.ps1 and
+  // tools/simulator on which port the server is running on, without requiring the value to
+  // also be duplicated into client/.env.
+  const rootEnv = loadEnv(mode, path.resolve(__dirname, '..'), '')
   const appVersion = env.VITE_APP_VERSION ?? `v-${shortCommitId()}`
   const appUpdatedAt = env.VITE_APP_UPDATED_AT ?? `Updated ${formatNzBuildTime(new Date())}`
-  const serverPort = env.VITE_SERVER_PORT ?? '8080'
+  const serverPort = env.VITE_SERVER_PORT ?? rootEnv.VITE_SERVER_PORT ?? '8080'
 
   return {
     plugins: [react()],

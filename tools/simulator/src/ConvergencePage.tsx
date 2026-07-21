@@ -1,13 +1,12 @@
 import { useRef, useState } from 'react'
 import { MapContainer, TileLayer, Marker, useMapEvents } from 'react-leaflet'
 import 'leaflet/dist/leaflet.css'
-import { convergenceIcon, dotIcon } from './lib/icons'
-import { createSession, randomSessionName, registerParticipant, SERVER_URL, type SessionMembership } from './lib/dotwatcherApi'
-import PhoneSimulator, { type LatLon, type PhoneSnapshot } from './PhoneSimulator'
+import { convergenceIcon, phoneMarkerIcon } from './lib/icons'
+import { createSession, randomSessionName, registerParticipant, SERVER_URL, CLIENT_URL, type SessionMembership } from './lib/dotwatcherApi'
+import PhoneSimulator from './PhoneSimulator'
+import type { LatLon, PhoneSnapshot } from './lib/types'
 
 const WELLINGTON: [number, number] = [-41.2865, 174.7762]
-
-const PALETTE = ['#2563eb', '#dc2626', '#16a34a', '#d97706', '#7c3aed', '#0891b2', '#db2777', '#65a30d']
 
 const SPEED_OPTIONS = [
   { label: 'Walk (1.4 m/s)', value: 1.4 },
@@ -19,6 +18,7 @@ const TICK_OPTIONS = [
   { label: '2s', value: 2000 },
   { label: '4s', value: 4000 },
   { label: '8s', value: 8000 },
+  { label: '15s', value: 15000 },
 ]
 
 function ConvergenceClickMarker({ onPick }: { onPick: (lat: number, lon: number) => void }) {
@@ -40,6 +40,7 @@ export default function ConvergencePage() {
   const [convergencePoint, setConvergencePoint] = useState<LatLon | null>(null)
   const [speedMps, setSpeedMps] = useState(2.8)
   const [tickMs, setTickMs] = useState(4000)
+  const [showLiveClient, setShowLiveClient] = useState(true)
 
   const [phoneIds, setPhoneIds] = useState<number[]>([])
   const nextIdRef = useRef(1)
@@ -87,6 +88,7 @@ export default function ConvergencePage() {
   }
 
   const activePhones = phoneIds.map(id => snapshots[id]).filter((s): s is PhoneSnapshot => !!s)
+  const liveClientUrl = session ? `${CLIENT_URL}/code/${session.inviteCode}` : null
 
   return (
     <div>
@@ -124,7 +126,11 @@ export default function ConvergencePage() {
           <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution='&copy; OpenStreetMap contributors' />
           {convergencePoint && <Marker position={[convergencePoint.lat, convergencePoint.lon]} icon={convergenceIcon()} />}
           {activePhones.filter(p => p.position).map(p => (
-            <Marker key={p.id} position={[p.position!.lat, p.position!.lon]} icon={dotIcon(p.color)} />
+            <Marker
+              key={p.id}
+              position={[p.position!.lat, p.position!.lon]}
+              icon={phoneMarkerIcon({ ...p, convergencePoint })}
+            />
           ))}
           <ConvergenceClickMarker onPick={(lat, lon) => setConvergencePoint({ lat, lon })} />
         </MapContainer>
@@ -153,24 +159,51 @@ export default function ConvergencePage() {
 
       <section style={panel}>
         <div style={phonesHeader}>
+          <h2 style={panelTitle}>Live client view</h2>
+          <label style={liveClientToggle}>
+            <input type="checkbox" checked={showLiveClient} onChange={e => setShowLiveClient(e.target.checked)} disabled={!session} />
+            Show
+          </label>
+        </div>
+        {!session && <p style={hint}>Create a session above to embed the real web client here, viewing that session.</p>}
+        {session && showLiveClient && liveClientUrl && (
+          <>
+            <iframe
+              key={liveClientUrl}
+              src={liveClientUrl}
+              style={clientFrame}
+              title="Dot Watcher client"
+            />
+            <p style={hint}>
+              Loads <code>{liveClientUrl}</code> unauthenticated (the invite-code URL form skips
+              sign-in). Requires the client's own dev server running separately (<code>cd client &amp;&amp; npm run dev</code>) —
+              blank/failed to load usually means it isn't. <a href={liveClientUrl} target="_blank" rel="noreferrer">Open in a new tab</a> instead.
+            </p>
+          </>
+        )}
+      </section>
+
+      <section style={panel}>
+        <div style={phonesHeader}>
           <h2 style={panelTitle}>Phones ({activePhones.length})</h2>
           <button style={addBtn} onClick={addPhone}>+ Add phone</button>
         </div>
         {phoneIds.length === 0 && <p style={hint}>Add a phone, then join it to a session using an invite code.</p>}
-        {phoneIds.map((id, i) => (
-          <PhoneSimulator
-            key={id}
-            id={id}
-            index={i}
-            color={PALETTE[i % PALETTE.length]}
-            defaultInviteCode={session?.inviteCode ?? ''}
-            convergencePoint={convergencePoint}
-            speedMps={speedMps}
-            tickMs={tickMs}
-            onSnapshot={handleSnapshot}
-            onRemove={removePhone}
-          />
-        ))}
+        <div style={phonesGrid}>
+          {phoneIds.map((id, i) => (
+            <PhoneSimulator
+              key={id}
+              id={id}
+              index={i}
+              defaultInviteCode={session?.inviteCode ?? ''}
+              convergencePoint={convergencePoint}
+              speedMps={speedMps}
+              tickMs={tickMs}
+              onSnapshot={handleSnapshot}
+              onRemove={removePhone}
+            />
+          ))}
+        </div>
       </section>
     </div>
   )
@@ -197,3 +230,6 @@ const movementLabel: React.CSSProperties = { display: 'flex', flexDirection: 'co
 const select: React.CSSProperties = { padding: '0.35rem 0.5rem', borderRadius: 6, border: '1px solid #cbd5e1', fontSize: '0.85rem' }
 const phonesHeader: React.CSSProperties = { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.6rem' }
 const addBtn: React.CSSProperties = { padding: '0.4rem 0.9rem', borderRadius: 6, border: 'none', background: '#2563eb', color: '#fff', fontWeight: 700, fontSize: '0.85rem', cursor: 'pointer' }
+const phonesGrid: React.CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(230px, 1fr))', gap: '0.75rem' }
+const liveClientToggle: React.CSSProperties = { display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.85rem', color: '#475569', cursor: 'pointer' }
+const clientFrame: React.CSSProperties = { width: '100%', height: 520, border: '1px solid #e2e8f0', borderRadius: 8 }

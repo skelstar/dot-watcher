@@ -37,7 +37,7 @@ export default function App() {
 }
 
 const page = (tab: Tab): React.CSSProperties => ({
-  maxWidth: tab === 'convergence' ? 900 : 700,
+  maxWidth: tab === 'convergence' ? 1200 : 700,
   margin: '0 auto',
   padding: '1.5rem 1rem',
 })

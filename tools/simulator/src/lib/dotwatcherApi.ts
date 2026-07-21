@@ -1,7 +1,17 @@
 // Minimal client for the auth + session + location endpoints, used by the Convergence
 // simulator to act as N independent phone/app users against a real Dot Watcher server.
 
-export const SERVER_URL = (import.meta.env.VITE_SERVER_URL as string | undefined) ?? 'http://localhost:5000'
+// VITE_SERVER_PORT comes from the repo root's shared .env (see start-local.ps1 and
+// client/vite.config.ts, which read the same value) so every local tool agrees on the
+// server's port. VITE_SERVER_URL is a full-URL override for pointing at a non-localhost
+// server and takes priority over it when set.
+const sharedServerPort = (import.meta.env.VITE_SERVER_PORT as string | undefined) ?? '8080'
+export const SERVER_URL = (import.meta.env.VITE_SERVER_URL as string | undefined) ?? `http://localhost:${sharedServerPort}`
+
+// The main web client's own dev server (see start-local.ps1) — used to embed it live in the
+// Convergence tab. Not part of the shared VITE_SERVER_PORT value above; that's the .NET
+// server's port, this is the separate Vite dev server for client/.
+export const CLIENT_URL = (import.meta.env.VITE_CLIENT_URL as string | undefined) ?? 'http://localhost:5173'
 
 export type AuthedUser = {
   accessToken: string

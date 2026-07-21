@@ -5,7 +5,21 @@
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
 $serverDir = Join-Path $root 'server'
 $clientDir = Join-Path $root 'client'
-$serverPort = 8080
+
+# Preferred port comes from the repo root's .env (shared with client/ and tools/simulator/ so
+# every local tool agrees on it), falling back to 8080 if there's no override.
+function Read-DotEnvValue {
+    param([string]$Path, [string]$Key, [string]$Default)
+
+    if (-not (Test-Path $Path)) { return $Default }
+
+    foreach ($line in Get-Content $Path) {
+        if ($line -match "^\s*$Key\s*=\s*(.+?)\s*$") { return $matches[1] }
+    }
+    return $Default
+}
+
+$serverPort = [int](Read-DotEnvValue -Path (Join-Path $root '.env') -Key 'VITE_SERVER_PORT' -Default '8080')
 
 # Left running by a previous crashed/closed session, most often - surface who holds the port
 # and let the caller choose: stop it, use a different port instead, or abort. Returns the port
