@@ -32,8 +32,10 @@ builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<AuthAttemptLimiter>();
 builder.Services.AddSingleton(sp =>
 {
-    var dbPath = sp.GetRequiredService<IConfiguration>().GetValue<string>("DbPath", "dotwatcher.db")!;
-    var store = new SessionStore(dbPath);
+    var connectionString = sp.GetRequiredService<IConfiguration>()["ConnectionString"]
+        ?? throw new InvalidOperationException(
+            "ConnectionString is not configured. Set it via appsettings or the ConnectionString environment variable.");
+    var store = new SessionStore(connectionString);
     store.Initialize();
     return store;
 });
