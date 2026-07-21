@@ -1,12 +1,21 @@
 import { useRef, useState } from 'react'
-import { MapContainer, TileLayer, Marker, useMapEvents } from 'react-leaflet'
-import 'leaflet/dist/leaflet.css'
 import { convergenceIcon, phoneMarkerIcon } from './lib/icons'
-import { createSession, randomSessionName, registerParticipant, SERVER_URL, CLIENT_URL, type SessionMembership } from './lib/dotwatcherApi'
+import { createSession, deleteSimAccounts, randomSessionName, registerParticipant, SERVER_URL, CLIENT_URL, type SessionMembership } from './lib/dotwatcherApi'
 import PhoneSimulator from './PhoneSimulator'
+import MapPickerModal from './MapPickerModal'
 import type { LatLon, PhoneSnapshot } from './lib/types'
 
-const WELLINGTON: [number, number] = [-41.2865, 174.7762]
+const WELLINGTON: LatLon = { lat: -41.2865, lon: 174.7762 }
+
+// Seeded automatically (and auto-joined) every time a session is created, so you don't have to
+// manually add and join a handful of phones every test run. Add more with "+ Add phone".
+const DEFAULT_PHONE_NAMES = ['SK', 'DH', 'CH']
+
+type PhoneConfig = { id: number; initialName?: string; autoJoin?: boolean }
+
+type ActivePicker =
+  | { kind: 'convergence'; intent: 'create' | 'change' }
+  | { kind: 'phone'; phoneId: number; displayName: string }
 
 const SPEED_OPTIONS = [
   { label: 'Walk (1.4 m/s)', value: 1.4 },
@@ -21,20 +30,12 @@ const TICK_OPTIONS = [
   { label: '15s', value: 15000 },
 ]
 
-function ConvergenceClickMarker({ onPick }: { onPick: (lat: number, lon: number) => void }) {
-  const onPickRef = useRef(onPick)
-  onPickRef.current = onPick
-  useMapEvents({
-    click(e) { onPickRef.current(e.latlng.lat, e.latlng.lng) },
-  })
-  return null
-}
-
 export default function ConvergencePage() {
   const [sessionName, setSessionName] = useState('')
   const [session, setSession] = useState<SessionMembership | null>(null)
   const [creating, setCreating] = useState(false)
   const [createError, setCreateError] = useState<string | null>(null)
+  const [cleanupNote, setCleanupNote] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
 
   const [convergencePoint, setConvergencePoint] = useState<LatLon | null>(null)
@@ -42,23 +43,87 @@ export default function ConvergencePage() {
   const [tickMs, setTickMs] = useState(4000)
   const [showLiveClient, setShowLiveClient] = useState(true)
 
-  const [phoneIds, setPhoneIds] = useState<number[]>([])
+  const [phones, setPhones] = useState<PhoneConfig[]>([])
+  const [positions, setPositions] = useState<Record<number, LatLon | null>>({})
   const nextIdRef = useRef(1)
   const [snapshots, setSnapshots] = useState<Record<number, PhoneSnapshot>>({})
 
-  async function handleCreateSession() {
+  // Only one map-picker modal is ever shown at a time — extra requests (e.g. three phones
+  // seeded at once, each asking for a start point on mount) queue up behind the current one.
+  const [activePicker, setActivePicker] = useState<ActivePicker | null>(null)
+  const pickerQueueRef = useRef<ActivePicker[]>([])
+
+  function enqueuePicker(req: ActivePicker) {
+    setActivePicker(current => {
+      if (current) {
+        pickerQueueRef.current.push(req)
+        return current
+      }
+      return req
+    })
+  }
+
+  function advancePicker() {
+    setActivePicker(pickerQueueRef.current.shift() ?? null)
+  }
+
+  async function runCreateSession() {
     setCreating(true)
     setCreateError(null)
+    setCleanupNote(null)
     try {
+      // Best-effort: previous test runs' throwaway accounts (and any sessions they own)
+      // shouldn't have to be cleaned up by hand before starting a fresh one.
+      try {
+        const removed = await deleteSimAccounts()
+        setCleanupNote(removed > 0 ? `Cleaned up ${removed} old sim- account${removed === 1 ? '' : 's'}.` : null)
+      } catch (err) {
+        setCleanupNote(err instanceof Error ? err.message : 'Could not clean up old sim- accounts.')
+      }
+
       const organizer = await registerParticipant('Simulator')
       const name = sessionName.trim() || randomSessionName()
       const membership = await createSession(organizer, name)
       setSession(membership)
+
+      // A new session is a full reset — old phone tiles' accounts just got swept up above.
+      setSnapshots({})
+      setPositions({})
+      setPhones(DEFAULT_PHONE_NAMES.map(initialName => ({ id: nextIdRef.current++, initialName, autoJoin: true })))
     } catch (err) {
       setCreateError(err instanceof Error ? err.message : 'Failed to create session.')
     } finally {
       setCreating(false)
     }
+  }
+
+  function handleCreateSessionClick() {
+    enqueuePicker({ kind: 'convergence', intent: 'create' })
+  }
+
+  function handleChangeConvergencePoint() {
+    enqueuePicker({ kind: 'convergence', intent: 'change' })
+  }
+
+  function handleRequestStartPoint(id: number, displayName: string) {
+    enqueuePicker({ kind: 'phone', phoneId: id, displayName })
+  }
+
+  async function handlePickerConfirm(point: LatLon) {
+    if (!activePicker) return
+    if (activePicker.kind === 'convergence') {
+      const { intent } = activePicker
+      setConvergencePoint(point)
+      advancePicker()
+      if (intent === 'create') await runCreateSession()
+    } else {
+      setPositions(prev => ({ ...prev, [activePicker.phoneId]: point }))
+      advancePicker()
+    }
+  }
+
+  function handlePickerCancel() {
+    advancePicker()
   }
 
   function handleCopyInvite() {
@@ -71,12 +136,17 @@ export default function ConvergencePage() {
 
   function addPhone() {
     const id = nextIdRef.current++
-    setPhoneIds(ids => [...ids, id])
+    setPhones(prev => [...prev, { id }])
   }
 
   function removePhone(id: number) {
-    setPhoneIds(ids => ids.filter(i => i !== id))
+    setPhones(prev => prev.filter(p => p.id !== id))
     setSnapshots(prev => {
+      const next = { ...prev }
+      delete next[id]
+      return next
+    })
+    setPositions(prev => {
       const next = { ...prev }
       delete next[id]
       return next
@@ -87,7 +157,11 @@ export default function ConvergencePage() {
     setSnapshots(prev => ({ ...prev, [snapshot.id]: snapshot }))
   }
 
-  const activePhones = phoneIds.map(id => snapshots[id]).filter((s): s is PhoneSnapshot => !!s)
+  function handlePositionChange(id: number, point: LatLon) {
+    setPositions(prev => ({ ...prev, [id]: point }))
+  }
+
+  const activePhones = phones.map(p => snapshots[p.id]).filter((s): s is PhoneSnapshot => !!s)
   const liveClientUrl = session ? `${CLIENT_URL}/code/${session.inviteCode}` : null
 
   return (
@@ -102,11 +176,12 @@ export default function ConvergencePage() {
             onChange={e => setSessionName(e.target.value)}
             disabled={creating}
           />
-          <button style={createBtn(creating)} disabled={creating} onClick={handleCreateSession}>
+          <button style={createBtn(creating)} disabled={creating} onClick={handleCreateSessionClick}>
             {creating ? 'Creating…' : session ? 'New session' : 'Create session'}
           </button>
         </div>
         {createError && <div style={errorText}>{createError}</div>}
+        {cleanupNote && <div style={mutedText}>{cleanupNote}</div>}
         {session && (
           <div style={sessionInfo}>
             <span>Invite code: <strong style={inviteCodeText}>{session.inviteCode}</strong></span>
@@ -115,29 +190,25 @@ export default function ConvergencePage() {
           </div>
         )}
         <p style={hint}>
-          Phones default to this invite code when created below, but each phone can be pointed at any invite code — including a real session created from the iOS app or web client.
+          Creating a session first asks for a convergence point, then deletes every old sim-
+          account (best-effort — needs <code>VITE_BEARER_TOKEN</code> configured) and seeds
+          phones {DEFAULT_PHONE_NAMES.map(n => `"${n}"`).join(', ')}, auto-joined to it and
+          prompting for a start point each. Any phone can still be re-pointed at a different
+          invite code — including a real session created from the iOS app or web client.
         </p>
       </section>
 
-      <section style={panel}>
-        <h2 style={panelTitle}>Convergence point</h2>
-        <p style={hint}>Click the map to choose the point all phones with "Good" GPS will walk/run towards.</p>
-        <MapContainer center={WELLINGTON} zoom={13} style={bigMapStyle}>
-          <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution='&copy; OpenStreetMap contributors' />
-          {convergencePoint && <Marker position={[convergencePoint.lat, convergencePoint.lon]} icon={convergenceIcon()} />}
-          {activePhones.filter(p => p.position).map(p => (
-            <Marker
-              key={p.id}
-              position={[p.position!.lat, p.position!.lon]}
-              icon={phoneMarkerIcon({ ...p, convergencePoint })}
-            />
-          ))}
-          <ConvergenceClickMarker onPick={(lat, lon) => setConvergencePoint({ lat, lon })} />
-        </MapContainer>
-        {convergencePoint && (
-          <div style={statusLine}>{convergencePoint.lat.toFixed(5)}, {convergencePoint.lon.toFixed(5)}</div>
-        )}
-      </section>
+      {session && (
+        <section style={panel}>
+          <h2 style={panelTitle}>Convergence point</h2>
+          <div style={sessionInfo}>
+            {convergencePoint
+              ? <span style={statusLine}>{convergencePoint.lat.toFixed(5)}, {convergencePoint.lon.toFixed(5)}</span>
+              : <span style={mutedText}>Not set</span>}
+            <button style={copyBtn} onClick={handleChangeConvergencePoint}>Change</button>
+          </div>
+        </section>
+      )}
 
       <section style={panel}>
         <h2 style={panelTitle}>Movement</h2>
@@ -188,23 +259,59 @@ export default function ConvergencePage() {
           <h2 style={panelTitle}>Phones ({activePhones.length})</h2>
           <button style={addBtn} onClick={addPhone}>+ Add phone</button>
         </div>
-        {phoneIds.length === 0 && <p style={hint}>Add a phone, then join it to a session using an invite code.</p>}
+        {phones.length === 0 && <p style={hint}>Add a phone, then join it to a session using an invite code.</p>}
         <div style={phonesGrid}>
-          {phoneIds.map((id, i) => (
+          {phones.map((p, i) => (
             <PhoneSimulator
-              key={id}
-              id={id}
+              key={p.id}
+              id={p.id}
               index={i}
+              initialDisplayName={p.initialName}
+              autoJoin={p.autoJoin}
               defaultInviteCode={session?.inviteCode ?? ''}
+              position={positions[p.id] ?? null}
               convergencePoint={convergencePoint}
               speedMps={speedMps}
               tickMs={tickMs}
               onSnapshot={handleSnapshot}
+              onPositionChange={handlePositionChange}
+              onRequestStartPoint={handleRequestStartPoint}
               onRemove={removePhone}
             />
           ))}
         </div>
       </section>
+
+      {activePicker?.kind === 'convergence' && (
+        <MapPickerModal
+          title={activePicker.intent === 'create' ? 'Choose the convergence point' : 'Change the convergence point'}
+          hint='Click the map to choose where "Good" GPS phones will walk/run towards.'
+          center={convergencePoint ?? WELLINGTON}
+          initialValue={convergencePoint}
+          pickIcon={convergenceIcon()}
+          onConfirm={handlePickerConfirm}
+          onCancel={handlePickerCancel}
+        />
+      )}
+      {activePicker?.kind === 'phone' && (
+        <MapPickerModal
+          title={`${activePicker.displayName} — choose a starting point`}
+          center={convergencePoint ?? WELLINGTON}
+          initialValue={positions[activePicker.phoneId] ?? null}
+          pickIcon={phoneMarkerIcon({
+            displayName: activePicker.displayName,
+            quality: 'good',
+            status: 'ready',
+            heading: null,
+            position: null,
+            convergencePoint: null,
+          })}
+          referencePoint={convergencePoint}
+          referenceIcon={convergenceIcon()}
+          onConfirm={handlePickerConfirm}
+          onCancel={handlePickerCancel}
+        />
+      )}
     </div>
   )
 }
@@ -223,8 +330,7 @@ const inviteCodeText: React.CSSProperties = { fontFamily: 'monospace', fontSize:
 const copyBtn: React.CSSProperties = { padding: '0.2rem 0.6rem', fontSize: '0.78rem', borderRadius: 6, border: '1px solid #cbd5e1', background: '#fff', cursor: 'pointer' }
 const mutedText: React.CSSProperties = { color: '#94a3b8', fontSize: '0.8rem' }
 const hint: React.CSSProperties = { fontSize: '0.82rem', color: '#64748b', marginBottom: '0.6rem' }
-const bigMapStyle: React.CSSProperties = { height: 360, borderRadius: 8, border: '1px solid #e2e8f0' }
-const statusLine: React.CSSProperties = { fontSize: '0.78rem', color: '#64748b', fontFamily: 'monospace', marginTop: '0.4rem' }
+const statusLine: React.CSSProperties = { fontSize: '0.78rem', color: '#64748b', fontFamily: 'monospace' }
 const movementRow: React.CSSProperties = { display: 'flex', gap: '1.5rem' }
 const movementLabel: React.CSSProperties = { display: 'flex', flexDirection: 'column', gap: '0.3rem', fontSize: '0.82rem', color: '#475569', fontWeight: 600 }
 const select: React.CSSProperties = { padding: '0.35rem 0.5rem', borderRadius: 6, border: '1px solid #cbd5e1', fontSize: '0.85rem' }

@@ -32,6 +32,7 @@ Copy `.env.example` to `.env` and set:
 | ------------------- | ------------------------------------------------------------------------- | -------------------------------------------- |
 | `VITE_SERVER_URL`   | Full URL of the Dot Watcher server — overrides the port-derived default entirely | `http://localhost:<VITE_SERVER_PORT>`         |
 | `VITE_CLIENT_URL`   | URL of the main web client's dev server, for the Session tab's embedded live view | `http://localhost:5173`                       |
+| `VITE_BEARER_TOKEN` | Admin bearer token, matching the server's `BearerToken` config — needed for the Session tab's old-account cleanup | — |
 
 `VITE_SERVER_PORT` isn't set in this tool's own `.env` — it's read from the **repo root's**
 `.env` (copy `../../.env.example`), shared with `start-local.ps1` and `client/`, so every local
@@ -45,28 +46,40 @@ taken on your machine.
 ### Session
 
 Simulates any number of independent "phones" that each join a session over the real
-auth/session/location API (not the admin bearer token) and move toward a shared point on the
-map, for exercising multi-runner scenarios without needing physical devices.
+auth/session/location API and move toward a shared point on the map, for exercising
+multi-runner scenarios without needing physical devices.
 
-- **Session** — creates a session (registering a throwaway organizer account under the hood)
-  and shows its invite code. Purely local UI state, not tied to any one session — you can also
-  point individual phones at an invite code from a real session created via the iOS or web app.
-- **Convergence point** — click the map (centered on Wellington, NZ) to choose where phones
-  with "Good" GPS head towards.
+- **Session** — creates a session (registering a throwaway organizer account under the hood),
+  shows its invite code, and seeds a default set of phones (see Phones below), auto-joined to
+  it. Clicking **Create session**/**New session** first pops up a map modal asking for the
+  convergence point — cancelling it aborts the whole thing, nothing is created. Once confirmed:
+  deletes every existing account whose username starts with `sim-` (and, since deleting a user
+  also deletes any sessions it owns, their sessions too) via the admin endpoints — best-effort,
+  requires `VITE_BEARER_TOKEN` — so previous test runs don't pile up server-side junk you'd
+  otherwise have to clean up by hand; then creates the session and seeds phones. Otherwise
+  purely local UI state, not tied to any one session — you can also point individual phones at
+  an invite code from a real session created via the iOS or web app.
+- **Convergence point** — shown once a session exists, with a **Change** button that reopens
+  the same picker modal at any time (pre-filled with the current point).
 - **Movement** — shared speed (walk/jog/run) and update-interval controls used by every phone.
 - **Live client view** — embeds the real web client (`client/`) in an iframe, pointed at
   `{CLIENT_URL}/code/{inviteCode}` — the one client URL form that skips the sign-in wall, so it
-  shows the actual production map rendering next to the simulator controls. Requires the
-  client's own dev server running separately (`cd client && npm run dev`); configure a
-  non-default URL via `VITE_CLIENT_URL`.
-- **Phones** — shown as a grid of compact tiles. Click **+ Add phone** to add one. Each phone
+  shows the actual production map rendering next to the simulator controls. This is the only
+  persistent map on the page; picking a convergence or start point uses a modal instead, to
+  avoid a wall of maps as more phones are added. Requires the client's own dev server running
+  separately (`cd client && npm run dev`); configure a non-default URL via `VITE_CLIENT_URL`.
+- **Phones** — shown as a grid of compact tiles. Creating a session seeds three
+  (`SK`, `DH`, `CH`), already auto-joined; click **+ Add phone** for more. Each phone
   independently:
   - Registers its own throwaway account and joins a session by invite code (`runner` role)
   - Is labelled by its 2-character initials (same algorithm as the client's
     `initialsFor`/`InitialsBadge`, e.g. "Phone 1" → "P1"), with a marker colour hashed from its
     display name the same way the client colours runners — so a phone gets the same colour and
     initials here as it would as a real runner on the client's map
-  - Picks its own starting point on a mini map
+  - Pops up the same picker modal for its starting point as soon as it's created (before it's
+    even joined), with a **Choose**/**Change** button to reopen it later. Only one modal is ever
+    shown at once — if several phones are created together (like the seeded default three),
+    their requests queue up one after another instead of stacking.
   - Starts/pauses sending live `POST /location` updates once it has a start point and the
     session has a convergence point
   - Can be switched between **Good** (heads straight for the convergence point, heading set to
