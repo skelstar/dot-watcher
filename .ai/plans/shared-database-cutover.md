@@ -1,8 +1,9 @@
 # Plan: Staging/Production shared-database cutover
 
-Status: Step 1 (cluster inventory) done as of 2026-07-22. Written 2026-07-20. Steps 2-4 are still
-design/runbook only — nothing described in them has been executed against the live cluster or its
-data.
+Status: Steps 1-3 done as of 2026-07-22 (cluster inventory, collision audit + merge decision, and
+a verified migration script dry-run). Written 2026-07-20. Step 4 (the actual rollout) has not
+happened — no shared Postgres instance has been provisioned yet, and the migration script has
+only been run against a disposable local Postgres, never a real shared one.
 
 ## Goal
 
@@ -75,35 +76,41 @@ script in Step 3 does not need to handle a collision case at all (though it shou
 zero collisions as a safety check before inserting, in case new rows land in either environment
 between this audit and Step 3 executing).
 
-## Step 3 — build and dry-run a one-off migration script (script built, dry-run partially done)
+## Step 3 — build and dry-run a one-off migration script (DONE, 2026-07-22)
 
-`scripts/migrate-sqlite-to-postgres.sh` is written:
+`scripts/migrate-sqlite-to-postgres.sh`:
 - Usage: `scripts/migrate-sqlite-to-postgres.sh <staging.db> <production.db> "<postgres-connection-string>"`.
   Takes local copies of both SQLite files (fetch them with the same `kubectl cp` pattern as
   `scripts/audit-user-collisions.sh`) — never touches live files.
 - Re-checks for username/invite_code collisions before inserting anything, as a safety net in
   case new rows landed in either environment after the 2026-07-22 Step 2 audit. Aborts if any
   are found, since the merge-everything decision assumed zero.
-- Dumps every row from `users`, `app_sessions`, `session_members`, `revoked_user_tokens`,
-  `session_routes` via `sqlite3 .mode insert`, in parent-before-child order to satisfy foreign
-  keys (`users` → `app_sessions` → `session_members`/`location_updates`).
+- Exports every row from `users`, `app_sessions`, `session_members`, `revoked_user_tokens`,
+  `session_routes`, `location_updates` via `sqlite3 -csv`, then loads each via
+  `psql ... \copy table(cols) FROM file WITH (FORMAT csv)`, in parent-before-child order to
+  satisfy foreign keys (`users` → `app_sessions` → `session_members`/`location_updates`).
+  Uses CSV rather than `sqlite3 .mode insert`-generated `INSERT` statements because the latter
+  renders embedded newlines (e.g. `session_routes.gpx_content`, a multi-line GPX file) using
+  SQLite-only functions (`char()`/`unistr()`) that Postgres's parser rejects outright — hit this
+  for real on the first dry-run attempt. CSV's RFC 4180 quoting round-trips arbitrary text
+  content safely.
 - Deliberately does **not** copy `location_updates.id` — SQLite's `AUTOINCREMENT` and Postgres's
-  `GENERATED ALWAYS AS IDENTITY` are different id spaces, so that table is dumped with an explicit
-  column list and lets Postgres generate fresh ids.
-- Applies the generated SQL with `psql -v ON_ERROR_STOP=1` inside a single transaction, then
-  prints post-insert row counts per table for verification.
+  `GENERATED ALWAYS AS IDENTITY` are different id spaces, so that table is exported with an
+  explicit column list and Postgres generates fresh ids.
+- Tolerates schema drift between environments (e.g. `session_routes` — added 2026-07-16 — was
+  present in one environment's SQLite file but not the other at dry-run time): checks each table
+  exists before exporting it rather than assuming parity, and skips missing/empty tables with a
+  clear log line instead of erroring.
+- Companion script `scripts/init-postgres-schema.sh` creates the target schema in a Postgres
+  instance without needing the .NET SDK (Tatooine has Docker/kubectl but no `dotnet`) — extracts
+  the exact `CREATE TABLE` block straight out of `SessionStore.cs` so it can't drift from what
+  `SessionStore.Initialize()` actually creates.
 
-**Dry-run status**: verified the SQL-generation half against hand-built fixture SQLite files
-matching the real schema (checked table order, foreign-key satisfaction, and the
-`location_updates` column-list handling produce correct, well-formed `INSERT` statements — 9
-rows in, 9 `INSERT`s out, ids omitted correctly for `location_updates`). **Not yet verified**:
-that the generated SQL actually applies cleanly to a real Postgres instance — this dev machine
-has no local Docker/psql available. Before Step 4, still need to: spin up the local
-`docker compose up -d` Postgres (or any disposable instance), pull real copies of both
-environments' SQLite files via `kubectl cp`, and run the script against them end-to-end,
-confirming the printed post-insert row counts match each environment's known counts (Staging: 1
-user/3 sessions; Production: 8 users/2 sessions, per the Step 2 audit) and spot-checking a
-handful of sessions/positions.
+**Dry-run verified end-to-end on Tatooine** against the local `docker compose up -d` Postgres,
+using real copies of both environments' SQLite files (pulled via `kubectl cp`). Zero collisions
+found (consistent with the Step 2 audit), and every table copied cleanly. Final counts: 9 users,
+5 app_sessions, 8 session_members, 1833 location_updates, 5 revoked_user_tokens, 1 session_routes
+— matches the Step 2 audit's per-environment counts (8+1 users, 2+3 app_sessions) with no errors.
 
 ## Step 4 — rollout sequence
 
