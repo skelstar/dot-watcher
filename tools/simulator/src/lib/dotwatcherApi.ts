@@ -13,6 +13,10 @@ export const SERVER_URL = (import.meta.env.VITE_SERVER_URL as string | undefined
 // server's port, this is the separate Vite dev server for client/.
 export const CLIENT_URL = (import.meta.env.VITE_CLIENT_URL as string | undefined) ?? 'http://localhost:5173'
 
+// The shared admin bearer token (matches the server's `BearerToken` config) — only needed for
+// the /admin/users cleanup below, not for anything phones themselves do.
+const ADMIN_BEARER_TOKEN = import.meta.env.VITE_BEARER_TOKEN as string | undefined
+
 export type AuthedUser = {
   accessToken: string
   userId: string
@@ -114,6 +118,34 @@ export async function leaveSession(user: AuthedUser, sessionId: string): Promise
     method: 'DELETE',
     headers: { Authorization: `Bearer ${user.accessToken}` },
   })
+}
+
+// Deletes every registered account whose username starts with "sim-" (i.e. every account this
+// tool has ever created) via the admin endpoints — run before creating a new session so
+// previous test runs don't pile up accounts (and, since deleting a user also deletes any
+// sessions it owns, their sessions too). Best-effort: one account failing to delete doesn't
+// stop the rest. Requires VITE_BEARER_TOKEN; throws if it's not configured.
+export async function deleteSimAccounts(): Promise<number> {
+  if (!ADMIN_BEARER_TOKEN) {
+    throw new ApiError('VITE_BEARER_TOKEN is not configured — cannot clean up old sim- accounts.')
+  }
+
+  const res = await fetch(`${SERVER_URL}/admin/users`, {
+    headers: { Authorization: `Bearer ${ADMIN_BEARER_TOKEN}` },
+  })
+  if (!res.ok) throw new ApiError(await errorMessage(res, `Listing users failed (${res.status}).`))
+
+  const users: { id: string; username: string }[] = await res.json()
+  const stale = users.filter(u => u.username.startsWith('sim-'))
+
+  const results = await Promise.allSettled(
+    stale.map(u => fetch(`${SERVER_URL}/admin/users/${u.id}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${ADMIN_BEARER_TOKEN}` },
+    }))
+  )
+
+  return results.filter(r => r.status === 'fulfilled' && r.value.ok).length
 }
 
 // Session names must be 4-8 letters/digits/dash/underscore and unique server-side; padding
