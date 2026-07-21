@@ -354,14 +354,14 @@ export function useRunnerMarkers(
 export { ARROW_SIZE }
 
 const COLOUR_PALETTE = [
-  '#2563eb', // blue
   '#dc2626', // red
-  '#16a34a', // green
-  '#d97706', // amber
-  '#9333ea', // purple (clearly distinct from blue)
-  '#db2777', // pink
   '#0891b2', // teal
-  '#ea580c', // orange
+  '#d97706', // amber
+  '#7c3aed', // violet
+  '#16a34a', // green
+  '#db2777', // pink
+  '#2563eb', // blue
+  '#65a30d', // lime
 ]
 
 function isInView(map: mapboxgl.Map, [lng, lat]: [number, number]): boolean {
