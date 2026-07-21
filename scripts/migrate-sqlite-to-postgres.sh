@@ -10,11 +10,18 @@
 # location_updates.id is NOT copied — SQLite's AUTOINCREMENT and Postgres's
 # GENERATED ALWAYS AS IDENTITY are different id spaces, and Postgres must generate its own.
 #
+# Uses CSV export + psql's \copy rather than sqlite3's `.mode insert` INSERT-statement export:
+# .mode insert renders embedded newlines (e.g. session_routes.gpx_content, a multi-line GPX
+# file) using SQLite-only functions (char()/unistr()) that Postgres's parser rejects outright.
+# CSV (RFC 4180 quoting, which both sqlite3 -csv and psql \copy speak natively) has no such
+# problem — arbitrary text content, including embedded newlines, round-trips safely.
+#
 # Usage:
 #   scripts/migrate-sqlite-to-postgres.sh <staging.db> <production.db> "<postgres-connection-string>"
 #
 # Always dry-run this against a disposable Postgres first (e.g. the local docker-compose one:
 #   docker compose up -d
+#   scripts/init-postgres-schema.sh "postgresql://dotwatcher:dotwatcher-dev@localhost:5432/dotwatcher"
 #   scripts/migrate-sqlite-to-postgres.sh staging.db production.db \
 #     "postgresql://dotwatcher:dotwatcher-dev@localhost:5432/dotwatcher"
 # ) before ever pointing it at a real shared instance. This script does not fetch the SQLite
@@ -50,12 +57,6 @@ if [[ "$USERNAME_COLLISIONS" != "0" || "$INVITE_COLLISIONS" != "0" ]]; then
 fi
 echo "  OK: 0 username collisions, 0 invite_code collisions"
 
-# Table order matters: parents before children, to satisfy foreign keys.
-TABLES_WITH_ID_COPY="users app_sessions session_members revoked_user_tokens session_routes"
-
-SQL_FILE="$WORKDIR/migration.sql"
-: > "$SQL_FILE"
-
 table_exists() {
   local db="$1" table="$2"
   local result
@@ -63,60 +64,57 @@ table_exists() {
   [[ -n "$result" ]]
 }
 
-dump_table() {
-  local db="$1" table="$2"
+# Table order matters: parents before children, to satisfy foreign keys.
+# Format: "table_name:col1,col2,...". location_updates omits id — Postgres's IDENTITY column
+# generates its own, since SQLite's AUTOINCREMENT ids aren't meaningful across two source DBs.
+TABLE_SPECS=(
+  "users:id,username,display_name,password_hash,created_at"
+  "app_sessions:id,session_name,invite_code,owner_user_id,created_at,archived_at"
+  "session_members:session_id,user_id,role,display_name,joined_at,left_at"
+  "revoked_user_tokens:token_id,expires_at,revoked_at"
+  "session_routes:session_id,gpx_content,uploaded_at"
+  "location_updates:session_id,runner_user_id,runner_name,latitude,longitude,heading,timestamp"
+)
+
+copy_table() {
+  local db="$1" spec="$2" env_label="$3"
+  local table="${spec%%:*}" cols="${spec#*:}"
+
   if ! table_exists "$db" "$table"; then
-    echo "  [skip] $table not present in $db (schema drift between environments — not a bug, just older/newer deploy)" >&2
+    echo "  [skip] $table not present in $db ($env_label) — schema drift between environments, not a bug" >&2
     return 0
   fi
-  # .mode insert emits standard `INSERT INTO table VALUES (...)` statements with proper quoting.
-  sqlite3 "$db" <<SQL >> "$SQL_FILE"
-.mode insert $table
-SELECT * FROM $table;
-SQL
-}
 
-dump_location_updates() {
-  local db="$1"
-  if ! table_exists "$db" "location_updates"; then
-    echo "  [skip] location_updates not present in $db" >&2
+  local csv_file="$WORKDIR/${env_label}_${table}.csv"
+  sqlite3 -csv "$db" "SELECT $cols FROM $table;" > "$csv_file"
+
+  # wc -l on the CSV file would overcount whenever a column has embedded newlines (e.g.
+  # session_routes.gpx_content) — ask sqlite3 directly for the real row count instead.
+  local row_count
+  row_count=$(sqlite3 "$db" "SELECT count(*) FROM $table;")
+  if [[ "$row_count" == "0" ]]; then
+    echo "  [empty] $table has 0 rows in $db ($env_label), skipping copy" >&2
     return 0
   fi
-  # Explicit column list, omitting id, so Postgres's IDENTITY column generates fresh ids.
-  sqlite3 "$db" <<SQL >> "$SQL_FILE"
-.mode insert location_updates
-SELECT session_id, runner_user_id, runner_name, latitude, longitude, heading, timestamp FROM location_updates;
-SQL
+
+  echo "  Copying $row_count row(s) of $table from $env_label"
+  psql "$PG_CONN" -v ON_ERROR_STOP=1 -c "\\copy $table($cols) FROM '$csv_file' WITH (FORMAT csv)"
 }
 
-echo "==> Generating INSERT statements"
-echo "BEGIN;" >> "$SQL_FILE"
-for env_db in "$PRODUCTION_DB" "$STAGING_DB"; do
-  for t in $TABLES_WITH_ID_COPY; do
-    dump_table "$env_db" "$t"
+echo "==> Copying tables (production first, then staging)"
+# Note: each \copy runs as its own psql invocation, so this isn't wrapped in one cross-table
+# transaction. For this data volume (tens/thousands of rows), re-running after truncating any
+# partially-loaded tables is an acceptable rollback story for a dry run; a production execution
+# of Step 4 should reassess this if it needs atomicity across the whole merge.
+for env_db_label in "production:$PRODUCTION_DB" "staging:$STAGING_DB"; do
+  env_label="${env_db_label%%:*}"
+  db="${env_db_label#*:}"
+  for spec in "${TABLE_SPECS[@]}"; do
+    copy_table "$db" "$spec" "$env_label"
   done
-  dump_location_updates "$env_db"
 done
-echo "COMMIT;" >> "$SQL_FILE"
 
-# sqlite3's .mode insert writes `INSERT INTO location_updates VALUES(...)` with all columns
-# by default; the queries above already select an explicit column list, but sqlite3 names the
-# statement after the table given to `.mode insert`, not the column list, so patch the generated
-# statement to match: SELECT'ing 7 columns still produces `INSERT INTO location_updates VALUES(...)`
-# with 7 values, which fails against Postgres's 8-column table (extra `id`). Rewrite to add the
-# explicit column list matching the SELECT above.
-sed -i.bak \
-  -e 's/^INSERT INTO location_updates VALUES/INSERT INTO location_updates(session_id,runner_user_id,runner_name,latitude,longitude,heading,timestamp) VALUES/' \
-  "$SQL_FILE"
-rm -f "$SQL_FILE.bak"
-
-ROWS=$(grep -c '^INSERT INTO' "$SQL_FILE" || true)
-echo "==> Generated $ROWS INSERT statements → $SQL_FILE"
-
-echo "==> Applying to $PG_CONN"
-psql "$PG_CONN" -v ON_ERROR_STOP=1 -f "$SQL_FILE"
-
-echo "==> Verifying row counts post-insert"
+echo "==> Verifying row counts post-copy"
 psql "$PG_CONN" -c "
 SELECT 'users' AS table, count(*) FROM users
 UNION ALL SELECT 'app_sessions', count(*) FROM app_sessions
@@ -126,5 +124,5 @@ UNION ALL SELECT 'revoked_user_tokens', count(*) FROM revoked_user_tokens
 UNION ALL SELECT 'session_routes', count(*) FROM session_routes;
 "
 
-echo "==> Done. SQL file was at $WORKDIR/migration.sql until this script exits (then auto-deleted)."
-echo "    Re-run with the trap commented out if you want to keep/inspect the generated SQL."
+echo "==> Done. CSV files were in $WORKDIR until this script exits (then auto-deleted)."
+echo "    Re-run with the trap commented out if you want to keep/inspect them."
