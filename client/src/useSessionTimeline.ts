@@ -19,7 +19,6 @@ import {
 } from './useSessionTimelineLogic.ts'
 import { isSessionLive, LIVE_STALE_MS } from './sessionLiveness.ts'
 import { apiHeaders } from './apiHeaders.ts'
-import { initialsFor } from './components/InitialsBadge.tsx'
 import { usePageVisible } from './usePageVisible.ts'
 
 const TICK_MS = 100
@@ -55,7 +54,6 @@ export interface SessionTimelineState {
   isLive: boolean
   lastActivityMs: number | null
   pollIntervalMs: number
-  gpsWarning: string | null
   runnersWithGpsSignalLoss: Set<string>
   runnersWithGap: Set<string>
   runnersSleeping: Set<string>
@@ -362,12 +360,6 @@ export function useSessionTimeline(
   // absence of data): a runner can't be judged "not moving" from data that doesn't exist.
   const runnersSleeping = useMemo(() => findSleepingRunners(byRunner, virtualNowMs), [byRunner, virtualNowMs])
 
-  const gpsWarning = useMemo(() => {
-    if (runnersWithGpsSignalLoss.size === 0) return null
-    const initials = [...runnersWithGpsSignalLoss].map(initialsFor).join(', ')
-    return `Possible signal loss: ${initials}`
-  }, [runnersWithGpsSignalLoss])
-
   return {
     positions,
     following: scrubTimeMs === null,
@@ -378,7 +370,6 @@ export function useSessionTimeline(
     isLive,
     lastActivityMs,
     pollIntervalMs: PHONE_SEND_INTERVAL_MS,
-    gpsWarning,
     runnersWithGpsSignalLoss,
     runnersWithGap,
     runnersSleeping,
