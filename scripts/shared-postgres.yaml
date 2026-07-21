@@ -1,0 +1,90 @@
+# Step 4.1 of .ai/plans/shared-database-cutover.md: the one shared Postgres instance for both
+# dot-watcher-server and dot-watcher-server-staging.
+#
+# Lives in its own namespace (not inside either server namespace) since it's shared
+# infrastructure, not owned by one environment — same reasoning as the cluster's existing `seq`
+# namespace for logging. Reachable from both server namespaces via cluster DNS at
+# postgres.dot-watcher-db.svc.cluster.local:5432, following the same
+# <service>.<namespace>.svc.cluster.local pattern already used for Seq
+# (seq.seq.svc.cluster.local:5341, referenced in server/.deploy.yaml).
+#
+# Apply with:
+#   kubectl create namespace dot-watcher-db
+#   kubectl create secret generic dot-watcher-db-secret \
+#     --from-literal=POSTGRES_USER=dotwatcher \
+#     --from-literal=POSTGRES_PASSWORD="$(openssl rand -hex 24)" \
+#     --from-literal=POSTGRES_DB=dotwatcher \
+#     -n dot-watcher-db
+#   kubectl apply -f scripts/shared-postgres.yaml
+#
+# The Secret is created directly via kubectl, not committed here — same pattern as
+# dot-watcher-server-secrets in server/README.md's Deployment section. Don't put a real
+# password in this file; the Deployment below only references the Secret by name.
+#
+# Before applying: review the storage size (10Gi below is a starting guess — Production's
+# current SQLite db+recordings PVCs are 100Mi+1Gi combined, so 10Gi has generous headroom, but
+# size for real expected growth, not just today's data).
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: dot-watcher-db
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: dot-watcher-db-data
+  namespace: dot-watcher-db
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres
+  namespace: dot-watcher-db
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate # single PVC, RWO — can't do a rolling update across two pods anyway
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16-alpine
+          ports:
+            - containerPort: 5432
+          envFrom:
+            - secretRef:
+                name: dot-watcher-db-secret
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+              subPath: pgdata # avoids postgres's "directory not empty" complaint about lost+found
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: dot-watcher-db-data
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: dot-watcher-db
+spec:
+  selector:
+    app: postgres
+  ports:
+    - port: 5432
+      targetPort: 5432
