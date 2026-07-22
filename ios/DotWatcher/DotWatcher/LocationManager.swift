@@ -93,6 +93,10 @@ final class LocationManager {
     // reinterpreted values — not just additions. Paired with server config MinimumApiVersion.
     private let apiVersion = 1
 
+    // Bump when a change could break old clients — renamed fields, changed validation,
+    // reinterpreted values — not just additions. Paired with server config MinimumApiVersion.
+    private let apiVersion = 1
+
     private(set) var status = "Idle"
     private(set) var lastSent: Date?
     private(set) var isTracking = false
