@@ -28,12 +28,21 @@ export function useRunnerMarkers(
   mapRef: RefObject<mapboxgl.Map | null>,
   positions: RunnerPosition[][] | undefined,
   nowMs: number,
+  runnersWithGpsSignalLoss: Set<string> = new Set(),
+  runnersWithGap: Set<string> = new Set(),
+  runnersSleeping: Set<string> = new Set(),
 ): RunnerMarkersResult {
   const markersRef = useRef<Record<string, MarkerEntry>>({})
   const hasLocatedRef = useRef(false)
   const latestPositionsRef = useRef<Record<string, [number, number]>>({})
   const latestMarkerRef = useRef<Record<string, { root: Root; heading: number | null; colour: string; timestamp: string }>>({})
   const virtualNowRef = useRef<number | null>(null)
+  const signalLossRef = useRef<Set<string>>(runnersWithGpsSignalLoss)
+  signalLossRef.current = runnersWithGpsSignalLoss
+  const gapRef = useRef<Set<string>>(runnersWithGap)
+  gapRef.current = runnersWithGap
+  const sleepingRef = useRef<Set<string>>(runnersSleeping)
+  sleepingRef.current = runnersSleeping
   const pendingUnmountsRef = useRef<Root[]>([])
   const [visibleRunners, setVisibleRunners] = useState<string[]>([])
   const [offScreenRunners, setOffScreenRunners] = useState<string[]>([])
@@ -46,11 +55,20 @@ export function useRunnerMarkers(
 
   // Unmounting a React root synchronously while another root's render is still being committed
   // (e.g. recluster() rendering into a sibling marker in the same tick) trips React's reentrancy
-  // guard. Roots queued here are dropped for good — nothing else may hold or render into them —
-  // so flushing on the next call is safe once the current commit has finished.
+  // guard ("Attempted to synchronously unmount a root while React was already rendering"). Roots
+  // queued here are dropped for good — nothing else may hold or render into them — so it's safe
+  // to defer their unmount, but deferring only to "the next applyPositions call" isn't enough:
+  // ticks can arrive faster than a render commits (e.g. rapid live-polling or scrub playback),
+  // so the very next call can still land mid-commit. queueMicrotask runs after the current
+  // synchronous call stack (and its render) finishes, so the unmount is guaranteed to land
+  // outside any in-flight render.
   function flushPendingUnmounts() {
-    for (const root of pendingUnmountsRef.current) root.unmount()
+    if (pendingUnmountsRef.current.length === 0) return
+    const roots = pendingUnmountsRef.current
     pendingUnmountsRef.current = []
+    queueMicrotask(() => {
+      for (const root of roots) root.unmount()
+    })
   }
 
   function applyPositions(runnerGroups: RunnerPosition[][], map: mapboxgl.Map, virtualNow?: number) {
@@ -210,12 +228,16 @@ export function useRunnerMarkers(
       for (let i = 1; i < cluster.length; i++) labels.set(cluster[i], '')
     }
 
-    const now = virtualNowRef.current ?? Date.now()
     const stationaryRunners = new Set<string>()
 
+    // These four states are each judged from their own independent signal (data gap, distance
+    // moved, heading quality) rather than derived from one another, so a runner is exactly one
+    // of missing/stationary/normal — signalLoss is a separate overlay that can combine with any
+    // of them (see Arrow.tsx).
     for (const [name, info] of Object.entries(latestMarkerRef.current)) {
       const label = labels.get(name) ?? name
-      const stationary = now - new Date(info.timestamp).getTime() > 45_000
+      const missing = gapRef.current.has(name)
+      const stationary = !missing && sleepingRef.current.has(name)
       if (stationary) stationaryRunners.add(name)
       info.root.render(createElement(Arrow, {
         name,
@@ -223,6 +245,8 @@ export function useRunnerMarkers(
         colour: info.colour,
         label,
         stationary,
+        missing,
+        signalLoss: signalLossRef.current.has(name),
         onClick: () => followRunner(name),
       }))
     }
@@ -330,14 +354,14 @@ export function useRunnerMarkers(
 export { ARROW_SIZE }
 
 const COLOUR_PALETTE = [
-  '#2563eb', // blue
   '#dc2626', // red
-  '#16a34a', // green
-  '#d97706', // amber
-  '#9333ea', // purple (clearly distinct from blue)
-  '#db2777', // pink
   '#0891b2', // teal
-  '#ea580c', // orange
+  '#d97706', // amber
+  '#7c3aed', // violet
+  '#16a34a', // green
+  '#db2777', // pink
+  '#2563eb', // blue
+  '#65a30d', // lime
 ]
 
 function isInView(map: mapboxgl.Map, [lng, lat]: [number, number]): boolean {

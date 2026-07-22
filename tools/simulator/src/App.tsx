@@ -1,41 +1,36 @@
 import { useState } from 'react'
 import GpxConverterPage from './GpxConverterPage'
-import RoutesPage from './RoutesPage'
-import LocationPage from './LocationPage'
+import ConvergencePage from './ConvergencePage'
 
-type Tab = 'gpx' | 'routes' | 'location'
+type Tab = 'gpx' | 'session'
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<Tab>('routes')
+  const [activeTab, setActiveTab] = useState<Tab>('session')
 
   return (
-    <div style={page}>
+    <div style={page(activeTab)}>
       <header style={header}>
         <h1 style={title}>Dot Watcher — Simulator</h1>
         <nav style={tabBar}>
           <button style={tabBtn(activeTab === 'gpx')} onClick={() => setActiveTab('gpx')}>
             Importer
           </button>
-          <button style={tabBtn(activeTab === 'routes')} onClick={() => setActiveTab('routes')}>
-            Routes
-          </button>
-          <button style={tabBtn(activeTab === 'location')} onClick={() => setActiveTab('location')}>
-            Location
+          <button style={tabBtn(activeTab === 'session')} onClick={() => setActiveTab('session')}>
+            Session
           </button>
         </nav>
       </header>
       {activeTab === 'gpx' && <GpxConverterPage />}
-      {activeTab === 'routes' && <RoutesPage />}
-      {activeTab === 'location' && <LocationPage />}
+      {activeTab === 'session' && <ConvergencePage />}
     </div>
   )
 }
 
-const page: React.CSSProperties = {
-  maxWidth: 700,
+const page = (tab: Tab): React.CSSProperties => ({
+  maxWidth: tab === 'session' ? 1200 : 700,
   margin: '0 auto',
   padding: '1.5rem 1rem',
-}
+})
 
 const header: React.CSSProperties = {
   marginBottom: '1.5rem',

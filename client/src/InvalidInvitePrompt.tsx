@@ -2,17 +2,16 @@ import { useState, type FormEvent } from 'react'
 
 interface Props {
   message: string
-  isReplay: boolean
 }
 
-export default function InvalidInvitePrompt({ message, isReplay }: Props) {
+export default function InvalidInvitePrompt({ message }: Props) {
   const [code, setCode] = useState('')
 
   function handleSubmit(event: FormEvent) {
     event.preventDefault()
     const cleaned = code.trim().toUpperCase()
     if (!cleaned) return
-    window.location.href = isReplay ? `/code/${cleaned}/replay` : `/code/${cleaned}`
+    window.location.href = `/code/${cleaned}`
   }
 
   return (

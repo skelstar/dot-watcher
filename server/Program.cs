@@ -33,8 +33,10 @@ builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<AuthAttemptLimiter>();
 builder.Services.AddSingleton(sp =>
 {
-    var dbPath = sp.GetRequiredService<IConfiguration>().GetValue<string>("DbPath", "dotwatcher.db")!;
-    var store = new SessionStore(dbPath);
+    var connectionString = sp.GetRequiredService<IConfiguration>()["ConnectionString"]
+        ?? throw new InvalidOperationException(
+            "ConnectionString is not configured. Set it via appsettings or the ConnectionString environment variable.");
+    var store = new SessionStore(connectionString);
     store.Initialize();
     return store;
 });
@@ -150,8 +152,18 @@ app.Use(async (ctx, next) =>
         if (ctx.Request.Headers.TryGetValue("X-Device-Name", out var deviceName) && !string.IsNullOrWhiteSpace(deviceName))
             log = log.ForContext("DeviceName", deviceName.ToString());
 
+        if (ctx.Request.Headers.TryGetValue("X-Device-Id", out var deviceId) && !string.IsNullOrWhiteSpace(deviceId))
+            log = log.ForContext("DeviceId", deviceId.ToString());
+
+        if (ctx.Request.Headers.TryGetValue("X-Browser-Id", out var browserId) && !string.IsNullOrWhiteSpace(browserId))
+            log = log.ForContext("BrowserId", browserId.ToString());
+
         if (ctx.Request.Headers.TryGetValue("X-Api-Version", out var apiVersion) && !string.IsNullOrWhiteSpace(apiVersion))
             log = log.ForContext("ApiVersion", apiVersion.ToString());
+
+        if (ctx.Request.Headers.TryGetValue("X-Client-Id", out var clientId) && !string.IsNullOrWhiteSpace(clientId))
+            log = log.ForContext("ClientId", clientId.ToString());
+
 
         var userAuth = ctx.RequestServices.GetRequiredService<UserTokenAuth>();
         if (userAuth.TryAuthenticate(ctx.Request, out var user))
@@ -169,7 +181,11 @@ app.Use(async (ctx, next) =>
 
         if (path != "/log") // skip noisy debug-panel polling
         {
-            var message = $"{method} {path}";
+            var hasRunner = ctx.Items.TryGetValue("Log:Runner", out var logRunner);
+            var hasCode = ctx.Items.TryGetValue("Log:Code", out var logCode);
+            var message = hasRunner
+                ? hasCode ? $"{method} {path} - {logRunner} - {logCode}" : $"{method} {path} - {logRunner}"
+                : $"{method} {path}";
             if (status >= 500) log.Error(message);
             else if (status >= 400) log.Warning(message);
             else log.Information(message);
@@ -178,8 +194,7 @@ app.Use(async (ctx, next) =>
             var buffer = ctx.RequestServices.GetRequiredService<LogBuffer>();
             var level = status >= 500 ? "ERR" : status >= 400 ? "WRN" : "INF";
             var contextSuffix = "";
-            if (ctx.Items.TryGetValue("Log:Session", out var logSession) &&
-                ctx.Items.TryGetValue("Log:Runner", out var logRunner))
+            if (ctx.Items.TryGetValue("Log:Session", out var logSession) && hasRunner)
                 contextSuffix = $" [{logSession}] {logRunner}";
             buffer.Add($"[{DateTimeOffset.UtcNow:HH:mm:ss} {level}] {message}{contextSuffix}");
         }

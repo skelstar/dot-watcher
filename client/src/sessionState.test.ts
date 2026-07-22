@@ -36,7 +36,6 @@ test('shouldShowSessionPrompt waits for auth and memberships', () => {
   assert.equal(shouldShowSessionPrompt({
     accessToken: null,
     membershipsLoaded: true,
-    isReplay: false,
     inviteCode: null,
     sessionName: null,
     hasSessionMembership: false,
@@ -44,7 +43,6 @@ test('shouldShowSessionPrompt waits for auth and memberships', () => {
   assert.equal(shouldShowSessionPrompt({
     accessToken: 'token',
     membershipsLoaded: false,
-    isReplay: false,
     inviteCode: null,
     sessionName: null,
     hasSessionMembership: false,
@@ -55,7 +53,6 @@ test('shouldShowSessionPrompt covers create, join, and missing-membership states
   assert.equal(shouldShowSessionPrompt({
     accessToken: 'token',
     membershipsLoaded: true,
-    isReplay: false,
     inviteCode: null,
     sessionName: null,
     hasSessionMembership: false,
@@ -63,7 +60,6 @@ test('shouldShowSessionPrompt covers create, join, and missing-membership states
   assert.equal(shouldShowSessionPrompt({
     accessToken: 'token',
     membershipsLoaded: true,
-    isReplay: false,
     inviteCode: 'INVITE123',
     sessionName: null,
     hasSessionMembership: false,
@@ -71,18 +67,16 @@ test('shouldShowSessionPrompt covers create, join, and missing-membership states
   assert.equal(shouldShowSessionPrompt({
     accessToken: 'token',
     membershipsLoaded: true,
-    isReplay: false,
     inviteCode: null,
     sessionName: 'SUNSET23',
     hasSessionMembership: false,
   }), true)
 })
 
-test('shouldShowSessionPrompt stays hidden for active sessions and replay flows', () => {
+test('shouldShowSessionPrompt stays hidden once membership is confirmed', () => {
   assert.equal(shouldShowSessionPrompt({
     accessToken: 'token',
     membershipsLoaded: true,
-    isReplay: false,
     inviteCode: null,
     sessionName: 'SUNSET23',
     hasSessionMembership: true,
@@ -90,26 +84,6 @@ test('shouldShowSessionPrompt stays hidden for active sessions and replay flows'
   assert.equal(shouldShowSessionPrompt({
     accessToken: 'token',
     membershipsLoaded: true,
-    isReplay: true,
-    inviteCode: null,
-    sessionName: 'SUNSET23',
-    hasSessionMembership: false,
-  }), false)
-})
-
-test('shouldShowSessionPrompt still auto-joins via invite code when the link requests replay', () => {
-  assert.equal(shouldShowSessionPrompt({
-    accessToken: 'token',
-    membershipsLoaded: true,
-    isReplay: true,
-    inviteCode: 'INVITE123',
-    sessionName: null,
-    hasSessionMembership: false,
-  }), true)
-  assert.equal(shouldShowSessionPrompt({
-    accessToken: 'token',
-    membershipsLoaded: true,
-    isReplay: true,
     inviteCode: 'INVITE123',
     sessionName: null,
     hasSessionMembership: true,

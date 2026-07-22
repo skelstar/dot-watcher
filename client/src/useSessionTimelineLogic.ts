@@ -145,3 +145,121 @@ export function maxOrNull(a: number | null, b: number | null): number | null {
   if (b === null) return a
   return Math.max(a, b)
 }
+
+// How many consecutive readings with a real heading are needed after a null-heading reading
+// before the warning clears. A single good reading right after a glitch isn't enough evidence
+// the GPS has actually recovered — erratic readings often bounce good/bad/good before settling.
+export const GPS_JUMP_CLEAR_STREAK = 3
+
+// Whether a runner's GPS is *currently* unreliable — the device couldn't determine a heading
+// (CoreLocation reports heading as null when its course confidence is too low, which tends to
+// coincide with the position itself being untrustworthy) recently enough that fewer than
+// GPS_JUMP_CLEAR_STREAK readings with a real heading have followed since. Walks the runner's
+// whole history each call rather than storing a running streak, since byRunner is already the
+// source of truth and re-deriving keeps this a pure function of the data, not stateful.
+function currentSignalLossForRunner(positions: RunnerPosition[]): { timestamp: string } | null {
+  let lastLoss: { timestamp: string } | null = null
+  let goodStreak = 0
+
+  for (const pos of positions) {
+    if (pos.heading === null) {
+      lastLoss = { timestamp: pos.timestamp }
+      goodStreak = 0
+    } else {
+      goodStreak++
+    }
+  }
+
+  return lastLoss !== null && goodStreak < GPS_JUMP_CLEAR_STREAK ? lastLoss : null
+}
+
+// Every runner currently affected by GPS signal loss (see currentSignalLossForRunner), so both
+// the summary toast and each runner's own marker badge can reflect the same "currently degraded"
+// state rather than each re-deriving it differently.
+export function findGpsSignalLoss(byRunner: Map<string, RunnerPosition[]>): Set<string> {
+  const affected = new Set<string>()
+  for (const [runnerName, positions] of byRunner) {
+    if (currentSignalLossForRunner(positions)) affected.add(runnerName)
+  }
+  return affected
+}
+
+// A position update is expected roughly every 15s (see the iOS tracking interval), so a gap much
+// longer than that at the current playhead means the runner has genuinely dropped out mid-track
+// rather than merely being between two normal updates.
+export const MISSING_GAP_MS = 60_000
+
+// Runners with no location record covering the current playhead: their last known position at
+// or before cutoffMs is older than MISSING_GAP_MS — i.e. their position at this instant is
+// unknown, not just old. Deliberately distinct from a runner who simply hasn't reported yet
+// (positionsAtCutoff already omits those, since there's no "before" position at all yet).
+//
+// Doesn't require a later position to "prove" the runner came back — during forward playback of
+// a recording, ensureCovered only ever fetches data behind the current scrub position (see
+// useSessionTimeline.ts), so data confirming a runner's return is essentially never cached ahead
+// of time. A runner who has genuinely stopped for good will keep reading as missing indefinitely,
+// the same as a mid-track gap does until fresh data arrives — this matches how the stationary
+// dot already treats "no new data" for live sessions.
+export function findRunnersWithGap(
+  byRunner: Map<string, RunnerPosition[]>,
+  cutoffMs: number,
+): Set<string> {
+  const affected = new Set<string>()
+  for (const [runnerName, positions] of byRunner) {
+    let before: RunnerPosition | null = null
+    for (const pos of positions) {
+      const ts = new Date(pos.timestamp).getTime()
+      if (ts > cutoffMs) break
+      before = pos
+    }
+    if (!before) continue
+    if (cutoffMs - new Date(before.timestamp).getTime() > MISSING_GAP_MS) affected.add(runnerName)
+  }
+  return affected
+}
+
+const EARTH_RADIUS_M = 6_371_000
+
+// Great-circle distance between two lat/lon points, in metres.
+function haversineMetres(a: { latitude: number; longitude: number }, b: { latitude: number; longitude: number }): number {
+  const toRad = (deg: number) => (deg * Math.PI) / 180
+  const dLat = toRad(b.latitude - a.latitude)
+  const dLon = toRad(b.longitude - a.longitude)
+  const lat1 = toRad(a.latitude)
+  const lat2 = toRad(b.latitude)
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) ** 2
+  return 2 * EARTH_RADIUS_M * Math.asin(Math.sqrt(h))
+}
+
+// Window to look back over, and the displacement threshold within it, to call a runner
+// "sleeping". With reports every ~15s, a 30s window usually holds only 2-3 points, so the
+// distance threshold is raised above the 8m used for a longer window — otherwise a single noisy
+// GPS fix could flip a genuinely-stationary runner in and out of the sleeping state.
+export const SLEEPING_WINDOW_MS = 30_000
+export const SLEEPING_DISTANCE_M = 15
+
+// Runners who are actively reporting (they have a position at or before cutoffMs) but have
+// barely moved over the last SLEEPING_WINDOW_MS of reports — e.g. waiting at an aid station.
+// Distance-based rather than time-since-update based, so it stays independent of "missing"
+// (findRunnersWithGap), which is purely about absence of data, not presence of motion.
+export function findSleepingRunners(
+  byRunner: Map<string, RunnerPosition[]>,
+  cutoffMs: number,
+): Set<string> {
+  const affected = new Set<string>()
+  for (const [runnerName, positions] of byRunner) {
+    const upTo = positions.filter(p => new Date(p.timestamp).getTime() <= cutoffMs)
+    if (upTo.length === 0) continue
+    const latest = upTo[upTo.length - 1]
+    const windowStart = new Date(latest.timestamp).getTime() - SLEEPING_WINDOW_MS
+    const inWindow = upTo.filter(p => new Date(p.timestamp).getTime() >= windowStart)
+    if (inWindow.length < 2) continue // not enough reports yet to judge movement
+
+    let maxDistance = 0
+    for (const p of inWindow) {
+      maxDistance = Math.max(maxDistance, haversineMetres(latest, p))
+    }
+    if (maxDistance <= SLEEPING_DISTANCE_M) affected.add(runnerName)
+  }
+  return affected
+}

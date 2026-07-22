@@ -17,7 +17,8 @@ function formatTime(ms: number): string {
 }
 
 export default function ReplayControls({ timeline }: Props) {
-  const { following, scrubTimeMs, runStartMs, nowMs, isLive, lastActivityMs, dragTo, dragEnd, goLive } = timeline
+  const { following, scrubTimeMs, runStartMs, nowMs, isLive, lastActivityMs, pollIntervalMs, dragTo, dragEnd, goLive } =
+    timeline
   const trackRef = useRef<HTMLDivElement>(null)
   const [showTooltip, setShowTooltip] = useState(false)
   const lingerTimerRef = useRef<ReturnType<typeof setTimeout>>()
@@ -31,6 +32,12 @@ export default function ReplayControls({ timeline }: Props) {
   const currentMs = scrubTimeMs ?? nowMs
   const fraction = Math.max(0, Math.min(1, (currentMs - rangeStart) / durationMs))
   const trackColour = isLive ? '#ef4444' : '#64748b'
+
+  // Time remaining until the next live-poll tick, clamped to the interval so a long gap since
+  // the last successful poll (tab backgrounded, network blip) doesn't show a negative countdown.
+  const secondsToNextUpdate = lastActivityMs === null
+    ? null
+    : Math.max(0, Math.ceil((pollIntervalMs - ((nowMs - lastActivityMs) % pollIntervalMs)) / 1000))
 
   useEffect(() => () => clearTimeout(lingerTimerRef.current), [])
 
@@ -88,6 +95,9 @@ export default function ReplayControls({ timeline }: Props) {
           >
             <span style={{ ...liveDot, background: following ? '#fff' : '#ef4444' }} />
             LIVE
+            {following && secondsToNextUpdate !== null && (
+              <span style={countdownBadge}>{secondsToNextUpdate}s</span>
+            )}
           </button>
         )
         : (
@@ -203,4 +213,16 @@ const liveDot: React.CSSProperties = {
   width: 6,
   height: 6,
   borderRadius: '50%',
+}
+
+const countdownBadge: React.CSSProperties = {
+  fontVariantNumeric: 'tabular-nums',
+  background: 'rgba(255,255,255,0.22)',
+  borderRadius: 4,
+  padding: '1px 5px',
+  fontSize: 11,
+  fontWeight: 700,
+  letterSpacing: 0,
+  minWidth: 16,
+  textAlign: 'center',
 }

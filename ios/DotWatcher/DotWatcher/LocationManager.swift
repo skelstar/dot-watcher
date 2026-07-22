@@ -87,6 +87,11 @@ enum DotWatcherAPIError: LocalizedError {
 @MainActor
 final class LocationManager {
     private static let tokenAccount = "DotWatcherUserAccessToken"
+    private static let deviceIdAccount = "DotWatcherDeviceId"
+
+    // Bump when a change could break old clients — renamed fields, changed validation,
+    // reinterpreted values — not just additions. Paired with server config MinimumApiVersion.
+    private let apiVersion = 1
 
     // Bump when a change could break old clients — renamed fields, changed validation,
     // reinterpreted values — not just additions. Paired with server config MinimumApiVersion.
@@ -435,11 +440,17 @@ final class LocationManager {
 
         let heading: Double? = loc.course >= 0 ? loc.course : nil
         Task {
+            // Post the current time, not loc.timestamp: while stationary, CoreLocation's
+            // distanceFilter withholds new fixes entirely, so latestLocation (and its original
+            // GPS timestamp) can go stale for as long as the device doesn't move. Re-sending that
+            // stale timestamp every heartbeat made the server/web client see no recent activity
+            // and incorrectly mark the session as no longer live, even though tracking was still
+            // active and posting successfully every interval.
             await post(
                 lat: loc.coordinate.latitude,
                 lon: loc.coordinate.longitude,
                 heading: heading,
-                timestamp: loc.timestamp)
+                timestamp: Date())
         }
     }
 
@@ -507,7 +518,9 @@ final class LocationManager {
         var request = URLRequest(url: url)
         request.httpMethod = method
         request.setValue(UIDevice.current.name, forHTTPHeaderField: "X-Device-Name")
+        request.setValue(Self.deviceId, forHTTPHeaderField: "X-Device-Id")
         request.setValue(String(apiVersion), forHTTPHeaderField: "X-Api-Version")
+        request.setValue("ios", forHTTPHeaderField: "X-Client-Id")
         if authorized {
             guard let accessToken else { throw DotWatcherAPIError.missingToken }
             request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
@@ -542,7 +555,9 @@ final class LocationManager {
         request.httpMethod = "POST"
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         request.setValue(UIDevice.current.name, forHTTPHeaderField: "X-Device-Name")
+        request.setValue(Self.deviceId, forHTTPHeaderField: "X-Device-Id")
         request.setValue(String(apiVersion), forHTTPHeaderField: "X-Api-Version")
+        request.setValue("ios", forHTTPHeaderField: "X-Client-Id")
         _ = try? await URLSession.shared.data(for: request)
     }
 
@@ -556,7 +571,9 @@ final class LocationManager {
         request.httpMethod = method
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         request.setValue(UIDevice.current.name, forHTTPHeaderField: "X-Device-Name")
+        request.setValue(Self.deviceId, forHTTPHeaderField: "X-Device-Id")
         request.setValue(String(apiVersion), forHTTPHeaderField: "X-Api-Version")
+        request.setValue("ios", forHTTPHeaderField: "X-Client-Id")
 
         do {
             let (_, response) = try await URLSession.shared.data(for: request)
@@ -603,6 +620,39 @@ final class LocationManager {
         let item: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrAccount as String: tokenAccount,
+            kSecValueData as String: data,
+        ]
+        SecItemAdd(item as CFDictionary, nil)
+    }
+
+    /// Identifies this app install for log correlation. Stored in Keychain (not UserDefaults) so it
+    /// survives app deletion/reinstall on the same device, letting us tell "same device, reinstalled"
+    /// apart from "different device" in server logs.
+    private static let deviceId: String = readDeviceId() ?? {
+        let generated = UUID().uuidString
+        storeDeviceId(generated)
+        return generated
+    }()
+
+    private static func readDeviceId() -> String? {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrAccount as String: deviceIdAccount,
+            kSecReturnData as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne,
+        ]
+        var item: CFTypeRef?
+        guard SecItemCopyMatching(query as CFDictionary, &item) == errSecSuccess,
+              let data = item as? Data
+        else { return nil }
+        return String(data: data, encoding: .utf8)
+    }
+
+    private static func storeDeviceId(_ id: String) {
+        guard let data = id.data(using: .utf8) else { return }
+        let item: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrAccount as String: deviceIdAccount,
             kSecValueData as String: data,
         ]
         SecItemAdd(item as CFDictionary, nil)

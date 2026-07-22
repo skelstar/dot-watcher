@@ -57,9 +57,15 @@ public class AuthController(
         if (username is null || request.Password is null)
             return Unauthorized();
 
+        // The request body is deliberately excluded from the response-summary log for /auth
+        // paths (it carries the plaintext password), so the attempted username is surfaced here
+        // instead - via the same "Log:" HttpContext.Items convention the summary logger reads.
+        HttpContext.Items["Log:LoginUsername"] = username;
+
         var attemptKey = AuthAttemptLimiter.KeyFor(HttpContext, username);
         if (attemptLimiter.IsLocked(attemptKey, out var retryAfter))
         {
+            HttpContext.Items["Log:LoginResult"] = "locked";
             Response.Headers["Retry-After"] = Math.Ceiling(retryAfter.TotalSeconds).ToString(System.Globalization.CultureInfo.InvariantCulture);
             return StatusCode(StatusCodes.Status429TooManyRequests, new { error = "Too many failed login attempts." });
         }
@@ -68,10 +74,13 @@ public class AuthController(
         if (account is null || !PasswordHasher.Verify(request.Password, account.PasswordHash))
         {
             attemptLimiter.RecordFailure(attemptKey);
+            HttpContext.Items["Log:LoginResult"] = "failed";
             return Unauthorized();
         }
 
         attemptLimiter.RecordSuccess(attemptKey);
+        HttpContext.Items["Log:LoginResult"] = "success";
+        HttpContext.Items["Log:LoginUserId"] = account.Id;
         return Ok(ToResponse(account));
     }
 
