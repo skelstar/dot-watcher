@@ -39,6 +39,11 @@ struct AuthSession: Codable {
     let user: AppUser
 }
 
+struct SessionRunner: Codable, Hashable {
+    let userId: String
+    let displayName: String
+}
+
 struct SessionMembership: Codable, Identifiable {
     var id: String { sessionId }
 
@@ -49,7 +54,15 @@ struct SessionMembership: Codable, Identifiable {
     let displayName: String
     /// Only present on the join-session response (`POST /session-invites/{code}/join`); nil for
     /// membership objects that don't carry it (e.g. `GET /me/sessions`).
-    let participants: [String]?
+    let participants: [SessionRunner]?
+}
+
+struct BlockedUser: Codable, Identifiable, Hashable {
+    var id: String { userId }
+
+    let userId: String
+    let displayName: String
+    let blockedAt: String
 }
 
 private struct LocationPostResponse: Codable {
@@ -93,10 +106,6 @@ final class LocationManager {
     // reinterpreted values — not just additions. Paired with server config MinimumApiVersion.
     private let apiVersion = 1
 
-    // Bump when a change could break old clients — renamed fields, changed validation,
-    // reinterpreted values — not just additions. Paired with server config MinimumApiVersion.
-    private let apiVersion = 1
-
     private(set) var status = "Idle"
     private(set) var lastSent: Date?
     private(set) var isTracking = false
@@ -113,6 +122,11 @@ final class LocationManager {
     private(set) var runnerPositions: [RunnerPositionResponse] = []
 
     var participants: [String] = []
+    /// Display name -> userId, for participants learned via a `SessionRunner`-shaped response
+    /// (join, `/runners`). Blocking needs the userId; `participants`/`RunnerCircle` stay
+    /// name-keyed everywhere else, so this is looked up alongside them rather than replacing them.
+    private(set) var participantUserIds: [String: String] = [:]
+    private(set) var blockedUsers: Set<BlockedUser> = []
     private var lastParticipantCount = 0
     private var isLoadingSessions = false
     fileprivate var latestLocation: CLLocation?
@@ -141,6 +155,7 @@ final class LocationManager {
         didSet {
             UserDefaults.standard.set(sessionId, forKey: "sessionId")
             participants = []
+            participantUserIds = [:]
             runnerPositions = []
             lastParticipantCount = 0
             if isTracking { captureAndPost() }
@@ -157,6 +172,16 @@ final class LocationManager {
 
     let interval: TimeInterval = 15
 
+    // App Store 5.1.2(i): automatic location posting must always be scoped to a bounded,
+    // explicitly-started tracking session rather than indefinite background sharing — no
+    // "automatic" mode may run without this cap. The user picks a duration up to this ceiling
+    // each time they start sharing (see ShareLocationConsentView); 24h covers long races/ultras
+    // while still being a hard, finite bound — there is no way to exceed it.
+    let maxTrackingDuration: TimeInterval = 24 * 60 * 60
+    /// Options offered in the share-consent sheet's duration picker, ascending.
+    static let trackingDurationOptions: [TimeInterval] = [2, 4, 8, 24].map { $0 * 60 * 60 }
+    private(set) var trackingExpiresAt: Date?
+
     var isAuthenticated: Bool { accessToken != nil && currentUser != nil }
 
     var activeMembership: SessionMembership? {
@@ -165,6 +190,21 @@ final class LocationManager {
 
     var canTrackSelectedSession: Bool {
         activeMembership?.role == "runner"
+    }
+
+    // App Store 5.1.2(i): sharing location with other session members needs its own explicit,
+    // declinable consent, asked once per session (not once globally, since each session has a
+    // different set of viewers) and separate from the OS CoreLocation prompt.
+    private static let consentedSessionsKey = "locationSharingConsentedSessionIds"
+
+    func hasConsentedToSharing(sessionId: String) -> Bool {
+        Set(UserDefaults.standard.stringArray(forKey: Self.consentedSessionsKey) ?? []).contains(sessionId)
+    }
+
+    func recordSharingConsent(sessionId: String) {
+        var consented = Set(UserDefaults.standard.stringArray(forKey: Self.consentedSessionsKey) ?? [])
+        consented.insert(sessionId)
+        UserDefaults.standard.set(Array(consented), forKey: Self.consentedSessionsKey)
     }
 
     func nextPostAt(from now: Date = Date()) -> Date {
@@ -307,7 +347,7 @@ final class LocationManager {
                 return .failure(error)
             }
         }()
-        async let runnersResult: Result<[String], Error> = {
+        async let runnersResult: Result<[SessionRunner], Error> = {
             do {
                 return .success(try await send(path: "/sessions/\(targetSessionId)/runners"))
             } catch {
@@ -322,7 +362,8 @@ final class LocationManager {
             runnerPositions = positions.compactMap(\.last)
         }
         if case .success(let runners) = runners {
-            participants = Array(Set(runners)).sorted()
+            participants = Array(Set(runners.map(\.displayName))).sorted()
+            for runner in runners { participantUserIds[runner.displayName] = runner.userId }
         }
     }
 
@@ -364,7 +405,8 @@ final class LocationManager {
         upsertMembership(membership)
         selectSession(membership)
         if let joinParticipants = membership.participants {
-            participants = Array(Set(joinParticipants)).sorted()
+            participants = Array(Set(joinParticipants.map(\.displayName))).sorted()
+            for runner in joinParticipants { participantUserIds[runner.displayName] = runner.userId }
         }
     }
 
@@ -389,7 +431,36 @@ final class LocationManager {
         }
     }
 
-    func start() {
+    /// Blocks a user account-level, cross-session. The server immediately ends any session
+    /// membership shared with them, so drop them from the local roster right away rather than
+    /// waiting for the next poll.
+    func blockUser(userId: String, displayName: String) async throws {
+        guard let token = accessToken else { throw DotWatcherAPIError.missingToken }
+        try await sendEmpty(path: "/me/blocks/\(userId)", method: "POST", token: token)
+        blockedUsers.insert(BlockedUser(userId: userId, displayName: displayName, blockedAt: ISO8601DateFormatter().string(from: Date())))
+        participants.removeAll { $0 == displayName }
+        participantUserIds.removeValue(forKey: displayName)
+        runnerPositions.removeAll { $0.runnerName == displayName }
+    }
+
+    func unblockUser(userId: String) async throws {
+        guard let token = accessToken else { throw DotWatcherAPIError.missingToken }
+        try await sendEmpty(path: "/me/blocks/\(userId)", method: "DELETE", token: token)
+        if let match = blockedUsers.first(where: { $0.userId == userId }) {
+            blockedUsers.remove(match)
+        }
+    }
+
+    func loadBlockedUsers() async {
+        do {
+            let blocked: [BlockedUser] = try await send(path: "/me/blocks")
+            blockedUsers = Set(blocked)
+        } catch {
+            // Best-effort — leave the existing list in place.
+        }
+    }
+
+    func start(duration: TimeInterval? = nil) {
         guard !isTracking else { return }
         guard isAuthenticated else {
             status = "Sign in required"
@@ -408,6 +479,8 @@ final class LocationManager {
         clManager.startUpdatingLocation()
         isTracking = true
         status = "Tracking..."
+        let cappedDuration = min(duration ?? maxTrackingDuration, maxTrackingDuration)
+        trackingExpiresAt = Date().addingTimeInterval(cappedDuration)
         trackingTask = Task { [weak self] in await self?.trackingLoop() }
         if latestLocation == nil {
             latestLocation = clManager.location ?? CLLocation(latitude: 0, longitude: 0)
@@ -420,14 +493,23 @@ final class LocationManager {
         trackingTask = nil
         clManager.stopUpdatingLocation()
         isTracking = false
+        trackingExpiresAt = nil
         status = "Stopped"
     }
 
     private func trackingLoop() async {
         while !Task.isCancelled {
+            if let expiresAt = trackingExpiresAt, Date() >= expiresAt {
+                stop()
+                break
+            }
             let delay = nextPostAt().timeIntervalSinceNow
             try? await Task.sleep(for: .seconds(delay))
             guard !Task.isCancelled else { break }
+            if let expiresAt = trackingExpiresAt, Date() >= expiresAt {
+                stop()
+                break
+            }
             captureAndPost()
         }
     }
