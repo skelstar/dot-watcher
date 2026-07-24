@@ -83,6 +83,7 @@ public class SessionsController(
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [ProducesResponseType(StatusCodes.Status410Gone)]
     public IActionResult JoinSession(string inviteCode, [FromBody] JoinSessionRequest? request)
@@ -100,7 +101,7 @@ public class SessionsController(
             return BadRequest(new { error = "Display name must be 1-80 characters." });
 
         var role = request?.Role?.Trim().ToLowerInvariant() == "runner" ? "runner" : "viewer";
-        var (membership, archived) = store.JoinSessionByInvite(
+        var (membership, archived, blocked) = store.JoinSessionByInvite(
             inviteCode,
             user.UserId,
             displayName,
@@ -109,14 +110,17 @@ public class SessionsController(
         if (archived)
             return StatusCode(StatusCodes.Status410Gone, new { error = "This session has ended and can no longer be joined." });
 
+        if (blocked)
+            return StatusCode(StatusCodes.Status403Forbidden, new { error = "You can't join this session." });
+
         if (membership is null)
             return NotFound(new { error = "Invite not found." });
 
         // Additive field alongside the existing SessionMembership shape (not a replacement) so
         // older clients that decode a fixed SessionMembership struct are unaffected. Uses the
-        // joined-runners roster (GetSessionRunners), not GetParticipants (who's actively
-        // posting) — the point is for a new joiner to immediately see everyone already in the
-        // session, even ones who haven't started tracking yet.
+        // joined-runners roster (GetSessionRunners, userId + displayName), not GetParticipants
+        // (who's actively posting) — the point is for a new joiner to immediately see everyone
+        // already in the session, even ones who haven't started tracking yet.
         var participants = store.GetSessionRunners(membership.SessionId);
         return Ok(new
         {
@@ -197,9 +201,9 @@ public class SessionsController(
         return gpx is null ? NotFound() : Content(gpx, "application/gpx+xml");
     }
 
-    /// <summary>Lists display names of runners who have joined the session (not just those actively tracking).</summary>
+    /// <summary>Lists runners who have joined the session (not just those actively tracking).</summary>
     [HttpGet("/sessions/{sessionId}/runners")]
-    [ProducesResponseType(typeof(IReadOnlyList<string>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(IReadOnlyList<SessionRunner>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     public IActionResult GetSessionRunners(string sessionId)
@@ -224,6 +228,55 @@ public class SessionsController(
             return Unauthorized();
 
         return store.LeaveSession(sessionId, user.UserId) ? NoContent() : NotFound();
+    }
+
+    /// <summary>Lists users the caller has blocked, most recently blocked first.</summary>
+    [HttpGet("/me/blocks")]
+    [ProducesResponseType(typeof(IReadOnlyList<BlockedUser>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public IActionResult GetBlockedUsers()
+    {
+        if (!userAuth.TryAuthenticate(Request, out var user))
+            return Unauthorized();
+
+        return Ok(store.GetBlockedUsers(user.UserId));
+    }
+
+    /// <summary>
+    /// Blocks a user account-level, cross-session. Immediately ends any session membership
+    /// the blocked user shares with the caller; the block also prevents the blocked user from
+    /// joining any session the caller owns in the future.
+    /// </summary>
+    [HttpPost("/me/blocks/{userId}")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public IActionResult BlockUser(string userId)
+    {
+        if (!userAuth.TryAuthenticate(Request, out var user))
+            return Unauthorized();
+
+        if (string.IsNullOrWhiteSpace(userId))
+            return BadRequest(new { error = "Invalid user ID." });
+
+        if (userId == user.UserId)
+            return BadRequest(new { error = "You can't block yourself." });
+
+        store.BlockUser(user.UserId, userId);
+        return NoContent();
+    }
+
+    /// <summary>Unblocks a user. Does not restore any session membership the block ended.</summary>
+    [HttpDelete("/me/blocks/{userId}")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public IActionResult UnblockUser(string userId)
+    {
+        if (!userAuth.TryAuthenticate(Request, out var user))
+            return Unauthorized();
+
+        return store.UnblockUser(user.UserId, userId) ? NoContent() : NotFound();
     }
 
     /// <summary>Admin/ops: replaces a session's saved recording with an uploaded NDJSON body (any Content-Type; the body is read raw).</summary>

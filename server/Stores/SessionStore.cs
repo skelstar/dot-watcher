@@ -86,6 +86,16 @@ public class SessionStore(string connectionString)
                 uploaded_at TEXT NOT NULL,
                 FOREIGN KEY(session_id) REFERENCES app_sessions(id)
             );
+
+            CREATE TABLE IF NOT EXISTS blocked_users (
+                blocker_user_id TEXT NOT NULL,
+                blocked_user_id TEXT NOT NULL,
+                created_at      TEXT NOT NULL,
+                PRIMARY KEY(blocker_user_id, blocked_user_id),
+                FOREIGN KEY(blocker_user_id) REFERENCES users(id),
+                FOREIGN KEY(blocked_user_id) REFERENCES users(id)
+            );
+            CREATE INDEX IF NOT EXISTS idx_blocked_users_blocked ON blocked_users(blocked_user_id);
             """;
         cmd.ExecuteNonQuery();
     }
@@ -301,34 +311,38 @@ public class SessionStore(string connectionString)
         return new SessionMembership(sessionId, sessionName, inviteCode, "runner", displayName, displayName);
     }
 
-    public (SessionMembership? Membership, bool Archived) JoinSessionByInvite(string inviteCode, string userId, string displayName, string role = "viewer")
+    public (SessionMembership? Membership, bool Archived, bool Blocked) JoinSessionByInvite(string inviteCode, string userId, string displayName, string role = "viewer")
     {
         var normalizedInvite = NormalizeSessionName(inviteCode);
         if (normalizedInvite is null)
-            return (null, false);
+            return (null, false, false);
 
         using var conn = Connect();
         using var lookup = conn.CreateCommand();
         lookup.CommandText = """
-            SELECT id, session_name, invite_code, archived_at
+            SELECT id, session_name, invite_code, archived_at, owner_user_id
             FROM app_sessions
             WHERE invite_code = @inviteCode
             """;
         lookup.Parameters.AddWithValue("@inviteCode", normalizedInvite);
         using var reader = lookup.ExecuteReader();
         if (!reader.Read())
-            return (null, false);
+            return (null, false, false);
 
         var sessionId = reader.GetString(0);
         var storedInviteCode = reader.GetString(2);
         if (!reader.IsDBNull(3))
-            return (null, true);
+            return (null, true, false);
+        var ownerUserId = reader.GetString(4);
         reader.Close();
+
+        if (AreBlocked(conn, ownerUserId, userId))
+            return (null, false, true);
 
         var joinedAt = DateTimeOffset.UtcNow.ToString("O");
         UpsertMembership(conn, sessionId, userId, role, displayName, joinedAt, preserveExistingRole: true);
 
-        return (GetMembership(conn, sessionId, userId, storedInviteCode)!, false);
+        return (GetMembership(conn, sessionId, userId, storedInviteCode)!, false, false);
     }
 
     public string? GetSessionIdByInviteCode(string inviteCode)
@@ -468,6 +482,126 @@ public class SessionStore(string connectionString)
         return membership?.Role == "runner";
     }
 
+    // Blocking is account-level and symmetric for read/write purposes: it doesn't matter
+    // who blocked whom, neither party should see the other once either has blocked.
+    public bool AreBlocked(string userId1, string userId2)
+    {
+        using var conn = Connect();
+        return AreBlocked(conn, userId1, userId2);
+    }
+
+    private static bool AreBlocked(NpgsqlConnection conn, string userId1, string userId2)
+    {
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = """
+            SELECT 1 FROM blocked_users
+            WHERE (blocker_user_id = @user1 AND blocked_user_id = @user2)
+               OR (blocker_user_id = @user2 AND blocked_user_id = @user1)
+            """;
+        cmd.Parameters.AddWithValue("@user1", userId1);
+        cmd.Parameters.AddWithValue("@user2", userId2);
+        return cmd.ExecuteScalar() is not null;
+    }
+
+    // Blocking ends shared-session membership immediately (the "second option" design: a
+    // block also removes the blocked user from any session both are currently in), not just
+    // a read-time filter. Unblocking does not restore that membership — same as any other
+    // voluntary leave, the blocked user would need a fresh invite to rejoin.
+    public void BlockUser(string blockerUserId, string blockedUserId)
+    {
+        var now = DateTimeOffset.UtcNow.ToString("O");
+
+        using var conn = Connect();
+        using var tx = conn.BeginTransaction();
+
+        using (var cmd = conn.CreateCommand())
+        {
+            cmd.Transaction = tx;
+            cmd.CommandText = """
+                INSERT INTO blocked_users (blocker_user_id, blocked_user_id, created_at)
+                VALUES (@blocker, @blocked, @createdAt)
+                ON CONFLICT DO NOTHING
+                """;
+            cmd.Parameters.AddWithValue("@blocker", blockerUserId);
+            cmd.Parameters.AddWithValue("@blocked", blockedUserId);
+            cmd.Parameters.AddWithValue("@createdAt", now);
+            cmd.ExecuteNonQuery();
+        }
+
+        List<string> sharedSessionIds;
+        using (var cmd = conn.CreateCommand())
+        {
+            cmd.Transaction = tx;
+            cmd.CommandText = """
+                SELECT a.session_id
+                FROM session_members a
+                JOIN session_members b ON b.session_id = a.session_id
+                WHERE a.user_id = @blocker AND a.left_at IS NULL
+                  AND b.user_id = @blocked AND b.left_at IS NULL
+                """;
+            cmd.Parameters.AddWithValue("@blocker", blockerUserId);
+            cmd.Parameters.AddWithValue("@blocked", blockedUserId);
+            using var reader = cmd.ExecuteReader();
+            sharedSessionIds = [];
+            while (reader.Read())
+                sharedSessionIds.Add(reader.GetString(0));
+        }
+
+        foreach (var sessionId in sharedSessionIds)
+        {
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.Transaction = tx;
+                cmd.CommandText = """
+                    UPDATE session_members
+                    SET left_at = @leftAt
+                    WHERE session_id = @sessionId AND user_id = @blocked AND left_at IS NULL
+                    """;
+                cmd.Parameters.AddWithValue("@leftAt", now);
+                cmd.Parameters.AddWithValue("@sessionId", sessionId);
+                cmd.Parameters.AddWithValue("@blocked", blockedUserId);
+                cmd.ExecuteNonQuery();
+            }
+
+            if (_sessions.TryGetValue(sessionId, out var session))
+                session.TryRemove(blockedUserId, out _);
+        }
+
+        tx.Commit();
+    }
+
+    public bool UnblockUser(string blockerUserId, string blockedUserId)
+    {
+        using var conn = Connect();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = """
+            DELETE FROM blocked_users
+            WHERE blocker_user_id = @blocker AND blocked_user_id = @blocked
+            """;
+        cmd.Parameters.AddWithValue("@blocker", blockerUserId);
+        cmd.Parameters.AddWithValue("@blocked", blockedUserId);
+        return cmd.ExecuteNonQuery() > 0;
+    }
+
+    public IReadOnlyList<BlockedUser> GetBlockedUsers(string blockerUserId)
+    {
+        using var conn = Connect();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = """
+            SELECT u.id, u.display_name, b.created_at
+            FROM blocked_users b
+            JOIN users u ON u.id = b.blocked_user_id
+            WHERE b.blocker_user_id = @blocker
+            ORDER BY b.created_at DESC
+            """;
+        cmd.Parameters.AddWithValue("@blocker", blockerUserId);
+        using var reader = cmd.ExecuteReader();
+        var blocked = new List<BlockedUser>();
+        while (reader.Read())
+            blocked.Add(new BlockedUser(reader.GetString(0), reader.GetString(1), reader.GetString(2)));
+        return blocked;
+    }
+
     // Route management is an ownership action, not a membership role — session_members.role is
     // only ever "runner"/"viewer" (see UpsertMembership), while app_sessions.owner_user_id is the
     // actual creator/owner concept.
@@ -481,22 +615,22 @@ public class SessionStore(string connectionString)
         return (long)(cmd.ExecuteScalar() ?? 0L) > 0;
     }
 
-    public IReadOnlyList<string> GetSessionRunners(string sessionId)
+    public IReadOnlyList<SessionRunner> GetSessionRunners(string sessionId)
     {
         using var conn = Connect();
         using var cmd = conn.CreateCommand();
         cmd.CommandText = """
-            SELECT display_name
+            SELECT user_id, display_name
             FROM session_members
             WHERE session_id = @sessionId AND role = 'runner' AND left_at IS NULL
             ORDER BY joined_at ASC
             """;
         cmd.Parameters.AddWithValue("@sessionId", sessionId);
         using var reader = cmd.ExecuteReader();
-        var names = new List<string>();
+        var runners = new List<SessionRunner>();
         while (reader.Read())
-            names.Add(reader.GetString(0));
-        return names;
+            runners.Add(new SessionRunner(reader.GetString(0), reader.GetString(1)));
+        return runners;
     }
 
     public void AddPosition(ValidatedLocationUpdate update, string userId)
