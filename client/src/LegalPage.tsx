@@ -4,7 +4,7 @@ interface Props {
   kind: LegalPageKind
 }
 
-const lastUpdated = '9 Jul 2026'
+const lastUpdated = '24 Jul 2026'
 const contactEmail = 'support@dot-watcher.skelstar.io'
 
 export default function LegalPage({ kind }: Props) {
@@ -67,6 +67,7 @@ const privacyPage = {
       paragraphs: [
         'Precise location data is visible to authenticated users who are members of the same session. Owners can invite other users and can promote trusted viewers to runners.',
         'Invite links are onboarding mechanisms, not long-term credentials. Access after joining is based on stored membership and user authentication.',
+        'You can block another user from account settings. Blocking ends any session membership you share with them immediately, prevents them from joining any session you own in the future, and stops your location and theirs from being visible to each other.',
         'We do not sell location data. We may disclose data if required by law or if necessary to protect users, the service, or others.',
       ],
     },
@@ -81,7 +82,9 @@ const privacyPage = {
     {
       heading: 'Your Choices',
       paragraphs: [
-        'You can stop sharing location by stopping tracking in the iOS app, leaving the app signed out, or revoking location permission in iOS settings.',
+        'Before your location is first shared with other members of a session, the iOS app asks you to explicitly confirm you want to share — you can decline and still use the app as a viewer.',
+        'You can stop sharing location at any time by tapping Stop in the iOS app, leaving the app signed out, or revoking location permission in iOS settings. Sharing also stops automatically after 24 hours if not stopped sooner.',
+        'You can block another user from account settings at any time. See "Sharing and Visibility" above for what blocking does.',
         'You should only join, create, or share sessions with people who understand that precise location data will be visible to session members.',
       ],
     },

@@ -61,6 +61,17 @@ public record SessionMembership(
     string OwnerDisplayName
 );
 
+public record BlockedUser(
+    string UserId,
+    string DisplayName,
+    string BlockedAt
+);
+
+public record SessionRunner(
+    string UserId,
+    string DisplayName
+);
+
 public record AdminUserSummary(
     string Id,
     string Username,

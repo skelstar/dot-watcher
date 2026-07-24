@@ -11,6 +11,11 @@ struct ContentView: View {
     @State private var showAuth: Bool = false
     @State private var showUpdateRequired: Bool = false
     @State private var showLeaveConfirm: Bool = false
+    @State private var showShareConsent: Bool = false
+    /// Display name of the participant a touch-and-hold just targeted, showing the block
+    /// action sheet; nil when no sheet is up.
+    @State private var blockCandidateName: String?
+    @State private var blockError: String?
     @State private var showCreateSession: Bool = false
     @State private var noSessionCreateCode = ""
     @State private var noSessionInviteCode = ""
@@ -99,15 +104,56 @@ struct ContentView: View {
             .onChange(of: location.updateRequired) { _, updateRequired in
                 if updateRequired { showUpdateRequired = true }
             }
-            .alert("Leave session?", isPresented: $showLeaveConfirm) {
-                Button("Leave", role: .destructive) {
+            .sheet(isPresented: $showShareConsent) {
+                if let membership = location.activeMembership {
+                    ShareLocationConsentView(
+                        sessionName: membership.sessionName,
+                        onShare: { duration in
+                            location.recordSharingConsent(sessionId: membership.sessionId)
+                            location.start(duration: duration)
+                        },
+                        onDecline: {}
+                    )
+                    .presentationDetents([.medium, .large])
+                    .preferredColorScheme(location.appearanceMode.colorScheme)
+                }
+            }
+            .confirmationDialog(
+                blockCandidateName ?? "",
+                isPresented: Binding(
+                    get: { blockCandidateName != nil },
+                    set: { if !$0 { blockCandidateName = nil } }
+                ),
+                titleVisibility: .visible
+            ) {
+                if let name = blockCandidateName {
+                    Button("Block \(name)", role: .destructive) {
+                        Task { await blockParticipant(name: name) }
+                    }
+                    Button("Cancel", role: .cancel) {}
+                }
+            } message: {
+                Text("They'll be removed from this session and won't be able to join any of your sessions again.")
+            }
+            .alert("Couldn't block user", isPresented: Binding(
+                get: { blockError != nil },
+                set: { if !$0 { blockError = nil } }
+            )) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                if let blockError { Text(blockError) }
+            }
+            .alert(
+                location.isTracking ? "Stop tracking and leave session?" : "Leave session?",
+                isPresented: $showLeaveConfirm
+            ) {
+                Button(location.isTracking ? "Stop & Leave" : "Leave", role: .destructive) {
                     Task { await leaveOrDeleteSession() }
                 }
                 Button("Cancel", role: .cancel) {}
             } message: {
                 if location.activeMembership != nil {
-                    let suffix = location.isTracking ? " This will also stop tracking." : ""
-                    Text("Are you sure you want to leave this session?\(suffix) You can rejoin later using the invite code.")
+                    Text("Are you sure? You can rejoin later using the invite code.")
                 }
             }
     }
@@ -371,93 +417,111 @@ struct ContentView: View {
     // MARK: - Runner Row
 
     private var runnerRow: some View {
-        HStack(spacing: 12) {
-            if location.isTracking {
-                TimelineView(.periodic(from: .now, by: 1.0 / 10.0)) { context in
-                    let nextPostAt = location.nextPostAt(from: location.lastSent ?? Date())
-                    let remaining = max(0, nextPostAt.timeIntervalSince(context.date))
-                    let fraction = location.interval > 0 ? remaining / location.interval : 0
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 12) {
+                if location.isTracking {
+                    TimelineView(.periodic(from: .now, by: 1.0 / 10.0)) { context in
+                        let nextPostAt = location.nextPostAt(from: location.lastSent ?? Date())
+                        let remaining = max(0, nextPostAt.timeIntervalSince(context.date))
+                        let fraction = location.interval > 0 ? remaining / location.interval : 0
 
+                        HStack(spacing: 8) {
+                            StatusIndicatorDot(color: .red, countdownFraction: fraction, pulsing: true)
+                            Text("Tracking")
+                                .font(.headline)
+                                .fontWeight(.bold)
+                            PostCountdownRing(fraction: fraction)
+                            Text("\(Int(remaining.rounded(.up)))s")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .monospacedDigit()
+                        }
+                        .onTapGesture {
+                            nameInput = location.runnerName
+                            showNameEntry = true
+                        }
+                    }
+                } else {
                     HStack(spacing: 8) {
-                        StatusIndicatorDot(color: statusDotColor, countdownFraction: fraction)
-                        Text("Sending")
+                        StatusIndicatorDot(color: statusDotColor)
+                        Text(location.status)
                             .font(.headline)
                             .fontWeight(.bold)
-                        PostCountdownRing(fraction: fraction)
-                        Text("\(Int(remaining.rounded(.up)))s")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .monospacedDigit()
                     }
                     .onTapGesture {
                         nameInput = location.runnerName
                         showNameEntry = true
                     }
                 }
-            } else {
-                HStack(spacing: 8) {
-                    StatusIndicatorDot(color: statusDotColor)
-                    Text(location.status)
-                        .font(.headline)
-                        .fontWeight(.bold)
+                Spacer()
+                if location.activeMembership != nil {
+                    Button { showLeaveConfirm = true } label: {
+                        Text(location.isTracking ? "Stop" : "Leave")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundStyle(.white)
+                            .frame(height: 48)
+                            .padding(.horizontal, 16)
+                            .background(Color.red, in: RoundedRectangle(cornerRadius: 12))
+                    }
+                    .buttonStyle(.plain)
                 }
-                .onTapGesture {
-                    nameInput = location.runnerName
-                    showNameEntry = true
+                if let inviteCode = location.activeMembership?.inviteCode, location.isTracking {
+                    Button {
+                        let sessionUrl = location.webBaseURL.appendingPathComponent("code/\(inviteCode)")
+                        UIApplication.shared.open(sessionUrl)
+                    } label: {
+                        Image(systemName: "safari")
+                            .font(.system(size: 20))
+                            .foregroundStyle(.secondary)
+                            .frame(width: 48, height: 48)
+                            .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 12))
+                    }
+                    .buttonStyle(.plain)
+                } else if location.activeMembership != nil {
+                    Button {
+                        Task {
+                            await location.loadSessions()
+                            await location.loadLatestPositions()
+                        }
+                    } label: {
+                        Image(systemName: "arrow.clockwise")
+                            .font(.system(size: 20))
+                            .foregroundStyle(.secondary)
+                            .frame(width: 48, height: 48)
+                            .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 12))
+                    }
+                    .buttonStyle(.plain)
+                } else if location.isAuthenticated {
+                    Button {
+                        Task {
+                            await location.loadSessions()
+                            await location.loadRecentSessions()
+                        }
+                    } label: {
+                        Image(systemName: "arrow.clockwise")
+                            .font(.system(size: 20))
+                            .foregroundStyle(.secondary)
+                            .frame(width: 48, height: 48)
+                            .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 12))
+                    }
+                    .buttonStyle(.plain)
                 }
             }
-            Spacer()
-            if location.activeMembership != nil {
-                Button { showLeaveConfirm = true } label: {
-                    Text("Leave")
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundStyle(.white)
-                        .frame(height: 48)
-                        .padding(.horizontal, 16)
-                        .background(Color.red, in: RoundedRectangle(cornerRadius: 12))
-                }
-                .buttonStyle(.plain)
-            }
-            if let inviteCode = location.activeMembership?.inviteCode, location.isTracking {
-                Button {
-                    let sessionUrl = location.webBaseURL.appendingPathComponent("code/\(inviteCode)")
-                    UIApplication.shared.open(sessionUrl)
-                } label: {
-                    Image(systemName: "safari")
-                        .font(.system(size: 20))
-                        .foregroundStyle(.secondary)
-                        .frame(width: 48, height: 48)
-                        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 12))
-                }
-                .buttonStyle(.plain)
-            } else if location.activeMembership != nil {
-                Button {
-                    Task {
-                        await location.loadSessions()
-                        await location.loadLatestPositions()
+
+            if location.isTracking, let expiresAt = location.trackingExpiresAt {
+                TimelineView(.periodic(from: .now, by: 30)) { context in
+                    let remaining = max(0, expiresAt.timeIntervalSince(context.date))
+                    let fraction = location.maxTrackingDuration > 0 ? 1 - (remaining / location.maxTrackingDuration) : 0
+
+                    VStack(alignment: .leading, spacing: 6) {
+                        ProgressView(value: min(1, max(0, fraction)))
+                            .tint(.green)
+                        Text("Auto-stops in \(formattedDuration(remaining))")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .center)
                     }
-                } label: {
-                    Image(systemName: "arrow.clockwise")
-                        .font(.system(size: 20))
-                        .foregroundStyle(.secondary)
-                        .frame(width: 48, height: 48)
-                        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 12))
                 }
-                .buttonStyle(.plain)
-            } else if location.isAuthenticated {
-                Button {
-                    Task {
-                        await location.loadSessions()
-                        await location.loadRecentSessions()
-                    }
-                } label: {
-                    Image(systemName: "arrow.clockwise")
-                        .font(.system(size: 20))
-                        .foregroundStyle(.secondary)
-                        .frame(width: 48, height: 48)
-                        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 12))
-                }
-                .buttonStyle(.plain)
             }
         }
     }
@@ -560,6 +624,10 @@ struct ContentView: View {
                                     guard !isInLobby, location.isTracking else { return }
                                     followedRunnerName = followedRunnerName == name ? nil : name
                                 }
+                                .onLongPressGesture {
+                                    guard name != location.runnerName else { return }
+                                    blockCandidateName = name
+                                }
                             }
                         }
                         // The row always totals exactly `slotsPerRow` cells: every rendered participant
@@ -584,6 +652,12 @@ struct ContentView: View {
                 }
             }
             .frame(height: 38)
+
+            if location.participants.contains(where: { $0 != location.runnerName }) {
+                Text("Touch and hold a participant to block them.")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+            }
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
         .padding(16)
@@ -603,7 +677,12 @@ struct ContentView: View {
             .controlSize(.large)
         } else {
             Button {
-                location.start()
+                if let membership = location.activeMembership,
+                   !location.hasConsentedToSharing(sessionId: membership.sessionId) {
+                    showShareConsent = true
+                } else {
+                    location.start()
+                }
             } label: {
                 Text("Start tracking")
                     .frame(maxWidth: .infinity)
@@ -651,6 +730,20 @@ struct ContentView: View {
         isBusy = false
     }
 
+    // MARK: - Block Participant
+
+    private func blockParticipant(name: String) async {
+        guard let userId = location.participantUserIds[name] else {
+            blockError = "Couldn't find that participant. Try refreshing and blocking again."
+            return
+        }
+        do {
+            try await location.blockUser(userId: userId, displayName: name)
+        } catch {
+            blockError = error.localizedDescription
+        }
+    }
+
     // MARK: - Leave / Delete Session
 
     private func leaveOrDeleteSession() async {
@@ -667,6 +760,13 @@ struct ContentView: View {
         if s == "Stopped" { return .red }
         if s.hasPrefix("Sent") || s.hasPrefix("Tracking") { return .green }
         return .orange
+    }
+
+    private func formattedDuration(_ interval: TimeInterval) -> String {
+        let totalMinutes = Int(interval / 60)
+        let hours = totalMinutes / 60
+        let minutes = totalMinutes % 60
+        return hours > 0 ? "\(hours)h \(minutes)m" : "\(minutes)m"
     }
 
 }

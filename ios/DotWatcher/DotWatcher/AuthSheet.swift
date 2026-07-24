@@ -29,6 +29,9 @@ struct AuthSheet: View {
                         LabeledContent("Initials") {
                             CodeBoxField(text: $location.runnerName, length: 2, lettersOnly: true)
                         }
+                        NavigationLink("Blocked Users") {
+                            BlockedUsersView(location: location)
+                        }
                         Button("Sign out", role: .destructive) {
                             Task { await location.signOut() }
                         }
