@@ -1,4 +1,4 @@
-const TESTFLIGHT_URL = 'https://testflight.apple.com/join/1bhK7eG1'
+const APP_STORE_URL = 'https://apps.apple.com/nz/app/dotwatcher/id6780606696'
 
 export default function LandingPage() {
   return (
@@ -15,7 +15,7 @@ export default function LandingPage() {
             <a href="#dw-features" style={navLink}>Features</a>
             <a href="#dw-faq" style={navLink}>FAQ</a>
           </div>
-          <a href={TESTFLIGHT_URL} target="_blank" rel="noopener" style={navCta}>Join the beta</a>
+          <a href={APP_STORE_URL} target="_blank" rel="noopener" style={navCta}>Get the App</a>
         </nav>
 
         <section className="dw-hero" style={hero}>
@@ -23,7 +23,7 @@ export default function LandingPage() {
             <div style={heroBadgeRow}>
               <img src="/landing/assets/app-icon.png" alt="" style={heroIcon} />
               <div style={betaPill}>
-                <span style={betaDot} /> In TestFlight now
+                <span style={betaDot} /> Now on the App Store
               </div>
             </div>
             <h1 className="dw-hero-headline" style={headline}>Your run group,<br />one shared dot each.</h1>
@@ -31,7 +31,7 @@ export default function LandingPage() {
               Dot-watchr keeps every runner visible on one live map — so supporters know where to cheer, and nobody gets left behind.
             </p>
             <div style={heroCtaRow}>
-              <a href={TESTFLIGHT_URL} target="_blank" rel="noopener" style={heroCta}>Join the beta</a>
+              <a href={APP_STORE_URL} target="_blank" rel="noopener" style={heroCta}>Download on the App Store</a>
             </div>
           </div>
 
@@ -63,11 +63,10 @@ export default function LandingPage() {
         <section id="dw-faq" className="dw-faq" style={faq}>
           <h2 style={eyebrowHeading}>FAQ</h2>
           <div style={stepList}>
-            <FaqItem q="Is it only for iPhone?" a="Right now, yes — runners join from an iPhone. Once the app is sorted, we'll port to Android. Spectators will be able to watch from any browser, no app needed." />
+            <FaqItem q="Is it only for iPhone?" a="Right now, yes — runners join from an iPhone. Android support is on the roadmap. Spectators can watch from any browser, no app needed." />
             <FaqItem q="How accurate is the location?" a="It uses your phone's GPS, updated every 15 seconds. Like any GPS app, accuracy can vary with weather, buildings, or signal." />
             <FaqItem q="How many people can join a session?" a="Sessions support small groups comfortably today — great for a run club outing or a race-day crew." />
-            <FaqItem q="What's TestFlight?" a="TestFlight is Apple's beta testing platform for iOS apps. It's where you can download the last version of the app for testing. It's really easy to use." />
-            <FaqItem q="Is it free?" a="Yes, free to use during the TestFlight beta." last />
+            <FaqItem q="Is it free?" a="Yes, free to use." last />
           </div>
         </section>
 
@@ -226,7 +225,7 @@ const betaPill: React.CSSProperties = {
   background: '#fff',
   fontSize: 12.5,
   fontWeight: 700,
-  color: '#F59E0B',
+  color: '#22C55E',
   whiteSpace: 'nowrap',
 }
 
@@ -234,7 +233,7 @@ const betaDot: React.CSSProperties = {
   width: 7,
   height: 7,
   borderRadius: '50%',
-  background: '#F59E0B',
+  background: '#22C55E',
   flex: 'none',
 }
 
@@ -265,11 +264,11 @@ const heroCta: React.CSSProperties = {
   textDecoration: 'none',
   padding: '15px 28px',
   borderRadius: 999,
-  background: '#22C55E',
+  background: '#000',
   color: '#fff',
   fontSize: 15,
   fontWeight: 700,
-  boxShadow: '0 8px 20px rgba(34,197,94,.3)',
+  boxShadow: '0 8px 20px rgba(0,0,0,.25)',
 }
 
 const phones: React.CSSProperties = {
