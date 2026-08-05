@@ -372,7 +372,13 @@ export default function App() {
         <div style={statusToast}>{timeline.error}</div>
       )}
       {timeline.invalidInvite && (
-        <InvalidInvitePrompt message={timeline.error ?? 'Invite not found.'} />
+        <InvalidInvitePrompt
+          message={
+            inviteCode
+              ? `Invite code '${inviteCode}' not found. Session might have expired or been deleted.`
+              : timeline.error ?? 'Invite not found.'
+          }
+        />
       )}
       {shouldShowAuthPrompt(accessToken, inviteCode) && <AuthPrompt serverUrl={SERVER_URL} onAuth={handleAuth} />}
       {accessToken && showSessionPrompt && (
