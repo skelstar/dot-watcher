@@ -44,8 +44,8 @@ public class LocationsController(
         HttpContext.Items["Log:LocationTimestamp"] = validatedUpdate.Timestamp.ToString("HH:mm:ss");
         if (store.GetInviteCodeBySessionId(validatedUpdate.SessionId) is string inviteCode)
             HttpContext.Items["Log:Code"] = inviteCode;
-        var participants = store.GetParticipants(validatedUpdate.SessionId);
-        var positions = store.GetLatestPositions(validatedUpdate.SessionId);
+        var participants = store.GetParticipants(validatedUpdate.SessionId, user.UserId);
+        var positions = store.GetLatestPositions(validatedUpdate.SessionId, user.UserId);
         return Ok(new { participants, positions });
     }
 
@@ -66,6 +66,6 @@ public class LocationsController(
         if (!store.CanReadSession(sessionId, user.UserId))
             return StatusCode(StatusCodes.Status403Forbidden);
 
-        return Ok(store.GetLatestPositions(sessionId));
+        return Ok(store.GetLatestPositions(sessionId, user.UserId));
     }
 }
