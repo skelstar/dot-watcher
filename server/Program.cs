@@ -228,6 +228,15 @@ _ = app.Services.GetRequiredService<BearerTokenAuth>();
 _ = app.Services.GetRequiredService<UserTokenAuth>();
 var store = app.Services.GetRequiredService<SessionStore>();
 
+var demoSessionConfig = app.Configuration.GetSection("DemoSession");
+store.EnsureDemoSession(
+    demoSessionConfig["InviteCode"] ?? "ABC123",
+    demoSessionConfig["DisplayName"] ?? "DW",
+    demoSessionConfig.GetValue<double>("AnchorLatitude", -41.2865),
+    demoSessionConfig.GetValue<double>("AnchorLongitude", 174.7762),
+    demoSessionConfig.GetValue<double>("LoopRadiusMeters", 150),
+    demoSessionConfig.GetValue<double>("LoopPeriodSeconds", 360));
+
 // Migrate any existing NDJSON recordings into SQLite
 var recordingsPath = app.Configuration.GetValue<string>("RecordingsPath", "recordings")!;
 if (Directory.Exists(recordingsPath))

@@ -20,6 +20,18 @@ public class SessionStore(string connectionString)
     private readonly ConcurrentDictionary<string, ConcurrentDictionary<string, List<RunnerPosition>>> _sessions = new();
     private readonly NpgsqlDataSource _dataSource = new NpgsqlDataSourceBuilder(connectionString).Build();
 
+    // Perpetual public demo session (see EnsureDemoSession): a permanent synthetic "runner" whose
+    // position is computed live rather than posted/stored, so the session never archives (it
+    // always has a runner) and never accumulates data (AddPosition skips persistence for it).
+    private string? _demoUserId;
+    private string _demoDisplayName = "DW";
+    private double _demoAnchorLatitude;
+    private double _demoAnchorLongitude;
+    private double _demoLoopRadiusMeters;
+    private double _demoLoopPeriodSeconds = 1;
+
+    public string? DemoSessionId { get; private set; }
+
     public void Initialize()
     {
         using var conn = Connect();
@@ -98,6 +110,89 @@ public class SessionStore(string connectionString)
             CREATE INDEX IF NOT EXISTS idx_blocked_users_blocked ON blocked_users(blocked_user_id);
             """;
         cmd.ExecuteNonQuery();
+    }
+
+    // Idempotent - safe to call on every startup. Resolves (creating if missing) the permanent
+    // demo session and its permanent "runner" membership for DW, then caches DemoSessionId plus
+    // the anchor/loop settings used by GetDemoRunnerPosition. DW's own password is never used;
+    // it's a placeholder identity, not a real account anyone signs in as.
+    public void EnsureDemoSession(
+        string inviteCode,
+        string displayName,
+        double anchorLatitude,
+        double anchorLongitude,
+        double loopRadiusMeters,
+        double loopPeriodSeconds)
+    {
+        _demoDisplayName = displayName;
+        _demoAnchorLatitude = anchorLatitude;
+        _demoAnchorLongitude = anchorLongitude;
+        _demoLoopRadiusMeters = loopRadiusMeters;
+        _demoLoopPeriodSeconds = loopPeriodSeconds;
+
+        const string demoUsername = "dw-demo";
+        CreateUser(new UserAccount(
+            Guid.NewGuid().ToString(),
+            demoUsername,
+            displayName,
+            PasswordHasher.Hash(Guid.NewGuid().ToString())));
+        var demoUserId = GetUserByUsername(demoUsername)!.Id;
+        _demoUserId = demoUserId;
+
+        var normalizedInvite = NormalizeSessionName(inviteCode)
+            ?? throw new InvalidOperationException($"Configured demo invite code '{inviteCode}' is not a valid invite code.");
+        var now = DateTimeOffset.UtcNow.ToString("O");
+
+        using var conn = Connect();
+        using (var insert = conn.CreateCommand())
+        {
+            insert.CommandText = """
+                INSERT INTO app_sessions (id, session_name, invite_code, owner_user_id, created_at)
+                VALUES (@id, @sessionName, @inviteCode, @ownerUserId, @createdAt)
+                ON CONFLICT (invite_code) DO NOTHING
+                """;
+            insert.Parameters.AddWithValue("@id", Guid.NewGuid().ToString());
+            insert.Parameters.AddWithValue("@sessionName", $"{displayName} Demo");
+            insert.Parameters.AddWithValue("@inviteCode", normalizedInvite);
+            insert.Parameters.AddWithValue("@ownerUserId", demoUserId);
+            insert.Parameters.AddWithValue("@createdAt", now);
+            insert.ExecuteNonQuery();
+        }
+
+        string demoSessionId;
+        using (var lookup = conn.CreateCommand())
+        {
+            lookup.CommandText = "SELECT id FROM app_sessions WHERE invite_code = @inviteCode";
+            lookup.Parameters.AddWithValue("@inviteCode", normalizedInvite);
+            demoSessionId = (string)lookup.ExecuteScalar()!;
+        }
+
+        UpsertMembership(conn, demoSessionId, demoUserId, "runner", displayName, now);
+        DemoSessionId = demoSessionId;
+    }
+
+    private bool IsDemoSession(string sessionId) => DemoSessionId is not null && sessionId == DemoSessionId;
+
+    // Pure function of wall-clock time - DW's position is never posted or stored, just computed
+    // fresh on every read as a small loop around the configured anchor point.
+    private RunnerPosition GetDemoRunnerPosition(DateTimeOffset now)
+    {
+        var secondsIntoLoop = now.ToUnixTimeMilliseconds() / 1000.0 % _demoLoopPeriodSeconds;
+        var angle = 2 * Math.PI * secondsIntoLoop / _demoLoopPeriodSeconds;
+
+        const double metersPerDegreeLatitude = 111_320.0;
+        var metersPerDegreeLongitude = metersPerDegreeLatitude * Math.Cos(_demoAnchorLatitude * Math.PI / 180.0);
+
+        var latitude = _demoAnchorLatitude + _demoLoopRadiusMeters * Math.Sin(angle) / metersPerDegreeLatitude;
+        var longitude = _demoAnchorLongitude + _demoLoopRadiusMeters * Math.Cos(angle) / metersPerDegreeLongitude;
+
+        // Tangent direction of travel around the loop (d/dangle of the position above), as a
+        // compass bearing in degrees clockwise from north.
+        var headingRadians = Math.Atan2(-Math.Sin(angle), Math.Cos(angle));
+        var heading = headingRadians * 180.0 / Math.PI;
+        if (heading < 0) heading += 360.0;
+
+        return new RunnerPosition(_demoDisplayName, latitude, longitude, heading, now);
     }
 
     private NpgsqlConnection Connect() => _dataSource.OpenConnection();
@@ -615,7 +710,7 @@ public class SessionStore(string connectionString)
         return (long)(cmd.ExecuteScalar() ?? 0L) > 0;
     }
 
-    public IReadOnlyList<SessionRunner> GetSessionRunners(string sessionId)
+    public IReadOnlyList<SessionRunner> GetSessionRunners(string sessionId, string? callerUserId = null)
     {
         using var conn = Connect();
         using var cmd = conn.CreateCommand();
@@ -630,6 +725,12 @@ public class SessionStore(string connectionString)
         var runners = new List<SessionRunner>();
         while (reader.Read())
             runners.Add(new SessionRunner(reader.GetString(0), reader.GetString(1)));
+
+        // In the demo session, a caller should only ever see DW and themselves - never other
+        // real strangers who happen to also be trying the demo (see AddPosition/GetLatestPositions).
+        if (IsDemoSession(sessionId))
+            return runners.Where(r => r.UserId == _demoUserId || r.UserId == callerUserId).ToList();
+
         return runners;
     }
 
@@ -646,6 +747,11 @@ public class SessionStore(string connectionString)
                 update.Longitude,
                 update.Heading,
                 update.Timestamp));
+
+        // The demo session never persists positions - live viewing above is unaffected (it reads
+        // the in-memory cache, not Postgres), but nothing here ever needs cleaning up.
+        if (IsDemoSession(sessionId))
+            return;
 
         using var conn = Connect();
         using var cmd = conn.CreateCommand();
@@ -666,13 +772,20 @@ public class SessionStore(string connectionString)
         cmd.ExecuteNonQuery();
     }
 
-    public IReadOnlyList<string> GetParticipants(string sessionId)
+    public IReadOnlyList<string> GetParticipants(string sessionId, string? callerUserId = null)
     {
+        var isDemo = IsDemoSession(sessionId);
         if (!_sessions.TryGetValue(sessionId, out var session))
-            return [];
+            return isDemo ? [_demoDisplayName] : [];
+
         var participants = new List<string>(session.Count);
-        foreach (var (_, history) in session)
+        foreach (var (userId, history) in session)
         {
+            // In the demo session, only the caller's own name is included alongside DW's -
+            // never another real visitor's (see AddPosition/GetLatestPositions).
+            if (isDemo && userId != callerUserId)
+                continue;
+
             lock (history)
             {
                 if (history.Count > 0)
@@ -680,23 +793,36 @@ public class SessionStore(string connectionString)
             }
         }
 
+        if (isDemo)
+            participants.Add(_demoDisplayName);
+
         return participants;
     }
 
-    public IReadOnlyList<RunnerPosition[]> GetLatestPositions(string sessionId)
+    public IReadOnlyList<RunnerPosition[]> GetLatestPositions(string sessionId, string? callerUserId = null)
     {
+        var isDemo = IsDemoSession(sessionId);
         if (!_sessions.TryGetValue(sessionId, out var session))
-            return [];
+            return isDemo ? [[GetDemoRunnerPosition(DateTimeOffset.UtcNow)]] : [];
 
         var result = new List<RunnerPosition[]>(session.Count);
-        foreach (var (_, history) in session)
+        foreach (var (userId, history) in session)
         {
+            // Same caller-only scoping as GetParticipants - the demo session never surfaces
+            // another real visitor's position, only the caller's own plus DW's (below).
+            if (isDemo && userId != callerUserId)
+                continue;
+
             lock (history)
             {
                 if (history.Count > 0)
                     result.Add(history.TakeLast(1).ToArray());
             }
         }
+
+        if (isDemo)
+            result.Add([GetDemoRunnerPosition(DateTimeOffset.UtcNow)]);
+
         return result;
     }
 
