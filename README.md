@@ -274,6 +274,32 @@ No server-side changes are needed — the server already stores and returns the 
 
 ---
 
+## Demo session
+
+New installs land with nothing to join — no real running group happens to be live the moment someone first opens the app. To make that first-run experience actually show something, the server always keeps one reserved, permanent session open: invite code `ABC123` (configurable, see below), containing a synthetic runner called **DW**.
+
+This works entirely through the existing generic invite-code join flow — nobody needed to add a "try the demo" feature to the iOS app itself. Both clients already join any session by typing/opening its invite code, so `ABC123` just needs to be a session that's always there and always joinable. iOS's empty-state invite-code screen already sends any 6-character code to `POST /session-invites/{code}/join` with no change required.
+
+**Why it never expires.** A session normally archives itself the moment its last `runner` leaves ([server/Stores/SessionStore.cs](server/Stores/SessionStore.cs), `LeaveSession`) — deliberately, so a real run's invite link goes dead once the run is over instead of staying joinable forever. DW is seeded as a permanent `runner` member who never leaves, so that rule never fires for this session; nothing about the archiving logic itself needed to change.
+
+**Why it never accumulates data.** DW isn't a bot process posting real location updates on a timer — there's no background service, no HTTP client, no interval job to run. Its position is a pure function of wall-clock time: a small loop around a configured anchor point, computed fresh on every read (`SessionStore.GetDemoRunnerPosition`). Nothing is ever written to the database for this session — not DW's movement, not a real visitor's, either — `AddPosition` skips the Postgres insert entirely when the session is the demo session. Live viewing is unaffected, because it already reads from the in-memory latest-position cache, not from stored history; the only thing this session permanently lacks is a recording/replay history, which it doesn't need.
+
+**Privacy.** Every real visitor sees only themselves and DW — never another stranger who happens to be trying the demo at the same time. This is enforced server-side, per authenticated request, in the same read paths that serve live positions and rosters (`GetLatestPositions`, `GetParticipants`, `GetSessionRunners`), so it applies uniformly to iOS, web, and the no-login invite-code viewing path without any client-side awareness.
+
+**Configuration** (`server/appsettings.json`, `DemoSession` section):
+
+| Key | Meaning | Default |
+| --- | --- | --- |
+| `InviteCode` | The reserved, permanent invite code | `ABC123` |
+| `DisplayName` | DW's display name | `DW` |
+| `AnchorLatitude` / `AnchorLongitude` | Center point of DW's loop | Wellington, NZ |
+| `LoopRadiusMeters` | Radius of DW's loop | `150` |
+| `LoopPeriodSeconds` | Time to complete one lap | `360` (a jogging pace) |
+
+The web client surfaces a "Try the live demo" link in the sign-in join screen ([client/src/SessionPrompt.tsx](client/src/SessionPrompt.tsx)), pointing at `/code/{inviteCode}` — the same URL shape already used for shared invite links, so it reuses the existing auto-join-on-open behavior rather than new join logic.
+
+---
+
 ## Out of scope (for now)
 
 - Android app

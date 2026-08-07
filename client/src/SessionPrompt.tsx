@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import type { SessionMembership } from './types.ts'
 import { apiHeaders } from './apiHeaders.ts'
 
+const DEMO_INVITE_CODE: string = import.meta.env.VITE_DEMO_INVITE_CODE ?? 'ABC123'
+
 interface Props {
   serverUrl: string
   accessToken: string
@@ -180,6 +182,10 @@ export default function SessionPrompt({
             </form>
 
             <div style={divider} />
+
+            <a href={`/code/${DEMO_INVITE_CODE}`} style={secondaryLink}>
+              Try the live demo
+            </a>
 
             {!createOpen && (
               <button type="button" style={secondaryLink} onClick={() => setCreateOpen(true)}>

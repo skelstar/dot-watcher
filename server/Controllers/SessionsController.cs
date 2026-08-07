@@ -121,7 +121,7 @@ public class SessionsController(
         // joined-runners roster (GetSessionRunners, userId + displayName), not GetParticipants
         // (who's actively posting) — the point is for a new joiner to immediately see everyone
         // already in the session, even ones who haven't started tracking yet.
-        var participants = store.GetSessionRunners(membership.SessionId);
+        var participants = store.GetSessionRunners(membership.SessionId, user.UserId);
         return Ok(new
         {
             membership.SessionId,
@@ -214,7 +214,7 @@ public class SessionsController(
         if (!store.CanReadSession(sessionId, user.UserId))
             return StatusCode(StatusCodes.Status403Forbidden);
 
-        return Ok(store.GetSessionRunners(sessionId));
+        return Ok(store.GetSessionRunners(sessionId, user.UserId));
     }
 
     /// <summary>Removes the caller's own membership from a session.</summary>
