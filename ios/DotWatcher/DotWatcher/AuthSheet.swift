@@ -49,6 +49,13 @@ struct AuthSheet: View {
                         .pickerStyle(.segmented)
                         .labelsHidden()
                     }
+                    #if DEBUG
+                    Section {
+                        Toggle("Force satellite mode", isOn: $location.debugForceUltraConstrained)
+                    } footer: {
+                        Text("Simulates being on a carrier satellite (Direct-to-Cell) connection — shows the on-satellite map badge, pauses GET polling, and slows the post interval to 90s. Also reachable in Release/TestFlight builds via a hidden 10-tap gesture on the build/SHA label.")
+                    }
+                    #endif
                     legalSection
                 } else {
                     Section {

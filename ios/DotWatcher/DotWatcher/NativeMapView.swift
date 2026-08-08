@@ -30,6 +30,16 @@ struct NativeMapView: View {
     /// half-open sheet would place pins under the clipped-off bottom half. Used to bias the
     /// fitted/followed region so pins land within the visible top slice instead.
     var visibleFraction: CGFloat
+    /// True while the device's only path is a carrier satellite (Direct-to-Cell) connection —
+    /// see `LocationManager.isUltraConstrained`. The map freezes on its last-known frame (camera
+    /// stops re-fitting/following, pins stop moving) and dims under a status badge, since
+    /// `GET /locations` polling is skipped entirely while this is true and pins would otherwise
+    /// silently go stale with no explanation. Auto-clears (unfreezes, undims) the moment this
+    /// flips back to `false` — no user action either direction.
+    var isUltraConstrained: Bool = false
+    /// The local device's own last successful `POST /location` time, shown in the satellite
+    /// status badge so the runner has a concrete "still working" signal beyond the message text.
+    var lastSent: Date?
 
     @State private var cameraPosition: MapCameraPosition = .automatic
     @State private var followSpan = MKCoordinateSpan(latitudeDelta: 0.01, longitudeDelta: 0.01)
@@ -74,11 +84,23 @@ struct NativeMapView: View {
             }
             .onChange(of: context.date) { _, _ in followCameraIfNeeded() }
         }
+        // Dims the frozen last-known frame rather than hiding it outright, so spatial context
+        // (roughly where everyone was) stays visible — reuses RunnerMapPin's SleepPin opacity
+        // band, applied here at the whole-map level instead of per-pin since the entire view is
+        // stale, not one runner. `allowsHitTesting(false)` keeps it purely visual so a stray tap
+        // can't nudge the frozen camera.
+        .overlay {
+            if isUltraConstrained {
+                Color.black.opacity(0.35)
+                    .allowsHitTesting(false)
+                    .transition(.opacity)
+            }
+        }
         .overlay(alignment: .topLeading) {
             // Only once the sheet is dragged open enough that the map fills most of the
             // screen — at the medium detent there's no room and the participants grid below
             // already serves this purpose.
-            if visibleFraction > 0.9 {
+            if visibleFraction > 0.9 && !isUltraConstrained {
                 RunnerLegendRow(
                     names: pins.map(\.id),
                     currentRunnerName: currentRunnerName,
@@ -92,6 +114,15 @@ struct NativeMapView: View {
                 .padding(.leading, 12)
             }
         }
+        .overlay(alignment: .top) {
+            if isUltraConstrained {
+                SatelliteStatusBadge(lastSent: lastSent)
+                    .padding(.top, 12)
+                    .padding(.horizontal, 12)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+            }
+        }
+        .animation(.easeInOut(duration: 0.4), value: isUltraConstrained)
         .onAppear { fitCamera() }
         .onChange(of: pins.map(\.id)) { _, _ in
             if followedRunnerName != nil && followedPin == nil {
@@ -114,20 +145,34 @@ struct NativeMapView: View {
             followedRunnerName = nil
             fitCamera()
         }
+        // Auto-resume the instant the path clears — re-fit immediately rather than waiting for
+        // the next per-second TimelineView tick to call followCameraIfNeeded/fitCamera, since
+        // those are now unblocked but nothing else triggers them right away.
+        .onChange(of: isUltraConstrained) { _, stillConstrained in
+            guard !stillConstrained else { return }
+            if followedRunnerName != nil {
+                followCameraIfNeeded()
+            } else {
+                fitCamera()
+            }
+        }
     }
 
     /// Re-centers on the followed runner's current pin, keeping whatever zoom `followSpan`
     /// holds — called every second from the map's own timer so movement is picked up as soon
     /// as a new position lands, without a separate polling loop.
     private func followCameraIfNeeded() {
-        guard let followedPin else { return }
+        // Frozen while ultra-constrained: pins aren't refreshing (GET polling is skipped), so
+        // re-centering on a followed runner's stale last-known pin would just be motion for its
+        // own sake. Camera picks back up automatically once this clears.
+        guard !isUltraConstrained, let followedPin else { return }
         withAnimation(.easeInOut(duration: 0.6)) {
             cameraPosition = .region(visibleRegion(centeredOn: followedPin.coordinate, span: followSpan))
         }
     }
 
     private func fitCamera() {
-        guard !pins.isEmpty else { return }
+        guard !isUltraConstrained, !pins.isEmpty else { return }
         if pins.count == 1 {
             withAnimation(.easeInOut(duration: 0.6)) {
                 cameraPosition = .region(
@@ -182,5 +227,31 @@ struct NativeMapView: View {
 private extension RunnerPositionResponse {
     var coordinate: CLLocationCoordinate2D {
         CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
+    }
+}
+
+/// Shown over the map while `NativeMapView.isUltraConstrained` — mirrors `ContentView`'s
+/// `offlineBanner` (`Label` + SF Symbol) but as a floating pill rather than a full-width bar,
+/// since this overlays just the map rather than the whole screen.
+private struct SatelliteStatusBadge: View {
+    let lastSent: Date?
+
+    var body: some View {
+        VStack(spacing: 2) {
+            Label("On satellite — sending position, map paused", systemImage: "antenna.radiowaves.left.and.right")
+                .font(.subheadline.weight(.semibold))
+                .multilineTextAlignment(.leading)
+            if let lastSent {
+                Text("Last sent \(lastSent, style: .relative) ago")
+                    .font(.caption)
+                    .foregroundStyle(.white.opacity(0.8))
+            }
+        }
+        .foregroundStyle(.white)
+        .padding(.vertical, 10)
+        .padding(.horizontal, 14)
+        .frame(maxWidth: .infinity)
+        .background(Color.orange, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .shadow(color: .black.opacity(0.25), radius: 4, y: 2)
     }
 }

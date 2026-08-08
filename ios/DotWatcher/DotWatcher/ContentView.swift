@@ -30,6 +30,11 @@ struct ContentView: View {
     /// clip (1.0 = fully expanded, ~0.5 at the medium detent). Lets the map bias its fit-all
     /// and follow framing so pins land in the visible slice instead of the sheet's true center.
     @State private var mapVisibleFraction: CGFloat = 1
+    /// Counts consecutive taps on the build/SHA label (`headerSection`) toward the hidden
+    /// gesture that flips `LocationManager.debugForceUltraConstrained` — the only way to trigger
+    /// satellite-mode testing on a TestFlight/Release build, which has no visible debug UI.
+    @State private var versionTapCount = 0
+    @State private var lastVersionTap: Date?
 
     var body: some View {
         mainContent
@@ -383,7 +388,9 @@ struct ContentView: View {
                 if build != nil || sha != nil {
                     Text([build.map { "build \($0)" }, sha].compactMap { $0 }.joined(separator: " · "))
                         .font(.caption2)
-                        .foregroundStyle(.tertiary)
+                        .foregroundStyle(location.debugForceUltraConstrained ? Color.orange : Color(.tertiaryLabel))
+                        .contentShape(Rectangle())
+                        .onTapGesture { registerVersionTap() }
                 }
             }
             Spacer()
@@ -412,6 +419,23 @@ struct ContentView: View {
                 }
                 .buttonStyle(.plain)
         }
+    }
+
+    /// 10 taps within 2s of each other flips `debugForceUltraConstrained` — a deliberately
+    /// undiscoverable way to test the satellite UI on TestFlight/Release builds, which have no
+    /// visible debug menu. A single stray tap resets the count rather than accumulating forever,
+    /// so it can't be triggered by accident over unrelated taps spread through a session.
+    private func registerVersionTap() {
+        let now = Date()
+        if let lastVersionTap, now.timeIntervalSince(lastVersionTap) > 2 {
+            versionTapCount = 0
+        }
+        lastVersionTap = now
+        versionTapCount += 1
+        guard versionTapCount >= 10 else { return }
+        versionTapCount = 0
+        location.debugForceUltraConstrained.toggle()
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
     }
 
     // MARK: - Runner Row
