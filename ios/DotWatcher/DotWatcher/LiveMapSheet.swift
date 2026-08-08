@@ -15,7 +15,9 @@ struct LiveMapSheet: View {
                 currentHeading: location.currentHeading,
                 followedRunnerName: $followedRunnerName,
                 fitAllTrigger: fitAllTrigger,
-                visibleFraction: visibleFraction
+                visibleFraction: visibleFraction,
+                isUltraConstrained: location.isUltraConstrained,
+                lastSent: location.lastSent
             )
         } else {
             Color.clear
