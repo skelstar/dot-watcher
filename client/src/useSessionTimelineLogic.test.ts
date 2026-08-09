@@ -2,20 +2,26 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
   earliestActivityMs,
+  findAdaptiveCountdowns,
   findGpsSignalLoss,
   findRunnersWithGap,
   findSleepingRunners,
+  formatCountdownSeconds,
+  GRACE_MS,
   isRangeCovered,
   latestActivityMs,
   livePollingError,
   maxOrNull,
   mergeIntoByRunner,
   mergeRange,
+  normalizeUpdate,
   parseNdjson,
   positionsAtCutoff,
   shouldPollLivePositions,
   shouldPollLivePositionsByInvite,
 } from './useSessionTimelineLogic.ts'
+
+const NORMAL_INTERVAL_MS = 15_000
 
 test('mergeRange inserts a disjoint range in sorted order', () => {
   const ranges = mergeRange([{ since: 0, until: 10 }], { since: 20, until: 30 })
@@ -65,12 +71,12 @@ test('livePollingError gives membership-specific copy for 403 responses', () => 
 
 test('parseNdjson parses camelCase lines', () => {
   const line = JSON.stringify({ runnerName: 'Alice', latitude: 1, longitude: 2, heading: 90, timestamp: 't1' })
-  assert.deepEqual(parseNdjson(line), [{ runnerName: 'Alice', latitude: 1, longitude: 2, heading: 90, timestamp: 't1' }])
+  assert.deepEqual(parseNdjson(line), [{ runnerName: 'Alice', latitude: 1, longitude: 2, heading: 90, timestamp: 't1', nextExpectedAt: null }])
 })
 
 test('parseNdjson normalises legacy PascalCase lines', () => {
   const line = JSON.stringify({ RunnerName: 'Bob', Latitude: 1, Longitude: 2, Timestamp: 't1' })
-  assert.deepEqual(parseNdjson(line), [{ runnerName: 'Bob', latitude: 1, longitude: 2, heading: null, timestamp: 't1' }])
+  assert.deepEqual(parseNdjson(line), [{ runnerName: 'Bob', latitude: 1, longitude: 2, heading: null, timestamp: 't1', nextExpectedAt: null }])
 })
 
 test('mergeIntoByRunner appends and sorts by timestamp, de-duping exact repeats', () => {
@@ -280,6 +286,161 @@ test('findRunnersWithGap only flags runners actually affected, alongside unaffec
   ])
   const cutoff = new Date('2024-01-01T00:02:00Z').getTime()
   assert.deepEqual(findRunnersWithGap(byRunner, cutoff), new Set(['Alice']))
+})
+
+test('findRunnersWithGap does not flag a satellite runner still within its own reported cadence', () => {
+  // 90s satellite interval would exceed the fixed MISSING_GAP_MS (60s) fallback, but the runner
+  // self-reported nextExpectedAt, so that governs instead.
+  const byRunner = new Map([
+    ['Alice', [
+      {
+        runnerName: 'Alice', latitude: 0, longitude: 0, heading: null,
+        timestamp: '2024-01-01T00:00:00Z', nextExpectedAt: '2024-01-01T00:01:30Z',
+      },
+    ]],
+  ])
+  const cutoff = new Date('2024-01-01T00:01:00Z').getTime() // before nextExpectedAt
+  assert.deepEqual(findRunnersWithGap(byRunner, cutoff), new Set())
+})
+
+test('findRunnersWithGap does not flag a runner within the grace period after its reported nextExpectedAt', () => {
+  const byRunner = new Map([
+    ['Alice', [
+      {
+        runnerName: 'Alice', latitude: 0, longitude: 0, heading: null,
+        timestamp: '2024-01-01T00:00:00Z', nextExpectedAt: '2024-01-01T00:01:30Z',
+      },
+    ]],
+  ])
+  const cutoff = new Date('2024-01-01T00:01:30Z').getTime() + GRACE_MS - 1
+  assert.deepEqual(findRunnersWithGap(byRunner, cutoff), new Set())
+})
+
+test('findRunnersWithGap flags a runner once past nextExpectedAt plus the grace period', () => {
+  const byRunner = new Map([
+    ['Alice', [
+      {
+        runnerName: 'Alice', latitude: 0, longitude: 0, heading: null,
+        timestamp: '2024-01-01T00:00:00Z', nextExpectedAt: '2024-01-01T00:01:30Z',
+      },
+    ]],
+  ])
+  const cutoff = new Date('2024-01-01T00:01:30Z').getTime() + GRACE_MS + 1
+  assert.deepEqual(findRunnersWithGap(byRunner, cutoff), new Set(['Alice']))
+})
+
+test('findRunnersWithGap falls back to MISSING_GAP_MS when nextExpectedAt is absent', () => {
+  const byRunner = new Map([
+    ['Alice', [
+      { runnerName: 'Alice', latitude: 0, longitude: 0, heading: null, timestamp: '2024-01-01T00:00:00Z' },
+    ]],
+  ])
+  const cutoff = new Date('2024-01-01T00:00:00Z').getTime() + 61_000 // past the 60s fallback
+  assert.deepEqual(findRunnersWithGap(byRunner, cutoff), new Set(['Alice']))
+})
+
+test('findAdaptiveCountdowns omits a runner on normal cadence', () => {
+  const byRunner = new Map([
+    ['Alice', [
+      {
+        runnerName: 'Alice', latitude: 0, longitude: 0, heading: null,
+        timestamp: '2024-01-01T00:00:00Z', nextExpectedAt: '2024-01-01T00:00:15Z', // 15s == normal
+      },
+    ]],
+  ])
+  const cutoff = new Date('2024-01-01T00:00:05Z').getTime()
+  assert.deepEqual(findAdaptiveCountdowns(byRunner, cutoff, NORMAL_INTERVAL_MS), new Map())
+})
+
+test('findAdaptiveCountdowns omits a runner with no nextExpectedAt', () => {
+  const byRunner = new Map([
+    ['Alice', [
+      { runnerName: 'Alice', latitude: 0, longitude: 0, heading: null, timestamp: '2024-01-01T00:00:00Z' },
+    ]],
+  ])
+  const cutoff = new Date('2024-01-01T00:00:05Z').getTime()
+  assert.deepEqual(findAdaptiveCountdowns(byRunner, cutoff, NORMAL_INTERVAL_MS), new Map())
+})
+
+test('findAdaptiveCountdowns counts down for a runner on a slower-than-normal cadence', () => {
+  const byRunner = new Map([
+    ['Alice', [
+      {
+        runnerName: 'Alice', latitude: 0, longitude: 0, heading: null,
+        timestamp: '2024-01-01T00:00:00Z', nextExpectedAt: '2024-01-01T00:01:30Z', // 90s satellite cadence
+      },
+    ]],
+  ])
+  const cutoff = new Date('2024-01-01T00:01:00Z').getTime() // 30s remaining
+  const countdowns = findAdaptiveCountdowns(byRunner, cutoff, NORMAL_INTERVAL_MS)
+  assert.deepEqual(countdowns.get('Alice'), { status: 'counting-down', remainingMs: 30_000, intervalMs: 90_000 })
+})
+
+test('findAdaptiveCountdowns reports due once nextExpectedAt passes but within the grace window', () => {
+  const byRunner = new Map([
+    ['Alice', [
+      {
+        runnerName: 'Alice', latitude: 0, longitude: 0, heading: null,
+        timestamp: '2024-01-01T00:00:00Z', nextExpectedAt: '2024-01-01T00:01:30Z',
+      },
+    ]],
+  ])
+  const cutoff = new Date('2024-01-01T00:01:30Z').getTime() + GRACE_MS - 1
+  const countdowns = findAdaptiveCountdowns(byRunner, cutoff, NORMAL_INTERVAL_MS)
+  assert.equal(countdowns.get('Alice')?.status, 'due')
+})
+
+test('findAdaptiveCountdowns reports overdue once past nextExpectedAt plus the grace window', () => {
+  const byRunner = new Map([
+    ['Alice', [
+      {
+        runnerName: 'Alice', latitude: 0, longitude: 0, heading: null,
+        timestamp: '2024-01-01T00:00:00Z', nextExpectedAt: '2024-01-01T00:01:30Z',
+      },
+    ]],
+  ])
+  const cutoff = new Date('2024-01-01T00:01:30Z').getTime() + GRACE_MS + 1
+  const countdowns = findAdaptiveCountdowns(byRunner, cutoff, NORMAL_INTERVAL_MS)
+  assert.equal(countdowns.get('Alice')?.status, 'overdue')
+})
+
+test('formatCountdownSeconds renders under a minute as plain seconds', () => {
+  assert.equal(formatCountdownSeconds(42_000), '42s')
+  assert.equal(formatCountdownSeconds(1_000), '1s')
+})
+
+test('formatCountdownSeconds rounds up to the next whole second', () => {
+  assert.equal(formatCountdownSeconds(41_200), '42s')
+})
+
+test('formatCountdownSeconds clamps negative remaining time to 0s', () => {
+  assert.equal(formatCountdownSeconds(-5_000), '0s')
+})
+
+test('formatCountdownSeconds switches to M:SS at the 90s threshold', () => {
+  assert.equal(formatCountdownSeconds(89_000), '89s')
+  assert.equal(formatCountdownSeconds(90_000), '1:30')
+})
+
+test('formatCountdownSeconds pads seconds under 10 with a leading zero in M:SS form', () => {
+  assert.equal(formatCountdownSeconds(149_000), '2:29')
+  assert.equal(formatCountdownSeconds(125_000), '2:05')
+})
+
+test('normalizeUpdate carries nextExpectedAt through from camelCase and PascalCase payloads', () => {
+  assert.equal(
+    normalizeUpdate({
+      runnerName: 'Alice', latitude: 0, longitude: 0, heading: null,
+      timestamp: '2024-01-01T00:00:00Z', nextExpectedAt: '2024-01-01T00:00:15Z',
+    }).nextExpectedAt,
+    '2024-01-01T00:00:15Z',
+  )
+  assert.equal(
+    normalizeUpdate({
+      RunnerName: 'Alice', Latitude: 0, Longitude: 0, Heading: null, Timestamp: '2024-01-01T00:00:00Z',
+    }).nextExpectedAt,
+    null,
+  )
 })
 
 test('findSleepingRunners flags a runner whose recent reports show negligible movement', () => {

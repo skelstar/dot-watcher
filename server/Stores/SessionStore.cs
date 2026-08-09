@@ -746,7 +746,8 @@ public class SessionStore(string connectionString)
                 update.Latitude,
                 update.Longitude,
                 update.Heading,
-                update.Timestamp));
+                update.Timestamp,
+                update.NextExpectedAt));
 
         // The demo session never persists positions - live viewing above is unaffected (it reads
         // the in-memory cache, not Postgres), but nothing here ever needs cleaning up.

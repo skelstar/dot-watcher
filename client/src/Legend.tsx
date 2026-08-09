@@ -1,4 +1,5 @@
 import { runnerColour } from './useRunnerMarkers.ts'
+import { formatCountdownSeconds, type RunnerCountdown } from './useSessionTimelineLogic.ts'
 
 interface Props {
   runners: string[]
@@ -8,6 +9,38 @@ interface Props {
   runnersWithGap?: Set<string>
   runnersSleeping?: Set<string>
   runnersWithGpsSignalLoss?: Set<string>
+  runnerCountdowns?: Map<string, RunnerCountdown>
+}
+
+const COUNTDOWN_RING_SIZE = 18
+
+// Mirrors iOS's PostCountdownRing (PostCountdownRing.swift): a ring whose pie-slice fill grows
+// clockwise from 12 o'clock as time elapses since the last post, emptying back to nothing the
+// moment a fresh position (and next countdown) arrives. Built with conic-gradient rather than SVG
+// arc math — "fraction of the circle filled" needs no path/trig here, just a CSS gradient. Paired
+// with a plain numeric countdown alongside it (too small at 18px to fit text inside the ring itself).
+function CountdownRing({ countdown }: { countdown: RunnerCountdown }) {
+  const elapsedFraction = countdown.intervalMs > 0
+    ? 1 - Math.max(0, Math.min(1, countdown.remainingMs / countdown.intervalMs))
+    : 1
+  const label = countdown.status === 'counting-down' ? formatCountdownSeconds(countdown.remainingMs) : 'now'
+  return (
+    <>
+      <div
+        style={{
+          width: COUNTDOWN_RING_SIZE,
+          height: COUNTDOWN_RING_SIZE,
+          borderRadius: '50%',
+          border: '1.5px solid #9ca3af',
+          background: elapsedFraction <= 0
+            ? 'transparent'
+            : `conic-gradient(#6b7280 ${elapsedFraction * 360}deg, transparent ${elapsedFraction * 360}deg)`,
+          flexShrink: 0,
+        }}
+      />
+      <span style={countdownText}>{label}</span>
+    </>
+  )
 }
 
 export default function Legend({
@@ -18,6 +51,7 @@ export default function Legend({
   runnersWithGap = new Set(),
   runnersSleeping = new Set(),
   runnersWithGpsSignalLoss = new Set(),
+  runnerCountdowns = new Map(),
 }: Props) {
   if (runners.length === 0) return null
 
@@ -30,23 +64,33 @@ export default function Legend({
         const missing = runnersWithGap.has(name)
         const sleeping = !missing && runnersSleeping.has(name)
         const signalLoss = runnersWithGpsSignalLoss.has(name)
-        const message = missing
-          ? 'Missing location'
-          : signalLoss
-          ? 'Poor GPS signal'
-          : sleeping
-          ? 'Sleeping'
-          : null
+        // Countdown only ever shown for an actively-reporting, non-missing runner (per the plan:
+        // "Only show the live countdown for actively-reporting runners") — a runner already
+        // flagged missing shows that instead, not a stale/contradictory countdown alongside it.
+        const countdown = !missing ? runnerCountdowns.get(name) : undefined
+        const message = missing ? 'Missing location' : signalLoss ? 'Poor GPS signal' : sleeping ? 'Sleeping' : null
+        const tone: LabelTone = missing ? 'muted' : 'warning'
+        const showCountdown = !message && countdown
+        const title = showCountdown
+          ? countdown.status === 'counting-down'
+            ? `Next update in ${formatCountdownSeconds(countdown.remainingMs)}`
+            : 'Update due any moment'
+          : undefined
 
         return (
           <div key={name} style={row}>
-            <div style={{ position: 'relative' }}>
-              <div style={dot(runnerColour(name), missing, sleeping)} onClick={() => onRunnerClick(name)}>
-                {name}
+            {/* Dot, ring and countdown number all share one pill when a countdown is showing, so
+                the ring reads as clearly attached to its runner rather than a separate chip. */}
+            <div style={pill(showCountdown)} title={title}>
+              <div style={{ position: 'relative' }}>
+                <div style={dot(runnerColour(name), missing, sleeping)} onClick={() => onRunnerClick(name)}>
+                  {name}
+                </div>
+                {signalLoss && <div style={signalLossBadge}>!</div>}
               </div>
-              {signalLoss && <div style={signalLossBadge}>!</div>}
+              {showCountdown && <CountdownRing countdown={countdown} />}
             </div>
-            {message && <span style={issueLabel(missing)}>{message}</span>}
+            {message && <span style={issueLabel(tone)}>{message}</span>}
           </div>
         )
       })}
@@ -78,6 +122,21 @@ const row: React.CSSProperties = {
   display: 'flex',
   alignItems: 'center',
   gap: 8,
+}
+
+// Wraps the dot (and, while a countdown is live, the ring + number) in one pill so they read as
+// a single unit. Only gets the translucent-white background/padding when a countdown is actually
+// showing — otherwise the dot sits bare, same as before this existed.
+function pill(active: boolean | undefined): React.CSSProperties {
+  return {
+    display: 'flex',
+    alignItems: 'center',
+    gap: active ? 4 : 0,
+    background: active ? 'rgba(255,255,255,0.5)' : 'transparent',
+    borderRadius: 20,
+    padding: active ? '3px 8px 3px 3px' : 0,
+    boxShadow: active ? '0 1px 3px rgba(0,0,0,0.2)' : 'none',
+  }
 }
 
 function dot(colour: string, missing: boolean, sleeping: boolean): React.CSSProperties {
@@ -123,12 +182,23 @@ const signalLossBadge: React.CSSProperties = {
   pointerEvents: 'none',
 }
 
-function issueLabel(missing: boolean): React.CSSProperties {
+const countdownText: React.CSSProperties = {
+  fontSize: '0.8rem',
+  fontFamily: 'system-ui, sans-serif',
+  fontWeight: 600,
+  fontVariantNumeric: 'tabular-nums',
+  color: '#0f172a',
+  whiteSpace: 'nowrap',
+}
+
+type LabelTone = 'muted' | 'warning'
+
+function issueLabel(tone: LabelTone): React.CSSProperties {
   return {
     fontSize: '0.8rem',
     fontFamily: 'system-ui, sans-serif',
     fontWeight: 600,
-    color: missing ? '#57606a' : '#dc2626',
+    color: tone === 'warning' ? '#dc2626' : '#57606a',
     background: 'rgba(255,255,255,0.92)',
     borderRadius: 4,
     padding: '3px 6px',

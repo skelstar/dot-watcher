@@ -561,15 +561,17 @@ final class LocationManager {
             // stale timestamp every heartbeat made the server/web client see no recent activity
             // and incorrectly mark the session as no longer live, even though tracking was still
             // active and posting successfully every interval.
+            let now = Date()
             await post(
                 lat: loc.coordinate.latitude,
                 lon: loc.coordinate.longitude,
                 heading: heading,
-                timestamp: Date())
+                timestamp: now,
+                nextExpectedAt: nextPostAt(from: now))
         }
     }
 
-    private func post(lat: Double, lon: Double, heading: Double?, timestamp: Date) async {
+    private func post(lat: Double, lon: Double, heading: Double?, timestamp: Date, nextExpectedAt: Date) async {
         let targetSessionId = sessionId
         do {
             var body: [String: Any] = [
@@ -578,6 +580,13 @@ final class LocationManager {
                 "latitude": lat,
                 "longitude": lon,
                 "timestamp": ISO8601DateFormatter().string(from: timestamp),
+                // Self-reported heartbeat: when this device expects to post next, at its current
+                // cadence (`interval` — normal or the slower satellite one). Absolute timestamp
+                // rather than a duration, since it's already clock-aligned via `nextPostAt()` and
+                // stays consistent with `timestamp` above. Lets the server (and eventually the web/
+                // native clients) tell "on-schedule but slow" apart from "actually stuck/offline"
+                // without hardcoding one fixed staleness threshold for every runner.
+                "nextExpectedAt": ISO8601DateFormatter().string(from: nextExpectedAt),
             ]
             if let heading { body["heading"] = heading }
 
