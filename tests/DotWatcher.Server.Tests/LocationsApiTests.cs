@@ -159,6 +159,80 @@ public class LocationsApiTests
     }
 
     [Fact]
+    public async Task PostLocation_WithNextExpectedAtBeforeTimestamp_ReturnsBadRequest()
+    {
+        using var factory = new DotWatcherApiFactory();
+        using var client = factory.CreateClient();
+        var token = await AuthTestHelpers.RegisterAsync(client, "alice", "Alice");
+        var session = await AuthTestHelpers.CreateSessionAsync(client, token);
+        var location = TestLocation("Ignored", session.SessionId);
+
+        var response = await PostLocationAsync(
+            client,
+            location with { NextExpectedAt = location.Timestamp!.Value.AddSeconds(-1) },
+            token);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task PostLocation_WithNextExpectedAtTooFarInFuture_ReturnsBadRequest()
+    {
+        using var factory = new DotWatcherApiFactory();
+        using var client = factory.CreateClient();
+        var token = await AuthTestHelpers.RegisterAsync(client, "alice", "Alice");
+        var session = await AuthTestHelpers.CreateSessionAsync(client, token);
+        var location = TestLocation("Ignored", session.SessionId);
+
+        var response = await PostLocationAsync(
+            client,
+            location with { NextExpectedAt = location.Timestamp!.Value.AddHours(1) },
+            token);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task PostLocation_WithNextExpectedAt_IsReturnedByGetLocations()
+    {
+        using var factory = new DotWatcherApiFactory();
+        using var client = factory.CreateClient();
+        var token = await AuthTestHelpers.RegisterAsync(client, "alice", "Alice");
+        var session = await AuthTestHelpers.CreateSessionAsync(client, token);
+        var location = TestLocation("Ignored", session.SessionId);
+        var nextExpectedAt = location.Timestamp!.Value.AddSeconds(90);
+
+        var postResponse = await PostLocationAsync(client, location with { NextExpectedAt = nextExpectedAt }, token);
+        Assert.Equal(HttpStatusCode.OK, postResponse.StatusCode);
+
+        var response = await SendWithUserTokenAsync(client, HttpMethod.Get, $"/locations/{session.SessionId}", token);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        var locations = await response.Content.ReadFromJsonAsync<List<List<RunnerPosition>>>();
+        Assert.NotNull(locations);
+        var position = Assert.Single(locations.SelectMany(runnerPositions => runnerPositions));
+        Assert.Equal(nextExpectedAt, position.NextExpectedAt);
+    }
+
+    [Fact]
+    public async Task PostLocation_WithoutNextExpectedAt_LeavesItNullInGetLocations()
+    {
+        using var factory = new DotWatcherApiFactory();
+        using var client = factory.CreateClient();
+        var token = await AuthTestHelpers.RegisterAsync(client, "alice", "Alice");
+        var session = await AuthTestHelpers.CreateSessionAsync(client, token);
+
+        var postResponse = await PostLocationAsync(client, TestLocation("Ignored", session.SessionId), token);
+        Assert.Equal(HttpStatusCode.OK, postResponse.StatusCode);
+
+        var response = await SendWithUserTokenAsync(client, HttpMethod.Get, $"/locations/{session.SessionId}", token);
+        var locations = await response.Content.ReadFromJsonAsync<List<List<RunnerPosition>>>();
+        Assert.NotNull(locations);
+        var position = Assert.Single(locations.SelectMany(runnerPositions => runnerPositions));
+        Assert.Null(position.NextExpectedAt);
+    }
+
+    [Fact]
     public async Task GetLocations_WithoutUserToken_ReturnsUnauthorized()
     {
         using var factory = new DotWatcherApiFactory();

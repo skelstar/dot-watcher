@@ -12,10 +12,16 @@ public sealed record ValidatedLocationUpdate(
     double Latitude,
     double Longitude,
     double? Heading,
-    DateTimeOffset Timestamp);
+    DateTimeOffset Timestamp,
+    DateTimeOffset? NextExpectedAt = null);
 
 public static class LocationUpdateValidation
 {
+    // Loose upper bound on how far ahead a client may claim its next post will be - generous
+    // enough to cover any plausible cadence (including satellite's 90s) with headroom, while
+    // still catching a garbled/bogus value (e.g. wrong units, year in the far future).
+    private static readonly TimeSpan MaxNextExpectedAtLookahead = TimeSpan.FromMinutes(15);
+
     public static IReadOnlyList<string> Validate(LocationUpdate update)
     {
         var errors = new List<string>();
@@ -38,6 +44,17 @@ public static class LocationUpdateValidation
         if (update.Timestamp is null || update.Timestamp == default(DateTimeOffset))
             errors.Add("Timestamp is required.");
 
+        // Optional - older clients don't send it. When present, it must be a real future moment
+        // relative to the position it accompanies, not wildly so.
+        if (update.NextExpectedAt is { } nextExpectedAt)
+        {
+            var timestamp = update.Timestamp ?? DateTimeOffset.UtcNow;
+            if (nextExpectedAt <= timestamp)
+                errors.Add("nextExpectedAt must be after timestamp.");
+            else if (nextExpectedAt - timestamp > MaxNextExpectedAtLookahead)
+                errors.Add($"nextExpectedAt must be within {MaxNextExpectedAtLookahead.TotalMinutes:0} minutes of timestamp.");
+        }
+
         return errors;
     }
 
@@ -59,7 +76,8 @@ public static class LocationUpdateValidation
             update.Latitude!.Value,
             update.Longitude!.Value,
             update.Heading,
-            update.Timestamp!.Value);
+            update.Timestamp!.Value,
+            update.NextExpectedAt);
         return true;
     }
 }

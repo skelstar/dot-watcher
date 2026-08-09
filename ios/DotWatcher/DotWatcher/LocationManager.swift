@@ -113,6 +113,22 @@ final class LocationManager {
     private(set) var memberships: [SessionMembership] = []
     private(set) var recentSessions: [SessionMembership] = []
     private(set) var isOffline = false
+    private(set) var rawIsUltraConstrained = false
+    // Hidden override for exercising the satellite UI without a real Direct-to-Cell dead zone
+    // (there's no way to fake `NWPath.isUltraConstrained` from code otherwise, and TestFlight/App
+    // Store builds both compile as Release, so a `#if DEBUG` toggle wouldn't reach testers).
+    // Flipped by a hidden 10-tap gesture on the build/SHA label (see `ContentView.headerSection`)
+    // rather than visible UI — intentionally ships in Release builds. Deliberately not persisted
+    // (plain in-memory `var`, resets to `false` on relaunch) so it can never get silently stuck on.
+    var debugForceUltraConstrained = false
+    /// True when the only available path is a carrier's satellite Direct-to-Cell connection
+    /// (`NWPath.isUltraConstrained`, iOS 26.1+ only — always `false` below that). Reactive-only,
+    /// per Apple's guidance: there's no way to pre-check satellite eligibility, only to detect it
+    /// after the path is already in use. Drives a slower post cadence (`interval`), skips
+    /// `GET /locations` polling (`loadLatestPositions`), and dims/freezes the live map.
+    var isUltraConstrained: Bool {
+        debugForceUltraConstrained || rawIsUltraConstrained
+    }
     /// Set once the server rejects a request with 426 (client below its MinimumApiVersion floor).
     /// Sticky for the rest of the session — the only fix is installing a newer build.
     private(set) var updateRequired = false
@@ -170,7 +186,14 @@ final class LocationManager {
         didSet { UserDefaults.standard.set(appearanceMode.rawValue, forKey: "appearanceMode") }
     }
 
-    let interval: TimeInterval = 15
+    /// Normal post cadence. While `isUltraConstrained` (on satellite), a much longer cadence is
+    /// used instead — satellite acquisition/registration is slower than a normal handshake, and
+    /// Direct-to-Cell is designed for infrequent, small-payload bursts rather than a steady
+    /// stream. Reverts automatically once back on a normal path; `trackingLoop()` re-reads this
+    /// every iteration via `nextPostAt()`, so no separate retry/backoff wiring is needed.
+    private let normalInterval: TimeInterval = 15
+    private let ultraConstrainedInterval: TimeInterval = 90
+    var interval: TimeInterval { isUltraConstrained ? ultraConstrainedInterval : normalInterval }
 
     // App Store 5.1.2(i): automatic location posting must always be scoped to a bounded,
     // explicitly-started tracking session rather than indefinite background sharing — no
@@ -234,6 +257,9 @@ final class LocationManager {
             guard let self else { return }
             Task { @MainActor [self] in
                 self.isOffline = path.status != .satisfied
+                if #available(iOS 26.1, *) {
+                    self.rawIsUltraConstrained = path.isUltraConstrained
+                }
             }
         }
         pathMonitor.start(queue: pathMonitorQueue)
@@ -243,6 +269,9 @@ final class LocationManager {
     // Simulator), so re-check the live path directly rather than relying on it firing promptly.
     func refreshConnectivity() {
         isOffline = pathMonitor.currentPath.status != .satisfied
+        if #available(iOS 26.1, *) {
+            rawIsUltraConstrained = pathMonitor.currentPath.isUltraConstrained
+        }
     }
 
     // Polls while the app is in the foreground so someone watching the screen for a signal to
@@ -332,6 +361,10 @@ final class LocationManager {
     // the placeholder (0,0) `start()` sends), so they still appear — just with no position yet.
     func loadLatestPositions() async {
         guard !sessionId.isEmpty else { return }
+        // Non-essential traffic: while on satellite, let the essential `POST /location` (this
+        // device's own position) through and skip this GET-based polling entirely rather than
+        // let it fail/time out on the ultra-constrained path — same end state, no wasted attempt.
+        guard !isUltraConstrained else { return }
         let targetSessionId = sessionId
 
         // Run concurrently, not sequentially: when this is awaited from `.refreshable`, SwiftUI
@@ -528,15 +561,17 @@ final class LocationManager {
             // stale timestamp every heartbeat made the server/web client see no recent activity
             // and incorrectly mark the session as no longer live, even though tracking was still
             // active and posting successfully every interval.
+            let now = Date()
             await post(
                 lat: loc.coordinate.latitude,
                 lon: loc.coordinate.longitude,
                 heading: heading,
-                timestamp: Date())
+                timestamp: now,
+                nextExpectedAt: nextPostAt(from: now))
         }
     }
 
-    private func post(lat: Double, lon: Double, heading: Double?, timestamp: Date) async {
+    private func post(lat: Double, lon: Double, heading: Double?, timestamp: Date, nextExpectedAt: Date) async {
         let targetSessionId = sessionId
         do {
             var body: [String: Any] = [
@@ -545,10 +580,18 @@ final class LocationManager {
                 "latitude": lat,
                 "longitude": lon,
                 "timestamp": ISO8601DateFormatter().string(from: timestamp),
+                // Self-reported heartbeat: when this device expects to post next, at its current
+                // cadence (`interval` — normal or the slower satellite one). Absolute timestamp
+                // rather than a duration, since it's already clock-aligned via `nextPostAt()` and
+                // stays consistent with `timestamp` above. Lets the server (and eventually the web/
+                // native clients) tell "on-schedule but slow" apart from "actually stuck/offline"
+                // without hardcoding one fixed staleness threshold for every runner.
+                "nextExpectedAt": ISO8601DateFormatter().string(from: nextExpectedAt),
             ]
             if let heading { body["heading"] = heading }
 
-            let response: LocationPostResponse = try await send(path: "/location", method: "POST", body: body)
+            let response: LocationPostResponse = try await send(
+                path: "/location", method: "POST", body: body, session: Self.ultraConstrainedSession)
             guard sessionId == targetSessionId else { return }
             status = "Sent"
             lastSent = Date()
@@ -587,11 +630,25 @@ final class LocationManager {
         await loadSessions()
     }
 
+    /// Opted in to `allowsUltraConstrainedNetworkAccess` (iOS 26.1+; a plain `.shared`-equivalent
+    /// session below that, since the flag doesn't exist to set). Used only for `POST /location` —
+    /// the one call essential enough to keep working over satellite. Every other request keeps
+    /// using `URLSession.shared`, which isn't opted in and will fail/time out while
+    /// ultra-constrained, same as any other no-coverage scenario.
+    private static let ultraConstrainedSession: URLSession = {
+        let config = URLSessionConfiguration.default
+        if #available(iOS 26.1, *) {
+            config.allowsUltraConstrainedNetworkAccess = true
+        }
+        return URLSession(configuration: config)
+    }()
+
     private func send<T: Decodable>(
         path: String,
         method: String = "GET",
         body: [String: Any]? = nil,
-        authorized: Bool = true
+        authorized: Bool = true,
+        session: URLSession = .shared
     ) async throws -> T {
         let normalizedPath = path.hasPrefix("/") ? path : "/\(path)"
         guard let url = URL(string: serverBaseURL.absoluteString + normalizedPath) else {
@@ -613,7 +670,7 @@ final class LocationManager {
         }
 
         do {
-            let (data, response) = try await URLSession.shared.data(for: request)
+            let (data, response) = try await session.data(for: request)
             let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
             guard (200..<300).contains(statusCode) else {
                 if statusCode == 426 { updateRequired = true }
