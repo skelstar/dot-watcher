@@ -70,6 +70,7 @@ export function normalizeUpdate(obj: any): RunnerPosition {
     longitude: obj.longitude ?? obj.Longitude,
     heading: obj.heading ?? obj.Heading ?? null,
     timestamp: obj.timestamp ?? obj.Timestamp,
+    nextExpectedAt: obj.nextExpectedAt ?? obj.NextExpectedAt ?? null,
   }
 }
 
@@ -186,13 +187,30 @@ export function findGpsSignalLoss(byRunner: Map<string, RunnerPosition[]>): Set<
 
 // A position update is expected roughly every 15s (see the iOS tracking interval), so a gap much
 // longer than that at the current playhead means the runner has genuinely dropped out mid-track
-// rather than merely being between two normal updates.
+// rather than merely being between two normal updates. Fallback only — used for runners/positions
+// with no `nextExpectedAt` (older clients, or recordings from before this field existed). See
+// GRACE_MS below for runners that do report their own cadence.
 export const MISSING_GAP_MS = 60_000
 
+// Slack added on top of a runner's self-reported `nextExpectedAt` before treating them as
+// genuinely gapped, rather than just running slightly behind their own stated cadence (network
+// jitter, a slow satellite handshake, clock skew between phone and browser). Mirrors the
+// server-side grace buffer described in .ai/plans/POST-nextExpectedAt.md ("Should be a shared
+// constant so client 'due now' state and server 'not yet overdue' state agree") — the server
+// doesn't expose a derived status yet (still an open item there), so this is this client's own
+// value until that lands; keep the two in sync if/when the server-side buffer is added.
+export const GRACE_MS = 30_000
+
 // Runners with no location record covering the current playhead: their last known position at
-// or before cutoffMs is older than MISSING_GAP_MS — i.e. their position at this instant is
-// unknown, not just old. Deliberately distinct from a runner who simply hasn't reported yet
+// or before cutoffMs is older than expected — i.e. their position at this instant is unknown,
+// not just old. Deliberately distinct from a runner who simply hasn't reported yet
 // (positionsAtCutoff already omits those, since there's no "before" position at all yet).
+//
+// Uses each runner's own self-reported `nextExpectedAt` (+ GRACE_MS) when available, so a
+// satellite runner posting every 90s isn't flagged as missing every cycle the way a single fixed
+// MISSING_GAP_MS threshold would (either too tight for slow cadences or too loose for fast ones —
+// see the design note in useSessionTimeline.ts above PHONE_SEND_INTERVAL_MS). Falls back to
+// MISSING_GAP_MS after the last position without a `nextExpectedAt` at all.
 //
 // Doesn't require a later position to "prove" the runner came back — during forward playback of
 // a recording, ensureCovered only ever fetches data behind the current scrub position (see
@@ -213,9 +231,73 @@ export function findRunnersWithGap(
       before = pos
     }
     if (!before) continue
-    if (cutoffMs - new Date(before.timestamp).getTime() > MISSING_GAP_MS) affected.add(runnerName)
+
+    const overdueAt = before.nextExpectedAt
+      ? new Date(before.nextExpectedAt).getTime() + GRACE_MS
+      : new Date(before.timestamp).getTime() + MISSING_GAP_MS
+    if (cutoffMs > overdueAt) affected.add(runnerName)
   }
   return affected
+}
+
+// One of the three visual states from .ai/plans/POST-nextExpectedAt.md: counting down normally,
+// within the shared grace window right at/just past nextExpectedAt, or genuinely overdue (past
+// the same overdueAt threshold findRunnersWithGap uses to flag a gap).
+export type CountdownStatus = 'counting-down' | 'due' | 'overdue'
+
+export interface RunnerCountdown {
+  status: CountdownStatus
+  remainingMs: number // ms until nextExpectedAt; negative once past it (0 while 'counting-down')
+  intervalMs: number // this runner's own reporting cadence (nextExpectedAt - timestamp) — lets a
+  // ring-style display compute elapsed fraction the same way iOS's PostCountdownRing does
+}
+
+// Per-runner self-reported countdown to their next expected post, for runners whose current
+// cadence is slower than normal (e.g. on satellite) — see findRunnersWithGap for why a runner's
+// own nextExpectedAt is trusted over one fixed assumption. Deliberately omits runners on normal
+// cadence: a 15s countdown resets near-instantly and is pure visual noise (per the plan's UI
+// note — a live countdown makes sense as a reserved/list-view detail, not on every dot). Also
+// omits runners with no nextExpectedAt at all (older clients) — there's nothing to count down to.
+export function findAdaptiveCountdowns(
+  byRunner: Map<string, RunnerPosition[]>,
+  cutoffMs: number,
+  normalIntervalMs: number,
+): Map<string, RunnerCountdown> {
+  const countdowns = new Map<string, RunnerCountdown>()
+  for (const [runnerName, positions] of byRunner) {
+    let before: RunnerPosition | null = null
+    for (const pos of positions) {
+      const ts = new Date(pos.timestamp).getTime()
+      if (ts > cutoffMs) break
+      before = pos
+    }
+    if (!before?.nextExpectedAt) continue
+
+    const timestampMs = new Date(before.timestamp).getTime()
+    const nextExpectedAtMs = new Date(before.nextExpectedAt).getTime()
+    const intervalMs = nextExpectedAtMs - timestampMs
+    if (intervalMs <= normalIntervalMs) continue // normal cadence — skip
+
+    const remainingMs = nextExpectedAtMs - cutoffMs
+    const status: CountdownStatus =
+      remainingMs > 0 ? 'counting-down' : cutoffMs <= nextExpectedAtMs + GRACE_MS ? 'due' : 'overdue'
+    countdowns.set(runnerName, { status, remainingMs, intervalMs })
+  }
+  return countdowns
+}
+
+// Below this, a countdown reads as plain seconds ("42s"); at or above, as "M:SS" (e.g. "2:29") —
+// matches this runner's own cadence being long enough that seconds alone stop being the natural
+// unit (satellite's 90s cadence is the case this exists for). Used by Legend's countdown ring.
+export const MINUTE_FORMAT_THRESHOLD_MS = 90_000
+
+// "42s" below MINUTE_FORMAT_THRESHOLD_MS, "M:SS" at or above it (e.g. "2:29").
+export function formatCountdownSeconds(remainingMs: number): string {
+  const totalSeconds = Math.max(0, Math.ceil(remainingMs / 1000))
+  if (remainingMs < MINUTE_FORMAT_THRESHOLD_MS) return `${totalSeconds}s`
+  const minutes = Math.floor(totalSeconds / 60)
+  const seconds = totalSeconds % 60
+  return `${minutes}:${String(seconds).padStart(2, '0')}`
 }
 
 const EARTH_RADIUS_M = 6_371_000

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { RunnerPosition } from './types.ts'
 import {
   earliestActivityMs,
+  findAdaptiveCountdowns,
   findGpsSignalLoss,
   findRunnersWithGap,
   findSleepingRunners,
@@ -15,6 +16,7 @@ import {
   positionsAtCutoff,
   shouldPollLivePositions,
   shouldPollLivePositionsByInvite,
+  type RunnerCountdown,
   type TimeRange,
 } from './useSessionTimelineLogic.ts'
 import { isSessionLive, LIVE_STALE_MS } from './sessionLiveness.ts'
@@ -57,6 +59,7 @@ export interface SessionTimelineState {
   runnersWithGpsSignalLoss: Set<string>
   runnersWithGap: Set<string>
   runnersSleeping: Set<string>
+  runnerCountdowns: Map<string, RunnerCountdown>
   playing: boolean
   speed: number
   loading: boolean
@@ -360,6 +363,14 @@ export function useSessionTimeline(
   // absence of data): a runner can't be judged "not moving" from data that doesn't exist.
   const runnersSleeping = useMemo(() => findSleepingRunners(byRunner, virtualNowMs), [byRunner, virtualNowMs])
 
+  // Live per-runner countdown to their next expected post — only for runners on a slower-than-
+  // normal cadence (e.g. satellite), see findAdaptiveCountdowns. Recomputed every second via
+  // virtualNowMs so it ticks down without any extra network requests, per the plan's design.
+  const runnerCountdowns = useMemo(
+    () => findAdaptiveCountdowns(byRunner, virtualNowMs, PHONE_SEND_INTERVAL_MS),
+    [byRunner, virtualNowMs],
+  )
+
   return {
     positions,
     following: scrubTimeMs === null,
@@ -373,6 +384,7 @@ export function useSessionTimeline(
     runnersWithGpsSignalLoss,
     runnersWithGap,
     runnersSleeping,
+    runnerCountdowns,
     playing,
     speed,
     loading,
