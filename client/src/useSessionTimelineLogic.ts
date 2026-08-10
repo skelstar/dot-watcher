@@ -71,6 +71,7 @@ export function normalizeUpdate(obj: any): RunnerPosition {
     heading: obj.heading ?? obj.Heading ?? null,
     timestamp: obj.timestamp ?? obj.Timestamp,
     nextExpectedAt: obj.nextExpectedAt ?? obj.NextExpectedAt ?? null,
+    isUltraConstrained: obj.isUltraConstrained ?? obj.IsUltraConstrained ?? false,
   }
 }
 
@@ -181,6 +182,30 @@ export function findGpsSignalLoss(byRunner: Map<string, RunnerPosition[]>): Set<
   const affected = new Set<string>()
   for (const [runnerName, positions] of byRunner) {
     if (currentSignalLossForRunner(positions)) affected.add(runnerName)
+  }
+  return affected
+}
+
+// Runners whose most recent position at or before cutoffMs reports NWPath.isUltraConstrained
+// (see server/Models/LocationUpdate.cs for why this isn't findSatelliteRunners). Unlike GPS
+// signal loss, this doesn't need a clearing streak — it's a stable OS-level classification
+// reported once per post, not noisy per-fix telemetry — so the latest report can be trusted
+// directly. Deliberately independent of cadence/countdown state: a runner could be ultra-
+// constrained without a slower cadence, or have a slower cadence for an unrelated reason (e.g.
+// battery saving).
+export function findUltraConstrainedRunners(
+  byRunner: Map<string, RunnerPosition[]>,
+  cutoffMs: number,
+): Set<string> {
+  const affected = new Set<string>()
+  for (const [runnerName, positions] of byRunner) {
+    let before: RunnerPosition | null = null
+    for (const pos of positions) {
+      const ts = new Date(pos.timestamp).getTime()
+      if (ts > cutoffMs) break
+      before = pos
+    }
+    if (before?.isUltraConstrained) affected.add(runnerName)
   }
   return affected
 }

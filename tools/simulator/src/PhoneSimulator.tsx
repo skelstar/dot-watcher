@@ -120,14 +120,18 @@ export default function PhoneSimulator({
     const activeRoute = routeRef.current
     const stepMeters = speedMps * (tickMs / 1000)
 
-    if (qualityRef.current === 'good' && activeRoute && activeRoute.length > 1) {
+    // 'satellite' moves the same as 'good' — it's a network-type flag, not a GPS-quality issue
+    // (see the Quality type) — only the isUltraConstrained flag on the post itself differs.
+    const movesNormally = qualityRef.current === 'good' || qualityRef.current === 'satellite'
+
+    if (movesNormally && activeRoute && activeRoute.length > 1) {
       // A route takes priority over the convergence point when both are set — it's the more
       // specific instruction for this phone.
       const result = advanceAlongRoute(activeRoute, routeProgressRef.current, stepMeters)
       next = result.position
       nextHeading = result.heading
       routeProgressRef.current = result.progress
-    } else if (qualityRef.current === 'good' && target) {
+    } else if (movesNormally && target) {
       const dist = distanceMeters(cur.lat, cur.lon, target.lat, target.lon)
       if (dist <= ARRIVE_METERS) {
         next = cur
@@ -149,7 +153,7 @@ export default function PhoneSimulator({
 
     inFlightRef.current = true
     try {
-      await postLocation(user, sessionId, next.lat, next.lon, nextHeading)
+      await postLocation(user, sessionId, next.lat, next.lon, nextHeading, qualityRef.current === 'satellite')
       onPositionChange(id, next)
       setHeading(nextHeading)
       setLastSentAt(new Date().toLocaleTimeString())
@@ -301,7 +305,7 @@ export default function PhoneSimulator({
           </p>
 
           <div style={qualityRow}>
-            {(['good', 'bad', 'missing'] as Quality[]).map(q => (
+            {(['good', 'bad', 'missing', 'satellite'] as Quality[]).map(q => (
               <label key={q} style={qualityLabel(quality === q, status === 'left')}>
                 <input
                   type="checkbox"
@@ -350,6 +354,7 @@ function qualityText(q: Quality): string {
     case 'good': return 'Good'
     case 'bad': return 'Bad GPS'
     case 'missing': return 'Missing'
+    case 'satellite': return 'Satellite'
   }
 }
 

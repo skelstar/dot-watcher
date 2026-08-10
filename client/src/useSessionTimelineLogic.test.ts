@@ -7,6 +7,7 @@ import {
   findLastSeenMs,
   findRunnersWithGap,
   findSleepingRunners,
+  findUltraConstrainedRunners,
   formatCountdownSeconds,
   formatShortTimeOfDay,
   formatTimeOfDay,
@@ -74,12 +75,12 @@ test('livePollingError gives membership-specific copy for 403 responses', () => 
 
 test('parseNdjson parses camelCase lines', () => {
   const line = JSON.stringify({ runnerName: 'Alice', latitude: 1, longitude: 2, heading: 90, timestamp: 't1' })
-  assert.deepEqual(parseNdjson(line), [{ runnerName: 'Alice', latitude: 1, longitude: 2, heading: 90, timestamp: 't1', nextExpectedAt: null }])
+  assert.deepEqual(parseNdjson(line), [{ runnerName: 'Alice', latitude: 1, longitude: 2, heading: 90, timestamp: 't1', nextExpectedAt: null, isUltraConstrained: false }])
 })
 
 test('parseNdjson normalises legacy PascalCase lines', () => {
   const line = JSON.stringify({ RunnerName: 'Bob', Latitude: 1, Longitude: 2, Timestamp: 't1' })
-  assert.deepEqual(parseNdjson(line), [{ runnerName: 'Bob', latitude: 1, longitude: 2, heading: null, timestamp: 't1', nextExpectedAt: null }])
+  assert.deepEqual(parseNdjson(line), [{ runnerName: 'Bob', latitude: 1, longitude: 2, heading: null, timestamp: 't1', nextExpectedAt: null, isUltraConstrained: false }])
 })
 
 test('mergeIntoByRunner appends and sorts by timestamp, de-duping exact repeats', () => {
@@ -207,6 +208,39 @@ test('findGpsSignalLoss resets the clear-streak if heading is lost again before 
     { ...base, heading: null, timestamp: '2024-01-01T00:01:00Z' },
   ]
   assert.deepEqual(findGpsSignalLoss(new Map([['Alice', positions]])), new Set(['Alice']))
+})
+
+test('findUltraConstrainedRunners flags a runner whose latest report at cutoff is ultra-constrained', () => {
+  const byRunner = new Map([
+    ['Alice', [
+      { runnerName: 'Alice', latitude: 0, longitude: 0, heading: null, timestamp: '2024-01-01T00:00:00Z', isUltraConstrained: false },
+      { runnerName: 'Alice', latitude: 1, longitude: 1, heading: null, timestamp: '2024-01-01T00:00:15Z', isUltraConstrained: true },
+    ]],
+  ])
+  const cutoff = new Date('2024-01-01T00:00:20Z').getTime()
+  assert.deepEqual(findUltraConstrainedRunners(byRunner, cutoff), new Set(['Alice']))
+})
+
+test('findUltraConstrainedRunners clears immediately once a runner reports false again, unlike GPS signal loss', () => {
+  const byRunner = new Map([
+    ['Alice', [
+      { runnerName: 'Alice', latitude: 0, longitude: 0, heading: null, timestamp: '2024-01-01T00:00:00Z', isUltraConstrained: true },
+      { runnerName: 'Alice', latitude: 1, longitude: 1, heading: null, timestamp: '2024-01-01T00:00:15Z', isUltraConstrained: false },
+    ]],
+  ])
+  const cutoff = new Date('2024-01-01T00:00:20Z').getTime()
+  assert.deepEqual(findUltraConstrainedRunners(byRunner, cutoff), new Set())
+})
+
+test('findUltraConstrainedRunners ignores a position after cutoff', () => {
+  const byRunner = new Map([
+    ['Alice', [
+      { runnerName: 'Alice', latitude: 0, longitude: 0, heading: null, timestamp: '2024-01-01T00:00:00Z', isUltraConstrained: false },
+      { runnerName: 'Alice', latitude: 1, longitude: 1, heading: null, timestamp: '2024-01-01T00:00:30Z', isUltraConstrained: true },
+    ]],
+  ])
+  const cutoff = new Date('2024-01-01T00:00:15Z').getTime()
+  assert.deepEqual(findUltraConstrainedRunners(byRunner, cutoff), new Set())
 })
 
 test('positionsAtCutoff returns the last position at or before cutoff, omitting runners with none yet', () => {
@@ -481,6 +515,29 @@ test('normalizeUpdate carries nextExpectedAt through from camelCase and PascalCa
       RunnerName: 'Alice', Latitude: 0, Longitude: 0, Heading: null, Timestamp: '2024-01-01T00:00:00Z',
     }).nextExpectedAt,
     null,
+  )
+})
+
+test('normalizeUpdate carries isUltraConstrained through from camelCase and PascalCase payloads, defaulting to false', () => {
+  assert.equal(
+    normalizeUpdate({
+      runnerName: 'Alice', latitude: 0, longitude: 0, heading: null,
+      timestamp: '2024-01-01T00:00:00Z', isUltraConstrained: true,
+    }).isUltraConstrained,
+    true,
+  )
+  assert.equal(
+    normalizeUpdate({
+      RunnerName: 'Alice', Latitude: 0, Longitude: 0, Heading: null, Timestamp: '2024-01-01T00:00:00Z',
+      IsUltraConstrained: true,
+    }).isUltraConstrained,
+    true,
+  )
+  assert.equal(
+    normalizeUpdate({
+      RunnerName: 'Alice', Latitude: 0, Longitude: 0, Heading: null, Timestamp: '2024-01-01T00:00:00Z',
+    }).isUltraConstrained,
+    false,
   )
 })
 

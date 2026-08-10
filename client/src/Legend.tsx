@@ -9,6 +9,7 @@ interface Props {
   runnersWithGap?: Set<string>
   runnersSleeping?: Set<string>
   runnersWithGpsSignalLoss?: Set<string>
+  runnersUltraConstrained?: Set<string>
   runnerCountdowns?: Map<string, RunnerCountdown>
   runnerLastSeenMs?: Map<string, number>
 }
@@ -52,6 +53,7 @@ export default function Legend({
   runnersWithGap = new Set(),
   runnersSleeping = new Set(),
   runnersWithGpsSignalLoss = new Set(),
+  runnersUltraConstrained = new Set(),
   runnerCountdowns = new Map(),
   runnerLastSeenMs = new Map(),
 }: Props) {
@@ -61,11 +63,16 @@ export default function Legend({
     <div style={container(belowAccountBar)}>
       {runners.map(name => {
         // Mirrors the map marker's own state precedence (see Arrow.tsx / useRunnerMarkers.ts):
-        // a runner is exactly one of missing/sleeping/normal, with signal-loss as a separate
-        // overlay that can combine with either.
+        // a runner is exactly one of missing/sleeping/normal, with signal-loss and satellite as
+        // separate overlays that can combine with any of them.
         const missing = runnersWithGap.has(name)
         const sleeping = !missing && runnersSleeping.has(name)
         const signalLoss = runnersWithGpsSignalLoss.has(name)
+        // Independent of everything else here: NWPath.isUltraConstrained doesn't imply a slower
+        // cadence (that's runnerCountdowns, driven by the runner's own nextExpectedAt) or vice
+        // versa, so it renders as its own icon alongside whichever message/countdown is active
+        // rather than competing for the single message slot below.
+        const satellite = runnersUltraConstrained.has(name)
         // Countdown only ever shown for an actively-reporting, non-missing runner (per the plan:
         // "Only show the live countdown for actively-reporting runners") — a runner already
         // flagged missing shows that instead, not a stale/contradictory countdown alongside it.
@@ -93,7 +100,9 @@ export default function Legend({
           : null
         const tone: LabelTone = missing ? 'muted' : 'warning'
         const showCountdown = !message && countdown
-        const active = showCountdown || message // either fills the pill — never both at once
+        // message/countdown still fill the single message slot exclusively of each other, but
+        // satellite is an independent overlay and can make the pill active on its own.
+        const active = showCountdown || message || satellite
         const title = showCountdown
           ? countdown.status === 'counting-down'
             ? `Next update in ${formatCountdownSeconds(countdown.remainingMs)}`
@@ -117,6 +126,9 @@ export default function Legend({
               </div>
               {active && (
                 <span style={trailingContent(trailingMinWidth)}>
+                  {satellite && (
+                    <span style={satelliteIcon} title="Reporting over a satellite connection">📡</span>
+                  )}
                   {showCountdown && <CountdownRing countdown={countdown} />}
                   {message && (
                     <span style={issueLabel(tone)}>
@@ -177,10 +189,10 @@ function trailingContent(minWidth: number | undefined): React.CSSProperties {
   }
 }
 
-// Wraps the dot plus whichever single trailing indicator applies (countdown ring+number, or a
-// status label like "GPS"/"Sleeping") in one pill so they read as a unit. Only gets the
-// translucent-white background/padding when something's actually showing — otherwise the dot
-// sits bare, same as before this existed.
+// Wraps the dot plus whichever trailing indicators apply (a satellite icon, plus at most one of
+// countdown ring+number or a status label like "GPS"/"Sleeping") in one pill so they read as a
+// unit. Only gets the translucent-white background/padding when something's actually showing —
+// otherwise the dot sits bare, same as before this existed.
 function pill(active: boolean | string | undefined): React.CSSProperties {
   return {
     display: 'flex',
@@ -232,6 +244,12 @@ const inlineWarningBadge: React.CSSProperties = {
   color: '#ffffff',
   lineHeight: 1,
   marginRight: 4,
+  flexShrink: 0,
+}
+
+const satelliteIcon: React.CSSProperties = {
+  fontSize: 12,
+  lineHeight: 1,
   flexShrink: 0,
 }
 
