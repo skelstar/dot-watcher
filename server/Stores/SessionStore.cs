@@ -803,28 +803,68 @@ public class SessionStore(string connectionString)
     public IReadOnlyList<RunnerPosition[]> GetLatestPositions(string sessionId, string? callerUserId = null)
     {
         var isDemo = IsDemoSession(sessionId);
-        if (!_sessions.TryGetValue(sessionId, out var session))
-            return isDemo ? [[GetDemoRunnerPosition(DateTimeOffset.UtcNow)]] : [];
-
-        var result = new List<RunnerPosition[]>(session.Count);
-        foreach (var (userId, history) in session)
+        var byUserId = new Dictionary<string, RunnerPosition>();
+        if (_sessions.TryGetValue(sessionId, out var session))
         {
-            // Same caller-only scoping as GetParticipants - the demo session never surfaces
-            // another real visitor's position, only the caller's own plus DW's (below).
-            if (isDemo && userId != callerUserId)
-                continue;
-
-            lock (history)
+            foreach (var (userId, history) in session)
             {
-                if (history.Count > 0)
-                    result.Add(history.TakeLast(1).ToArray());
+                // Same caller-only scoping as GetParticipants - the demo session never surfaces
+                // another real visitor's position, only the caller's own plus DW's (below).
+                if (isDemo && userId != callerUserId)
+                    continue;
+
+                lock (history)
+                {
+                    if (history.Count > 0)
+                        byUserId[userId] = history[^1];
+                }
             }
         }
 
         if (isDemo)
+        {
+            var result = byUserId.Values.Select(p => new[] { p }).ToList();
             result.Add([GetDemoRunnerPosition(DateTimeOffset.UtcNow)]);
+            return result;
+        }
 
-        return result;
+        // Falls back to Postgres for any runner this pod's in-memory cache has nothing for - e.g.
+        // a runner whose POST /location calls have all landed on a different pod (Staging and
+        // Production share one database as of the 2026-07-22 cutover, but each still runs its own
+        // process with its own private in-memory `_sessions`, so a runner posting to one is
+        // invisible to a viewer polling the other). The in-memory copy is preferred when present
+        // since it carries `nextExpectedAt`, which has no column in location_updates and so never
+        // round-trips through Postgres.
+        foreach (var (userId, position) in LoadLatestPositionsByRunner(sessionId))
+            byUserId.TryAdd(userId, position);
+
+        return byUserId.Values.Select(p => new[] { p }).ToList();
+    }
+
+    private Dictionary<string, RunnerPosition> LoadLatestPositionsByRunner(string sessionId)
+    {
+        using var conn = Connect();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = """
+            SELECT DISTINCT ON (runner_user_id)
+                   runner_user_id, runner_name, latitude, longitude, heading, timestamp
+            FROM location_updates
+            WHERE session_id = @sessionId AND runner_user_id IS NOT NULL
+            ORDER BY runner_user_id, timestamp DESC
+            """;
+        cmd.Parameters.AddWithValue("@sessionId", sessionId);
+        using var reader = cmd.ExecuteReader();
+        var positions = new Dictionary<string, RunnerPosition>();
+        while (reader.Read())
+        {
+            positions[reader.GetString(0)] = new RunnerPosition(
+                reader.GetString(1),
+                reader.GetDouble(2),
+                reader.GetDouble(3),
+                reader.IsDBNull(4) ? null : reader.GetDouble(4),
+                DateTimeOffset.Parse(reader.GetString(5)));
+        }
+        return positions;
     }
 
     public IReadOnlyList<AdminSessionSummary> GetAllSessions()
