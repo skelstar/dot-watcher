@@ -12,14 +12,38 @@ public sealed class DotWatcherApiFactory : WebApplicationFactory<global::Program
     private const string BaseConnectionString =
         "Host=localhost;Port=5432;Database=dotwatcher;Username=dotwatcher;Password=dotwatcher-dev";
 
-    private readonly string _schema = $"test_{Guid.NewGuid():N}";
+    private readonly string _schema;
+    private readonly bool _ownsSchema;
 
     private readonly string _recordingsPath = Path.Combine(
         Path.GetTempPath(),
         $"dotwatcher-recordings-{Guid.NewGuid():N}");
 
-    public DotWatcherApiFactory()
+    /// <summary>Schema backing this factory's database, so a second factory can be pointed at it.</summary>
+    public string Schema => _schema;
+
+    public DotWatcherApiFactory() : this($"test_{Guid.NewGuid():N}", ownsSchema: true)
     {
+    }
+
+    /// <summary>
+    /// Points at a schema already created by another <see cref="DotWatcherApiFactory"/> (pass its
+    /// <see cref="Schema"/>) instead of creating a new one. Lets two factories simulate two
+    /// separate server processes sharing one database - e.g. Staging and Production after the
+    /// shared-Postgres cutover, where a phone's POST can land on one pod while a viewer polls the
+    /// other. This instance doesn't create or drop the schema; the owning factory does both.
+    /// </summary>
+    public DotWatcherApiFactory(string schema) : this(schema, ownsSchema: false)
+    {
+    }
+
+    private DotWatcherApiFactory(string schema, bool ownsSchema)
+    {
+        _schema = schema;
+        _ownsSchema = ownsSchema;
+        if (!ownsSchema)
+            return;
+
         using var conn = new NpgsqlConnection(BaseConnectionString);
         conn.Open();
         using var cmd = conn.CreateCommand();
@@ -45,7 +69,8 @@ public sealed class DotWatcherApiFactory : WebApplicationFactory<global::Program
     {
         base.Dispose(disposing);
 
-        TryDropSchema(_schema);
+        if (_ownsSchema)
+            TryDropSchema(_schema);
         TryDeleteDirectory(_recordingsPath);
     }
 

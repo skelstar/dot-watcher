@@ -166,6 +166,36 @@ public class SessionsApiTests
     }
 
     [Fact]
+    public async Task GetLocationsByInviteCode_WhenPostLandedOnADifferentPod_StillReturnsThePosition()
+    {
+        // Simulates Staging and Production after the shared-Postgres cutover: two separate server
+        // processes - each with its own private in-memory `_sessions` cache - pointed at the same
+        // database. A phone's POST /location can land on either pod; a viewer polling the other
+        // pod must still see the position via the shared database, not just the pod that received
+        // it (this reproduces a real bug: dot-watcher.skelstar.io/api/session-invites/{code}/locations
+        // returned [] for a session whose only posts had landed on the staging pod).
+        using var podA = new DotWatcherApiFactory();
+        using var podB = new DotWatcherApiFactory(podA.Schema);
+        using var clientA = podA.CreateClient();
+        using var clientB = podB.CreateClient();
+
+        var ownerToken = await AuthTestHelpers.RegisterAsync(clientA, "owner", "Owner");
+        var session = await AuthTestHelpers.CreateSessionAsync(clientA, ownerToken);
+
+        await LocationsApiTests.PostLocationAsync(
+            clientA,
+            LocationsApiTests.TestLocation("Owner", session.SessionId),
+            ownerToken);
+
+        var response = await clientB.GetAsync($"/session-invites/{session.InviteCode}/locations");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var positions = await response.Content.ReadFromJsonAsync<List<List<RunnerPosition>>>();
+        Assert.NotNull(positions);
+        Assert.Contains(positions, group => group.Any(p => p.RunnerName == "Owner"));
+    }
+
+    [Fact]
     public async Task GetLocationsByInviteCode_WithUnknownInvite_ReturnsNotFound()
     {
         using var factory = new DotWatcherApiFactory();
