@@ -28,6 +28,9 @@ type MemberStatsState = AdminMemberStats[] | 'loading' | { error: string }
 
 const BEARER_TOKEN_KEY = 'adminBearerToken'
 const APP_VERSION = import.meta.env.VITE_APP_VERSION ?? 'v-local'
+// Matches the simulator's own VITE_CLIENT_URL convention (tools/simulator/.env.example) —
+// each tool points at the other's default local port unless overridden.
+const SIMULATOR_URL = import.meta.env.VITE_SIMULATOR_URL ?? 'http://localhost:5174'
 
 export default function AdminPanel({ serverUrl }: { serverUrl: string }) {
   const [token, setToken] = useState(() => sessionStorage.getItem(BEARER_TOKEN_KEY) ?? (import.meta.env.VITE_BEARER_TOKEN as string | undefined) ?? '')
@@ -226,6 +229,13 @@ export default function AdminPanel({ serverUrl }: { serverUrl: string }) {
     <div style={page}>
       <h1 style={heading}>Admin — Users</h1>
       <p style={versionText}>{APP_VERSION}</p>
+      {/* Dev-only: import.meta.env.DEV is false in the built app, so this never appears on the
+          deployed staging/production admin page, where no simulator is running to link to. */}
+      {import.meta.env.DEV && (
+        <a href={SIMULATOR_URL} target="_blank" rel="noopener noreferrer" style={simulatorLink}>
+          🧪 Open simulator
+        </a>
+      )}
 
       {!token && (
         <form onSubmit={handleTokenSubmit} style={tokenForm}>
@@ -597,6 +607,15 @@ const versionText: React.CSSProperties = {
   color: '#94a3b8',
   fontSize: '0.75rem',
   marginBottom: '1rem',
+}
+
+const simulatorLink: React.CSSProperties = {
+  display: 'inline-block',
+  marginBottom: '1rem',
+  color: '#3b82f6',
+  fontSize: '0.85rem',
+  fontWeight: 600,
+  textDecoration: 'none',
 }
 
 const recordsPanel: React.CSSProperties = {
