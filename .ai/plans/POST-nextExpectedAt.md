@@ -52,3 +52,8 @@ Because `nextExpectedAt` is absolute, a countdown UI is pure local math — `rem
 - Whether/when to introduce the derived `active`/`overdue`/`paused` status field on `GET /locations/{sessionCode}`, versus leaving staleness computation to clients for now.
 - UI placement decision: per-dot countdown vs. reserved for focused/list view only.
 - Recording-side persistence of `nextExpectedAt` — agreed as a good stretch goal, not scoped yet.
+  `isUltraConstrained` (added 2026-08-11, see satelite-connectivity.md) shares this exact
+  limitation and for the same reason — neither field has a column in `location_updates`, so both
+  are live-only: present for anything a viewer polled in real time, always absent/default for
+  anything read back via the recording endpoint. Persisting either is the same shape of schema
+  change; worth doing together if/when this gets picked up.
