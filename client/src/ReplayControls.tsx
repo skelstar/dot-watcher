@@ -16,6 +16,10 @@ function formatTime(ms: number): string {
   return `${m}:${String(s).padStart(2, '0')}`
 }
 
+function formatTimeOfDay(ms: number): string {
+  return new Date(ms).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' })
+}
+
 export default function ReplayControls({ timeline }: Props) {
   const { following, scrubTimeMs, runStartMs, nowMs, isLive, lastActivityMs, pollIntervalMs, dragTo, dragEnd, goLive } =
     timeline
@@ -77,9 +81,9 @@ export default function ReplayControls({ timeline }: Props) {
           onPointerUp={handlePointerUp}
         >
           <div style={{ ...trackFill, width: `${fraction * 100}%`, background: trackColour }} />
-          {showTooltip && (
+          {(showTooltip || fraction < 1) && (
             <span style={{ ...timeTooltip, left: `${fraction * 100}%` }}>
-              {formatTime(currentMs - rangeStart)}
+              {formatTimeOfDay(currentMs)}
             </span>
           )}
           <div style={{ ...dot, left: `${fraction * 100}%`, background: trackColour }} />
