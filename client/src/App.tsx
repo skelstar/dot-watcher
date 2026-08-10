@@ -350,6 +350,7 @@ export default function App() {
         runnersSleeping={timeline.runnersSleeping}
         runnersWithGpsSignalLoss={timeline.runnersWithGpsSignalLoss}
         runnerCountdowns={timeline.runnerCountdowns}
+        runnerLastSeenMs={timeline.runnerLastSeenMs}
       />
       {!timeline.invalidInvite && timeline.runStartMs !== null && (sessionName || (!accessToken && inviteCode)) && (
         <>

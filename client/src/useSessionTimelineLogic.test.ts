@@ -4,9 +4,11 @@ import {
   earliestActivityMs,
   findAdaptiveCountdowns,
   findGpsSignalLoss,
+  findLastSeenMs,
   findRunnersWithGap,
   findSleepingRunners,
   formatCountdownSeconds,
+  formatTimeOfDay,
   GRACE_MS,
   isRangeCovered,
   latestActivityMs,
@@ -339,6 +341,29 @@ test('findRunnersWithGap falls back to MISSING_GAP_MS when nextExpectedAt is abs
   assert.deepEqual(findRunnersWithGap(byRunner, cutoff), new Set(['Alice']))
 })
 
+test('findLastSeenMs reports the last position at or before cutoff for every runner with one', () => {
+  const byRunner = new Map([
+    ['Alice', [
+      { runnerName: 'Alice', latitude: 0, longitude: 0, heading: null, timestamp: '2024-01-01T00:00:00Z' },
+      { runnerName: 'Alice', latitude: 1, longitude: 1, heading: null, timestamp: '2024-01-01T00:05:00Z' },
+    ]],
+  ])
+  const cutoff = new Date('2024-01-01T00:10:00Z').getTime()
+  assert.deepEqual(findLastSeenMs(byRunner, cutoff), new Map([
+    ['Alice', new Date('2024-01-01T00:05:00Z').getTime()],
+  ]))
+})
+
+test('findLastSeenMs omits a runner with no position at or before cutoff', () => {
+  const byRunner = new Map([
+    ['Alice', [
+      { runnerName: 'Alice', latitude: 0, longitude: 0, heading: null, timestamp: '2024-01-01T00:10:00Z' },
+    ]],
+  ])
+  const cutoff = new Date('2024-01-01T00:00:00Z').getTime()
+  assert.deepEqual(findLastSeenMs(byRunner, cutoff), new Map())
+})
+
 test('findAdaptiveCountdowns omits a runner on normal cadence', () => {
   const byRunner = new Map([
     ['Alice', [
@@ -425,6 +450,12 @@ test('formatCountdownSeconds switches to M:SS at the 90s threshold', () => {
 test('formatCountdownSeconds pads seconds under 10 with a leading zero in M:SS form', () => {
   assert.equal(formatCountdownSeconds(149_000), '2:29')
   assert.equal(formatCountdownSeconds(125_000), '2:05')
+})
+
+test('formatTimeOfDay renders hour:minute:second — exact format is locale-dependent', () => {
+  // toLocaleTimeString's exact output depends on the runtime's default locale/timezone (12h vs
+  // 24h, AM/PM), so this only pins the shape rather than an exact string.
+  assert.match(formatTimeOfDay(new Date('2024-01-01T00:00:00Z').getTime()), /^\d{1,2}:\d{2}:\d{2}(\s?[AP]M)?$/)
 })
 
 test('normalizeUpdate carries nextExpectedAt through from camelCase and PascalCase payloads', () => {

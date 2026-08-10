@@ -1,5 +1,5 @@
 import { runnerColour } from './useRunnerMarkers.ts'
-import { formatCountdownSeconds, type RunnerCountdown } from './useSessionTimelineLogic.ts'
+import { formatCountdownSeconds, formatTimeOfDay, type RunnerCountdown } from './useSessionTimelineLogic.ts'
 
 interface Props {
   runners: string[]
@@ -10,6 +10,7 @@ interface Props {
   runnersSleeping?: Set<string>
   runnersWithGpsSignalLoss?: Set<string>
   runnerCountdowns?: Map<string, RunnerCountdown>
+  runnerLastSeenMs?: Map<string, number>
 }
 
 const COUNTDOWN_RING_SIZE = 18
@@ -52,6 +53,7 @@ export default function Legend({
   runnersSleeping = new Set(),
   runnersWithGpsSignalLoss = new Set(),
   runnerCountdowns = new Map(),
+  runnerLastSeenMs = new Map(),
 }: Props) {
   if (runners.length === 0) return null
 
@@ -77,8 +79,11 @@ export default function Legend({
         // Signal-loss gets the short "GPS" label rather than a full sentence — the "!" badge
         // beside it already carries the warning, so the text only needs to name what's wrong,
         // not restate that something is.
+        const lastSeenMs = missing ? runnerLastSeenMs.get(name) : undefined
         const message = missing
-          ? 'Missing location'
+          ? lastSeenMs !== undefined
+            ? `Missing since ${formatTimeOfDay(lastSeenMs)}`
+            : 'Missing location'
           : countdown
           ? null
           : signalLoss
