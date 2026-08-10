@@ -1,5 +1,5 @@
 import { runnerColour } from './useRunnerMarkers.ts'
-import { formatCountdownSeconds, formatTimeOfDay, type RunnerCountdown } from './useSessionTimelineLogic.ts'
+import { formatCountdownSeconds, formatShortTimeOfDay, type RunnerCountdown } from './useSessionTimelineLogic.ts'
 
 interface Props {
   runners: string[]
@@ -82,7 +82,7 @@ export default function Legend({
         const lastSeenMs = missing ? runnerLastSeenMs.get(name) : undefined
         const message = missing
           ? lastSeenMs !== undefined
-            ? `Missing since ${formatTimeOfDay(lastSeenMs)}`
+            ? `Last: ${formatShortTimeOfDay(lastSeenMs)}`
             : 'Missing location'
           : countdown
           ? null

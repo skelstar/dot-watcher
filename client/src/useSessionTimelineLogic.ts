@@ -261,10 +261,23 @@ export function findLastSeenMs(
   return lastSeen
 }
 
-// Wall-clock time of day, e.g. "10:42:13 AM" — shared by ReplayControls' scrubber readout and
-// Legend's "Missing since" label so both render a timestamp the same way.
+// Wall-clock time of day, e.g. "10:42:13 AM" — used by ReplayControls' scrubber readout, where
+// second-level precision matters for a fine-grained drag gesture.
 export function formatTimeOfDay(ms: number): string {
   return new Date(ms).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' })
+}
+
+// Compact wall-clock time of day, e.g. "8:26am" — used by Legend's "Last: " label, where a
+// glance at the minute is enough and toLocaleTimeString's locale-dependent spacing/casing
+// ("8:26 AM") reads noisier next to a dot's short countdown/status pills. Always local time,
+// matching formatTimeOfDay.
+export function formatShortTimeOfDay(ms: number): string {
+  const date = new Date(ms)
+  const hours24 = date.getHours()
+  const hours12 = hours24 % 12 === 0 ? 12 : hours24 % 12
+  const minutes = String(date.getMinutes()).padStart(2, '0')
+  const period = hours24 < 12 ? 'am' : 'pm'
+  return `${hours12}:${minutes}${period}`
 }
 
 // One of the three visual states from .ai/plans/POST-nextExpectedAt.md: counting down normally,

@@ -8,6 +8,7 @@ import {
   findRunnersWithGap,
   findSleepingRunners,
   formatCountdownSeconds,
+  formatShortTimeOfDay,
   formatTimeOfDay,
   GRACE_MS,
   isRangeCovered,
@@ -456,6 +457,15 @@ test('formatTimeOfDay renders hour:minute:second — exact format is locale-depe
   // toLocaleTimeString's exact output depends on the runtime's default locale/timezone (12h vs
   // 24h, AM/PM), so this only pins the shape rather than an exact string.
   assert.match(formatTimeOfDay(new Date('2024-01-01T00:00:00Z').getTime()), /^\d{1,2}:\d{2}:\d{2}(\s?[AP]M)?$/)
+})
+
+test('formatShortTimeOfDay renders a compact 12-hour time with lowercase am/pm', () => {
+  // Built with the local Date constructor (not a UTC ISO string) so the expected wall-clock
+  // value matches regardless of which timezone the test happens to run in.
+  assert.equal(formatShortTimeOfDay(new Date(2024, 0, 1, 8, 26).getTime()), '8:26am')
+  assert.equal(formatShortTimeOfDay(new Date(2024, 0, 1, 13, 5).getTime()), '1:05pm')
+  assert.equal(formatShortTimeOfDay(new Date(2024, 0, 1, 12, 0).getTime()), '12:00pm')
+  assert.equal(formatShortTimeOfDay(new Date(2024, 0, 1, 0, 0).getTime()), '12:00am')
 })
 
 test('normalizeUpdate carries nextExpectedAt through from camelCase and PascalCase payloads', () => {

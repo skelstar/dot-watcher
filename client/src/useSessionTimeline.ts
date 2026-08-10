@@ -374,7 +374,7 @@ export function useSessionTimeline(
   )
 
   // When a runner is missing (see runnersWithGap above), the timestamp of their last known
-  // position — lets Legend show "Missing since 10:42:13 AM" instead of just "Missing location".
+  // position — lets Legend show "Last: 10:42am" instead of just "Missing location".
   const runnerLastSeenMs = useMemo(() => findLastSeenMs(byRunner, virtualNowMs), [byRunner, virtualNowMs])
 
   return {
