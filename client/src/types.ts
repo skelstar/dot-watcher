@@ -5,12 +5,13 @@ export interface RunnerPosition {
   heading: number | null
   timestamp: string
   // Self-reported: when this runner's device expects to post next, at its current cadence
-  // (normal or a slower one, e.g. satellite). Absent for older clients/recordings that predate
-  // this field, or the demo runner. See .ai/plans/POST-nextExpectedAt.md.
+  // (normal or a slower one, e.g. satellite). Absent for older clients, the demo runner, or
+  // recordings from before 2026-08-12 (when this started persisting to Postgres — see
+  // server/Stores/SessionStore.cs AddPosition). See .ai/plans/POST-nextExpectedAt.md.
   nextExpectedAt?: string | null
   // Self-reported NWPath.isUltraConstrained at capture time — see server/Models/LocationUpdate.cs
   // for why this isn't called isSatellite. False (not absent) for older clients, the demo runner,
-  // or recordings, since the server itself defaults it the same way.
+  // or recordings from before 2026-08-12, since the server itself defaults it the same way.
   isUltraConstrained?: boolean
 }
 
