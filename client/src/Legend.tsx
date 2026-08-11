@@ -15,6 +15,31 @@ interface Props {
 }
 
 const COUNTDOWN_RING_SIZE = 18
+const SATELLITE_ICON_SIZE = 17
+
+// Dish + signal-wave glyph (path data from Lucide's "satellite-dish" icon, ISC licensed) rather
+// than the 📡 emoji previously used here — emoji rendering is font/OS-dependent and reads as a
+// blurry smudge at this pill's small size; a stroked SVG stays crisp and legible regardless.
+function SatelliteDishIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width={SATELLITE_ICON_SIZE}
+      height={SATELLITE_ICON_SIZE}
+      fill="none"
+      stroke="#0284c7"
+      strokeWidth={2.5}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      style={{ flexShrink: 0 }}
+    >
+      <path d="M4 10a7.31 7.31 0 0 0 10 10Z" />
+      <path d="m9 15 3-3" />
+      <path d="M17 13a6 6 0 0 0-6-6" />
+      <path d="M21 13A10 10 0 0 0 11 3" />
+    </svg>
+  )
+}
 
 // Mirrors iOS's PostCountdownRing (PostCountdownRing.swift): a ring whose pie-slice fill grows
 // clockwise from 12 o'clock as time elapses since the last post, emptying back to nothing the
@@ -127,7 +152,9 @@ export default function Legend({
               {active && (
                 <span style={trailingContent(trailingMinWidth)}>
                   {satellite && (
-                    <span style={satelliteIcon} title="Reporting over a satellite connection">📡</span>
+                    <span title="Reporting over a satellite connection" style={satelliteIconWrap}>
+                      <SatelliteDishIcon />
+                    </span>
                   )}
                   {showCountdown && <CountdownRing countdown={countdown} />}
                   {message && (
@@ -247,9 +274,9 @@ const inlineWarningBadge: React.CSSProperties = {
   flexShrink: 0,
 }
 
-const satelliteIcon: React.CSSProperties = {
-  fontSize: 12,
-  lineHeight: 1,
+const satelliteIconWrap: React.CSSProperties = {
+  display: 'inline-flex',
+  alignItems: 'center',
   flexShrink: 0,
 }
 
