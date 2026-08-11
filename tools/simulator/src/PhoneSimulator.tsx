@@ -169,7 +169,11 @@ export default function PhoneSimulator({
 
     inFlightRef.current = true
     try {
-      await postLocation(user, sessionId, next.lat, next.lon, nextHeading, qualityRef.current === 'satellite')
+      // Matches scheduleNextTick's own delay computation, so the self-reported heartbeat lines up
+      // with when the next post will actually fire — this is what drives the Legend's countdown
+      // ring (findAdaptiveCountdowns skips any runner with no nextExpectedAt at all).
+      const nextExpectedAt = new Date(Date.now() + tickIntervalMs)
+      await postLocation(user, sessionId, next.lat, next.lon, nextHeading, qualityRef.current === 'satellite', nextExpectedAt)
       onPositionChange(id, next)
       setHeading(nextHeading)
       setLastSentAt(new Date().toLocaleTimeString())
