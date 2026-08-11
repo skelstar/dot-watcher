@@ -349,7 +349,9 @@ export default function App() {
         runnersWithGap={timeline.runnersWithGap}
         runnersSleeping={timeline.runnersSleeping}
         runnersWithGpsSignalLoss={timeline.runnersWithGpsSignalLoss}
+        runnersUltraConstrained={timeline.runnersUltraConstrained}
         runnerCountdowns={timeline.runnerCountdowns}
+        runnerLastSeenMs={timeline.runnerLastSeenMs}
       />
       {!timeline.invalidInvite && timeline.runStartMs !== null && (sessionName || (!accessToken && inviteCode)) && (
         <>

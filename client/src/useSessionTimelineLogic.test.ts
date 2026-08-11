@@ -4,9 +4,13 @@ import {
   earliestActivityMs,
   findAdaptiveCountdowns,
   findGpsSignalLoss,
+  findLastSeenMs,
   findRunnersWithGap,
   findSleepingRunners,
+  findUltraConstrainedRunners,
   formatCountdownSeconds,
+  formatShortTimeOfDay,
+  formatTimeOfDay,
   GRACE_MS,
   isRangeCovered,
   latestActivityMs,
@@ -71,12 +75,12 @@ test('livePollingError gives membership-specific copy for 403 responses', () => 
 
 test('parseNdjson parses camelCase lines', () => {
   const line = JSON.stringify({ runnerName: 'Alice', latitude: 1, longitude: 2, heading: 90, timestamp: 't1' })
-  assert.deepEqual(parseNdjson(line), [{ runnerName: 'Alice', latitude: 1, longitude: 2, heading: 90, timestamp: 't1', nextExpectedAt: null }])
+  assert.deepEqual(parseNdjson(line), [{ runnerName: 'Alice', latitude: 1, longitude: 2, heading: 90, timestamp: 't1', nextExpectedAt: null, isUltraConstrained: false }])
 })
 
 test('parseNdjson normalises legacy PascalCase lines', () => {
   const line = JSON.stringify({ RunnerName: 'Bob', Latitude: 1, Longitude: 2, Timestamp: 't1' })
-  assert.deepEqual(parseNdjson(line), [{ runnerName: 'Bob', latitude: 1, longitude: 2, heading: null, timestamp: 't1', nextExpectedAt: null }])
+  assert.deepEqual(parseNdjson(line), [{ runnerName: 'Bob', latitude: 1, longitude: 2, heading: null, timestamp: 't1', nextExpectedAt: null, isUltraConstrained: false }])
 })
 
 test('mergeIntoByRunner appends and sorts by timestamp, de-duping exact repeats', () => {
@@ -204,6 +208,39 @@ test('findGpsSignalLoss resets the clear-streak if heading is lost again before 
     { ...base, heading: null, timestamp: '2024-01-01T00:01:00Z' },
   ]
   assert.deepEqual(findGpsSignalLoss(new Map([['Alice', positions]])), new Set(['Alice']))
+})
+
+test('findUltraConstrainedRunners flags a runner whose latest report at cutoff is ultra-constrained', () => {
+  const byRunner = new Map([
+    ['Alice', [
+      { runnerName: 'Alice', latitude: 0, longitude: 0, heading: null, timestamp: '2024-01-01T00:00:00Z', isUltraConstrained: false },
+      { runnerName: 'Alice', latitude: 1, longitude: 1, heading: null, timestamp: '2024-01-01T00:00:15Z', isUltraConstrained: true },
+    ]],
+  ])
+  const cutoff = new Date('2024-01-01T00:00:20Z').getTime()
+  assert.deepEqual(findUltraConstrainedRunners(byRunner, cutoff), new Set(['Alice']))
+})
+
+test('findUltraConstrainedRunners clears immediately once a runner reports false again, unlike GPS signal loss', () => {
+  const byRunner = new Map([
+    ['Alice', [
+      { runnerName: 'Alice', latitude: 0, longitude: 0, heading: null, timestamp: '2024-01-01T00:00:00Z', isUltraConstrained: true },
+      { runnerName: 'Alice', latitude: 1, longitude: 1, heading: null, timestamp: '2024-01-01T00:00:15Z', isUltraConstrained: false },
+    ]],
+  ])
+  const cutoff = new Date('2024-01-01T00:00:20Z').getTime()
+  assert.deepEqual(findUltraConstrainedRunners(byRunner, cutoff), new Set())
+})
+
+test('findUltraConstrainedRunners ignores a position after cutoff', () => {
+  const byRunner = new Map([
+    ['Alice', [
+      { runnerName: 'Alice', latitude: 0, longitude: 0, heading: null, timestamp: '2024-01-01T00:00:00Z', isUltraConstrained: false },
+      { runnerName: 'Alice', latitude: 1, longitude: 1, heading: null, timestamp: '2024-01-01T00:00:30Z', isUltraConstrained: true },
+    ]],
+  ])
+  const cutoff = new Date('2024-01-01T00:00:15Z').getTime()
+  assert.deepEqual(findUltraConstrainedRunners(byRunner, cutoff), new Set())
 })
 
 test('positionsAtCutoff returns the last position at or before cutoff, omitting runners with none yet', () => {
@@ -339,6 +376,29 @@ test('findRunnersWithGap falls back to MISSING_GAP_MS when nextExpectedAt is abs
   assert.deepEqual(findRunnersWithGap(byRunner, cutoff), new Set(['Alice']))
 })
 
+test('findLastSeenMs reports the last position at or before cutoff for every runner with one', () => {
+  const byRunner = new Map([
+    ['Alice', [
+      { runnerName: 'Alice', latitude: 0, longitude: 0, heading: null, timestamp: '2024-01-01T00:00:00Z' },
+      { runnerName: 'Alice', latitude: 1, longitude: 1, heading: null, timestamp: '2024-01-01T00:05:00Z' },
+    ]],
+  ])
+  const cutoff = new Date('2024-01-01T00:10:00Z').getTime()
+  assert.deepEqual(findLastSeenMs(byRunner, cutoff), new Map([
+    ['Alice', new Date('2024-01-01T00:05:00Z').getTime()],
+  ]))
+})
+
+test('findLastSeenMs omits a runner with no position at or before cutoff', () => {
+  const byRunner = new Map([
+    ['Alice', [
+      { runnerName: 'Alice', latitude: 0, longitude: 0, heading: null, timestamp: '2024-01-01T00:10:00Z' },
+    ]],
+  ])
+  const cutoff = new Date('2024-01-01T00:00:00Z').getTime()
+  assert.deepEqual(findLastSeenMs(byRunner, cutoff), new Map())
+})
+
 test('findAdaptiveCountdowns omits a runner on normal cadence', () => {
   const byRunner = new Map([
     ['Alice', [
@@ -427,6 +487,21 @@ test('formatCountdownSeconds pads seconds under 10 with a leading zero in M:SS f
   assert.equal(formatCountdownSeconds(125_000), '2:05')
 })
 
+test('formatTimeOfDay renders hour:minute:second — exact format is locale-dependent', () => {
+  // toLocaleTimeString's exact output depends on the runtime's default locale/timezone (12h vs
+  // 24h, AM/PM), so this only pins the shape rather than an exact string.
+  assert.match(formatTimeOfDay(new Date('2024-01-01T00:00:00Z').getTime()), /^\d{1,2}:\d{2}:\d{2}(\s?[AP]M)?$/)
+})
+
+test('formatShortTimeOfDay renders a compact 12-hour time with lowercase am/pm', () => {
+  // Built with the local Date constructor (not a UTC ISO string) so the expected wall-clock
+  // value matches regardless of which timezone the test happens to run in.
+  assert.equal(formatShortTimeOfDay(new Date(2024, 0, 1, 8, 26).getTime()), '8:26am')
+  assert.equal(formatShortTimeOfDay(new Date(2024, 0, 1, 13, 5).getTime()), '1:05pm')
+  assert.equal(formatShortTimeOfDay(new Date(2024, 0, 1, 12, 0).getTime()), '12:00pm')
+  assert.equal(formatShortTimeOfDay(new Date(2024, 0, 1, 0, 0).getTime()), '12:00am')
+})
+
 test('normalizeUpdate carries nextExpectedAt through from camelCase and PascalCase payloads', () => {
   assert.equal(
     normalizeUpdate({
@@ -440,6 +515,29 @@ test('normalizeUpdate carries nextExpectedAt through from camelCase and PascalCa
       RunnerName: 'Alice', Latitude: 0, Longitude: 0, Heading: null, Timestamp: '2024-01-01T00:00:00Z',
     }).nextExpectedAt,
     null,
+  )
+})
+
+test('normalizeUpdate carries isUltraConstrained through from camelCase and PascalCase payloads, defaulting to false', () => {
+  assert.equal(
+    normalizeUpdate({
+      runnerName: 'Alice', latitude: 0, longitude: 0, heading: null,
+      timestamp: '2024-01-01T00:00:00Z', isUltraConstrained: true,
+    }).isUltraConstrained,
+    true,
+  )
+  assert.equal(
+    normalizeUpdate({
+      RunnerName: 'Alice', Latitude: 0, Longitude: 0, Heading: null, Timestamp: '2024-01-01T00:00:00Z',
+      IsUltraConstrained: true,
+    }).isUltraConstrained,
+    true,
+  )
+  assert.equal(
+    normalizeUpdate({
+      RunnerName: 'Alice', Latitude: 0, Longitude: 0, Heading: null, Timestamp: '2024-01-01T00:00:00Z',
+    }).isUltraConstrained,
+    false,
   )
 })
 

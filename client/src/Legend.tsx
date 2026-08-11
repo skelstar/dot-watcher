@@ -1,5 +1,5 @@
 import { runnerColour } from './useRunnerMarkers.ts'
-import { formatCountdownSeconds, type RunnerCountdown } from './useSessionTimelineLogic.ts'
+import { formatCountdownSeconds, formatShortTimeOfDay, type RunnerCountdown } from './useSessionTimelineLogic.ts'
 
 interface Props {
   runners: string[]
@@ -9,10 +9,37 @@ interface Props {
   runnersWithGap?: Set<string>
   runnersSleeping?: Set<string>
   runnersWithGpsSignalLoss?: Set<string>
+  runnersUltraConstrained?: Set<string>
   runnerCountdowns?: Map<string, RunnerCountdown>
+  runnerLastSeenMs?: Map<string, number>
 }
 
 const COUNTDOWN_RING_SIZE = 18
+const SATELLITE_ICON_SIZE = 17
+
+// Dish + signal-wave glyph (path data from Lucide's "satellite-dish" icon, ISC licensed) rather
+// than the 📡 emoji previously used here — emoji rendering is font/OS-dependent and reads as a
+// blurry smudge at this pill's small size; a stroked SVG stays crisp and legible regardless.
+function SatelliteDishIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width={SATELLITE_ICON_SIZE}
+      height={SATELLITE_ICON_SIZE}
+      fill="none"
+      stroke="#0284c7"
+      strokeWidth={2.5}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      style={{ flexShrink: 0 }}
+    >
+      <path d="M4 10a7.31 7.31 0 0 0 10 10Z" />
+      <path d="m9 15 3-3" />
+      <path d="M17 13a6 6 0 0 0-6-6" />
+      <path d="M21 13A10 10 0 0 0 11 3" />
+    </svg>
+  )
+}
 
 // Mirrors iOS's PostCountdownRing (PostCountdownRing.swift): a ring whose pie-slice fill grows
 // clockwise from 12 o'clock as time elapses since the last post, emptying back to nothing the
@@ -51,7 +78,9 @@ export default function Legend({
   runnersWithGap = new Set(),
   runnersSleeping = new Set(),
   runnersWithGpsSignalLoss = new Set(),
+  runnersUltraConstrained = new Set(),
   runnerCountdowns = new Map(),
+  runnerLastSeenMs = new Map(),
 }: Props) {
   if (runners.length === 0) return null
 
@@ -59,22 +88,46 @@ export default function Legend({
     <div style={container(belowAccountBar)}>
       {runners.map(name => {
         // Mirrors the map marker's own state precedence (see Arrow.tsx / useRunnerMarkers.ts):
-        // a runner is exactly one of missing/sleeping/normal, with signal-loss as a separate
-        // overlay that can combine with either.
+        // a runner is exactly one of missing/sleeping/normal, with signal-loss and satellite as
+        // separate overlays that can combine with any of them.
         const missing = runnersWithGap.has(name)
         const sleeping = !missing && runnersSleeping.has(name)
         const signalLoss = runnersWithGpsSignalLoss.has(name)
+        // Independent of everything else here: NWPath.isUltraConstrained doesn't imply a slower
+        // cadence (that's runnerCountdowns, driven by the runner's own nextExpectedAt) or vice
+        // versa, so it renders as its own icon alongside whichever message/countdown is active
+        // rather than competing for the single message slot below.
+        const satellite = runnersUltraConstrained.has(name)
         // Countdown only ever shown for an actively-reporting, non-missing runner (per the plan:
         // "Only show the live countdown for actively-reporting runners") — a runner already
         // flagged missing shows that instead, not a stale/contradictory countdown alongside it.
         const countdown = !missing ? runnerCountdowns.get(name) : undefined
+        // Countdown wins over GPS/sleeping when both apply: an adaptive (satellite-cadence)
+        // countdown is the more actionable state, and a stationary runner's heading naturally
+        // reads as GPS signal-loss (CoreLocation reports no course when not moving) — without
+        // this, that false-positive "GPS" badge would permanently mask the countdown any time
+        // the runner is standing still, which is exactly when someone wants to watch the
+        // countdown to verify satellite mode is working.
         // Signal-loss gets the short "GPS" label rather than a full sentence — the "!" badge
         // beside it already carries the warning, so the text only needs to name what's wrong,
         // not restate that something is.
-        const message = missing ? 'Missing location' : signalLoss ? 'GPS' : sleeping ? 'Sleeping' : null
+        const lastSeenMs = missing ? runnerLastSeenMs.get(name) : undefined
+        const message = missing
+          ? lastSeenMs !== undefined
+            ? `Last: ${formatShortTimeOfDay(lastSeenMs)}`
+            : 'Missing location'
+          : countdown
+          ? null
+          : signalLoss
+          ? 'GPS'
+          : sleeping
+          ? 'Sleeping'
+          : null
         const tone: LabelTone = missing ? 'muted' : 'warning'
         const showCountdown = !message && countdown
-        const active = showCountdown || message // either fills the pill — never both at once
+        // message/countdown still fill the single message slot exclusively of each other, but
+        // satellite is an independent overlay and can make the pill active on its own.
+        const active = showCountdown || message || satellite
         const title = showCountdown
           ? countdown.status === 'counting-down'
             ? `Next update in ${formatCountdownSeconds(countdown.remainingMs)}`
@@ -98,6 +151,11 @@ export default function Legend({
               </div>
               {active && (
                 <span style={trailingContent(trailingMinWidth)}>
+                  {satellite && (
+                    <span title="Reporting over a satellite connection" style={satelliteIconWrap}>
+                      <SatelliteDishIcon />
+                    </span>
+                  )}
                   {showCountdown && <CountdownRing countdown={countdown} />}
                   {message && (
                     <span style={issueLabel(tone)}>
@@ -158,10 +216,10 @@ function trailingContent(minWidth: number | undefined): React.CSSProperties {
   }
 }
 
-// Wraps the dot plus whichever single trailing indicator applies (countdown ring+number, or a
-// status label like "GPS"/"Sleeping") in one pill so they read as a unit. Only gets the
-// translucent-white background/padding when something's actually showing — otherwise the dot
-// sits bare, same as before this existed.
+// Wraps the dot plus whichever trailing indicators apply (a satellite icon, plus at most one of
+// countdown ring+number or a status label like "GPS"/"Sleeping") in one pill so they read as a
+// unit. Only gets the translucent-white background/padding when something's actually showing —
+// otherwise the dot sits bare, same as before this existed.
 function pill(active: boolean | string | undefined): React.CSSProperties {
   return {
     display: 'flex',
@@ -213,6 +271,12 @@ const inlineWarningBadge: React.CSSProperties = {
   color: '#ffffff',
   lineHeight: 1,
   marginRight: 4,
+  flexShrink: 0,
+}
+
+const satelliteIconWrap: React.CSSProperties = {
+  display: 'inline-flex',
+  alignItems: 'center',
   flexShrink: 0,
 }
 

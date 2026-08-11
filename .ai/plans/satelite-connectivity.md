@@ -52,6 +52,37 @@ The One NZ toolkit is the second kind. It rides the phone's normal cellular base
    - Auto-resume polling/map when the path returns to normal. No user action either direction.
 4. **Retry behavior tweak** — consider a longer backoff while ultra-constrained (satellite acquisition is slower than a normal handshake), rather than retrying on the same short interval used for normal cellular failures.
 
+## Implementation status (2026-08-11)
+
+The "Proposed iOS app changes" above (detection layer, essential/non-essential traffic split,
+own-device map-freeze + status badge, and the longer-cadence-as-backoff behavior) were already
+built prior to this note — see `LocationManager.isUltraConstrained`/`interval` and
+`NativeMapView.isUltraConstrained` for the shipped versions. That work covered the runner's own
+device experience only; nothing about a runner's satellite state was visible to anyone else.
+
+What shipped in this round is the piece the plan above didn't cover — telling *other session
+members* that a runner is on satellite:
+
+- iOS now reports `NWPath.isUltraConstrained` (captured at post time) as `isUltraConstrained` on
+  every `POST /location`, alongside `timestamp`/`nextExpectedAt`.
+- Named for what the OS actually classifies, not `isSatellite` — Apple's own guidance (DTS forum
+  response) is that the property describes expected network behaviour, not a specific medium.
+  Satellite just happens to be the only real-world case that sets it today.
+- Server threads it through `LocationUpdate` → `RunnerPosition`, and the web client renders it as
+  an independent 📡 overlay in the Legend pill — deliberately not tied to the `nextExpectedAt`
+  countdown, since a slower cadence and this flag are unrelated facts (see POST-nextExpectedAt.md).
+- Phone simulator (`tools/simulator`) got a matching "Satellite" mode for testing without a real
+  device.
+
+**Known limitation — live-only, not persisted.** Like `nextExpectedAt`, this field has no column
+in the `location_updates` Postgres table — it only lives in the server's in-memory `_sessions`
+cache. A viewer sees the badge only for positions they personally live-polled while the run was
+happening; scrubbing into history via the recording endpoint, or reloading after a server
+restart, always reads `isUltraConstrained: false` for that stretch, regardless of what actually
+happened. Deliberately deferred rather than solved: adding persistence is a real schema change
+(nullable column, write path, both read paths), not yet scoped. See the equivalent open item in
+POST-nextExpectedAt.md — the two fields share this tradeoff for the same reason.
+
 ## Open questions
 
 - **iOS 26.0 support or 26.1+ minimum?** Leaning toward 26.1+ to avoid the NWConnection fallback path, but needs a call.

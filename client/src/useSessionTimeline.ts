@@ -4,8 +4,10 @@ import {
   earliestActivityMs,
   findAdaptiveCountdowns,
   findGpsSignalLoss,
+  findLastSeenMs,
   findRunnersWithGap,
   findSleepingRunners,
+  findUltraConstrainedRunners,
   isRangeCovered,
   latestActivityMs,
   livePollingError,
@@ -59,7 +61,9 @@ export interface SessionTimelineState {
   runnersWithGpsSignalLoss: Set<string>
   runnersWithGap: Set<string>
   runnersSleeping: Set<string>
+  runnersUltraConstrained: Set<string>
   runnerCountdowns: Map<string, RunnerCountdown>
+  runnerLastSeenMs: Map<string, number>
   playing: boolean
   speed: number
   loading: boolean
@@ -371,6 +375,19 @@ export function useSessionTimeline(
     [byRunner, virtualNowMs],
   )
 
+  // When a runner is missing (see runnersWithGap above), the timestamp of their last known
+  // position — lets Legend show "Last: 10:42am" instead of just "Missing location".
+  const runnerLastSeenMs = useMemo(() => findLastSeenMs(byRunner, virtualNowMs), [byRunner, virtualNowMs])
+
+  // Runners whose most recent report at the current playhead came over an OS-classified
+  // ultra-constrained network path (satellite, in practice) — see findUltraConstrainedRunners for
+  // why this is independent of runnerCountdowns above; a slower cadence and this flag can occur
+  // separately from each other.
+  const runnersUltraConstrained = useMemo(
+    () => findUltraConstrainedRunners(byRunner, virtualNowMs),
+    [byRunner, virtualNowMs],
+  )
+
   return {
     positions,
     following: scrubTimeMs === null,
@@ -384,7 +401,9 @@ export function useSessionTimeline(
     runnersWithGpsSignalLoss,
     runnersWithGap,
     runnersSleeping,
+    runnersUltraConstrained,
     runnerCountdowns,
+    runnerLastSeenMs,
     playing,
     speed,
     loading,

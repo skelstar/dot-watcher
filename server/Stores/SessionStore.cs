@@ -747,7 +747,8 @@ public class SessionStore(string connectionString)
                 update.Longitude,
                 update.Heading,
                 update.Timestamp,
-                update.NextExpectedAt));
+                update.NextExpectedAt,
+                update.IsUltraConstrained));
 
         // The demo session never persists positions - live viewing above is unaffected (it reads
         // the in-memory cache, not Postgres), but nothing here ever needs cleaning up.
@@ -833,8 +834,8 @@ public class SessionStore(string connectionString)
         // Production share one database as of the 2026-07-22 cutover, but each still runs its own
         // process with its own private in-memory `_sessions`, so a runner posting to one is
         // invisible to a viewer polling the other). The in-memory copy is preferred when present
-        // since it carries `nextExpectedAt`, which has no column in location_updates and so never
-        // round-trips through Postgres.
+        // since it carries `nextExpectedAt`/`isUltraConstrained`, neither of which has a column in
+        // location_updates and so neither round-trips through Postgres.
         foreach (var (userId, position) in LoadLatestPositionsByRunner(sessionId))
             byUserId.TryAdd(userId, position);
 

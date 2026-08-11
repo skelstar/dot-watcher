@@ -8,6 +8,10 @@ export interface RunnerPosition {
   // (normal or a slower one, e.g. satellite). Absent for older clients/recordings that predate
   // this field, or the demo runner. See .ai/plans/POST-nextExpectedAt.md.
   nextExpectedAt?: string | null
+  // Self-reported NWPath.isUltraConstrained at capture time — see server/Models/LocationUpdate.cs
+  // for why this isn't called isSatellite. False (not absent) for older clients, the demo runner,
+  // or recordings, since the server itself defaults it the same way.
+  isUltraConstrained?: boolean
 }
 
 export interface AuthenticatedUser {

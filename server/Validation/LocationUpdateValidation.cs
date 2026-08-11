@@ -13,7 +13,8 @@ public sealed record ValidatedLocationUpdate(
     double Longitude,
     double? Heading,
     DateTimeOffset Timestamp,
-    DateTimeOffset? NextExpectedAt = null);
+    DateTimeOffset? NextExpectedAt = null,
+    bool IsUltraConstrained = false);
 
 public static class LocationUpdateValidation
 {
@@ -77,7 +78,8 @@ public static class LocationUpdateValidation
             update.Longitude!.Value,
             update.Heading,
             update.Timestamp!.Value,
-            update.NextExpectedAt);
+            update.NextExpectedAt,
+            update.IsUltraConstrained);
         return true;
     }
 }
