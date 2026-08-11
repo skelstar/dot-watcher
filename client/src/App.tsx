@@ -4,6 +4,7 @@ import 'mapbox-gl/dist/mapbox-gl.css'
 import SessionPrompt from './SessionPrompt.tsx'
 import InvalidInvitePrompt from './InvalidInvitePrompt.tsx'
 import Legend from './Legend.tsx'
+import LegendHelp from './LegendHelp.tsx'
 import MemberManager from './MemberManager.tsx'
 import ReplayControls from './ReplayControls.tsx'
 import MapPlayButton from './MapPlayButton.tsx'
@@ -341,6 +342,7 @@ export default function App() {
           <button type="button" style={signOutButton} onClick={handleSignOut}>Sign out</button>
         </div>
       )}
+      <LegendHelp />
       <Legend
         runners={allRunners}
         onRunnerClick={followRunner}
