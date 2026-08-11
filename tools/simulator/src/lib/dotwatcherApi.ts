@@ -97,7 +97,9 @@ export async function postLocation(
   sessionId: string,
   lat: number,
   lon: number,
-  heading: number | null
+  heading: number | null,
+  isUltraConstrained = false,
+  nextExpectedAt?: Date
 ): Promise<void> {
   const res = await fetch(`${SERVER_URL}/location`, {
     method: 'POST',
@@ -108,6 +110,8 @@ export async function postLocation(
       longitude: lon,
       heading,
       timestamp: new Date().toISOString(),
+      isUltraConstrained,
+      ...(nextExpectedAt && { nextExpectedAt: nextExpectedAt.toISOString() }),
     }),
   })
   if (!res.ok) throw new ApiError(await errorMessage(res, `Location post failed (${res.status}).`))

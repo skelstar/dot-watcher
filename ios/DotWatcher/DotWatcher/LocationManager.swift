@@ -554,6 +554,11 @@ final class LocationManager {
         }
 
         let heading: Double? = loc.course >= 0 ? loc.course : nil
+        // Captured once here rather than read fresh inside `post` for the same reason as `now`
+        // below: `isUltraConstrained` can flip between this capture and the network call actually
+        // landing, and the value that should accompany this specific post is the one that was
+        // true when it was decided to send it now, at this cadence.
+        let isUltraConstrained = self.isUltraConstrained
         Task {
             // Post the current time, not loc.timestamp: while stationary, CoreLocation's
             // distanceFilter withholds new fixes entirely, so latestLocation (and its original
@@ -567,11 +572,14 @@ final class LocationManager {
                 lon: loc.coordinate.longitude,
                 heading: heading,
                 timestamp: now,
-                nextExpectedAt: nextPostAt(from: now))
+                nextExpectedAt: nextPostAt(from: now),
+                isUltraConstrained: isUltraConstrained)
         }
     }
 
-    private func post(lat: Double, lon: Double, heading: Double?, timestamp: Date, nextExpectedAt: Date) async {
+    private func post(
+        lat: Double, lon: Double, heading: Double?, timestamp: Date, nextExpectedAt: Date, isUltraConstrained: Bool
+    ) async {
         let targetSessionId = sessionId
         do {
             var body: [String: Any] = [
@@ -587,6 +595,14 @@ final class LocationManager {
                 // native clients) tell "on-schedule but slow" apart from "actually stuck/offline"
                 // without hardcoding one fixed staleness threshold for every runner.
                 "nextExpectedAt": ISO8601DateFormatter().string(from: nextExpectedAt),
+                // What NWPath.isUltraConstrained reported at capture time. Named for the OS's own
+                // classification rather than "isSatellite" — Apple's own guidance is that this
+                // flags "treat this path as ultra-constrained", not a specific medium, satellite
+                // just being the only real-world case that currently sets it. Deliberately kept
+                // independent of `nextExpectedAt`/`interval` above: a slower cadence could exist
+                // for other reasons (e.g. battery-saving) without this being true, and this could
+                // in principle be true without the cadence having changed.
+                "isUltraConstrained": isUltraConstrained,
             ]
             if let heading { body["heading"] = heading }
 

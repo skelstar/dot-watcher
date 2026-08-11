@@ -13,6 +13,12 @@ import type { LatLon, Quality, PhoneStatus, PhoneSnapshot } from './lib/types'
 
 export type { LatLon, Quality, PhoneStatus, PhoneSnapshot }
 
+// Real iOS uses 90s while isUltraConstrained (LocationManager.ultraConstrainedInterval) —
+// satellite bursts are slower/costlier than a normal handshake. 20s here instead: long enough to
+// read as clearly different from the shared "Update every" cadence above (max 15s), short enough
+// that a tester isn't stuck waiting 90s per cycle to see the effect.
+const SATELLITE_TICK_MS = 20_000
+
 type Props = {
   id: number
   index: number
@@ -55,12 +61,18 @@ export default function PhoneSimulator({
   const routeRef = useRef(route)
   const routeProgressRef = useRef<RouteProgress>(ROUTE_START_PROGRESS)
   const inFlightRef = useRef(false)
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  // A self-rescheduling setTimeout rather than a fixed setInterval — the delay before each next
+  // tick is decided fresh at schedule time (see scheduleNextTick), the same self-correcting
+  // approach as the real iOS app's trackingLoop, so toggling quality to/from 'satellite' mid-run
+  // changes the cadence starting from the very next tick without needing to restart.
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const tickMsRef = useRef(tickMs)
   const hasAutoJoinedRef = useRef(false)
 
   const color = runnerColour(displayName)
 
   useEffect(() => { qualityRef.current = quality }, [quality])
+  useEffect(() => { tickMsRef.current = tickMs }, [tickMs])
   useEffect(() => { positionRef.current = position }, [position])
   useEffect(() => { convergenceRef.current = convergencePoint }, [convergencePoint])
   // A new/cleared route always restarts progress from its first point — resuming mid-route from
@@ -75,7 +87,7 @@ export default function PhoneSimulator({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, displayName, status, quality, position, heading])
 
-  useEffect(() => () => { if (intervalRef.current) clearInterval(intervalRef.current) }, [])
+  useEffect(() => () => { if (timeoutRef.current) clearTimeout(timeoutRef.current) }, [])
 
   async function handleJoin() {
     if (!inviteCode.trim()) return
@@ -118,16 +130,24 @@ export default function PhoneSimulator({
     let nextHeading: number | null
     const target = convergenceRef.current
     const activeRoute = routeRef.current
-    const stepMeters = speedMps * (tickMs / 1000)
+    // The interval that actually governs this tick's spacing (see scheduleNextTick) — using the
+    // shared tickMs here instead would make satellite-mode phones appear to crawl, since they'd
+    // be sized for a tick five times more frequent than the one actually firing.
+    const tickIntervalMs = qualityRef.current === 'satellite' ? SATELLITE_TICK_MS : tickMsRef.current
+    const stepMeters = speedMps * (tickIntervalMs / 1000)
 
-    if (qualityRef.current === 'good' && activeRoute && activeRoute.length > 1) {
+    // 'satellite' moves the same as 'good' — it's a network-type flag, not a GPS-quality issue
+    // (see the Quality type) — only the isUltraConstrained flag on the post itself differs.
+    const movesNormally = qualityRef.current === 'good' || qualityRef.current === 'satellite'
+
+    if (movesNormally && activeRoute && activeRoute.length > 1) {
       // A route takes priority over the convergence point when both are set — it's the more
       // specific instruction for this phone.
       const result = advanceAlongRoute(activeRoute, routeProgressRef.current, stepMeters)
       next = result.position
       nextHeading = result.heading
       routeProgressRef.current = result.progress
-    } else if (qualityRef.current === 'good' && target) {
+    } else if (movesNormally && target) {
       const dist = distanceMeters(cur.lat, cur.lon, target.lat, target.lon)
       if (dist <= ARRIVE_METERS) {
         next = cur
@@ -149,7 +169,11 @@ export default function PhoneSimulator({
 
     inFlightRef.current = true
     try {
-      await postLocation(user, sessionId, next.lat, next.lon, nextHeading)
+      // Matches scheduleNextTick's own delay computation, so the self-reported heartbeat lines up
+      // with when the next post will actually fire — this is what drives the Legend's countdown
+      // ring (findAdaptiveCountdowns skips any runner with no nextExpectedAt at all).
+      const nextExpectedAt = new Date(Date.now() + tickIntervalMs)
+      await postLocation(user, sessionId, next.lat, next.lon, nextHeading, qualityRef.current === 'satellite', nextExpectedAt)
       onPositionChange(id, next)
       setHeading(nextHeading)
       setLastSentAt(new Date().toLocaleTimeString())
@@ -159,21 +183,31 @@ export default function PhoneSimulator({
     } finally {
       inFlightRef.current = false
     }
-  }, [id, speedMps, tickMs, onPositionChange])
+  }, [id, speedMps, onPositionChange])
+
+  // Reads quality/tickMs fresh (via refs) at each reschedule rather than once at Start time, so
+  // flipping a phone to/from 'satellite' mid-run changes its cadence starting the very next tick.
+  const scheduleNextTick = useCallback(() => {
+    const delay = qualityRef.current === 'satellite' ? SATELLITE_TICK_MS : tickMsRef.current
+    timeoutRef.current = setTimeout(async () => {
+      await tick()
+      scheduleNextTick()
+    }, delay)
+  }, [tick])
 
   function handleStart() {
     if (!position || status === 'running') return
     setStatus('running')
-    intervalRef.current = setInterval(tick, tickMs)
+    scheduleNextTick()
   }
 
   function handlePause() {
-    if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null }
+    if (timeoutRef.current) { clearTimeout(timeoutRef.current); timeoutRef.current = null }
     setStatus('ready')
   }
 
   async function handleLeave() {
-    if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null }
+    if (timeoutRef.current) { clearTimeout(timeoutRef.current); timeoutRef.current = null }
     const user = userRef.current
     const sessionId = sessionIdRef.current
     setStatus('left')
@@ -183,7 +217,7 @@ export default function PhoneSimulator({
   }
 
   function handleRemove() {
-    if (intervalRef.current) clearInterval(intervalRef.current)
+    if (timeoutRef.current) clearTimeout(timeoutRef.current)
     if (status !== 'left' && status !== 'idle') {
       const user = userRef.current
       const sessionId = sessionIdRef.current
@@ -301,7 +335,7 @@ export default function PhoneSimulator({
           </p>
 
           <div style={qualityRow}>
-            {(['good', 'bad', 'missing'] as Quality[]).map(q => (
+            {(['good', 'bad', 'missing', 'satellite'] as Quality[]).map(q => (
               <label key={q} style={qualityLabel(quality === q, status === 'left')}>
                 <input
                   type="checkbox"
@@ -350,6 +384,7 @@ function qualityText(q: Quality): string {
     case 'good': return 'Good'
     case 'bad': return 'Bad GPS'
     case 'missing': return 'Missing'
+    case 'satellite': return 'Satellite'
   }
 }
 

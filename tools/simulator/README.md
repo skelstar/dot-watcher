@@ -83,9 +83,12 @@ multi-runner scenarios without needing physical devices.
   - Can be switched between **Good** (heads straight for the convergence point, heading set to
     the bearing of travel — and stops reporting heading once "arrived", matching the real
     app's behaviour when stationary), **Bad GPS** (wanders randomly instead of converging, with
-    heading always omitted — this is what the client's GPS-signal-loss indicator keys off), or
+    heading always omitted — this is what the client's GPS-signal-loss indicator keys off),
     **Missing** (stops sending updates entirely, so the client's data-gap "missing" indicator
-    kicks in after ~60s)
+    kicks in after ~60s), or **Satellite** (moves and reports heading exactly like Good — this
+    only flips `isUltraConstrained: true` on the post, the same self-reported flag iOS sends from
+    `NWPath.isUltraConstrained`, so it exercises the client's satellite indicator independently of
+    GPS quality or posting cadence)
   - Can leave the session independently at any time
   - Renders on both its own mini map and the shared convergence map using the same visual
     language as the client's runner markers (`Arrow.tsx`): a coloured circle with a heading
