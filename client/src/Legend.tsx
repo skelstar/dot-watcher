@@ -1,5 +1,5 @@
 import { runnerColour } from './useRunnerMarkers.ts'
-import { formatCountdownSeconds, type RunnerCountdown } from './useSessionTimelineLogic.ts'
+import { formatCountdownSeconds, formatShortTimeOfDay, type RunnerCountdown } from './useSessionTimelineLogic.ts'
 
 interface Props {
   runners: string[]
@@ -10,6 +10,7 @@ interface Props {
   runnersSleeping?: Set<string>
   runnersWithGpsSignalLoss?: Set<string>
   runnerCountdowns?: Map<string, RunnerCountdown>
+  runnerLastSeenMs?: Map<string, number>
 }
 
 const COUNTDOWN_RING_SIZE = 18
@@ -52,6 +53,7 @@ export default function Legend({
   runnersSleeping = new Set(),
   runnersWithGpsSignalLoss = new Set(),
   runnerCountdowns = new Map(),
+  runnerLastSeenMs = new Map(),
 }: Props) {
   if (runners.length === 0) return null
 
@@ -68,10 +70,27 @@ export default function Legend({
         // "Only show the live countdown for actively-reporting runners") — a runner already
         // flagged missing shows that instead, not a stale/contradictory countdown alongside it.
         const countdown = !missing ? runnerCountdowns.get(name) : undefined
+        // Countdown wins over GPS/sleeping when both apply: an adaptive (satellite-cadence)
+        // countdown is the more actionable state, and a stationary runner's heading naturally
+        // reads as GPS signal-loss (CoreLocation reports no course when not moving) — without
+        // this, that false-positive "GPS" badge would permanently mask the countdown any time
+        // the runner is standing still, which is exactly when someone wants to watch the
+        // countdown to verify satellite mode is working.
         // Signal-loss gets the short "GPS" label rather than a full sentence — the "!" badge
         // beside it already carries the warning, so the text only needs to name what's wrong,
         // not restate that something is.
-        const message = missing ? 'Missing location' : signalLoss ? 'GPS' : sleeping ? 'Sleeping' : null
+        const lastSeenMs = missing ? runnerLastSeenMs.get(name) : undefined
+        const message = missing
+          ? lastSeenMs !== undefined
+            ? `Last: ${formatShortTimeOfDay(lastSeenMs)}`
+            : 'Missing location'
+          : countdown
+          ? null
+          : signalLoss
+          ? 'GPS'
+          : sleeping
+          ? 'Sleeping'
+          : null
         const tone: LabelTone = missing ? 'muted' : 'warning'
         const showCountdown = !message && countdown
         const active = showCountdown || message // either fills the pill — never both at once

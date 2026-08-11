@@ -240,6 +240,46 @@ export function findRunnersWithGap(
   return affected
 }
 
+// The last known position timestamp for each runner at or before cutoffMs, in ms since epoch —
+// lets the "Missing location" label say *when* the runner was last seen, not just that they are.
+// Uses the same "before" walk as findRunnersWithGap, but keyed by every runner with a position at
+// all (not just the ones currently missing), since the caller decides who to show it for.
+export function findLastSeenMs(
+  byRunner: Map<string, RunnerPosition[]>,
+  cutoffMs: number,
+): Map<string, number> {
+  const lastSeen = new Map<string, number>()
+  for (const [runnerName, positions] of byRunner) {
+    let before: RunnerPosition | null = null
+    for (const pos of positions) {
+      const ts = new Date(pos.timestamp).getTime()
+      if (ts > cutoffMs) break
+      before = pos
+    }
+    if (before) lastSeen.set(runnerName, new Date(before.timestamp).getTime())
+  }
+  return lastSeen
+}
+
+// Wall-clock time of day, e.g. "10:42:13 AM" — used by ReplayControls' scrubber readout, where
+// second-level precision matters for a fine-grained drag gesture.
+export function formatTimeOfDay(ms: number): string {
+  return new Date(ms).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' })
+}
+
+// Compact wall-clock time of day, e.g. "8:26am" — used by Legend's "Last: " label, where a
+// glance at the minute is enough and toLocaleTimeString's locale-dependent spacing/casing
+// ("8:26 AM") reads noisier next to a dot's short countdown/status pills. Always local time,
+// matching formatTimeOfDay.
+export function formatShortTimeOfDay(ms: number): string {
+  const date = new Date(ms)
+  const hours24 = date.getHours()
+  const hours12 = hours24 % 12 === 0 ? 12 : hours24 % 12
+  const minutes = String(date.getMinutes()).padStart(2, '0')
+  const period = hours24 < 12 ? 'am' : 'pm'
+  return `${hours12}:${minutes}${period}`
+}
+
 // One of the three visual states from .ai/plans/POST-nextExpectedAt.md: counting down normally,
 // within the shared grace window right at/just past nextExpectedAt, or genuinely overdue (past
 // the same overdueAt threshold findRunnersWithGap uses to flag a gap).

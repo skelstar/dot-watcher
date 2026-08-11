@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { SessionTimelineState } from './useSessionTimeline.ts'
+import { formatTimeOfDay } from './useSessionTimelineLogic.ts'
 
 interface Props {
   timeline: SessionTimelineState
@@ -14,10 +15,6 @@ function formatTime(ms: number): string {
   const s = totalSec % 60
   if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
   return `${m}:${String(s).padStart(2, '0')}`
-}
-
-function formatTimeOfDay(ms: number): string {
-  return new Date(ms).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' })
 }
 
 export default function ReplayControls({ timeline }: Props) {
