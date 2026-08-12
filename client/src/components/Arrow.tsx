@@ -13,6 +13,17 @@ const MARKER_H = 48
 // Legacy export — useRunnerMarkers imports this but only uses it for label offset
 const ARROW_SIZE = MARKER_W
 
+// The heading chevron's position/size, all measured as distance from the dot's centre (CX, CY)
+// before the rotate() transform is applied. Play with these to see what reads best:
+//   - CHEVRON_BASE_OFFSET: how far out the chevron's two base points sit — raise this to push
+//     the whole chevron further from the dot; lower it to tuck it in closer/overlapping.
+//   - CHEVRON_TIP_OFFSET: how far out the tip sits — raise/lower together with BASE_OFFSET to
+//     move the chevron without changing its length, or independently to change how long it is.
+//   - CHEVRON_HALF_WIDTH: half the wing span (how wide the chevron's "V" opens).
+const CHEVRON_BASE_OFFSET = 15.5
+const CHEVRON_TIP_OFFSET = 22
+const CHEVRON_HALF_WIDTH = 6.5
+
 interface Props {
   name: string
   heading: number | null
@@ -176,7 +187,7 @@ export default function Arrow({ name, heading, colour, label, stationary, missin
       >
         {/* Upright dot — never rotates, so ring and initials stay crisp */}
         <g style={{ filter: 'drop-shadow(0 1px 4px rgba(0,0,0,0.45))' }}>
-          <circle cx={CX} cy={CY} r={12} fill={colour} stroke="#ffffff" strokeWidth="3" />
+          <circle cx={CX} cy={CY} r={13.5} fill={colour} />
         </g>
         <text
           x={CX}
@@ -198,9 +209,9 @@ export default function Arrow({ name, heading, colour, label, stationary, missin
             style={{ filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.4))' }}
           >
             <path
-              d={`M ${CX - 6.5},11 L ${CX},4.5 L ${CX + 6.5},11`}
+              d={`M ${CX - CHEVRON_HALF_WIDTH},${CY - CHEVRON_BASE_OFFSET} L ${CX},${CY - CHEVRON_TIP_OFFSET} L ${CX + CHEVRON_HALF_WIDTH},${CY - CHEVRON_BASE_OFFSET}`}
               fill="none"
-              stroke="#ffffff"
+              stroke= "#ffffff" // { colour }
               strokeWidth="4"
               strokeLinecap="round"
               strokeLinejoin="round"
