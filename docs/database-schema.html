@@ -552,6 +552,18 @@
             <td class="col-constraints"><span class="tag tag-nn">NOT NULL</span></td>
             <td class="col-notes">ISO 8601 from the device clock, not the server receive time</td>
           </tr>
+          <tr>
+            <td class="col-name">next_expected_at</td>
+            <td class="col-type">TEXT</td>
+            <td class="col-constraints"><span class="tag tag-null">NULLABLE</span></td>
+            <td class="col-notes">ISO 8601 self-reported heartbeat — when the device expects to post next. Added 2026-08-12; NULL for older clients, the demo runner, or rows from before this column existed</td>
+          </tr>
+          <tr>
+            <td class="col-name">is_ultra_constrained</td>
+            <td class="col-type">BOOLEAN</td>
+            <td class="col-constraints"><span class="tag tag-nn">NOT NULL</span></td>
+            <td class="col-notes">Self-reported <code>NWPath.isUltraConstrained</code> at capture time (satellite connectivity, in practice). Added 2026-08-12; defaults to false for older clients, the demo runner, or rows from before this column existed</td>
+          </tr>
         </tbody>
       </table>
       <div class="indexes">

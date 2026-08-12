@@ -110,6 +110,20 @@ public class SessionStore(string connectionString)
             CREATE INDEX IF NOT EXISTS idx_blocked_users_blocked ON blocked_users(blocked_user_id);
             """;
         cmd.ExecuteNonQuery();
+
+        // Migration: add columns for two self-reported, previously in-memory-only fields (see
+        // RunnerPosition.cs) so they survive into recordings/replay, not just live viewing.
+        // NOT NULL DEFAULT FALSE backfills every pre-existing row to false, which is correct -
+        // none of them could have reported satellite before this column existed. Both are fast,
+        // metadata-only ALTERs on Postgres 11+ (no table rewrite), safe to re-run on every startup.
+        using var addLiveOnlyColumns = conn.CreateCommand();
+        addLiveOnlyColumns.CommandText = """
+            ALTER TABLE location_updates
+                ADD COLUMN IF NOT EXISTS is_ultra_constrained BOOLEAN NOT NULL DEFAULT FALSE;
+            ALTER TABLE location_updates
+                ADD COLUMN IF NOT EXISTS next_expected_at TEXT;
+            """;
+        addLiveOnlyColumns.ExecuteNonQuery();
     }
 
     // Idempotent - safe to call on every startup. Resolves (creating if missing) the permanent
@@ -758,8 +772,8 @@ public class SessionStore(string connectionString)
         using var conn = Connect();
         using var cmd = conn.CreateCommand();
         cmd.CommandText = """
-            INSERT INTO location_updates (session_id, runner_user_id, runner_name, latitude, longitude, heading, timestamp)
-            VALUES (@sessionId, @userId, @name, @lat, @lon, @heading, @ts)
+            INSERT INTO location_updates (session_id, runner_user_id, runner_name, latitude, longitude, heading, timestamp, next_expected_at, is_ultra_constrained)
+            VALUES (@sessionId, @userId, @name, @lat, @lon, @heading, @ts, @nextExpectedAt, @isUltraConstrained)
             """;
         cmd.Parameters.AddWithValue("@sessionId", sessionId);
         cmd.Parameters.AddWithValue("@userId", userId);
@@ -771,6 +785,11 @@ public class SessionStore(string connectionString)
             Value = update.Heading.HasValue ? update.Heading.Value : DBNull.Value
         });
         cmd.Parameters.AddWithValue("@ts", update.Timestamp.ToUniversalTime().ToString("O"));
+        cmd.Parameters.Add(new NpgsqlParameter("nextExpectedAt", NpgsqlDbType.Text)
+        {
+            Value = update.NextExpectedAt.HasValue ? update.NextExpectedAt.Value.ToUniversalTime().ToString("O") : DBNull.Value
+        });
+        cmd.Parameters.AddWithValue("@isUltraConstrained", update.IsUltraConstrained);
         cmd.ExecuteNonQuery();
     }
 
@@ -834,8 +853,9 @@ public class SessionStore(string connectionString)
         // Production share one database as of the 2026-07-22 cutover, but each still runs its own
         // process with its own private in-memory `_sessions`, so a runner posting to one is
         // invisible to a viewer polling the other). The in-memory copy is preferred when present
-        // since it carries `nextExpectedAt`/`isUltraConstrained`, neither of which has a column in
-        // location_updates and so neither round-trips through Postgres.
+        // purely for freshness/latency - both sources carry `nextExpectedAt`/`isUltraConstrained`
+        // as of 2026-08-12 (see AddPosition), so this is no longer about which one round-trips
+        // through Postgres.
         foreach (var (userId, position) in LoadLatestPositionsByRunner(sessionId))
             byUserId.TryAdd(userId, position);
 
@@ -848,7 +868,7 @@ public class SessionStore(string connectionString)
         using var cmd = conn.CreateCommand();
         cmd.CommandText = """
             SELECT DISTINCT ON (runner_user_id)
-                   runner_user_id, runner_name, latitude, longitude, heading, timestamp
+                   runner_user_id, runner_name, latitude, longitude, heading, timestamp, next_expected_at, is_ultra_constrained
             FROM location_updates
             WHERE session_id = @sessionId AND runner_user_id IS NOT NULL
             ORDER BY runner_user_id, timestamp DESC
@@ -863,7 +883,9 @@ public class SessionStore(string connectionString)
                 reader.GetDouble(2),
                 reader.GetDouble(3),
                 reader.IsDBNull(4) ? null : reader.GetDouble(4),
-                DateTimeOffset.Parse(reader.GetString(5)));
+                DateTimeOffset.Parse(reader.GetString(5)),
+                reader.IsDBNull(6) ? null : DateTimeOffset.Parse(reader.GetString(6)),
+                reader.GetBoolean(7));
         }
         return positions;
     }
@@ -1008,7 +1030,7 @@ public class SessionStore(string connectionString)
         using var conn = Connect();
         using var cmd = conn.CreateCommand();
         cmd.CommandText = """
-            SELECT session_id, runner_name, latitude, longitude, heading, timestamp
+            SELECT session_id, runner_name, latitude, longitude, heading, timestamp, next_expected_at, is_ultra_constrained
             FROM location_updates
             WHERE session_id = @code
               AND (@since IS NULL OR timestamp >= @since)
@@ -1038,7 +1060,9 @@ public class SessionStore(string connectionString)
                     Latitude: reader.GetDouble(2),
                     Longitude: reader.GetDouble(3),
                     Heading: reader.IsDBNull(4) ? null : reader.GetDouble(4),
-                    Timestamp: DateTimeOffset.Parse(reader.GetString(5))
+                    Timestamp: DateTimeOffset.Parse(reader.GetString(5)),
+                    NextExpectedAt: reader.IsDBNull(6) ? null : DateTimeOffset.Parse(reader.GetString(6)),
+                    IsUltraConstrained: reader.GetBoolean(7)
                 ));
             }
         }
@@ -1104,7 +1128,7 @@ public class SessionStore(string connectionString)
         using var conn = Connect();
         using var cmd = conn.CreateCommand();
         cmd.CommandText = """
-            SELECT session_id, runner_name, latitude, longitude, heading, timestamp
+            SELECT session_id, runner_name, latitude, longitude, heading, timestamp, next_expected_at, is_ultra_constrained
             FROM location_updates
             WHERE session_id = @code
             ORDER BY timestamp
@@ -1120,7 +1144,9 @@ public class SessionStore(string connectionString)
                 Latitude: reader.GetDouble(2),
                 Longitude: reader.GetDouble(3),
                 Heading: reader.IsDBNull(4) ? null : reader.GetDouble(4),
-                Timestamp: DateTimeOffset.Parse(reader.GetString(5))
+                Timestamp: DateTimeOffset.Parse(reader.GetString(5)),
+                NextExpectedAt: reader.IsDBNull(6) ? null : DateTimeOffset.Parse(reader.GetString(6)),
+                IsUltraConstrained: reader.GetBoolean(7)
             ));
         }
         return updates;
@@ -1171,24 +1197,28 @@ public class SessionStore(string connectionString)
 
         using var cmd = conn.CreateCommand();
         cmd.CommandText = """
-            INSERT INTO location_updates (session_id, runner_user_id, runner_name, latitude, longitude, heading, timestamp)
-            VALUES (@code, NULL, @name, @lat, @lon, @heading, @ts)
+            INSERT INTO location_updates (session_id, runner_user_id, runner_name, latitude, longitude, heading, timestamp, next_expected_at, is_ultra_constrained)
+            VALUES (@code, NULL, @name, @lat, @lon, @heading, @ts, @nextExpectedAt, @isUltraConstrained)
             """;
-        var pCode    = cmd.Parameters.Add("code",    NpgsqlDbType.Text);
-        var pName    = cmd.Parameters.Add("name",    NpgsqlDbType.Text);
-        var pLat     = cmd.Parameters.Add("lat",     NpgsqlDbType.Double);
-        var pLon     = cmd.Parameters.Add("lon",     NpgsqlDbType.Double);
-        var pHeading = cmd.Parameters.Add("heading", NpgsqlDbType.Double);
-        var pTs      = cmd.Parameters.Add("ts",      NpgsqlDbType.Text);
+        var pCode               = cmd.Parameters.Add("code",               NpgsqlDbType.Text);
+        var pName               = cmd.Parameters.Add("name",               NpgsqlDbType.Text);
+        var pLat                = cmd.Parameters.Add("lat",                NpgsqlDbType.Double);
+        var pLon                = cmd.Parameters.Add("lon",                NpgsqlDbType.Double);
+        var pHeading            = cmd.Parameters.Add("heading",            NpgsqlDbType.Double);
+        var pTs                 = cmd.Parameters.Add("ts",                 NpgsqlDbType.Text);
+        var pNextExpectedAt     = cmd.Parameters.Add("nextExpectedAt",     NpgsqlDbType.Text);
+        var pIsUltraConstrained = cmd.Parameters.Add("isUltraConstrained", NpgsqlDbType.Boolean);
 
         foreach (var u in updates)
         {
-            pCode.Value    = sessionId;
-            pName.Value    = u.RunnerName;
-            pLat.Value     = u.Latitude;
-            pLon.Value     = u.Longitude;
-            pHeading.Value = u.Heading.HasValue ? (object)u.Heading.Value : DBNull.Value;
-            pTs.Value      = u.Timestamp.ToUniversalTime().ToString("O");
+            pCode.Value               = sessionId;
+            pName.Value               = u.RunnerName;
+            pLat.Value                = u.Latitude;
+            pLon.Value                = u.Longitude;
+            pHeading.Value            = u.Heading.HasValue ? (object)u.Heading.Value : DBNull.Value;
+            pTs.Value                 = u.Timestamp.ToUniversalTime().ToString("O");
+            pNextExpectedAt.Value     = u.NextExpectedAt.HasValue ? (object)u.NextExpectedAt.Value.ToUniversalTime().ToString("O") : DBNull.Value;
+            pIsUltraConstrained.Value = u.IsUltraConstrained;
             cmd.ExecuteNonQuery();
         }
 
