@@ -74,14 +74,15 @@ members* that a runner is on satellite:
 - Phone simulator (`tools/simulator`) got a matching "Satellite" mode for testing without a real
   device.
 
-**Known limitation — live-only, not persisted.** Like `nextExpectedAt`, this field has no column
-in the `location_updates` Postgres table — it only lives in the server's in-memory `_sessions`
-cache. A viewer sees the badge only for positions they personally live-polled while the run was
-happening; scrubbing into history via the recording endpoint, or reloading after a server
-restart, always reads `isUltraConstrained: false` for that stretch, regardless of what actually
-happened. Deliberately deferred rather than solved: adding persistence is a real schema change
-(nullable column, write path, both read paths), not yet scoped. See the equivalent open item in
-POST-nextExpectedAt.md — the two fields share this tradeoff for the same reason.
+**Update (2026-08-12): now persisted.** The live-only limitation this section used to describe is
+fixed — see `.ai/plans/persist-isUltraConstrained.md`. `location_updates` now has an
+`is_ultra_constrained` column, written on every `POST /location` and read back by every
+recording/playback path (`GetRecordingAsNdjson`, `GetRecordingWindowAsNdjson`, the cross-pod
+`LoadLatestPositionsByRunner` fallback), so scrubbing into history, reloading after a server
+restart, or re-importing a downloaded session now shows the satellite badge exactly as it
+happened. `nextExpectedAt` was persisted in the same pass (see POST-nextExpectedAt.md). Rows from
+before 2026-08-12 still read back as `false` (they backfilled with that default), since none of
+them could have reported satellite before the column existed.
 
 ## Open questions
 

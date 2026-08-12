@@ -15,7 +15,7 @@ interface Props {
 }
 
 const COUNTDOWN_RING_SIZE = 18
-const SATELLITE_ICON_SIZE = 17
+const SATELLITE_ICON_SIZE = 18
 
 // Dish + signal-wave glyph (path data from Lucide's "satellite-dish" icon, ISC licensed) rather
 // than the 📡 emoji previously used here — emoji rendering is font/OS-dependent and reads as a
@@ -27,8 +27,8 @@ function SatelliteDishIcon() {
       width={SATELLITE_ICON_SIZE}
       height={SATELLITE_ICON_SIZE}
       fill="none"
-      stroke="#0284c7"
-      strokeWidth={2.5}
+      stroke="#000000"
+      strokeWidth={2.0}
       strokeLinecap="round"
       strokeLinejoin="round"
       style={{ flexShrink: 0 }}
@@ -274,10 +274,17 @@ const inlineWarningBadge: React.CSSProperties = {
   flexShrink: 0,
 }
 
+// Bright yellow circle behind the dish glyph — the plain icon was getting lost against the
+// pill's translucent-white background, so this gives it a high-contrast badge of its own.
 const satelliteIconWrap: React.CSSProperties = {
   display: 'inline-flex',
   alignItems: 'center',
+  justifyContent: 'center',
   flexShrink: 0,
+  width: SATELLITE_ICON_SIZE + 8,
+  height: SATELLITE_ICON_SIZE + 8,
+  borderRadius: '50%',
+  background: '#ffe88e',
 }
 
 const countdownText: React.CSSProperties = {

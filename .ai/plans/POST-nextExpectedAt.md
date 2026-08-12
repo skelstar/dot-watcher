@@ -51,9 +51,10 @@ Because `nextExpectedAt` is absolute, a countdown UI is pure local math — `rem
 - Exact grace-buffer duration (shared constant between client "due" state and server "overdue" threshold) — not yet decided.
 - Whether/when to introduce the derived `active`/`overdue`/`paused` status field on `GET /locations/{sessionCode}`, versus leaving staleness computation to clients for now.
 - UI placement decision: per-dot countdown vs. reserved for focused/list view only.
-- Recording-side persistence of `nextExpectedAt` — agreed as a good stretch goal, not scoped yet.
-  `isUltraConstrained` (added 2026-08-11, see satelite-connectivity.md) shares this exact
-  limitation and for the same reason — neither field has a column in `location_updates`, so both
-  are live-only: present for anything a viewer polled in real time, always absent/default for
-  anything read back via the recording endpoint. Persisting either is the same shape of schema
-  change; worth doing together if/when this gets picked up.
+- ~~Recording-side persistence of `nextExpectedAt`~~ — done 2026-08-12, alongside
+  `isUltraConstrained` (see `.ai/plans/persist-isUltraConstrained.md`). `location_updates` now has
+  a `next_expected_at` column, written on every `POST /location` and read back by every
+  recording/playback path, so the countdown ring's underlying data now survives scrubbing into
+  history, a server restart, or a session re-import — not just live viewing. Rows from before
+  2026-08-12 still read back as `NULL` (nothing to backfill from), same as an older client that
+  never sent the field.

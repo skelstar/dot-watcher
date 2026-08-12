@@ -121,23 +121,34 @@ function InlineBadge() {
   )
 }
 
+// Matches the bright yellow circle behind the dish glyph in Legend.tsx's satelliteIconWrap.
 function InlineSatellite() {
   return (
-    <svg
-      viewBox="0 0 24 24"
-      width={20}
-      height={20}
-      fill="none"
-      stroke="#0284c7"
-      strokeWidth={2.5}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="M4 10a7.31 7.31 0 0 0 10 10Z" />
-      <path d="m9 15 3-3" />
-      <path d="M17 13a6 6 0 0 0-6-6" />
-      <path d="M21 13A10 10 0 0 0 11 3" />
-    </svg>
+    <div style={{
+      width: 26,
+      height: 26,
+      borderRadius: '50%',
+      background: '#ffe88e',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+    }}>
+      <svg
+        viewBox="0 0 24 24"
+        width={20}
+        height={20}
+        fill="none"
+        stroke="#000000"
+        strokeWidth={2.0}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <path d="M4 10a7.31 7.31 0 0 0 10 10Z" />
+        <path d="m9 15 3-3" />
+        <path d="M17 13a6 6 0 0 0-6-6" />
+        <path d="M21 13A10 10 0 0 0 11 3" />
+      </svg>
+    </div>
   )
 }
 
