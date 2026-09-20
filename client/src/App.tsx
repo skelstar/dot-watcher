@@ -1,7 +1,16 @@
 import { useEffect, useRef, useState } from 'react'
 // maplibre-gl has no default export (unlike mapbox-gl) — named imports only.
-import { MapLibreMap, NavigationControl, GeolocateControl } from 'maplibre-gl'
+import { MapLibreMap, NavigationControl, GeolocateControl, setWorkerUrl } from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
+// v6 no longer auto-detects its worker URL under a bundler (only plain CDN <script type=module>
+// loading gets that for free) — without this, every vector/GeoJSON source hangs forever waiting
+// on a worker that never starts: tile.json/style.json/sprite resolve fine (main thread), but zero
+// .pbf tile requests ever fire and isSourceLoaded() stays false. `?worker&url` (not plain `?url`)
+// is required so Vite emits the worker as a self-contained chunk — the raw dist file imports a
+// sibling module that a plain `?url` copy wouldn't bring along. See
+// https://maplibre.org/maplibre-gl-js/docs/guides/v5-to-v6-migration-guide/ and
+// https://github.com/maplibre/maplibre-gl-js/issues/8018.
+import maplibreWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url'
 import { MAP_STYLES, DEFAULT_MAP_STYLE_ID, LINZ_ATTRIBUTION, type MapStyleId } from './map/mapStyle.ts'
 import MapStyleToggle from './MapStyleToggle.tsx'
 import SessionPrompt from './SessionPrompt.tsx'
@@ -26,6 +35,8 @@ import { parseGpxCoordinates } from './gpx.ts'
 import { apiHeaders } from './apiHeaders.ts'
 import { canManageMembersForRole, shouldShowAuthPrompt, shouldShowSessionPrompt } from './sessionState.ts'
 import type { AuthResponse, AuthenticatedUser, SessionMembership } from './types.ts'
+
+setWorkerUrl(maplibreWorkerUrl)
 
 const SERVER_URL: string = import.meta.env.VITE_SERVER_URL ?? '/api'
 const APP_VERSION = import.meta.env.VITE_APP_VERSION ?? 'v-local'
