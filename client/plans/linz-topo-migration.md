@@ -1,6 +1,6 @@
 # Plan: LINZ topographic map tiles in the web client
 
-> **Status:** in progress — Phases 0–4 code/doc work done except the human-gated steps below; Phase 5 (manual on-device check) and getting a real API key still need a human.
+> **Status:** in progress — Phases 0–4 code/doc work done. LINZ Developer API key requested (2026-09-21), awaiting issuance. Phase 5 (manual on-device check) and task 4.3 (open the PR) are waiting on that key.
 > **Suggested location in repo:** `client/docs/linz-topo-migration.md`
 > **Resume on any machine:** open Claude Code in the repo root and paste:
 > `Read client/docs/linz-topo-migration.md and continue from the first unchecked task. Follow the Rules for the agent section.`
@@ -51,7 +51,8 @@ Only the map library and basemap style change. The server, iOS app, polling, aut
 ## Task list
 
 ### Phase 0: Prep
-- [ ] 0.1 **[HUMAN]** Request a free Developer API key at https://basemaps.linz.govt.nz (do not paste it into chat or commit it).
+- [x] 0.1 **[HUMAN]** Request a free Developer API key at https://basemaps.linz.govt.nz (do not paste it into chat or commit it).
+  - 2026-09-21: request submitted by the human. Key not yet received/in hand — until it arrives, `client/.env` and the Tatooine deploy `.env` still need the real value before Phase 5 (on-device check) can run.
 - [x] 0.2 Locate and record here: the map component(s), where the map is created, where Mapbox is imported, where the token is configured, how markers are built, and any tests that mock `mapbox-gl`. Note whether the client uses `react-map-gl`.
   - No `react-map-gl` — the client uses `mapbox-gl` directly. Only `client/package.json` depends on it (the `tools/simulator` package is unrelated: it uses `leaflet`/`react-leaflet`, and its one "Mapbox" comment just documents `[lon, lat]` coordinate order, not the library).
   - Map created in [client/src/App.tsx](client/src/App.tsx#L108): `new mapboxgl.Map({ container, style: 'mapbox://styles/mapbox/streets-v12', center, zoom })`, plus `NavigationControl` and `GeolocateControl` added right after.
@@ -171,3 +172,4 @@ When heading is unavailable the client renders a plain dot, so keep that existin
 _Add newest entries at the bottom. Format: `YYYY-MM-DD, machine/agent, what was done, what's next`._
 
 - 2026-09-21, Claude Code (client-linz-maps branch), Completed 0.2 (mapped all mapbox-gl usage in the client) and 0.3 (confirmed `topographic-v2` is the current tileset via LINZ docs). Completed Phase 1 (swapped `mapbox-gl` for `maplibre-gl` everywhere in `client/src`, removed the access-token line, uninstalled `mapbox-gl`). Completed Phase 2 (added `src/map/mapStyle.ts`, pointed the map at `LINZ_TOPO_STYLE`, added `client/.env.example` — using `.env` not `.env.local` per existing project convention, updated CI workflow and `client/README.md`'s deploy instructions for `VITE_LINZ_API_KEY`). Completed Phase 3 (confirmed the style has no built-in attribution, added `customAttribution` via the `attributionControl` Map option, verified links; overlap-with-UI check is code-reasoned only, not on-device). Completed Phase 4.1/4.2 (no test mocks to update; CI needs only the env var rename, already done). Updated root `README.md`/`README.html` and `client/README.md` to say MapLibre/LINZ instead of Mapbox (Phase 6). Answered the "where is it deployed" open decision from existing docs (no human input needed); left the "outside NZ" decision on its stated default. What's next: task 0.1 (a human needs to request a real LINZ Developer API key — nothing here required the real key, only a placeholder), task 4.3 (open the PR — not done yet, pending confirmation), and Phase 5 (on-device manual check, needs a human with the real key).
+- 2026-09-21, Claude Code (client-linz-maps branch), Human confirmed they've submitted the LINZ Developer API key request (0.1). Key itself not yet issued. What's next: once the key arrives, put it in `client/.env` and the Tatooine deploy `.env`, then run Phase 5 (on-device manual check); after that, task 4.3 (push and open the PR — human previously chose to hold off until Phase 5 is done).
