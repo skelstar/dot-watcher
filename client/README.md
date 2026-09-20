@@ -46,6 +46,8 @@ The Vite build stamps the client footer as `v-{latestCommitId}-beta · Updated {
 
 Open the app, sign in, then select an existing session, create one, or join from an invite code. Direct links such as `http://localhost:5173/SESSIONCODE` work after the signed-in user has membership for that session. Invite links use `/join/INVITECODE`.
 
+The small layers-icon button top-right (below the "?" help button) toggles the basemap between LINZ's `topo` (contours/trails, good off-road) and `aerial` (real imagery, reads better on urban routes) styles — see `client/src/map/mapStyle.ts`.
+
 For local development against a server on another origin, override `VITE_SERVER_URL` in `.env`, for example `http://localhost:5000`.
 
 Public legal pages are available at `/privacy` and `/terms`. These should be reviewed before public App Store release and can be used as App Store Connect metadata URLs once deployed.

@@ -182,12 +182,16 @@ export function useRouteLayer(
       })
     }
 
-    if (map.isStyleLoaded()) {
-      applyRoute()
-    } else {
-      map.once('load', applyRoute)
-      return () => { map.off('load', applyRoute) }
-    }
+    // 'style.load' fires both for the map's initial style and for every later map.setStyle()
+    // call (the MapStyleToggle button) — either way, the previous style's sources/layers/images
+    // are gone and applyRoute() needs to run again. Listening here (rather than the one-shot
+    // 'load' event, which only ever fires once) is what makes the route survive a style switch.
+    // A style swap wipes and reloads even a style that's already loaded, so isStyleLoaded() alone
+    // can't tell us whether applyRoute() has already run for the *current* style — call it once
+    // up front if ready, then let the listener re-run it after every future style load.
+    if (map.isStyleLoaded()) applyRoute()
+    map.on('style.load', applyRoute)
+    return () => { map.off('style.load', applyRoute) }
   }, [mapRef, coordinates, fitToRoute])
 
   useEffect(() => {

@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
-import { LINZ_TOPO_STYLE, LINZ_ATTRIBUTION } from './map/mapStyle.ts'
+import { MAP_STYLES, DEFAULT_MAP_STYLE_ID, LINZ_ATTRIBUTION, type MapStyleId } from './map/mapStyle.ts'
+import MapStyleToggle from './MapStyleToggle.tsx'
 import SessionPrompt from './SessionPrompt.tsx'
 import InvalidInvitePrompt from './InvalidInvitePrompt.tsx'
 import Legend from './Legend.tsx'
@@ -99,14 +100,23 @@ export default function App() {
   const [showMembers, setShowMembers] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
   const [routeCoordinates, setRouteCoordinates] = useState<[number, number][] | null>(null)
+  const [mapStyleId, setMapStyleId] = useState<MapStyleId>(DEFAULT_MAP_STYLE_ID)
   const accessToken = auth?.accessToken ?? null
+
+  // Imperative: swaps the live map's style in place rather than recreating the Map instance.
+  // useRouteLayer/useSimulatorRouteOverlay re-add their sources/layers/images on the resulting
+  // 'style.load' event; runner markers are plain DOM overlays untouched by a style change.
+  function handleToggleMapStyle(next: MapStyleId) {
+    setMapStyleId(next)
+    mapRef.current?.setStyle(MAP_STYLES[next].url)
+  }
 
   useEffect(() => {
     if (legalPage || isLanding || !containerRef.current) return
 
     const map = new maplibregl.Map({
       container: containerRef.current,
-      style: LINZ_TOPO_STYLE,
+      style: MAP_STYLES[DEFAULT_MAP_STYLE_ID].url,
       center: [174.7762, -41.2865], // Wellington, NZ - default before any session/positions load
       zoom: 13,
       attributionControl: { customAttribution: LINZ_ATTRIBUTION },
@@ -343,6 +353,7 @@ export default function App() {
         </div>
       )}
       <LegendHelp />
+      <MapStyleToggle styleId={mapStyleId} onToggle={handleToggleMapStyle} />
       <Legend
         runners={allRunners}
         onRunnerClick={followRunner}

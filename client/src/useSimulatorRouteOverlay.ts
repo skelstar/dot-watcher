@@ -69,12 +69,11 @@ export function useSimulatorRouteOverlay(mapRef: RefObject<maplibregl.Map | null
       })
     }
 
-    if (map.isStyleLoaded()) {
-      applyRoutes()
-    } else {
-      map.once('load', applyRoutes)
-      return () => { map.off('load', applyRoutes) }
-    }
+    // See the matching comment in useRouteLayer.ts: 'style.load' (not the one-shot 'load') is
+    // what re-adds this source/layer after a MapStyleToggle style switch, not just on first load.
+    if (map.isStyleLoaded()) applyRoutes()
+    map.on('style.load', applyRoutes)
+    return () => { map.off('style.load', applyRoutes) }
   }, [mapRef, routes])
 
   useEffect(() => {

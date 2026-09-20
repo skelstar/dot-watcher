@@ -1,6 +1,6 @@
 # Plan: LINZ topographic map tiles in the web client
 
-> **Status:** in progress — Phases 0–4 code/doc work done. LINZ Developer API key requested (2026-09-21), awaiting issuance. Phase 5 (manual on-device check) and task 4.3 (open the PR) are waiting on that key.
+> **Status:** in progress — Phases 0–4, 6 and 7 (basemap style toggle, added 2026-09-21) code/doc work done. LINZ Developer API key requested (2026-09-21), awaiting issuance — a no-registration "Standard" key can be used for testing in the meantime (see Facts). Phase 5 (manual on-device check, now including the toggle) and task 4.3 (open the PR) are waiting on a working key.
 > **Suggested location in repo:** `client/docs/linz-topo-migration.md`
 > **Resume on any machine:** open Claude Code in the repo root and paste:
 > `Read client/docs/linz-topo-migration.md and continue from the first unchecked task. Follow the Rules for the agent section.`
@@ -13,7 +13,7 @@ Replace the client's Mapbox basemap with the LINZ Basemaps topographic vector ti
 
 Because LINZ recommends MapLibre for vector tiles and Mapbox GL JS still needs a Mapbox token and billing even with third-party styles, this means swapping `mapbox-gl` for `maplibre-gl`. The API is nearly identical, so runner markers, heading arrows and `fitBounds` should carry over with little or no change.
 
-Only the map library and basemap style change. The server, iOS app, polling, auth and marker logic are out of scope.
+Only the map library and basemap style(s) change (Phase 7 adds a second LINZ style with a toggle between them, at the human's request — still just a style/library change, not new map data or a non-LINZ fallback). The server, iOS app, polling, auth and marker logic are out of scope.
 
 ---
 
@@ -34,6 +34,7 @@ Only the map library and basemap style change. The server, iOS app, polling, aut
 - Style JSON: `https://basemaps.linz.govt.nz/v1/styles/{tileset_name}.json?api=API_KEY`. The docs mention both `topographic` and `topographic-v2`, so **confirm the current name** (task 0.3).
 - Tiles: `https://basemaps.linz.govt.nz/v1/tiles/{tileset}/{crs}/{z}/{x}/{y}.pbf?api=API_KEY`. Use `3857` (Web Mercator) for web apps.
 - Access: without registration there is a limited "Standard" tier (1,000 tiles/min, 1,000,000 tiles/month). A **free Developer API key** gives unlimited reasonable use. For a shared or public app, request a Developer key rather than an individual one.
+  - **How to test before the Developer key arrives:** visit https://basemaps.linz.govt.nz in a browser and grab a map/tile API URL from the site's menu bar — this auto-issues a "Standard" tier key with no registration/waiting (rate-limited as above, expires after 90 days). Put that value straight into `client/.env` as `VITE_LINZ_API_KEY=...`; no code change needed to swap it for the real Developer key later, since `mapStyle.ts` only reads the env var.
 - Licence: CC BY 4.0. The product must visibly show attribution and link to the LINZ copyright statement and the Basemap's custom attribution text. The mapping library does not do this automatically.
 - Styling: tiles use the Shortbread schema. LINZ defines land polygons rather than ocean polygons, so in a custom style the background is water and land is drawn on top.
 - Coverage is New Zealand only. Outside NZ the map will be blank or empty.
@@ -43,7 +44,7 @@ Only the map library and basemap style change. The server, iOS app, polling, aut
 
 ## Open decisions
 
-- [ ] **[HUMAN]** Outside NZ: accept a blank map (NZ-only), or keep a Mapbox/OSM fallback with a style toggle? *Default if not answered: NZ-only, revisit later.* **Proceeding with the default (NZ-only)** since this wasn't answered — no fallback/toggle was built.
+- [ ] **[HUMAN]** Outside NZ: accept a blank map (NZ-only), or keep a Mapbox/OSM fallback with a style toggle? *Default if not answered: NZ-only, revisit later.* **Still on the default (NZ-only)** — the style toggle added in Phase 7 switches between two LINZ styles (both NZ-only), not to a non-LINZ fallback, so it doesn't answer this one.
 - [x] Where is the client built and deployed (GitHub Actions and Tatooine), so the build knows where to get `VITE_LINZ_API_KEY`? — **Answered from `client/README.md`, no human input needed:** GitHub Actions CI (build+test verification, placeholder key only) and Tatooine/k3s via the `/deploy` skill (real key goes in a gitignored `.env` copied to the host before deploy). See task 2.4.
 
 ---
@@ -107,16 +108,28 @@ Only the map library and basemap style change. The server, iOS app, polling, aut
 ### Phase 5: Manual check **[HUMAN]**
 - [ ] 5.1 Runners' dots and heading arrows render and update on the LINZ map.
 - [ ] 5.2 Auto-fit to all runners still works.
-- [ ] 5.3 Contours, tracks and labels are readable on a phone in daylight. If not, restyle in Maputnik and load a local style JSON instead.
+- [ ] 5.3 Contours, tracks and labels are readable on a phone in daylight. **Superseded, see Phase 7:** rather than restyling `topographic-v2` in Maputnik, urban readability is now handled by the Phase 7 style toggle (switch to the `aerial` LINZ style, which shows real imagery/streets) instead of a local custom style — check whether `topographic-v2` alone is still acceptable for trail/off-road sections, and whether the toggle is an adequate answer for urban ones.
 - [ ] 5.4 Zoomed right in past z15, tiles still look acceptable.
 - [ ] 5.5 Network tab shows no 401/403 tile errors.
 - [ ] 5.6 Attribution is visible and both links work.
+- [ ] 5.7 Toggle to the `aerial` style and back (Phase 7): runner markers, the route line/arrows/start-finish icons, and attribution all survive the switch each way, and the toggle button (top-right, below Geolocate) doesn't overlap the other top-right controls at phone width.
 
 ### Phase 6: Docs
 - [x] 6.1 Update the root `README.md` and any client README that say "Mapbox GL JS" or "Mapbox" (the Components > client section, the structure summary).
   - Updated `README.md` (repo structure line, "how it works" step 5, Components > client intro + first bullet) and the generated-looking `README.html` (same three spots — it had already drifted slightly from `README.md` before this change, unrelated to this plan). `client/README.md` covered under 2.4/2.3 above. Remaining "Mapbox" mention is a deliberate historical comparison in the new env-var table row, not a leftover.
 - [x] 6.2 Document `VITE_LINZ_API_KEY`, where to get one, and the NZ-only coverage note.
   - `client/README.md`: Prerequisites section names the free LINZ Basemaps Developer key and where to request it; the env var table's `VITE_LINZ_API_KEY` row states the NZ-only coverage note.
+
+### Phase 7: Basemap style toggle (added 2026-09-21, human request — topo reads poorly on urban routes)
+
+LINZ Basemaps has no generic "streets" style (it's a topo-and-imagery product, not street cartography). The two genuinely different options in its catalogue: `topographic-v2` (current default — vector, contour/trail-oriented, roads drawn simply with no buildings) and `aerialhybrid` (real LINZ aerial imagery + a road/label overlay — shows actual streets and buildings, reads much better in town). Decision: add a two-way toggle between these rather than picking one, and rather than a non-LINZ fallback (keeps the "outside NZ" open decision above unanswered/unaffected — both styles are still NZ-only).
+
+- [x] 7.1 Add a style registry (`MAP_STYLES` in `src/map/mapStyle.ts`) with `topo` and `aerial` entries, each a full style URL built from `VITE_LINZ_API_KEY` (same `topographic-v2` URL as before, plus a new `aerialhybrid` one), and a `DEFAULT_MAP_STYLE_ID` of `topo`.
+- [x] 7.2 Add a `MapStyleToggle` button (`src/MapStyleToggle.tsx`), styled to match `LegendHelp`'s "?" button and stacked directly below it (top-right column, under Nav/Geolocate). Shows a layers icon; tooltip/label always names the style you'd switch *to*, not the current one.
+- [x] 7.3 Wire it up in `App.tsx`: `mapStyleId` state for the button's label, plus an imperative `mapRef.current?.setStyle(...)` on toggle — deliberately **not** a dependency of the map-creation effect, so toggling swaps the live map's style instead of tearing down and recreating the whole `Map` instance (which would lose camera position/following state).
+- [x] 7.4 Make the route line/arrows/start-finish icons and the simulator route overlay survive a style swap: `useRouteLayer.ts` and `useSimulatorRouteOverlay.ts` previously used `map.once('load', ...)`, which only ever fires once for the map's life. Switched both to `map.on('style.load', ...)`, which MapLibre fires for the initial style **and every later `setStyle()` call** — exactly what's needed to re-add the wiped sources/layers/images after a toggle. (Runner markers needed no change: they're plain DOM `Marker` overlays, untouched by style changes.)
+- [x] 7.5 Attribution: confirmed `aerialhybrid`'s own "LINZ Basemaps" label source carries a source-level `attribution` field (`"© 2022 Toitū Te Whenua - CC BY 4.0"`), which MapLibre's `AttributionControl` will show *in addition to* the `customAttribution` already set (Phase 3) when that style is active — expect two similar-looking LINZ notices together while on `aerial`. Left as-is rather than trying to suppress LINZ's own attribution text.
+- [ ] 7.6 **[HUMAN]** On-device check — see task 5.7.
 
 ---
 
@@ -173,3 +186,4 @@ _Add newest entries at the bottom. Format: `YYYY-MM-DD, machine/agent, what was 
 
 - 2026-09-21, Claude Code (client-linz-maps branch), Completed 0.2 (mapped all mapbox-gl usage in the client) and 0.3 (confirmed `topographic-v2` is the current tileset via LINZ docs). Completed Phase 1 (swapped `mapbox-gl` for `maplibre-gl` everywhere in `client/src`, removed the access-token line, uninstalled `mapbox-gl`). Completed Phase 2 (added `src/map/mapStyle.ts`, pointed the map at `LINZ_TOPO_STYLE`, added `client/.env.example` — using `.env` not `.env.local` per existing project convention, updated CI workflow and `client/README.md`'s deploy instructions for `VITE_LINZ_API_KEY`). Completed Phase 3 (confirmed the style has no built-in attribution, added `customAttribution` via the `attributionControl` Map option, verified links; overlap-with-UI check is code-reasoned only, not on-device). Completed Phase 4.1/4.2 (no test mocks to update; CI needs only the env var rename, already done). Updated root `README.md`/`README.html` and `client/README.md` to say MapLibre/LINZ instead of Mapbox (Phase 6). Answered the "where is it deployed" open decision from existing docs (no human input needed); left the "outside NZ" decision on its stated default. What's next: task 0.1 (a human needs to request a real LINZ Developer API key — nothing here required the real key, only a placeholder), task 4.3 (open the PR — not done yet, pending confirmation), and Phase 5 (on-device manual check, needs a human with the real key).
 - 2026-09-21, Claude Code (client-linz-maps branch), Human confirmed they've submitted the LINZ Developer API key request (0.1). Key itself not yet issued. What's next: once the key arrives, put it in `client/.env` and the Tatooine deploy `.env`, then run Phase 5 (on-device manual check); after that, task 4.3 (push and open the PR — human previously chose to hold off until Phase 5 is done).
+- 2026-09-21, Claude Code (client-linz-maps branch), Human asked (a) whether they can test without the real Developer key, and (b) raised that `topographic-v2` reads poorly on urban routes and floated a basemap selector. Answered (a) in Facts (no-registration "Standard" key, no waiting needed). For (b), researched LINZ's actual style catalogue (no generic "streets" style exists — `aerialhybrid` real imagery is the closest fit for urban routes) and asked the human how to scope it; they chose to build it into this same branch/PR now. Added **Phase 7**: `MAP_STYLES` registry with `topo`/`aerial` entries in `mapStyle.ts`, a `MapStyleToggle` button next to `LegendHelp`, an imperative `map.setStyle()` toggle in `App.tsx` (not a map-recreate), and switched `useRouteLayer.ts`/`useSimulatorRouteOverlay.ts` from the one-shot `'load'` event to the recurring `'style.load'` event so the route line and simulator overlay survive a style swap. Noted that `aerialhybrid` carries its own source-level attribution, so both LINZ notices will show together while that style is active — left as-is. What's next: same as before (0.1's key, then Phase 5 including the new 5.7 toggle check, then 4.3), nothing here required the real key.
