@@ -39,6 +39,7 @@ Only the map library and basemap style(s) change (Phase 7 adds a second LINZ sty
 - Styling: tiles use the Shortbread schema. LINZ defines land polygons rather than ocean polygons, so in a custom style the background is water and land is drawn on top.
 - Coverage is New Zealand only. Outside NZ the map will be blank or empty.
 - An older tile.json listed a max zoom of 15. MapLibre overzooms past that, but check how it looks when zoomed in on a trail.
+- **`maplibre-gl@6.10.0` has no default export** — `import maplibregl from 'maplibre-gl'` (this plan's original assumption, matching `mapbox-gl`) fails at runtime with `Uncaught SyntaxError: ... does not provide an export named 'default'`. Use named imports instead: `import { MapLibreMap, Marker, NavigationControl, GeolocateControl, LngLat, LngLatBounds, type GeoJSONSource, type AnimationOptions } from 'maplibre-gl'`. TypeScript's `esModuleInterop` hides this at compile time (a default import type-checks fine against a namespace-shaped module); it only shows up once the browser loads the real ESM bundle. If you're on a different `maplibre-gl` major version, re-check whether this still applies before assuming it does.
 
 ---
 
@@ -70,6 +71,7 @@ Only the map library and basemap style(s) change (Phase 7 adds a second LINZ sty
   - No `react-map-gl` in this project (confirmed in 0.2), so a plain `npm install maplibre-gl` in `client/`. Installed `maplibre-gl@^6.10.0`.
 - [x] 1.2 Replace `mapbox-gl` imports with `maplibre-gl`, and the CSS import with `maplibre-gl/dist/maplibre-gl.css`.
   - Updated `App.tsx`, `useRunnerMarkers.ts`, `useRouteLayer.ts`, `useSimulatorRouteOverlay.ts` (import + every `mapboxgl.` → `maplibregl.` reference, including types like `maplibregl.Map`/`maplibregl.Marker`/`maplibregl.GeoJSONSource`). Also reworded stray "Mapbox" comments in `Legend.tsx`, `LegendHelp.tsx`, `useRunnerMarkers.ts`, `useRouteLayer.ts` for accuracy (none needed logic changes).
+  - **Corrected 2026-09-21:** the first pass used a default import (`import maplibregl from 'maplibre-gl'`), mirroring `mapbox-gl`'s API. That's wrong for `maplibre-gl@6.10.0` — see the "Corrected" note on the Map-creation code sketch below and the Progress log for the full story (TypeScript didn't catch it; it only broke in the browser). Redone as named imports (`import { MapLibreMap, Marker, NavigationControl, GeolocateControl, LngLat, LngLatBounds, type GeoJSONSource, type AnimationOptions } from 'maplibre-gl'`) across all four files.
 - [x] 1.3 Remove `mapboxgl.accessToken` and any Mapbox token env var usage.
   - Removed the `mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN` line from `App.tsx` (MapLibre needs no access token). `VITE_MAPBOX_TOKEN` usage is fully gone from `client/src`.
 - [x] 1.4 Confirm markers, heading rotation and `fitBounds` use only APIs that exist in MapLibre. Adjust `new mapboxgl.Marker(el)` to `new maplibregl.Marker({ element: el, rotation })` if needed.
@@ -145,14 +147,26 @@ export const LINZ_TOPO_STYLE =
 ```
 
 **Map creation**
-```ts
-import maplibregl from 'maplibre-gl';
-import 'maplibre-gl/dist/maplibre-gl.css';
-import { LINZ_TOPO_STYLE } from './mapStyle';
 
-const map = new maplibregl.Map({
+> **Corrected 2026-09-21 — see Progress log.** The sketch below (and the version actually
+> committed first) used `import maplibregl from 'maplibre-gl'` — a *default* import, matching
+> `mapbox-gl`'s API. **`maplibre-gl@6.10.0` (the version this plan installed) has no default
+> export at all** — everything (`Map`, `Marker`, `NavigationControl`, `GeolocateControl`,
+> `LngLat`, `LngLatBounds`, `GeoJSONSource`, ...) is a named export only. A default import throws
+> `Uncaught SyntaxError: The requested module ... does not provide an export named 'default'` at
+> runtime — TypeScript doesn't catch this at compile time, since `esModuleInterop` lets a default
+> import silently mean "the whole namespace" for a CJS-shaped module; this only surfaces once the
+> browser actually loads the real ESM module. Named imports (below) are what's actually in the
+> repo now.
+
+```ts
+import { MapLibreMap, NavigationControl, GeolocateControl } from 'maplibre-gl';
+import 'maplibre-gl/dist/maplibre-gl.css';
+import { MAP_STYLES, DEFAULT_MAP_STYLE_ID } from './mapStyle';
+
+const map = new MapLibreMap({
   container: containerRef.current!,
-  style: LINZ_TOPO_STYLE,
+  style: MAP_STYLES[DEFAULT_MAP_STYLE_ID].url,
   center: [174.78, -41.29],
   zoom: 11,
   attributionControl: {
@@ -164,11 +178,13 @@ const map = new maplibregl.Map({
 
 **Marker**
 ```ts
-new maplibregl.Marker({ element: el, rotation: heading ?? 0 })
+import { Marker } from 'maplibre-gl';
+
+new Marker({ element: el, offset: [0, 0] })
   .setLngLat([lon, lat])
   .addTo(map);
 ```
-When heading is unavailable the client renders a plain dot, so keep that existing behaviour rather than rotating by 0.
+Heading rotation isn't done via the Marker's own `rotation` option in this codebase — see task 0.2's note (it's done inside the React `Arrow`/`Dot` component the marker renders). When heading is unavailable the client renders a plain dot, so keep that existing behaviour.
 
 ---
 
@@ -187,3 +203,4 @@ _Add newest entries at the bottom. Format: `YYYY-MM-DD, machine/agent, what was 
 - 2026-09-21, Claude Code (client-linz-maps branch), Completed 0.2 (mapped all mapbox-gl usage in the client) and 0.3 (confirmed `topographic-v2` is the current tileset via LINZ docs). Completed Phase 1 (swapped `mapbox-gl` for `maplibre-gl` everywhere in `client/src`, removed the access-token line, uninstalled `mapbox-gl`). Completed Phase 2 (added `src/map/mapStyle.ts`, pointed the map at `LINZ_TOPO_STYLE`, added `client/.env.example` — using `.env` not `.env.local` per existing project convention, updated CI workflow and `client/README.md`'s deploy instructions for `VITE_LINZ_API_KEY`). Completed Phase 3 (confirmed the style has no built-in attribution, added `customAttribution` via the `attributionControl` Map option, verified links; overlap-with-UI check is code-reasoned only, not on-device). Completed Phase 4.1/4.2 (no test mocks to update; CI needs only the env var rename, already done). Updated root `README.md`/`README.html` and `client/README.md` to say MapLibre/LINZ instead of Mapbox (Phase 6). Answered the "where is it deployed" open decision from existing docs (no human input needed); left the "outside NZ" decision on its stated default. What's next: task 0.1 (a human needs to request a real LINZ Developer API key — nothing here required the real key, only a placeholder), task 4.3 (open the PR — not done yet, pending confirmation), and Phase 5 (on-device manual check, needs a human with the real key).
 - 2026-09-21, Claude Code (client-linz-maps branch), Human confirmed they've submitted the LINZ Developer API key request (0.1). Key itself not yet issued. What's next: once the key arrives, put it in `client/.env` and the Tatooine deploy `.env`, then run Phase 5 (on-device manual check); after that, task 4.3 (push and open the PR — human previously chose to hold off until Phase 5 is done).
 - 2026-09-21, Claude Code (client-linz-maps branch), Human asked (a) whether they can test without the real Developer key, and (b) raised that `topographic-v2` reads poorly on urban routes and floated a basemap selector. Answered (a) in Facts (no-registration "Standard" key, no waiting needed). For (b), researched LINZ's actual style catalogue (no generic "streets" style exists — `aerialhybrid` real imagery is the closest fit for urban routes) and asked the human how to scope it; they chose to build it into this same branch/PR now. Added **Phase 7**: `MAP_STYLES` registry with `topo`/`aerial` entries in `mapStyle.ts`, a `MapStyleToggle` button next to `LegendHelp`, an imperative `map.setStyle()` toggle in `App.tsx` (not a map-recreate), and switched `useRouteLayer.ts`/`useSimulatorRouteOverlay.ts` from the one-shot `'load'` event to the recurring `'style.load'` event so the route line and simulator overlay survive a style swap. Noted that `aerialhybrid` carries its own source-level attribution, so both LINZ notices will show together while that style is active — left as-is. What's next: same as before (0.1's key, then Phase 5 including the new 5.7 toggle check, then 4.3), nothing here required the real key.
+- 2026-09-21, Claude Code (client-linz-maps branch), Human ran `npm run dev` locally and reported "localhost isn't running" / blank page. Diagnosed live: (1) a stale/orphaned Vite process from earlier was already holding port 5173, silently pushing the real dev server to 5174 — killed the stale process, restarted cleanly on 5173. (2) Root cause of the actual blank page, from the browser console: `Uncaught SyntaxError: The requested module '/node_modules/.vite/deps/maplibre-gl.js...' does not provide an export named 'default'`. **The plan turned out to be wrong** (per "Rules for the agent"): `maplibre-gl@6.10.0` has no default export at all, only named ones — every file that did `import maplibregl from 'maplibre-gl'` (`App.tsx`, `useRunnerMarkers.ts`, `useRouteLayer.ts`, `useSimulatorRouteOverlay.ts`) was broken, and TypeScript's `esModuleInterop` hid it at compile time. Fixed by switching all four to named imports (`MapLibreMap`, `Marker`, `NavigationControl`, `GeolocateControl`, `LngLat`, `LngLatBounds`, `type GeoJSONSource`, `type AnimationOptions`); verified directly against the running dev server (curled the transformed source and the optimized dep bundle) that the fix resolves cleanly, not just that it compiles. Updated Facts, task 1.2, and the Map-creation/Marker code sketches to match. What's next: same outstanding items as before (0.1's key, Phase 5 including 5.7, then 4.3) — the human still needs to reload their browser tab to pick up the fix.

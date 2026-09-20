@@ -1,5 +1,6 @@
 import { useEffect, useState, type RefObject } from 'react'
-import maplibregl from 'maplibre-gl'
+// maplibre-gl has no default export (unlike mapbox-gl) — named imports only.
+import { MapLibreMap, type GeoJSONSource } from 'maplibre-gl'
 
 const SOURCE_ID = 'simulator-routes'
 const LAYER_ID = 'simulator-routes-line'
@@ -25,7 +26,7 @@ function parseMessage(data: unknown): SimulatorRoute[] | null {
 // dev server (different origin), so it has no same-origin DOM access into this app. Inert for
 // every real user: nobody else ever posts this message, and this app is never iframed anywhere
 // outside that one dev tool.
-export function useSimulatorRouteOverlay(mapRef: RefObject<maplibregl.Map | null>) {
+export function useSimulatorRouteOverlay(mapRef: RefObject<MapLibreMap | null>) {
   const [routes, setRoutes] = useState<SimulatorRoute[]>([])
 
   useEffect(() => {
@@ -53,7 +54,7 @@ export function useSimulatorRouteOverlay(mapRef: RefObject<maplibregl.Map | null
           })),
       }
 
-      const source = map!.getSource(SOURCE_ID) as maplibregl.GeoJSONSource | undefined
+      const source = map!.getSource(SOURCE_ID) as GeoJSONSource | undefined
       if (source) {
         source.setData(data)
         return

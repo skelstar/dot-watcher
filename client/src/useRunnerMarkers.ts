@@ -1,13 +1,14 @@
 import { useEffect, useRef, useState, type RefObject } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { createElement } from 'react'
-import maplibregl from 'maplibre-gl'
+// maplibre-gl has no default export (unlike mapbox-gl) — named imports only.
+import { MapLibreMap, Marker, LngLat, LngLatBounds, type AnimationOptions } from 'maplibre-gl'
 import type { RunnerPosition } from './types.ts'
 import Arrow, { ARROW_SIZE } from './components/Arrow.tsx'
 import Dot from './components/Dot.tsx'
 
 interface MarkerEntry {
-  marker: maplibregl.Marker
+  marker: Marker
   root: Root
   isLatest: boolean
 }
@@ -25,7 +26,7 @@ interface RunnerMarkersResult {
 }
 
 export function useRunnerMarkers(
-  mapRef: RefObject<maplibregl.Map | null>,
+  mapRef: RefObject<MapLibreMap | null>,
   positions: RunnerPosition[][] | undefined,
   nowMs: number,
   runnersWithGpsSignalLoss: Set<string> = new Set(),
@@ -51,7 +52,7 @@ export function useRunnerMarkers(
   const followedRunnerRef = useRef<string | null>(null)
   const [followingAll, setFollowingAll] = useState(false)
   const followingAllRef = useRef(false)
-  const dragListenerMapRef = useRef<maplibregl.Map | null>(null)
+  const dragListenerMapRef = useRef<MapLibreMap | null>(null)
 
   // Unmounting a React root synchronously while another root's render is still being committed
   // (e.g. recluster() rendering into a sibling marker in the same tick) trips React's reentrancy
@@ -71,7 +72,7 @@ export function useRunnerMarkers(
     })
   }
 
-  function applyPositions(runnerGroups: RunnerPosition[][], map: maplibregl.Map, virtualNow?: number) {
+  function applyPositions(runnerGroups: RunnerPosition[][], map: MapLibreMap, virtualNow?: number) {
     if (dragListenerMapRef.current !== map) {
       dragListenerMapRef.current = map
       // The map library's own movestart/zoomstart events are unreliable here: their originalEvent is only
@@ -136,7 +137,7 @@ export function useRunnerMarkers(
           } else {
             root.render(createElement(Dot, { colour }))
           }
-          const marker = new maplibregl.Marker({ element: el, offset: [0, 0] })
+          const marker = new Marker({ element: el, offset: [0, 0] })
             .setLngLat(lngLat)
             .addTo(map)
           markersRef.current[key] = { marker, root, isLatest }
@@ -179,13 +180,13 @@ export function useRunnerMarkers(
       const latestCoords = runnerGroups
         .filter(g => g.length > 0)
         .map(g => g[g.length - 1])
-        .map(p => new maplibregl.LngLat(p.longitude, p.latitude))
+        .map(p => new LngLat(p.longitude, p.latitude))
       if (latestCoords.length === 1) {
         map.easeTo({ center: latestCoords[0], zoom: 15 })
       } else {
         const bounds = latestCoords.reduce(
           (b, c) => b.extend(c),
-          new maplibregl.LngLatBounds(latestCoords[0], latestCoords[0]),
+          new LngLatBounds(latestCoords[0], latestCoords[0]),
         )
         map.fitBounds(bounds, { padding: 80, maxZoom: 16 })
       }
@@ -201,7 +202,7 @@ export function useRunnerMarkers(
     applyPositions(positions, map, nowMs)
   }, [positions, nowMs]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  function recluster(map: maplibregl.Map) {
+  function recluster(map: MapLibreMap) {
     const runners = Object.entries(latestPositionsRef.current)
     if (runners.length === 0) return
 
@@ -211,13 +212,13 @@ export function useRunnerMarkers(
 
     for (const [name, lngLat] of runners) {
       if (assigned.has(name)) continue
-      const p = map.project(new maplibregl.LngLat(lngLat[0], lngLat[1]))
+      const p = map.project(new LngLat(lngLat[0], lngLat[1]))
       const cluster = [name]
       assigned.add(name)
 
       for (const [otherName, otherLngLat] of runners) {
         if (assigned.has(otherName)) continue
-        const q = map.project(new maplibregl.LngLat(otherLngLat[0], otherLngLat[1]))
+        const q = map.project(new LngLat(otherLngLat[0], otherLngLat[1]))
         if (Math.hypot(q.x - p.x, q.y - p.y) <= THRESHOLD_PX) {
           cluster.push(otherName)
           assigned.add(otherName)
@@ -258,7 +259,7 @@ export function useRunnerMarkers(
     }
   }
 
-  function updateVisibleRunners(map: maplibregl.Map) {
+  function updateVisibleRunners(map: MapLibreMap) {
     const all = Object.entries(latestPositionsRef.current)
     const visible = all.filter(([, pos]) => isInView(map, pos)).map(([name]) => name)
     const offScreen = all.filter(([, pos]) => !isInView(map, pos)).map(([name]) => name)
@@ -326,7 +327,7 @@ export function useRunnerMarkers(
     setFollowingAll(false)
   }
 
-  function fitAllBounds(map: maplibregl.Map, options?: maplibregl.AnimationOptions) {
+  function fitAllBounds(map: MapLibreMap, options?: AnimationOptions) {
     const coords = Object.values(latestPositionsRef.current)
     if (coords.length === 0) return
     if (coords.length === 1) {
@@ -334,7 +335,7 @@ export function useRunnerMarkers(
     } else {
       const bounds = coords.reduce(
         (b, c) => b.extend(c),
-        new maplibregl.LngLatBounds(coords[0], coords[0]),
+        new LngLatBounds(coords[0], coords[0]),
       )
       map.fitBounds(bounds, { padding: 80, maxZoom: 16, ...options })
     }
@@ -364,10 +365,10 @@ const COLOUR_PALETTE = [
   '#65a30d', // lime
 ]
 
-function isInView(map: maplibregl.Map, [lng, lat]: [number, number]): boolean {
+function isInView(map: MapLibreMap, [lng, lat]: [number, number]): boolean {
   const { offsetWidth, offsetHeight } = map.getContainer()
   const pad = 80
-  const p = map.project(new maplibregl.LngLat(lng, lat))
+  const p = map.project(new LngLat(lng, lat))
   return p.x >= -pad && p.y >= -pad && p.x <= offsetWidth + pad && p.y <= offsetHeight + pad
 }
 

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import maplibregl from 'maplibre-gl'
+// maplibre-gl has no default export (unlike mapbox-gl) — named imports only.
+import { MapLibreMap, NavigationControl, GeolocateControl } from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import { MAP_STYLES, DEFAULT_MAP_STYLE_ID, LINZ_ATTRIBUTION, type MapStyleId } from './map/mapStyle.ts'
 import MapStyleToggle from './MapStyleToggle.tsx'
@@ -91,7 +92,7 @@ function clearStoredAuth() {
 
 export default function App() {
   const containerRef = useRef<HTMLDivElement>(null)
-  const mapRef = useRef<maplibregl.Map | null>(null)
+  const mapRef = useRef<MapLibreMap | null>(null)
   const { sessionName: initialName, inviteCode, legalPage, isAdmin, isLanding } = parseUrl()
   const [sessionName, setSessionName] = useState<string | null>(initialName)
   const [auth, setAuth] = useState<AuthResponse | null>(() => readStoredAuth())
@@ -114,7 +115,7 @@ export default function App() {
   useEffect(() => {
     if (legalPage || isLanding || !containerRef.current) return
 
-    const map = new maplibregl.Map({
+    const map = new MapLibreMap({
       container: containerRef.current,
       style: MAP_STYLES[DEFAULT_MAP_STYLE_ID].url,
       center: [174.7762, -41.2865], // Wellington, NZ - default before any session/positions load
@@ -122,8 +123,8 @@ export default function App() {
       attributionControl: { customAttribution: LINZ_ATTRIBUTION },
     })
 
-    map.addControl(new maplibregl.NavigationControl(), 'top-right')
-    map.addControl(new maplibregl.GeolocateControl({
+    map.addControl(new NavigationControl(), 'top-right')
+    map.addControl(new GeolocateControl({
       positionOptions: { enableHighAccuracy: true },
       trackUserLocation: true,
     }), 'top-right')
