@@ -101,6 +101,7 @@ Only the map library and basemap style change. The server, iOS app, polling, aut
 - [x] 4.2 Confirm the client CI workflow needs no changes beyond the env var (`npm ci`, `npm run test`, `npm run build`).
   - Confirmed — only the env var name/value changed (2.4); `npm ci` / `npm run test` / `npm run build` steps are untouched.
 - [ ] 4.3 Open the PR. CI is the verification; do not run the toolchain locally.
+  - Asked the human whether to push/open now vs. wait for 0.1 + Phase 5 first — chose to hold off. Commit `395a3bc` is local to `client-linz-maps` only; nothing pushed.
 
 ### Phase 5: Manual check **[HUMAN]**
 - [ ] 5.1 Runners' dots and heading arrows render and update on the LINZ map.
