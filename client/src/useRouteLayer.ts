@@ -1,5 +1,5 @@
 import { useEffect, type RefObject } from 'react'
-import mapboxgl from 'mapbox-gl'
+import maplibregl from 'maplibre-gl'
 
 const SOURCE_ID = 'gpx-route'
 const LAYER_ID = 'gpx-route-line'
@@ -11,8 +11,8 @@ const START_IMAGE_ID = 'gpx-route-start-icon'
 const FINISH_IMAGE_ID = 'gpx-route-finish-icon'
 
 // A simple right-pointing triangle, drawn at runtime so the arrow doesn't depend on whatever
-// icons happen to ship in the active Mapbox style's sprite sheet (e.g. streets-v12 has no
-// "triangle-11").
+// icons happen to ship in the active style's sprite sheet (e.g. Mapbox's old streets-v12 had no
+// "triangle-11", and the LINZ topographic style carries no sprite sheet of its own at all).
 function makeArrowImage(): { width: number; height: number; data: Uint8Array } {
   const size = 16
   const canvas = document.createElement('canvas')
@@ -91,7 +91,7 @@ function makeFinishImage(): { width: number; height: number; data: Uint8Array } 
 }
 
 export function useRouteLayer(
-  mapRef: RefObject<mapboxgl.Map | null>,
+  mapRef: RefObject<maplibregl.Map | null>,
   coordinates: [number, number][] | null,
   // Runner positions take priority once they exist (useRunnerMarkers fits to those); this only
   // claims the viewport while there's nothing else to show, e.g. before a run has started.
@@ -102,14 +102,14 @@ export function useRouteLayer(
     if (!map) return
 
     function applyRoute() {
-      const source = map!.getSource(SOURCE_ID) as mapboxgl.GeoJSONSource | undefined
+      const source = map!.getSource(SOURCE_ID) as maplibregl.GeoJSONSource | undefined
       const data: GeoJSON.Feature<GeoJSON.LineString> = {
         type: 'Feature',
         properties: {},
         geometry: { type: 'LineString', coordinates: coordinates ?? [] },
       }
 
-      const endpointsSource = map!.getSource(ENDPOINTS_SOURCE_ID) as mapboxgl.GeoJSONSource | undefined
+      const endpointsSource = map!.getSource(ENDPOINTS_SOURCE_ID) as maplibregl.GeoJSONSource | undefined
       const endpointsData: GeoJSON.FeatureCollection<GeoJSON.Point> = {
         type: 'FeatureCollection',
         features: coordinates && coordinates.length > 1
@@ -123,7 +123,7 @@ export function useRouteLayer(
       if (fitToRoute && coordinates && coordinates.length > 1) {
         const bounds = coordinates.reduce(
           (b, c) => b.extend(c),
-          new mapboxgl.LngLatBounds(coordinates[0], coordinates[0]),
+          new maplibregl.LngLatBounds(coordinates[0], coordinates[0]),
         )
         map!.fitBounds(bounds, { padding: 80, maxZoom: 16, duration: 0 })
       }

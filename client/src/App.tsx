@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
-import mapboxgl from 'mapbox-gl'
-import 'mapbox-gl/dist/mapbox-gl.css'
+import maplibregl from 'maplibre-gl'
+import 'maplibre-gl/dist/maplibre-gl.css'
+import { LINZ_TOPO_STYLE, LINZ_ATTRIBUTION } from './map/mapStyle.ts'
 import SessionPrompt from './SessionPrompt.tsx'
 import InvalidInvitePrompt from './InvalidInvitePrompt.tsx'
 import Legend from './Legend.tsx'
@@ -23,8 +24,6 @@ import { parseGpxCoordinates } from './gpx.ts'
 import { apiHeaders } from './apiHeaders.ts'
 import { canManageMembersForRole, shouldShowAuthPrompt, shouldShowSessionPrompt } from './sessionState.ts'
 import type { AuthResponse, AuthenticatedUser, SessionMembership } from './types.ts'
-
-mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN as string
 
 const SERVER_URL: string = import.meta.env.VITE_SERVER_URL ?? '/api'
 const APP_VERSION = import.meta.env.VITE_APP_VERSION ?? 'v-local'
@@ -91,7 +90,7 @@ function clearStoredAuth() {
 
 export default function App() {
   const containerRef = useRef<HTMLDivElement>(null)
-  const mapRef = useRef<mapboxgl.Map | null>(null)
+  const mapRef = useRef<maplibregl.Map | null>(null)
   const { sessionName: initialName, inviteCode, legalPage, isAdmin, isLanding } = parseUrl()
   const [sessionName, setSessionName] = useState<string | null>(initialName)
   const [auth, setAuth] = useState<AuthResponse | null>(() => readStoredAuth())
@@ -105,15 +104,16 @@ export default function App() {
   useEffect(() => {
     if (legalPage || isLanding || !containerRef.current) return
 
-    const map = new mapboxgl.Map({
+    const map = new maplibregl.Map({
       container: containerRef.current,
-      style: 'mapbox://styles/mapbox/streets-v12',
+      style: LINZ_TOPO_STYLE,
       center: [174.7762, -41.2865], // Wellington, NZ - default before any session/positions load
       zoom: 13,
+      attributionControl: { customAttribution: LINZ_ATTRIBUTION },
     })
 
-    map.addControl(new mapboxgl.NavigationControl(), 'top-right')
-    map.addControl(new mapboxgl.GeolocateControl({
+    map.addControl(new maplibregl.NavigationControl(), 'top-right')
+    map.addControl(new maplibregl.GeolocateControl({
       positionOptions: { enableHighAccuracy: true },
       trackUserLocation: true,
     }), 'top-right')

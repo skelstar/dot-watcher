@@ -11,7 +11,7 @@ dot-watcher/
   .ai/         AI-assisted PR review/description helpers and templates
   server/      .NET Core minimal API
   tests/       .NET integration tests
-  client/      React web app (Mapbox)
+  client/      React web app (MapLibre + LINZ topo basemap)
   ios/         Swift iOS app
   android/     Kotlin Android app (not started)
   AGENTS.md   Codex/agent repository instructions
@@ -47,7 +47,7 @@ Generated review files belong under `.ai/reviews/`; generated PR descriptions be
 2. The app sends GPS coordinates and compass heading to the server at a configurable interval
 3. The server stores the latest positions for all runners in that session
 4. Other users join the session via invite code or link — the session owner shares it; joining via the iOS app grants `runner` membership; joining via the web client grants `viewer` membership
-5. The web viewer polls the server and renders all runners as directional markers on a Mapbox map
+5. The web viewer polls the server and renders all runners as directional markers on a LINZ topographic map
 
 ---
 
@@ -88,11 +88,11 @@ A lightweight .NET Core minimal API.
 
 ### client
 
-A React web app using Mapbox GL JS.
+A React web app using MapLibre GL JS with the LINZ Basemaps topographic vector tileset (New Zealand only).
 
 **Behaviour**
 
-- Full-screen Mapbox map, responsive and touch-friendly
+- Full-screen topographic map, responsive and touch-friendly
 - On first load, prompts for sign-in, then lists existing memberships or offers create/join actions
 - Session code can be embedded in the URL for members (e.g. `https://dot-watcher.yourdomain.com/SESSIONCODE`)
 - Polls the server for updated positions every 10–15 seconds

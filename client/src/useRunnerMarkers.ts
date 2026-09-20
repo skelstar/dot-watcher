@@ -1,13 +1,13 @@
 import { useEffect, useRef, useState, type RefObject } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { createElement } from 'react'
-import mapboxgl from 'mapbox-gl'
+import maplibregl from 'maplibre-gl'
 import type { RunnerPosition } from './types.ts'
 import Arrow, { ARROW_SIZE } from './components/Arrow.tsx'
 import Dot from './components/Dot.tsx'
 
 interface MarkerEntry {
-  marker: mapboxgl.Marker
+  marker: maplibregl.Marker
   root: Root
   isLatest: boolean
 }
@@ -25,7 +25,7 @@ interface RunnerMarkersResult {
 }
 
 export function useRunnerMarkers(
-  mapRef: RefObject<mapboxgl.Map | null>,
+  mapRef: RefObject<maplibregl.Map | null>,
   positions: RunnerPosition[][] | undefined,
   nowMs: number,
   runnersWithGpsSignalLoss: Set<string> = new Set(),
@@ -51,7 +51,7 @@ export function useRunnerMarkers(
   const followedRunnerRef = useRef<string | null>(null)
   const [followingAll, setFollowingAll] = useState(false)
   const followingAllRef = useRef(false)
-  const dragListenerMapRef = useRef<mapboxgl.Map | null>(null)
+  const dragListenerMapRef = useRef<maplibregl.Map | null>(null)
 
   // Unmounting a React root synchronously while another root's render is still being committed
   // (e.g. recluster() rendering into a sibling marker in the same tick) trips React's reentrancy
@@ -71,10 +71,10 @@ export function useRunnerMarkers(
     })
   }
 
-  function applyPositions(runnerGroups: RunnerPosition[][], map: mapboxgl.Map, virtualNow?: number) {
+  function applyPositions(runnerGroups: RunnerPosition[][], map: maplibregl.Map, virtualNow?: number) {
     if (dragListenerMapRef.current !== map) {
       dragListenerMapRef.current = map
-      // Mapbox's own movestart/zoomstart events are unreliable here: their originalEvent is only
+      // The map library's own movestart/zoomstart events are unreliable here: their originalEvent is only
       // set for some gesture sources (e.g. a real click on the zoom button) and not others (wheel
       // and ctrl-wheel/trackpad-pinch zoom fire with originalEvent undefined, indistinguishable
       // from our own programmatic easeTo()/fitBounds() calls below). Listening on the raw DOM
@@ -136,7 +136,7 @@ export function useRunnerMarkers(
           } else {
             root.render(createElement(Dot, { colour }))
           }
-          const marker = new mapboxgl.Marker({ element: el, offset: [0, 0] })
+          const marker = new maplibregl.Marker({ element: el, offset: [0, 0] })
             .setLngLat(lngLat)
             .addTo(map)
           markersRef.current[key] = { marker, root, isLatest }
@@ -179,13 +179,13 @@ export function useRunnerMarkers(
       const latestCoords = runnerGroups
         .filter(g => g.length > 0)
         .map(g => g[g.length - 1])
-        .map(p => new mapboxgl.LngLat(p.longitude, p.latitude))
+        .map(p => new maplibregl.LngLat(p.longitude, p.latitude))
       if (latestCoords.length === 1) {
         map.easeTo({ center: latestCoords[0], zoom: 15 })
       } else {
         const bounds = latestCoords.reduce(
           (b, c) => b.extend(c),
-          new mapboxgl.LngLatBounds(latestCoords[0], latestCoords[0]),
+          new maplibregl.LngLatBounds(latestCoords[0], latestCoords[0]),
         )
         map.fitBounds(bounds, { padding: 80, maxZoom: 16 })
       }
@@ -201,7 +201,7 @@ export function useRunnerMarkers(
     applyPositions(positions, map, nowMs)
   }, [positions, nowMs]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  function recluster(map: mapboxgl.Map) {
+  function recluster(map: maplibregl.Map) {
     const runners = Object.entries(latestPositionsRef.current)
     if (runners.length === 0) return
 
@@ -211,13 +211,13 @@ export function useRunnerMarkers(
 
     for (const [name, lngLat] of runners) {
       if (assigned.has(name)) continue
-      const p = map.project(new mapboxgl.LngLat(lngLat[0], lngLat[1]))
+      const p = map.project(new maplibregl.LngLat(lngLat[0], lngLat[1]))
       const cluster = [name]
       assigned.add(name)
 
       for (const [otherName, otherLngLat] of runners) {
         if (assigned.has(otherName)) continue
-        const q = map.project(new mapboxgl.LngLat(otherLngLat[0], otherLngLat[1]))
+        const q = map.project(new maplibregl.LngLat(otherLngLat[0], otherLngLat[1]))
         if (Math.hypot(q.x - p.x, q.y - p.y) <= THRESHOLD_PX) {
           cluster.push(otherName)
           assigned.add(otherName)
@@ -258,7 +258,7 @@ export function useRunnerMarkers(
     }
   }
 
-  function updateVisibleRunners(map: mapboxgl.Map) {
+  function updateVisibleRunners(map: maplibregl.Map) {
     const all = Object.entries(latestPositionsRef.current)
     const visible = all.filter(([, pos]) => isInView(map, pos)).map(([name]) => name)
     const offScreen = all.filter(([, pos]) => !isInView(map, pos)).map(([name]) => name)
@@ -326,7 +326,7 @@ export function useRunnerMarkers(
     setFollowingAll(false)
   }
 
-  function fitAllBounds(map: mapboxgl.Map, options?: mapboxgl.AnimationOptions) {
+  function fitAllBounds(map: maplibregl.Map, options?: maplibregl.AnimationOptions) {
     const coords = Object.values(latestPositionsRef.current)
     if (coords.length === 0) return
     if (coords.length === 1) {
@@ -334,7 +334,7 @@ export function useRunnerMarkers(
     } else {
       const bounds = coords.reduce(
         (b, c) => b.extend(c),
-        new mapboxgl.LngLatBounds(coords[0], coords[0]),
+        new maplibregl.LngLatBounds(coords[0], coords[0]),
       )
       map.fitBounds(bounds, { padding: 80, maxZoom: 16, ...options })
     }
@@ -364,10 +364,10 @@ const COLOUR_PALETTE = [
   '#65a30d', // lime
 ]
 
-function isInView(map: mapboxgl.Map, [lng, lat]: [number, number]): boolean {
+function isInView(map: maplibregl.Map, [lng, lat]: [number, number]): boolean {
   const { offsetWidth, offsetHeight } = map.getContainer()
   const pad = 80
-  const p = map.project(new mapboxgl.LngLat(lng, lat))
+  const p = map.project(new maplibregl.LngLat(lng, lat))
   return p.x >= -pad && p.y >= -pad && p.x <= offsetWidth + pad && p.y <= offsetHeight + pad
 }
 
