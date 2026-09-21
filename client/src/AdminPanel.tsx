@@ -42,6 +42,7 @@ export default function AdminPanel({ serverUrl }: { serverUrl: string }) {
   const [expandedSessionId, setExpandedSessionId] = useState<string | null>(null)
   const [memberStats, setMemberStats] = useState<Record<string, MemberStatsState>>({})
   const [clearingRecordsId, setClearingRecordsId] = useState<string | null>(null)
+  const [exportingRecordsId, setExportingRecordsId] = useState<string | null>(null)
   const [selectedUserIds, setSelectedUserIds] = useState<Set<string>>(new Set())
   const [selectedSessionIds, setSelectedSessionIds] = useState<Set<string>>(new Set())
   const [bulkDeletingUsers, setBulkDeletingUsers] = useState(false)
@@ -209,6 +210,34 @@ export default function AdminPanel({ serverUrl }: { serverUrl: string }) {
       setError('Network error.')
     } finally {
       setClearingRecordsId(null)
+    }
+  }
+
+  // Fetched with the bearer token (unlike the plain map link) because /records/export requires
+  // auth, so the download has to go through fetch + a Blob rather than a plain <a href>.
+  async function handleExportRecords(e: React.MouseEvent, sessionId: string, inviteCode: string) {
+    e.stopPropagation()
+    setExportingRecordsId(sessionId)
+    try {
+      const r = await fetch(`${serverUrl}/admin/sessions/${sessionId}/records/export`, {
+        headers: apiHeaders(token, 'web-admin'),
+      })
+      if (!r.ok) {
+        setError(`Failed to export records (HTTP ${r.status}).`)
+        return
+      }
+      const ndjson = await r.text()
+      const blob = new Blob([ndjson], { type: 'application/x-ndjson' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `${inviteCode}-records.ndjson`
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch {
+      setError('Network error.')
+    } finally {
+      setExportingRecordsId(null)
     }
   }
 
@@ -406,6 +435,13 @@ export default function AdminPanel({ serverUrl }: { serverUrl: string }) {
                                 </span>
                                 <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
                                   <button
+                                    style={exportBtn}
+                                    onClick={e => void handleExportRecords(e, session.sessionId, session.inviteCode)}
+                                    disabled={exportingRecordsId === session.sessionId}
+                                  >
+                                    {exportingRecordsId === session.sessionId ? '…' : 'Export records'}
+                                  </button>
+                                  <button
                                     style={clearBtn}
                                     onClick={e => void handleClearRecords(e, session.sessionId)}
                                     disabled={clearingRecordsId === session.sessionId}
@@ -540,6 +576,13 @@ const deleteBtn: React.CSSProperties = {
 const clearBtn: React.CSSProperties = {
   ...primaryBtn,
   background: '#f97316',
+  fontSize: '0.75rem',
+  padding: '0.2rem 0.5rem',
+}
+
+const exportBtn: React.CSSProperties = {
+  ...primaryBtn,
+  background: '#0ea5e9',
   fontSize: '0.75rem',
   padding: '0.2rem 0.5rem',
 }
