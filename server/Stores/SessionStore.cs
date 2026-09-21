@@ -1015,6 +1015,14 @@ public class SessionStore(string connectionString)
         return string.Join("\n", latestRun.Select(u => JsonSerializer.Serialize(u, _jsonOptions)));
     }
 
+    // Admin/ops: every stored row for a session, in full, with no RunGapThreshold or
+    // MaxRecordingRows applied - for diagnosing cases where those cuts look wrong.
+    public string GetAllRecordingRowsAsNdjson(string sessionId)
+    {
+        var updates = LoadUpdatesByTimestamp(sessionId);
+        return string.Join("\n", updates.Select(u => JsonSerializer.Serialize(u, _jsonOptions)));
+    }
+
     // Returns NDJSON for the given time window, clamped to the current run so callers can never
     // scrub back past the boundary that GetRecordingAsNdjson/GetRecordingMeta already enforce.
     // truncated is true when more rows existed in-range than MaxRecordingRows allowed returning.
