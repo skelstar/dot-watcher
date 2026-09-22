@@ -1,5 +1,6 @@
 import { useEffect, type RefObject } from 'react'
-import mapboxgl from 'mapbox-gl'
+// maplibre-gl has no default export (unlike mapbox-gl) — named imports only.
+import { MapLibreMap, LngLatBounds, type GeoJSONSource } from 'maplibre-gl'
 
 const SOURCE_ID = 'gpx-route'
 const LAYER_ID = 'gpx-route-line'
@@ -11,8 +12,8 @@ const START_IMAGE_ID = 'gpx-route-start-icon'
 const FINISH_IMAGE_ID = 'gpx-route-finish-icon'
 
 // A simple right-pointing triangle, drawn at runtime so the arrow doesn't depend on whatever
-// icons happen to ship in the active Mapbox style's sprite sheet (e.g. streets-v12 has no
-// "triangle-11").
+// icons happen to ship in the active style's sprite sheet (e.g. Mapbox's old streets-v12 had no
+// "triangle-11", and the LINZ topographic style carries no sprite sheet of its own at all).
 function makeArrowImage(): { width: number; height: number; data: Uint8Array } {
   const size = 16
   const canvas = document.createElement('canvas')
@@ -91,7 +92,7 @@ function makeFinishImage(): { width: number; height: number; data: Uint8Array } 
 }
 
 export function useRouteLayer(
-  mapRef: RefObject<mapboxgl.Map | null>,
+  mapRef: RefObject<MapLibreMap | null>,
   coordinates: [number, number][] | null,
   // Runner positions take priority once they exist (useRunnerMarkers fits to those); this only
   // claims the viewport while there's nothing else to show, e.g. before a run has started.
@@ -102,14 +103,14 @@ export function useRouteLayer(
     if (!map) return
 
     function applyRoute() {
-      const source = map!.getSource(SOURCE_ID) as mapboxgl.GeoJSONSource | undefined
+      const source = map!.getSource(SOURCE_ID) as GeoJSONSource | undefined
       const data: GeoJSON.Feature<GeoJSON.LineString> = {
         type: 'Feature',
         properties: {},
         geometry: { type: 'LineString', coordinates: coordinates ?? [] },
       }
 
-      const endpointsSource = map!.getSource(ENDPOINTS_SOURCE_ID) as mapboxgl.GeoJSONSource | undefined
+      const endpointsSource = map!.getSource(ENDPOINTS_SOURCE_ID) as GeoJSONSource | undefined
       const endpointsData: GeoJSON.FeatureCollection<GeoJSON.Point> = {
         type: 'FeatureCollection',
         features: coordinates && coordinates.length > 1
@@ -123,7 +124,7 @@ export function useRouteLayer(
       if (fitToRoute && coordinates && coordinates.length > 1) {
         const bounds = coordinates.reduce(
           (b, c) => b.extend(c),
-          new mapboxgl.LngLatBounds(coordinates[0], coordinates[0]),
+          new LngLatBounds(coordinates[0], coordinates[0]),
         )
         map!.fitBounds(bounds, { padding: 80, maxZoom: 16, duration: 0 })
       }
@@ -182,12 +183,16 @@ export function useRouteLayer(
       })
     }
 
-    if (map.isStyleLoaded()) {
-      applyRoute()
-    } else {
-      map.once('load', applyRoute)
-      return () => { map.off('load', applyRoute) }
-    }
+    // 'style.load' fires both for the map's initial style and for every later map.setStyle()
+    // call (the MapStyleToggle button) — either way, the previous style's sources/layers/images
+    // are gone and applyRoute() needs to run again. Listening here (rather than the one-shot
+    // 'load' event, which only ever fires once) is what makes the route survive a style switch.
+    // A style swap wipes and reloads even a style that's already loaded, so isStyleLoaded() alone
+    // can't tell us whether applyRoute() has already run for the *current* style — call it once
+    // up front if ready, then let the listener re-run it after every future style load.
+    if (map.isStyleLoaded()) applyRoute()
+    map.on('style.load', applyRoute)
+    return () => { map.off('style.load', applyRoute) }
   }, [mapRef, coordinates, fitToRoute])
 
   useEffect(() => {

@@ -123,7 +123,7 @@
   .ai/         AI-assisted PR review/description helpers and templates
   server/      .NET Core minimal API
   tests/       .NET integration tests
-  client/      React web app (Mapbox)
+  client/      React web app (MapLibre + LINZ topo basemap)
   ios/         Swift iOS app
   android/     Kotlin Android app (not started)
   AGENTS.md   Codex/agent repository instructions
@@ -160,7 +160,7 @@
       <li><strong>Browse and request</strong> — users browse active sessions in the app, send a join request, and the owner approves or denies it; approval grants <code>runner</code> membership</li>
     </ul>
   </li>
-  <li>The web viewer polls the server and renders all runners as directional markers on a Mapbox map</li>
+  <li>The web viewer polls the server and renders all runners as directional markers on a LINZ topographic map</li>
 </ol>
 
 <hr>
@@ -203,11 +203,11 @@
 <hr>
 
 <h3>client</h3>
-<p>A React web app using Mapbox GL JS.</p>
+<p>A React web app using MapLibre GL JS with the LINZ Basemaps topographic vector tileset (New Zealand only).</p>
 
 <span class="label">Behaviour</span>
 <ul>
-  <li>Full-screen Mapbox map, responsive and touch-friendly</li>
+  <li>Full-screen topographic map, responsive and touch-friendly</li>
   <li>On first load, prompts for sign-in, then lists existing memberships or offers create/join actions</li>
   <li>Session code can be embedded in the URL for members (e.g. <code>https://dot-watcher.yourdomain.com/SESSIONCODE</code>)</li>
   <li>Polls the server for updated positions every 10–15 seconds</li>

@@ -1,6 +1,18 @@
 import { useEffect, useRef, useState } from 'react'
-import mapboxgl from 'mapbox-gl'
-import 'mapbox-gl/dist/mapbox-gl.css'
+// maplibre-gl has no default export (unlike mapbox-gl) — named imports only.
+import { MapLibreMap, NavigationControl, GeolocateControl, setWorkerUrl } from 'maplibre-gl'
+import 'maplibre-gl/dist/maplibre-gl.css'
+// v6 no longer auto-detects its worker URL under a bundler (only plain CDN <script type=module>
+// loading gets that for free) — without this, every vector/GeoJSON source hangs forever waiting
+// on a worker that never starts: tile.json/style.json/sprite resolve fine (main thread), but zero
+// .pbf tile requests ever fire and isSourceLoaded() stays false. `?worker&url` (not plain `?url`)
+// is required so Vite emits the worker as a self-contained chunk — the raw dist file imports a
+// sibling module that a plain `?url` copy wouldn't bring along. See
+// https://maplibre.org/maplibre-gl-js/docs/guides/v5-to-v6-migration-guide/ and
+// https://github.com/maplibre/maplibre-gl-js/issues/8018.
+import maplibreWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url'
+import { MAP_STYLES, DEFAULT_MAP_STYLE_ID, LINZ_ATTRIBUTION, type MapStyleId } from './map/mapStyle.ts'
+import MapStyleToggle from './MapStyleToggle.tsx'
 import SessionPrompt from './SessionPrompt.tsx'
 import InvalidInvitePrompt from './InvalidInvitePrompt.tsx'
 import Legend from './Legend.tsx'
@@ -24,7 +36,7 @@ import { apiHeaders } from './apiHeaders.ts'
 import { canManageMembersForRole, shouldShowAuthPrompt, shouldShowSessionPrompt } from './sessionState.ts'
 import type { AuthResponse, AuthenticatedUser, SessionMembership } from './types.ts'
 
-mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN as string
+setWorkerUrl(maplibreWorkerUrl)
 
 const SERVER_URL: string = import.meta.env.VITE_SERVER_URL ?? '/api'
 const APP_VERSION = import.meta.env.VITE_APP_VERSION ?? 'v-local'
@@ -91,7 +103,7 @@ function clearStoredAuth() {
 
 export default function App() {
   const containerRef = useRef<HTMLDivElement>(null)
-  const mapRef = useRef<mapboxgl.Map | null>(null)
+  const mapRef = useRef<MapLibreMap | null>(null)
   const { sessionName: initialName, inviteCode, legalPage, isAdmin, isLanding } = parseUrl()
   const [sessionName, setSessionName] = useState<string | null>(initialName)
   const [auth, setAuth] = useState<AuthResponse | null>(() => readStoredAuth())
@@ -100,20 +112,30 @@ export default function App() {
   const [showMembers, setShowMembers] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
   const [routeCoordinates, setRouteCoordinates] = useState<[number, number][] | null>(null)
+  const [mapStyleId, setMapStyleId] = useState<MapStyleId>(DEFAULT_MAP_STYLE_ID)
   const accessToken = auth?.accessToken ?? null
+
+  // Imperative: swaps the live map's style in place rather than recreating the Map instance.
+  // useRouteLayer/useSimulatorRouteOverlay re-add their sources/layers/images on the resulting
+  // 'style.load' event; runner markers are plain DOM overlays untouched by a style change.
+  function handleToggleMapStyle(next: MapStyleId) {
+    setMapStyleId(next)
+    mapRef.current?.setStyle(MAP_STYLES[next].url)
+  }
 
   useEffect(() => {
     if (legalPage || isLanding || !containerRef.current) return
 
-    const map = new mapboxgl.Map({
+    const map = new MapLibreMap({
       container: containerRef.current,
-      style: 'mapbox://styles/mapbox/streets-v12',
+      style: MAP_STYLES[DEFAULT_MAP_STYLE_ID].url,
       center: [174.7762, -41.2865], // Wellington, NZ - default before any session/positions load
       zoom: 13,
+      attributionControl: { customAttribution: LINZ_ATTRIBUTION },
     })
 
-    map.addControl(new mapboxgl.NavigationControl(), 'top-right')
-    map.addControl(new mapboxgl.GeolocateControl({
+    map.addControl(new NavigationControl(), 'top-right')
+    map.addControl(new GeolocateControl({
       positionOptions: { enableHighAccuracy: true },
       trackUserLocation: true,
     }), 'top-right')
@@ -343,6 +365,7 @@ export default function App() {
         </div>
       )}
       <LegendHelp />
+      <MapStyleToggle styleId={mapStyleId} onToggle={handleToggleMapStyle} />
       <Legend
         runners={allRunners}
         onRunnerClick={followRunner}
