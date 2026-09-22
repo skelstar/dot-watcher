@@ -72,6 +72,21 @@ public class AdminController(SessionStore store, BearerTokenAuth auth) : Control
         return Ok(records);
     }
 
+    /// <summary>Admin/ops: exports every stored location update for a session as NDJSON, with no
+    /// run-gap or row-count truncation applied - for diagnosing replay truncation issues.</summary>
+    [HttpGet("/admin/sessions/{sessionId}/records/export")]
+    [Produces("application/x-ndjson")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public IActionResult ExportSessionRecords(string sessionId)
+    {
+        if (!auth.IsAuthorized(Request))
+            return Unauthorized();
+
+        var ndjson = store.GetAllRecordingRowsAsNdjson(sessionId);
+        return Content(ndjson, "application/x-ndjson");
+    }
+
     /// <summary>Admin/ops: gets per-member position counts and last-seen timestamps for a session.</summary>
     [HttpGet("/admin/sessions/{sessionId}/member-stats")]
     [ProducesResponseType(typeof(IReadOnlyList<AdminMemberStats>), StatusCodes.Status200OK)]
