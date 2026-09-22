@@ -604,3 +604,30 @@ test('findSleepingRunners is independent of a runner who is currently missing (n
   // Only one position exists at/before cutoff, so there's nothing to compare it against.
   assert.deepEqual(findSleepingRunners(byRunner, cutoff), new Set())
 })
+
+test('findSleepingRunners widens its window to a satellite runner\'s own 90s cadence', () => {
+  const byRunner = new Map([
+    ['Alice', [
+      // Satellite cadence: one report every 90s, nextExpectedAt 90s ahead each time.
+      // Stationary throughout — only ~1m of jitter around the same spot.
+      { runnerName: 'Alice', latitude: -41.28650, longitude: 174.77620, heading: 90, timestamp: '2024-01-01T00:00:00Z', nextExpectedAt: '2024-01-01T00:01:30Z' },
+      { runnerName: 'Alice', latitude: -41.28651, longitude: 174.77620, heading: 90, timestamp: '2024-01-01T00:01:30Z', nextExpectedAt: '2024-01-01T00:03:00Z' },
+    ]],
+  ])
+  const cutoff = new Date('2024-01-01T00:01:30Z').getTime()
+  // A fixed 30s window would only ever see the latest report here (the previous one is 90s
+  // back), so the "at least 2 reports" guard would never pass and Alice would never be flagged.
+  assert.deepEqual(findSleepingRunners(byRunner, cutoff), new Set(['Alice']))
+})
+
+test('findSleepingRunners does not flag a satellite runner making steady progress between reports', () => {
+  const byRunner = new Map([
+    ['Alice', [
+      // ~200m between each 90s report — clearly moving, despite the wider window.
+      { runnerName: 'Alice', latitude: -41.2865, longitude: 174.7762, heading: 90, timestamp: '2024-01-01T00:00:00Z', nextExpectedAt: '2024-01-01T00:01:30Z' },
+      { runnerName: 'Alice', latitude: -41.2847, longitude: 174.7762, heading: 90, timestamp: '2024-01-01T00:01:30Z', nextExpectedAt: '2024-01-01T00:03:00Z' },
+    ]],
+  ])
+  const cutoff = new Date('2024-01-01T00:01:30Z').getTime()
+  assert.deepEqual(findSleepingRunners(byRunner, cutoff), new Set())
+})

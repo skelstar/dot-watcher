@@ -378,17 +378,25 @@ function haversineMetres(a: { latitude: number; longitude: number }, b: { latitu
   return 2 * EARTH_RADIUS_M * Math.asin(Math.sqrt(h))
 }
 
-// Window to look back over, and the displacement threshold within it, to call a runner
-// "sleeping". With reports every ~15s, a 30s window usually holds only 2-3 points, so the
-// distance threshold is raised above the 8m used for a longer window — otherwise a single noisy
-// GPS fix could flip a genuinely-stationary runner in and out of the sleeping state.
+// Fallback window to look back over when a runner's own cadence isn't known (no `nextExpectedAt`
+// on their latest position — older clients, or recordings from before that field existed). With
+// reports every ~15s, this 30s window usually holds only 2-3 points, so the distance threshold is
+// raised above the 8m used for a longer window — otherwise a single noisy GPS fix could flip a
+// genuinely-stationary runner in and out of the sleeping state.
 export const SLEEPING_WINDOW_MS = 30_000
 export const SLEEPING_DISTANCE_M = 15
 
 // Runners who are actively reporting (they have a position at or before cutoffMs) but have
-// barely moved over the last SLEEPING_WINDOW_MS of reports — e.g. waiting at an aid station.
-// Distance-based rather than time-since-update based, so it stays independent of "missing"
-// (findRunnersWithGap), which is purely about absence of data, not presence of motion.
+// barely moved over their recent reports — e.g. waiting at an aid station. Distance-based rather
+// than time-since-update based, so it stays independent of "missing" (findRunnersWithGap), which
+// is purely about absence of data, not presence of motion.
+//
+// The look-back window is 2x the runner's own reporting interval (self-reported via
+// `nextExpectedAt`, same source findRunnersWithGap and findAdaptiveCountdowns trust) rather than a
+// fixed SLEEPING_WINDOW_MS — a satellite runner posting every 90s would otherwise only ever have
+// 0-1 reports inside a fixed 30s window, permanently failing the "enough reports to judge"
+// check and never being flagged as sleeping at all. Falls back to SLEEPING_WINDOW_MS for the last
+// position without a `nextExpectedAt` at all, same fallback rule as findRunnersWithGap.
 export function findSleepingRunners(
   byRunner: Map<string, RunnerPosition[]>,
   cutoffMs: number,
@@ -398,7 +406,12 @@ export function findSleepingRunners(
     const upTo = positions.filter(p => new Date(p.timestamp).getTime() <= cutoffMs)
     if (upTo.length === 0) continue
     const latest = upTo[upTo.length - 1]
-    const windowStart = new Date(latest.timestamp).getTime() - SLEEPING_WINDOW_MS
+
+    const sleepingWindowMs = latest.nextExpectedAt
+      ? 2 * (new Date(latest.nextExpectedAt).getTime() - new Date(latest.timestamp).getTime())
+      : SLEEPING_WINDOW_MS
+
+    const windowStart = new Date(latest.timestamp).getTime() - sleepingWindowMs
     const inWindow = upTo.filter(p => new Date(p.timestamp).getTime() >= windowStart)
     if (inWindow.length < 2) continue // not enough reports yet to judge movement
 

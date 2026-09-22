@@ -164,7 +164,7 @@ function InlineCountdown() {
   )
 }
 
-// Positioned below Mapbox's top-right controls: NavigationControl (zoom +/-, compass, y 10-106)
+// Positioned below MapLibre's top-right controls: NavigationControl (zoom +/-, compass, y 10-106)
 // stacked above GeolocateControl (y 116-148) — this clears both with a small gap under.
 const helpButton: React.CSSProperties = {
   position: 'absolute',

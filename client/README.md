@@ -1,18 +1,19 @@
 # Client
 
-React web app for viewing live runner positions on a Mapbox map.
+React web app for viewing live runner positions on a LINZ topographic map, rendered with
+[MapLibre GL JS](https://maplibre.org/).
 
 ## Prerequisites
 
 - Node.js
-- A Mapbox public access token ([mapbox.com](https://www.mapbox.com))
+- A free LINZ Basemaps Developer API key ([basemaps.linz.govt.nz](https://basemaps.linz.govt.nz)) — request one via the site; a Developer key gives unlimited reasonable use, vs. the limited unregistered "Standard" tier. For a shared/public app, request a Developer key rather than an individual one.
 
 ## Setup
 
-Create a `.env` file in this directory:
+Create a `.env` file in this directory (or copy `.env.example`):
 
 ```
-VITE_MAPBOX_TOKEN=your_mapbox_public_token_here
+VITE_LINZ_API_KEY=your_linz_developer_api_key_here
 VITE_SERVER_URL=/api
 ```
 
@@ -34,7 +35,7 @@ The app will be available at `http://localhost:5173` by default.
 
 | Variable               | Required | Default                 | Description                                              |
 | ---------------------- | -------- | ----------------------- | -------------------------------------------------------- |
-| `VITE_MAPBOX_TOKEN`    | Yes      | —                       | Mapbox public access token for rendering the map         |
+| `VITE_LINZ_API_KEY`    | Yes      | —                       | LINZ Basemaps API key for rendering the topographic map (public in the built bundle, like an old Mapbox public token — coverage is NZ-only, blank elsewhere) |
 | `VITE_SERVER_URL`      | No       | `/api`                  | Base URL of the dot-watcher server                       |
 | `VITE_APP_VERSION`    | No       | `v-{git-sha}-beta`      | Version label shown in the client footer                 |
 | `VITE_APP_UPDATED_AT` | No       | `Updated {NZ datetime}` | Build/update timestamp shown in the client footer        |
@@ -44,6 +45,8 @@ The Vite build stamps the client footer as `v-{latestCommitId}-beta · Updated {
 ## Usage
 
 Open the app, sign in, then select an existing session, create one, or join from an invite code. Direct links such as `http://localhost:5173/SESSIONCODE` work after the signed-in user has membership for that session. Invite links use `/join/INVITECODE`.
+
+The small layers-icon button top-right (below the "?" help button) toggles the basemap between LINZ's `topo` (contours/trails, good off-road) and `aerial` (real imagery, reads better on urban routes) styles — see `client/src/map/mapStyle.ts`.
 
 For local development against a server on another origin, override `VITE_SERVER_URL` in `.env`, for example `http://localhost:5000`.
 
@@ -67,7 +70,7 @@ While following live (not scrubbing history), the client polls `GET /locations/{
 
 ## CI
 
-GitHub Actions runs the `Client Node` workflow for client changes. It installs dependencies with `npm ci`, runs all `src/*.test.ts` unit tests through `npm run test`, and builds the Vite app with a placeholder Mapbox token. Local agents should not run those commands unless explicitly asked.
+GitHub Actions runs the `Client Node` workflow for client changes. It installs dependencies with `npm ci`, runs all `src/*.test.ts` unit tests through `npm run test`, and builds the Vite app with a placeholder LINZ API key. Local agents should not run those commands unless explicitly asked.
 
 ---
 
@@ -97,7 +100,7 @@ The `client/Dockerfile` builds with yarn and serves via nginx. `nginx.conf` hand
 > **Important:** Vite bakes env vars into the JS bundle at build time — they cannot be injected at runtime. Before deploying, copy your `.env` into `/home/skelstar/deployments/dot-watcher-client/src/`:
 >
 > ```
-> VITE_MAPBOX_TOKEN=your-mapbox-token
+> VITE_LINZ_API_KEY=your-linz-api-key
 > VITE_SERVER_URL=/api
 > ```
 
