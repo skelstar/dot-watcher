@@ -44,7 +44,8 @@ public record ValidatedUserToken(
 
 public record CreateSessionRequest(
     string? SessionName = null,
-    string? DisplayName = null
+    string? DisplayName = null,
+    int? MaxLengthHours = null
 );
 
 public record JoinSessionRequest(

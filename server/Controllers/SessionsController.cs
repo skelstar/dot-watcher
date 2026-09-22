@@ -69,7 +69,10 @@ public class SessionsController(
         if (displayName.Length is < 1 or > 80)
             return BadRequest(new { error = "Display name must be 1-80 characters." });
 
-        var membership = store.CreateSessionForUser(user.UserId, displayName, request.SessionName);
+        if (request.MaxLengthHours is int maxLengthHours && (maxLengthHours < 1 || maxLengthHours > 240))
+            return BadRequest(new { error = "Max length must be between 1 and 240 hours." });
+
+        var membership = store.CreateSessionForUser(user.UserId, displayName, request.SessionName, request.MaxLengthHours);
         return membership is null
             ? Conflict(new { error = "A session with that name already exists. Try entering the invite code." })
             : Ok(membership);

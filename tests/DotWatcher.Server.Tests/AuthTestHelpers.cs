@@ -33,16 +33,33 @@ internal static class AuthTestHelpers
         HttpClient client,
         string accessToken,
         string? sessionName = "SUNSET23",
-        string? displayName = null)
+        string? displayName = null,
+        int? maxLengthHours = null)
     {
         using var request = new HttpRequestMessage(HttpMethod.Post, "/sessions")
         {
-            Content = JsonContent.Create(new { sessionName, displayName }),
+            Content = JsonContent.Create(new { sessionName, displayName, maxLengthHours }),
         };
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
 
         var response = await client.SendAsync(request);
         return (await response.Content.ReadFromJsonAsync<SessionMembership>())!;
+    }
+
+    internal static async Task<HttpResponseMessage> CreateSessionRawAsync(
+        HttpClient client,
+        string accessToken,
+        string? sessionName = "SUNSET23",
+        string? displayName = null,
+        int? maxLengthHours = null)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/sessions")
+        {
+            Content = JsonContent.Create(new { sessionName, displayName, maxLengthHours }),
+        };
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+
+        return await client.SendAsync(request);
     }
 
     internal static async Task<SessionMembership> JoinSessionAsync(

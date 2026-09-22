@@ -30,6 +30,7 @@ export default function SessionPrompt({
   const [mode, setMode] = useState<Mode>(initialInviteCode ? 'join' : memberships.length ? 'sessions' : 'join')
   const [createCode, setCreateCode] = useState(requestedSessionName ?? '')
   const [createName, setCreateName] = useState('')
+  const [createMaxLengthHours, setCreateMaxLengthHours] = useState('')
   const [inviteCode, setInviteCode] = useState(initialInviteCode ?? '')
   const [joinName, setJoinName] = useState(autoJoinDisplayName ?? '')
   const [busy, setBusy] = useState(false)
@@ -68,6 +69,7 @@ export default function SessionPrompt({
     const body = {
       sessionName: cleanInput(createCode) || null,
       displayName: createName.trim() || null,
+      maxLengthHours: createMaxLengthHours.trim() ? Number(createMaxLengthHours) : null,
     }
 
     try {
@@ -210,6 +212,15 @@ export default function SessionPrompt({
                   onChange={event => setCreateName(event.target.value)}
                   placeholder="Display name"
                   autoComplete="name"
+                />
+                <input
+                  style={input}
+                  type="number"
+                  min={1}
+                  max={240}
+                  value={createMaxLengthHours}
+                  onChange={event => setCreateMaxLengthHours(event.target.value)}
+                  placeholder="Max session length in hours (default 24)"
                 />
                 <button style={secondaryButton} type="submit" disabled={busy}>
                   Create session
