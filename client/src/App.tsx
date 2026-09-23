@@ -179,7 +179,12 @@ export default function App() {
       {!timeline.invalidInvite && timeline.runStartMs !== null && inviteCode && (
         <>
           <ReplayControls timeline={timeline} />
-          {!timeline.following && !timeline.playing && <MapPlayButton onPlay={timeline.play} />}
+          {/* "following" alone would hide this on a finished session's very first load: scrubTimeMs
+              starts null (following=true) same as it does mid-live-watching, but there's no live
+              edge to follow once the session's over — isLive tells those two states apart. */}
+          {!timeline.playing && (!timeline.isLive || !timeline.following) && (
+            <MapPlayButton onPlay={timeline.play} />
+          )}
         </>
       )}
       {!timeline.invalidInvite && !timeline.error && timeline.runStartMs === null && inviteCode && (
