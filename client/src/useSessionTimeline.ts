@@ -289,8 +289,16 @@ export function useSessionTimeline(
     setScrubTimeMs(null)
   }
 
+  // Starting cold (never scrubbed) defaults to the beginning of the run, the same as any video
+  // player starting playback with no prior seek — without this, pressing Play before ever
+  // touching the scrubber silently did nothing, since there was no "here" to play from yet.
   function play() {
-    if (scrubTimeMs === null) return
+    const startAt = scrubTimeMs ?? effectiveRunStartMs
+    if (startAt === null) return
+    if (scrubTimeMs === null) {
+      ensureCovered(startAt)
+      setScrubTimeMs(startAt)
+    }
     playingRef.current = true
     setPlaying(true)
   }
@@ -335,6 +343,16 @@ export function useSessionTimeline(
   const polledLatestMs = useMemo(() => latestActivityMs(byRunner), [byRunner])
   const lastActivityMs = useMemo(() => maxOrNull(polledLatestMs, metaLatestMs), [polledLatestMs, metaLatestMs])
   const isLive = useMemo(() => isSessionLive(lastActivityMs, nowMs, LIVE_STALE_MS), [lastActivityMs, nowMs])
+
+  // A finished session's resting view defaults to its start rather than "now" (scrubTimeMs stays
+  // null until this fires) — otherwise the scrubber reads as sitting at the end, since "now" for
+  // a recording from weeks ago is well past every real position. A still-live session skips this
+  // and stays in follow mode instead, tracking the actual live position as it arrives.
+  useEffect(() => {
+    if (!active || scrubTimeMs !== null || isLive || effectiveRunStartMs === null) return
+    ensureCovered(effectiveRunStartMs)
+    setScrubTimeMs(effectiveRunStartMs)
+  }, [active, scrubTimeMs, isLive, effectiveRunStartMs]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Flags runners whose device can't currently determine a heading — CoreLocation reports
   // heading as null when its course confidence is too low, which tends to coincide with the

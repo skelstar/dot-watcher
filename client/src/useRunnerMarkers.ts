@@ -34,7 +34,6 @@ export function useRunnerMarkers(
   runnersSleeping: Set<string> = new Set(),
 ): RunnerMarkersResult {
   const markersRef = useRef<Record<string, MarkerEntry>>({})
-  const hasLocatedRef = useRef(false)
   const latestPositionsRef = useRef<Record<string, [number, number]>>({})
   const latestMarkerRef = useRef<Record<string, { root: Root; heading: number | null; colour: string; timestamp: string }>>({})
   const virtualNowRef = useRef<number | null>(null)
@@ -50,8 +49,11 @@ export function useRunnerMarkers(
   const [allRunners, setAllRunners] = useState<string[]>([])
   const [followedRunner, setFollowedRunner] = useState<string | null>(null)
   const followedRunnerRef = useRef<string | null>(null)
-  const [followingAll, setFollowingAll] = useState(false)
-  const followingAllRef = useRef(false)
+  // Defaults to true (rather than requiring a click on "Fit all") so the camera tracks whoever's
+  // on screen from the very first frame - a cold reload of a finished session used to leave the
+  // map wherever it was initialized (Wellington) until the viewer found and clicked that button.
+  const [followingAll, setFollowingAll] = useState(true)
+  const followingAllRef = useRef(true)
   const dragListenerMapRef = useRef<MapLibreMap | null>(null)
 
   // Unmounting a React root synchronously while another root's render is still being committed
@@ -94,7 +96,6 @@ export function useRunnerMarkers(
     }
     flushPendingUnmounts()
     if (virtualNow !== undefined) virtualNowRef.current = virtualNow
-    const isFirstLoad = !hasLocatedRef.current
     const seen = new Set<string>()
 
     for (const positions of runnerGroups) {
@@ -157,8 +158,6 @@ export function useRunnerMarkers(
       }
     }
 
-    if (seen.size === 0) hasLocatedRef.current = false
-
     for (const positions of runnerGroups) {
       if (!positions.length) continue
       const latest = positions[positions.length - 1]
@@ -173,23 +172,6 @@ export function useRunnerMarkers(
       if (pos) map.easeTo({ center: pos, duration: 300 })
     } else if (followingAllRef.current) {
       fitAllBounds(map, { duration: 300 })
-    }
-
-    if (seen.size > 0 && isFirstLoad) {
-      hasLocatedRef.current = true
-      const latestCoords = runnerGroups
-        .filter(g => g.length > 0)
-        .map(g => g[g.length - 1])
-        .map(p => new LngLat(p.longitude, p.latitude))
-      if (latestCoords.length === 1) {
-        map.easeTo({ center: latestCoords[0], zoom: 15 })
-      } else {
-        const bounds = latestCoords.reduce(
-          (b, c) => b.extend(c),
-          new LngLatBounds(latestCoords[0], latestCoords[0]),
-        )
-        map.fitBounds(bounds, { padding: 80, maxZoom: 16 })
-      }
     }
   }
 
