@@ -25,7 +25,20 @@
 
 set -euo pipefail
 
-SERVER_URL="${SERVER_URL:-http://localhost:8080}"
+# Preferred port comes from the repo root's .env (shared with client/, tools/simulator/, and
+# start-local.ps1 so every local tool agrees on it - see the .env.example comment: "everything
+# else picks up the change automatically, no other files to edit"), falling back to 8080 if
+# there's no override. $BASH_SOURCE works regardless of the caller's cwd; plain $0 wouldn't when
+# invoked as `bash import-session.sh` from inside scripts/.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+DEFAULT_PORT=8080
+ROOT_ENV="$SCRIPT_DIR/../.env"
+if [[ -f "$ROOT_ENV" ]]; then
+  ENV_PORT=$(grep -E '^\s*VITE_SERVER_PORT\s*=' "$ROOT_ENV" | tail -1 | cut -d= -f2- | xargs)
+  [[ -n "$ENV_PORT" ]] && DEFAULT_PORT="$ENV_PORT"
+fi
+
+SERVER_URL="${SERVER_URL:-http://localhost:$DEFAULT_PORT}"
 ADMIN_TOKEN="${ADMIN_TOKEN:-dev-token}"
 DATA_DIR="data/sessions"
 CODE=""
