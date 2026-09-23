@@ -292,16 +292,17 @@ public class SessionsApiTests
     }
 
     [Fact]
-    public async Task GetRecordingByInviteCode_WithGapFromEarlierRun_OnlyReturnsLatestRun()
+    public async Task GetRecordingByInviteCode_WithEarlierRunOutsideMaxLength_OnlyReturnsLatestRun()
     {
         using var factory = new DotWatcherApiFactory();
         using var client = factory.CreateClient();
         var token = await AuthTestHelpers.RegisterAsync(client, "carol", "Carol");
         var session = await AuthTestHelpers.CreateSessionAsync(client, token);
 
+        // More than DefaultMaxLengthHours (24h) before latestRun, so it falls outside the window.
         var earlierRun = LocationsApiTests.TestLocation("Ignored", session.SessionId, latitude: -33.8000) with
         {
-            Timestamp = new DateTimeOffset(2024, 11, 15, 2, 0, 0, TimeSpan.Zero),
+            Timestamp = new DateTimeOffset(2024, 11, 13, 2, 0, 0, TimeSpan.Zero),
         };
         var latestRun = LocationsApiTests.TestLocation("Ignored", session.SessionId, latitude: -33.8688) with
         {
@@ -318,6 +319,77 @@ public class SessionsApiTests
 
         using var json = JsonDocument.Parse(line);
         Assert.Equal(-33.8688, json.RootElement.GetProperty("latitude").GetDouble());
+    }
+
+    [Fact]
+    public async Task GetRecordingByInviteCode_WithInternalGapUnderMaxLength_ReturnsBothPoints()
+    {
+        // Regression test for the B05199 replay-truncation bug: a single long silence inside one
+        // outing (here 90 minutes - longer than the old 60-minute RunGapThreshold) must not
+        // truncate replay, as long as the outing's total span stays under the session's max length.
+        using var factory = new DotWatcherApiFactory();
+        using var client = factory.CreateClient();
+        var token = await AuthTestHelpers.RegisterAsync(client, "morgan", "Morgan");
+        var session = await AuthTestHelpers.CreateSessionAsync(client, token);
+
+        var beforeGap = LocationsApiTests.TestLocation("Morgan", session.SessionId, latitude: -33.80) with
+        {
+            Timestamp = new DateTimeOffset(2024, 11, 15, 9, 0, 0, TimeSpan.Zero),
+        };
+        var afterGap = LocationsApiTests.TestLocation("Morgan", session.SessionId, latitude: -33.81) with
+        {
+            Timestamp = new DateTimeOffset(2024, 11, 15, 10, 30, 0, TimeSpan.Zero),
+        };
+        await LocationsApiTests.PostLocationAsync(client, beforeGap, token);
+        await LocationsApiTests.PostLocationAsync(client, afterGap, token);
+
+        var response = await client.GetAsync($"/session-invites/{session.InviteCode}/recording");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadAsStringAsync();
+        var lines = body.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        Assert.Equal(2, lines.Length);
+    }
+
+    [Fact]
+    public async Task GetRecordingByInviteCode_WithExplicitMaxLength_TruncatesToThatWindow()
+    {
+        using var factory = new DotWatcherApiFactory();
+        using var client = factory.CreateClient();
+        var token = await AuthTestHelpers.RegisterAsync(client, "priya", "Priya");
+        var session = await AuthTestHelpers.CreateSessionAsync(client, token, maxLengthHours: 2);
+
+        var outsideWindow = LocationsApiTests.TestLocation("Priya", session.SessionId, latitude: -33.80) with
+        {
+            Timestamp = new DateTimeOffset(2024, 11, 15, 6, 0, 0, TimeSpan.Zero),
+        };
+        var insideWindow = LocationsApiTests.TestLocation("Priya", session.SessionId, latitude: -33.81) with
+        {
+            Timestamp = new DateTimeOffset(2024, 11, 15, 9, 0, 0, TimeSpan.Zero),
+        };
+        await LocationsApiTests.PostLocationAsync(client, outsideWindow, token);
+        await LocationsApiTests.PostLocationAsync(client, insideWindow, token);
+
+        var response = await client.GetAsync($"/session-invites/{session.InviteCode}/recording");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadAsStringAsync();
+        var line = Assert.Single(body.Split('\n', StringSplitOptions.RemoveEmptyEntries));
+
+        using var json = JsonDocument.Parse(line);
+        Assert.Equal(-33.81, json.RootElement.GetProperty("latitude").GetDouble());
+    }
+
+    [Fact]
+    public async Task CreateSession_WithMaxLengthOutOfRange_ReturnsBadRequest()
+    {
+        using var factory = new DotWatcherApiFactory();
+        using var client = factory.CreateClient();
+        var token = await AuthTestHelpers.RegisterAsync(client, "quinn", "Quinn");
+
+        var response = await AuthTestHelpers.CreateSessionRawAsync(client, token, maxLengthHours: 300);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
     [Fact]
@@ -409,7 +481,9 @@ public class SessionsApiTests
         using var factory = new DotWatcherApiFactory();
         using var client = factory.CreateClient();
 
-        var earlierRun = NdjsonLineAt("Erin", SomeSessionId, new DateTimeOffset(2024, 11, 15, 2, 0, 0, TimeSpan.Zero));
+        // More than DefaultMaxLengthHours (24h) before runStart, so it falls outside the window.
+        // SomeSessionId has no app_sessions row, so it always uses the default.
+        var earlierRun = NdjsonLineAt("Erin", SomeSessionId, new DateTimeOffset(2024, 11, 13, 2, 0, 0, TimeSpan.Zero));
         var runStart = NdjsonLineAt("Erin", SomeSessionId, new DateTimeOffset(2024, 11, 15, 9, 0, 0, TimeSpan.Zero));
         await SendWithAdminBearerAsync(client, HttpMethod.Post, $"/sessions/{SomeSessionId}/recording", earlierRun);
         await SendWithAdminBearerAsync(client, HttpMethod.Post, $"/sessions/{SomeSessionId}/recording", runStart);

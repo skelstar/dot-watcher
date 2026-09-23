@@ -124,6 +124,15 @@ public class SessionStore(string connectionString)
                 ADD COLUMN IF NOT EXISTS next_expected_at TEXT;
             """;
         addLiveOnlyColumns.ExecuteNonQuery();
+
+        // Nullable: pre-existing sessions, and sessions created by a client that doesn't send
+        // this yet, fall back to DefaultMaxLengthHours in GetRunStartTimestamp.
+        using var addMaxLengthColumn = conn.CreateCommand();
+        addMaxLengthColumn.CommandText = """
+            ALTER TABLE app_sessions
+                ADD COLUMN IF NOT EXISTS max_length_hours SMALLINT;
+            """;
+        addMaxLengthColumn.ExecuteNonQuery();
     }
 
     // Idempotent - safe to call on every startup. Resolves (creating if missing) the permanent
@@ -388,7 +397,8 @@ public class SessionStore(string connectionString)
         return deletedUsers > 0;
     }
 
-    public SessionMembership? CreateSessionForUser(string userId, string displayName, string? requestedName = null)
+    public SessionMembership? CreateSessionForUser(
+        string userId, string displayName, string? requestedName = null, int? maxLengthHours = null)
     {
         var sessionName = NormalizeSessionName(requestedName) ?? requestedName?.Trim() ?? "Session";
         var sessionId = Guid.NewGuid().ToString();
@@ -405,14 +415,15 @@ public class SessionStore(string connectionString)
 
         using var sessionCmd = conn.CreateCommand();
         sessionCmd.CommandText = """
-            INSERT INTO app_sessions (id, session_name, invite_code, owner_user_id, created_at)
-            VALUES (@sessionId, @sessionName, @inviteCode, @ownerUserId, @createdAt)
+            INSERT INTO app_sessions (id, session_name, invite_code, owner_user_id, created_at, max_length_hours)
+            VALUES (@sessionId, @sessionName, @inviteCode, @ownerUserId, @createdAt, @maxLengthHours)
             """;
         sessionCmd.Parameters.AddWithValue("@sessionId", sessionId);
         sessionCmd.Parameters.AddWithValue("@sessionName", sessionName);
         sessionCmd.Parameters.AddWithValue("@inviteCode", inviteCode);
         sessionCmd.Parameters.AddWithValue("@ownerUserId", userId);
         sessionCmd.Parameters.AddWithValue("@createdAt", now);
+        sessionCmd.Parameters.AddWithValue("@maxLengthHours", (object?)maxLengthHours ?? DBNull.Value);
         sessionCmd.ExecuteNonQuery();
 
         UpsertMembership(conn, sessionId, userId, "runner", displayName, now);
@@ -1002,20 +1013,18 @@ public class SessionStore(string connectionString)
         return (long)(cmd.ExecuteScalar() ?? 0L) > 0;
     }
 
-    // A session's recording accumulates for as long as its invite code is reused, so a gap this
-    // large between consecutive pings is treated as the boundary of a separate, earlier run.
-    private static readonly TimeSpan RunGapThreshold = TimeSpan.FromMinutes(60);
-
     // Defensive cap on rows returned from a single windowed recording fetch.
     private const int MaxRecordingRows = 20000;
 
     public string GetRecordingAsNdjson(string sessionId)
     {
-        var latestRun = LatestRun(LoadUpdatesByTimestamp(sessionId));
-        return string.Join("\n", latestRun.Select(u => JsonSerializer.Serialize(u, _jsonOptions)));
+        var runStart = GetRunStartTimestamp(sessionId);
+        var updates = LoadUpdatesByTimestamp(sessionId);
+        var currentRun = runStart is null ? updates : updates.Where(u => u.Timestamp >= runStart.Value).ToList();
+        return string.Join("\n", currentRun.Select(u => JsonSerializer.Serialize(u, _jsonOptions)));
     }
 
-    // Admin/ops: every stored row for a session, in full, with no RunGapThreshold or
+    // Admin/ops: every stored row for a session, in full, with no max-length window or
     // MaxRecordingRows applied - for diagnosing cases where those cuts look wrong.
     public string GetAllRecordingRowsAsNdjson(string sessionId)
     {
@@ -1102,33 +1111,45 @@ public class SessionStore(string connectionString)
             LatestTimestamp: latest is null ? null : DateTimeOffset.Parse(latest));
     }
 
-    // Finds where the most recent contiguous run begins, by scanning timestamps backward from
-    // the latest and stopping at the first gap larger than RunGapThreshold.
+    // Falls back to this when a session has no max_length_hours set - pre-existing sessions, or
+    // ones created by a client that doesn't send it yet (see CreateSessionRequest.MaxLengthHours).
+    private const int DefaultMaxLengthHours = 24;
+
+    // A session's recording accumulates for as long as its invite code is reused, so replay is
+    // bounded to the session's own max length, counted back from its most recent ping - not by
+    // scanning for a gap between pings. A long within-session silence (e.g. a backcountry dead
+    // zone) no longer gets mistaken for the boundary of a separate, earlier outing.
     private DateTimeOffset? GetRunStartTimestamp(string sessionId)
     {
         using var conn = Connect();
-        using var cmd = conn.CreateCommand();
-        cmd.CommandText = """
-            SELECT timestamp
-            FROM location_updates
-            WHERE session_id = @code
-            ORDER BY timestamp DESC
-            """;
-        cmd.Parameters.AddWithValue("@code", sessionId);
-        using var reader = cmd.ExecuteReader();
 
-        DateTimeOffset? previous = null;
-        DateTimeOffset? runStart = null;
-        while (reader.Read())
+        DateTimeOffset earliest, latest;
+        using (var rangeCmd = conn.CreateCommand())
         {
-            var current = DateTimeOffset.Parse(reader.GetString(0));
-            if (previous is not null && previous.Value - current > RunGapThreshold)
-                break;
-            runStart = current;
-            previous = current;
+            rangeCmd.CommandText = """
+                SELECT MIN(timestamp), MAX(timestamp)
+                FROM location_updates
+                WHERE session_id = @code
+                """;
+            rangeCmd.Parameters.AddWithValue("@code", sessionId);
+            using var reader = rangeCmd.ExecuteReader();
+            if (!reader.Read() || reader.IsDBNull(0))
+                return null;
+            earliest = DateTimeOffset.Parse(reader.GetString(0));
+            latest = DateTimeOffset.Parse(reader.GetString(1));
         }
 
-        return runStart;
+        using var lengthCmd = conn.CreateCommand();
+        lengthCmd.CommandText = "SELECT max_length_hours FROM app_sessions WHERE id = @code";
+        lengthCmd.Parameters.AddWithValue("@code", sessionId);
+        var maxLengthHours = lengthCmd.ExecuteScalar() switch
+        {
+            null or DBNull => DefaultMaxLengthHours,
+            var value => Convert.ToInt32(value),
+        };
+
+        var cutoff = latest - TimeSpan.FromHours(maxLengthHours);
+        return cutoff > earliest ? cutoff : earliest;
     }
 
     private List<LocationUpdate> LoadUpdatesByTimestamp(string sessionId)
@@ -1158,26 +1179,6 @@ public class SessionStore(string connectionString)
             ));
         }
         return updates;
-    }
-
-    // Finds the start of the most recent contiguous run by scanning backward from the latest
-    // timestamp and stopping at the first gap larger than RunGapThreshold.
-    private static List<LocationUpdate> LatestRun(List<LocationUpdate> updatesByTimestamp)
-    {
-        if (updatesByTimestamp.Count == 0)
-            return updatesByTimestamp;
-
-        var cutoff = 0;
-        for (var i = updatesByTimestamp.Count - 1; i > 0; i--)
-        {
-            if (updatesByTimestamp[i].Timestamp - updatesByTimestamp[i - 1].Timestamp > RunGapThreshold)
-            {
-                cutoff = i;
-                break;
-            }
-        }
-
-        return updatesByTimestamp.GetRange(cutoff, updatesByTimestamp.Count - cutoff);
     }
 
     public void SaveRecording(string sessionId, string ndjsonContent)
