@@ -73,6 +73,49 @@ Defaults to `http://localhost:8080` and the local dev admin token
   the session has a valid owner; delete it via `DELETE /me` with that
   user's token if you don't want it kept around.
 
+## import-ndjson.sh
+
+Imports a bare `.ndjson` recording into a server as a brand-new session, and
+prints the invite code it was given. Unlike `import-session.sh`, it needs
+nothing but the file itself — no `info.json`, no `download-session.sh`
+directory layout — so it works for a recording obtained any other way: the
+admin panel's "Export records" button, a file from someone else, a
+hand-edited track.
+
+### Usage
+
+```bash
+scripts/import-ndjson.sh -n SESSION_NAME
+scripts/import-ndjson.sh -n SESSION_NAME -f path/to/file.ndjson
+scripts/import-ndjson.sh -n SESSION_NAME --owner "Sean"
+SERVER_URL=http://localhost:8096 ADMIN_TOKEN=dev-token scripts/import-ndjson.sh -n SESSION_NAME
+```
+
+| Option    | Default                | Description                                  |
+|-----------|------------------------|----------------------------------------------|
+| `-n`      | *(required)*           | Session name — 4-8 letters, numbers, `-`, `_` |
+| `-f`      | `imported_route.ndjson`| NDJSON file to import                         |
+| `--owner` | `Imported`             | Display name shown as the session's creator   |
+
+Defaults to `http://localhost:8080` and the local dev admin token
+(`dev-token`, from `server/appsettings.Development.json`).
+
+### Notes
+
+- An NDJSON recording holds only location rows (runner name, coordinates,
+  timestamps) — no session name and no owner. Hence `-n`, and hence the
+  throwaway owner account (`import_<name>_<timestamp>`): `app_sessions`
+  requires a real `owner_user_id`. Delete it via `DELETE /me` with that
+  user's token if you don't want it kept around.
+- The invite code is generated server-side at creation and printed at the
+  end, along with a `/code/{code}` replay URL.
+- Session names must be unique per server, so re-importing the same name
+  fails at the create step with a 409 rather than silently duplicating.
+  Delete the old session from the admin panel first.
+- Same zero-position-counts caveat as `import-session.sh`: the recording
+  upload doesn't associate rows to a user, so the admin panel's per-member
+  counts read as zero even though the session replays correctly.
+
 ## simulate-gps-track.ps1
 
 Simulates a live Dot Watcher session for testing the GPS signal-loss warning,
