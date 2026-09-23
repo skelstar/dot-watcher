@@ -85,9 +85,15 @@ USERNAME="import_$(echo "$SESSION_NAME" | tr '[:upper:]' '[:lower:]')_$(date +%s
 PASSWORD="Passw0rd!$(date +%s)"
 
 echo "==> Registering throwaway owner account ($USERNAME) ..."
-REGISTER_RESPONSE=$(curl -s -X POST "$SERVER_URL/auth/register" \
+# Plain -s (not -f): a transport failure (can't connect at all) must be told apart from an HTTP
+# error response (e.g. 409 for a duplicate username) — curl only exits non-zero for the former,
+# and -f would also swallow the latter's body, hiding the actual reason from the message below.
+if ! REGISTER_RESPONSE=$(curl -s -X POST "$SERVER_URL/auth/register" \
   -H "Content-Type: application/json" \
-  -d "{\"username\":\"$USERNAME\",\"password\":\"$PASSWORD\",\"displayName\":\"$OWNER_NAME\"}")
+  -d "{\"username\":\"$USERNAME\",\"password\":\"$PASSWORD\",\"displayName\":\"$OWNER_NAME\"}"); then
+  echo "Could not reach $SERVER_URL — is the server running there? (pass SERVER_URL=... if it's on a different port)" >&2
+  exit 1
+fi
 TOKEN=$(echo "$REGISTER_RESPONSE" | "$PY" -c "import sys,json; print(json.load(sys.stdin).get('accessToken',''))")
 
 if [[ -z "$TOKEN" ]]; then
@@ -96,9 +102,12 @@ if [[ -z "$TOKEN" ]]; then
 fi
 
 echo "==> Creating session $SESSION_NAME ..."
-SESSION_RESPONSE=$(curl -s -X POST "$SERVER_URL/sessions" \
+if ! SESSION_RESPONSE=$(curl -s -X POST "$SERVER_URL/sessions" \
   -H "Content-Type: application/json" -H "Authorization: Bearer $TOKEN" \
-  -d "{\"sessionName\":\"$SESSION_NAME\",\"displayName\":\"$OWNER_NAME\"}")
+  -d "{\"sessionName\":\"$SESSION_NAME\",\"displayName\":\"$OWNER_NAME\"}"); then
+  echo "Could not reach $SERVER_URL — is the server running there?" >&2
+  exit 1
+fi
 SESSION_ID=$(echo "$SESSION_RESPONSE" | "$PY" -c "import sys,json; print(json.load(sys.stdin).get('sessionId',''))")
 INVITE_CODE=$(echo "$SESSION_RESPONSE" | "$PY" -c "import sys,json; print(json.load(sys.stdin).get('inviteCode',''))")
 
@@ -111,11 +120,15 @@ fi
 # application/x-www-form-urlencoded, which ASP.NET then tries to parse as form data and rejects.
 echo "==> Uploading recording ..."
 UPLOAD_BODY=$(mktemp)
-UPLOAD_STATUS=$(curl -s -o "$UPLOAD_BODY" -w '%{http_code}' \
+if ! UPLOAD_STATUS=$(curl -s -o "$UPLOAD_BODY" -w '%{http_code}' \
   -X POST "$SERVER_URL/sessions/$SESSION_ID/recording" \
   -H "Authorization: Bearer $ADMIN_TOKEN" \
   -H "Content-Type: application/x-ndjson" \
-  --data-binary "@$FILE")
+  --data-binary "@$FILE"); then
+  echo "Could not reach $SERVER_URL — is the server running there?" >&2
+  rm -f "$UPLOAD_BODY"
+  exit 1
+fi
 
 if [[ "$UPLOAD_STATUS" != "200" ]]; then
   echo "  Recording upload failed (HTTP $UPLOAD_STATUS): $(cat "$UPLOAD_BODY")" >&2
