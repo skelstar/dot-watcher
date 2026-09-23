@@ -31,34 +31,56 @@ override with the `SERVER_URL` env var to point at local dev or production.
 
 ## import-session.sh
 
-Re-imports data previously saved by `download-session.sh` into a local
-server, so it shows up in *that* server's own admin panel and is replayable
-through the normal app UI. Downloading only saves files locally — it never
-touches any server's database, so a session downloaded from staging won't
-appear in `localhost`'s admin panel until it's recreated there.
+Imports a session recording into a server as a brand-new session (a new
+sessionId/invite code — never reuses the source's), so it's replayable
+through the normal app UI at the invite code it prints out.
 
-Creates a brand-new local session (a new sessionId/inviteCode — the
-original staging IDs aren't reused) using the downloaded session's name and
-owner display name, then uploads the downloaded recording and route via the
-existing admin-token-protected bulk endpoints.
+Two ways to feed it data:
+
+- **By invite code**, from a directory `download-session.sh` already saved
+  (`info.json`, `recording.ndjson`, `route.gpx`). Downloading only saves
+  files locally — it never touches any server's database, so a session
+  downloaded from staging won't appear in `localhost`'s admin panel until
+  it's recreated there. Session name, owner, and route all come from that
+  directory.
+- **By a bare NDJSON file**, with `-n`/`--name` for the session name — for a
+  recording obtained any other way: the admin panel's "Export records"
+  button, a file from someone else, a hand-edited track. A bare file
+  carries no session name or owner, so `-n` is required.
+
+Either way, it registers a throwaway owner account (`app_sessions` requires
+a real `owner_user_id`), creates the session, and uploads the recording
+(and route, if there is one) via the existing admin-token-protected
+endpoints.
 
 ### Usage
 
 ```bash
 scripts/import-session.sh CODE
 scripts/import-session.sh CODE --dir data/sessions
-SERVER_URL=http://localhost:8080 ADMIN_TOKEN=dev-token scripts/import-session.sh CODE
+
+scripts/import-session.sh -n SESSION_NAME -f path/to/file.ndjson
+scripts/import-session.sh -n SESSION_NAME -f file.ndjson --owner "Sean" --route file.gpx
+
+SERVER_URL=http://localhost:8096 ADMIN_TOKEN=dev-token scripts/import-session.sh CODE
 ```
+
+| Option    | Mode      | Default                 | Description                                    |
+|-----------|-----------|--------------------------|------------------------------------------------|
+| `CODE`    | directory | *(required)*             | Invite code to read from `--dir CODE/`          |
+| `--dir`   | directory | `data/sessions`          | Directory `download-session.sh` saved into      |
+| `-n`      | bare-file | *(required)*             | Session name — 4-8 letters, numbers, `-`, `_`   |
+| `-f`      | bare-file | *(required)*             | NDJSON file to import                           |
+| `--owner` | bare-file | `Imported`               | Display name shown as the session's creator     |
+| `--route` | bare-file | none                     | GPX file to upload as the session's route       |
 
 Defaults to `http://localhost:8080` and the local dev admin token
 (`dev-token`, from `server/appsettings.Development.json`).
 
 ### Notes
 
-- Requires `data/sessions/CODE/` to already exist (i.e. run
-  `download-session.sh CODE` first).
 - Session names must be unique per server — if you've already imported a
-  given code once, re-running will fail at the "create session" step with
+  given name once, re-running will fail at the "create session" step with
   a 409 rather than silently duplicating it. Use the admin panel (or the
   admin API) to delete the old session first if you want a clean re-import.
 - The recording/route uploads must be sent with an explicit non-form
@@ -69,52 +91,11 @@ Defaults to `http://localhost:8080` and the local dev admin token
   so the admin panel's per-member position counts will read as zero for
   imported data even though the session, recording, and route all replay
   correctly on the map.
-- Leaves behind a throwaway owner account (`import_<code>_<timestamp>`) so
-  the session has a valid owner; delete it via `DELETE /me` with that
-  user's token if you don't want it kept around.
-
-## import-ndjson.sh
-
-Imports a bare `.ndjson` recording into a server as a brand-new session, and
-prints the invite code it was given. Unlike `import-session.sh`, it needs
-nothing but the file itself — no `info.json`, no `download-session.sh`
-directory layout — so it works for a recording obtained any other way: the
-admin panel's "Export records" button, a file from someone else, a
-hand-edited track.
-
-### Usage
-
-```bash
-scripts/import-ndjson.sh -n SESSION_NAME
-scripts/import-ndjson.sh -n SESSION_NAME -f path/to/file.ndjson
-scripts/import-ndjson.sh -n SESSION_NAME --owner "Sean"
-SERVER_URL=http://localhost:8096 ADMIN_TOKEN=dev-token scripts/import-ndjson.sh -n SESSION_NAME
-```
-
-| Option    | Default                | Description                                  |
-|-----------|------------------------|----------------------------------------------|
-| `-n`      | *(required)*           | Session name — 4-8 letters, numbers, `-`, `_` |
-| `-f`      | `imported_route.ndjson`| NDJSON file to import                         |
-| `--owner` | `Imported`             | Display name shown as the session's creator   |
-
-Defaults to `http://localhost:8080` and the local dev admin token
-(`dev-token`, from `server/appsettings.Development.json`).
-
-### Notes
-
-- An NDJSON recording holds only location rows (runner name, coordinates,
-  timestamps) — no session name and no owner. Hence `-n`, and hence the
-  throwaway owner account (`import_<name>_<timestamp>`): `app_sessions`
-  requires a real `owner_user_id`. Delete it via `DELETE /me` with that
-  user's token if you don't want it kept around.
+- Leaves behind a throwaway owner account (`import_<name>_<timestamp>`);
+  delete it via `DELETE /me` with that user's token if you don't want it
+  kept around.
 - The invite code is generated server-side at creation and printed at the
   end, along with a `/code/{code}` replay URL.
-- Session names must be unique per server, so re-importing the same name
-  fails at the create step with a 409 rather than silently duplicating.
-  Delete the old session from the admin panel first.
-- Same zero-position-counts caveat as `import-session.sh`: the recording
-  upload doesn't associate rows to a user, so the admin panel's per-member
-  counts read as zero even though the session replays correctly.
 
 ## simulate-gps-track.ps1
 
