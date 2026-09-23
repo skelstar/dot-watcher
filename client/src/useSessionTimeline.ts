@@ -16,8 +16,6 @@ import {
   mergeRange,
   parseNdjson,
   positionsAtCutoff,
-  shouldPollLivePositions,
-  shouldPollLivePositionsByInvite,
   type RunnerCountdown,
   type TimeRange,
 } from './useSessionTimelineLogic.ts'
@@ -78,14 +76,10 @@ export interface SessionTimelineState {
 }
 
 export function useSessionTimeline(
-  sessionId: string | null,
   serverUrl: string,
-  accessToken: string | null,
-  inviteCode?: string | null,
+  inviteCode: string | null,
 ): SessionTimelineState {
-  const byInvite = shouldPollLivePositionsByInvite(inviteCode ?? null, accessToken)
-  const byMembership = shouldPollLivePositions(sessionId, accessToken)
-  const active = byInvite || byMembership
+  const active = Boolean(inviteCode)
   const pageVisible = usePageVisible()
 
   const [byRunner, setByRunner] = useState<Map<string, RunnerPosition[]>>(new Map())
@@ -132,12 +126,8 @@ export function useSessionTimeline(
     }
   }
 
-  const recordingBase = byInvite
-    ? `${serverUrl}/session-invites/${inviteCode}`
-    : sessionId
-    ? `${serverUrl}/sessions/${sessionId}`
-    : null
-  const headers = apiHeaders(byInvite ? undefined : accessToken)
+  const recordingBase = inviteCode ? `${serverUrl}/session-invites/${inviteCode}` : null
+  const headers = apiHeaders()
 
   // Reset all cached state when switching sessions/invites.
   useEffect(() => {
@@ -202,13 +192,11 @@ export function useSessionTimeline(
 
     async function fetchAndUpdate() {
       try {
-        const res = byInvite
-          ? await fetch(`${serverUrl}/session-invites/${inviteCode}/locations`, { headers })
-          : await fetch(`${serverUrl}/locations/${sessionId}`, { headers })
+        const res = await fetch(`${serverUrl}/session-invites/${inviteCode}/locations`, { headers })
         if (cancelled) return
         if (!res.ok) {
           setError(livePollingError(res.status))
-          if (byInvite && res.status === 404) {
+          if (res.status === 404) {
             stopped = true
             setInvalidInvite(true)
           }
@@ -238,7 +226,7 @@ export function useSessionTimeline(
       cancelled = true
       clearTimeout(timerId)
     }
-  }, [active, scrubTimeMs, pageVisible, sessionId, serverUrl, accessToken, byInvite, inviteCode]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [active, scrubTimeMs, pageVisible, serverUrl, inviteCode]) // eslint-disable-line react-hooks/exhaustive-deps
 
   function fetchWindow(sinceMs: number, untilMs: number) {
     if (!recordingBase) return

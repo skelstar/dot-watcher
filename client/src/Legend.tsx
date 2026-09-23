@@ -5,7 +5,6 @@ interface Props {
   runners: string[]
   onRunnerClick: (name: string) => void
   onFitAll: () => void
-  belowAccountBar?: boolean
   runnersWithGap?: Set<string>
   runnersSleeping?: Set<string>
   runnersWithGpsSignalLoss?: Set<string>
@@ -74,7 +73,6 @@ export default function Legend({
   runners,
   onRunnerClick,
   onFitAll,
-  belowAccountBar,
   runnersWithGap = new Set(),
   runnersSleeping = new Set(),
   runnersWithGpsSignalLoss = new Set(),
@@ -85,7 +83,7 @@ export default function Legend({
   if (runners.length === 0) return null
 
   return (
-    <div style={container(belowAccountBar)}>
+    <div style={container}>
       {runners.map(name => {
         // Mirrors the map marker's own state precedence (see Arrow.tsx / useRunnerMarkers.ts):
         // a runner is exactly one of missing/sleeping/normal, with signal-loss and satellite as
@@ -177,23 +175,21 @@ export default function Legend({
   )
 }
 
-function container(belowAccountBar?: boolean): React.CSSProperties {
-  return {
-    position: 'absolute',
-    top: belowAccountBar ? 58 : 12,
-    left: 12,
-    // Leaves a gutter clear of MapLibre's top-right NavigationControl (zoom +/-, compass), which
-    // would otherwise sit at the same right edge and visually/z-index-cover our own button.
-    right: 56,
-    maxHeight: 'calc(100vh - 24px)',
-    overflowY: 'auto',
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'flex-start',
-    gap: 6,
-    zIndex: 1,
-    pointerEvents: 'auto',
-  }
+const container: React.CSSProperties = {
+  position: 'absolute',
+  top: 12,
+  left: 12,
+  // Leaves a gutter clear of MapLibre's top-right NavigationControl (zoom +/-, compass), which
+  // would otherwise sit at the same right edge and visually/z-index-cover our own button.
+  right: 56,
+  maxHeight: 'calc(100vh - 24px)',
+  overflowY: 'auto',
+  display: 'flex',
+  flexDirection: 'column',
+  alignItems: 'flex-start',
+  gap: 6,
+  zIndex: 1,
+  pointerEvents: 'auto',
 }
 
 const row: React.CSSProperties = {

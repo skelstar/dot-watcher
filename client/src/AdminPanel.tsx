@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useState, type FormEvent, Fragment } from 'react'
 import { apiHeaders } from './apiHeaders'
+import LoadRouteButton from './LoadRouteButton.tsx'
 
 interface AdminUser {
   id: string
@@ -42,6 +43,7 @@ export default function AdminPanel({ serverUrl }: { serverUrl: string }) {
   const [expandedSessionId, setExpandedSessionId] = useState<string | null>(null)
   const [memberStats, setMemberStats] = useState<Record<string, MemberStatsState>>({})
   const [clearingRecordsId, setClearingRecordsId] = useState<string | null>(null)
+  const [uploadingRouteId, setUploadingRouteId] = useState<string | null>(null)
   const [exportingRecordsId, setExportingRecordsId] = useState<string | null>(null)
   const [selectedUserIds, setSelectedUserIds] = useState<Set<string>>(new Set())
   const [selectedSessionIds, setSelectedSessionIds] = useState<Set<string>>(new Set())
@@ -241,6 +243,26 @@ export default function AdminPanel({ serverUrl }: { serverUrl: string }) {
     }
   }
 
+  // POST /sessions/{id}/route accepts the admin bearer token as well as a session owner's user
+  // token, so route uploads live here now that the map itself is invite-code-only.
+  async function handleUploadRoute(sessionId: string, file: File) {
+    setUploadingRouteId(sessionId)
+    setError(null)
+    try {
+      const gpx = await file.text()
+      const r = await fetch(`${serverUrl}/sessions/${sessionId}/route`, {
+        method: 'POST',
+        headers: apiHeaders(token, 'web-admin'),
+        body: gpx,
+      })
+      if (!r.ok) setError(`Failed to upload route (HTTP ${r.status}).`)
+    } catch {
+      setError('Network error.')
+    } finally {
+      setUploadingRouteId(null)
+    }
+  }
+
   function timeAgo(timestamp: string) {
     try {
       const mins = Math.floor((Date.now() - new Date(timestamp).getTime()) / 60000)
@@ -434,6 +456,10 @@ export default function AdminPanel({ serverUrl }: { serverUrl: string }) {
                                     : `${stats.length} member${stats.length !== 1 ? 's' : ''}`}
                                 </span>
                                 <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                                  <LoadRouteButton
+                                    style={{ ...routeBtn, opacity: uploadingRouteId === session.sessionId ? 0.6 : 1 }}
+                                    onLoadRoute={file => void handleUploadRoute(session.sessionId, file)}
+                                  />
                                   <button
                                     style={exportBtn}
                                     onClick={e => void handleExportRecords(e, session.sessionId, session.inviteCode)}
@@ -583,6 +609,13 @@ const clearBtn: React.CSSProperties = {
 const exportBtn: React.CSSProperties = {
   ...primaryBtn,
   background: '#0ea5e9',
+  fontSize: '0.75rem',
+  padding: '0.2rem 0.5rem',
+}
+
+const routeBtn: React.CSSProperties = {
+  ...primaryBtn,
+  background: '#64748b',
   fontSize: '0.75rem',
   padding: '0.2rem 0.5rem',
 }
