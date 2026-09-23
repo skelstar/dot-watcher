@@ -12,7 +12,7 @@ export default function LoadRouteButton({ onLoadRoute, style }: Props) {
 
   return (
     <label style={style} title="Load route (GPX)">
-      Load route
+      Load GPX
       <input type="file" accept=".gpx" onChange={handleFile} style={{ display: 'none' }} />
     </label>
   )
