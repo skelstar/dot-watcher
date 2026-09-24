@@ -14,30 +14,3 @@ export interface RunnerPosition {
   // or recordings from before 2026-08-12, since the server itself defaults it the same way.
   isUltraConstrained?: boolean
 }
-
-export interface AuthenticatedUser {
-  userId: string
-  username: string
-  displayName: string
-}
-
-export interface AuthResponse {
-  accessToken: string
-  expiresAt: string
-  user: AuthenticatedUser
-}
-
-export interface SessionMembership {
-  sessionId: string
-  sessionName: string
-  inviteCode: string
-  role: 'owner' | 'runner' | 'viewer'
-  displayName: string
-  ownerDisplayName: string
-}
-
-export interface SessionMember {
-  userId: string
-  role: 'owner' | 'runner' | 'viewer'
-  displayName: string
-}

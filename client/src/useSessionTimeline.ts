@@ -16,8 +16,6 @@ import {
   mergeRange,
   parseNdjson,
   positionsAtCutoff,
-  shouldPollLivePositions,
-  shouldPollLivePositionsByInvite,
   type RunnerCountdown,
   type TimeRange,
 } from './useSessionTimelineLogic.ts'
@@ -78,14 +76,10 @@ export interface SessionTimelineState {
 }
 
 export function useSessionTimeline(
-  sessionId: string | null,
   serverUrl: string,
-  accessToken: string | null,
-  inviteCode?: string | null,
+  inviteCode: string | null,
 ): SessionTimelineState {
-  const byInvite = shouldPollLivePositionsByInvite(inviteCode ?? null, accessToken)
-  const byMembership = shouldPollLivePositions(sessionId, accessToken)
-  const active = byInvite || byMembership
+  const active = Boolean(inviteCode)
   const pageVisible = usePageVisible()
 
   const [byRunner, setByRunner] = useState<Map<string, RunnerPosition[]>>(new Map())
@@ -132,12 +126,8 @@ export function useSessionTimeline(
     }
   }
 
-  const recordingBase = byInvite
-    ? `${serverUrl}/session-invites/${inviteCode}`
-    : sessionId
-    ? `${serverUrl}/sessions/${sessionId}`
-    : null
-  const headers = apiHeaders(byInvite ? undefined : accessToken)
+  const recordingBase = inviteCode ? `${serverUrl}/session-invites/${inviteCode}` : null
+  const headers = apiHeaders()
 
   // Reset all cached state when switching sessions/invites.
   useEffect(() => {
@@ -202,13 +192,11 @@ export function useSessionTimeline(
 
     async function fetchAndUpdate() {
       try {
-        const res = byInvite
-          ? await fetch(`${serverUrl}/session-invites/${inviteCode}/locations`, { headers })
-          : await fetch(`${serverUrl}/locations/${sessionId}`, { headers })
+        const res = await fetch(`${serverUrl}/session-invites/${inviteCode}/locations`, { headers })
         if (cancelled) return
         if (!res.ok) {
           setError(livePollingError(res.status))
-          if (byInvite && res.status === 404) {
+          if (res.status === 404) {
             stopped = true
             setInvalidInvite(true)
           }
@@ -238,7 +226,7 @@ export function useSessionTimeline(
       cancelled = true
       clearTimeout(timerId)
     }
-  }, [active, scrubTimeMs, pageVisible, sessionId, serverUrl, accessToken, byInvite, inviteCode]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [active, scrubTimeMs, pageVisible, serverUrl, inviteCode]) // eslint-disable-line react-hooks/exhaustive-deps
 
   function fetchWindow(sinceMs: number, untilMs: number) {
     if (!recordingBase) return
@@ -301,8 +289,16 @@ export function useSessionTimeline(
     setScrubTimeMs(null)
   }
 
+  // Starting cold (never scrubbed) defaults to the beginning of the run, the same as any video
+  // player starting playback with no prior seek — without this, pressing Play before ever
+  // touching the scrubber silently did nothing, since there was no "here" to play from yet.
   function play() {
-    if (scrubTimeMs === null) return
+    const startAt = scrubTimeMs ?? effectiveRunStartMs
+    if (startAt === null) return
+    if (scrubTimeMs === null) {
+      ensureCovered(startAt)
+      setScrubTimeMs(startAt)
+    }
     playingRef.current = true
     setPlaying(true)
   }
@@ -347,6 +343,16 @@ export function useSessionTimeline(
   const polledLatestMs = useMemo(() => latestActivityMs(byRunner), [byRunner])
   const lastActivityMs = useMemo(() => maxOrNull(polledLatestMs, metaLatestMs), [polledLatestMs, metaLatestMs])
   const isLive = useMemo(() => isSessionLive(lastActivityMs, nowMs, LIVE_STALE_MS), [lastActivityMs, nowMs])
+
+  // A finished session's resting view defaults to its start rather than "now" (scrubTimeMs stays
+  // null until this fires) — otherwise the scrubber reads as sitting at the end, since "now" for
+  // a recording from weeks ago is well past every real position. A still-live session skips this
+  // and stays in follow mode instead, tracking the actual live position as it arrives.
+  useEffect(() => {
+    if (!active || scrubTimeMs !== null || isLive || effectiveRunStartMs === null) return
+    ensureCovered(effectiveRunStartMs)
+    setScrubTimeMs(effectiveRunStartMs)
+  }, [active, scrubTimeMs, isLive, effectiveRunStartMs]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Flags runners whose device can't currently determine a heading — CoreLocation reports
   // heading as null when its course confidence is too low, which tends to coincide with the
