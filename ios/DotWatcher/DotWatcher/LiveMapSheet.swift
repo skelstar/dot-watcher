@@ -13,6 +13,7 @@ struct LiveMapSheet: View {
                 currentRunnerName: location.runnerName,
                 currentCoordinate: location.currentCoordinate,
                 currentHeading: location.currentHeading,
+                routeCoordinates: location.routeCoordinates,
                 followedRunnerName: $followedRunnerName,
                 fitAllTrigger: fitAllTrigger,
                 visibleFraction: visibleFraction,

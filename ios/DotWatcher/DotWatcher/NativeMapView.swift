@@ -16,6 +16,8 @@ struct NativeMapView: View {
     /// `POST /location` round-trip.
     var currentCoordinate: CLLocationCoordinate2D?
     var currentHeading: Double?
+    /// The session's GPX route, drawn as a line under the runner pins; empty draws nothing.
+    var routeCoordinates: [CLLocationCoordinate2D] = []
     /// The runner the map should stay centered on, set by tapping their avatar in the
     /// participants grid. Cleared (by this view) once that runner no longer has a live pin,
     /// so the selection UI upstream never points at a runner who's stopped tracking.
@@ -73,6 +75,10 @@ struct NativeMapView: View {
     var body: some View {
         TimelineView(.periodic(from: .now, by: 1)) { context in
             Map(position: $cameraPosition) {
+                if routeCoordinates.count > 1 {
+                    MapPolyline(coordinates: routeCoordinates)
+                        .stroke(Color(red: 0.12, green: 0.44, blue: 0.92).opacity(0.85), lineWidth: 3)
+                }
                 ForEach(pins) { pin in
                     Annotation("", coordinate: pin.coordinate) {
                         let age = pin.timestamp.map { context.date.timeIntervalSince($0) }

@@ -722,19 +722,6 @@ public class SessionStore(string connectionString)
         return blocked;
     }
 
-    // Route management is an ownership action, not a membership role — session_members.role is
-    // only ever "runner"/"viewer" (see UpsertMembership), while app_sessions.owner_user_id is the
-    // actual creator/owner concept.
-    public bool CanManageRoute(string sessionId, string userId)
-    {
-        using var conn = Connect();
-        using var cmd = conn.CreateCommand();
-        cmd.CommandText = "SELECT COUNT(1) FROM app_sessions WHERE id = @sessionId AND owner_user_id = @userId";
-        cmd.Parameters.AddWithValue("@sessionId", sessionId);
-        cmd.Parameters.AddWithValue("@userId", userId);
-        return (long)(cmd.ExecuteScalar() ?? 0L) > 0;
-    }
-
     public IReadOnlyList<SessionRunner> GetSessionRunners(string sessionId, string? callerUserId = null)
     {
         using var conn = Connect();

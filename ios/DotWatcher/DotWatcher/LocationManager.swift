@@ -57,6 +57,10 @@ struct SessionMembership: Codable, Identifiable {
     let participants: [SessionRunner]?
 }
 
+private struct RouteUploadTokenResponse: Decodable {
+    let token: String
+}
+
 struct BlockedUser: Codable, Identifiable, Hashable {
     var id: String { userId }
 
@@ -112,6 +116,9 @@ final class LocationManager {
     private(set) var currentUser: AppUser?
     private(set) var memberships: [SessionMembership] = []
     private(set) var recentSessions: [SessionMembership] = []
+    /// The active session's GPX route (track points), empty when it has none. Kept in sync by `loadRoute()`.
+    private(set) var routeCoordinates: [CLLocationCoordinate2D] = []
+    var hasRoute: Bool { !routeCoordinates.isEmpty }
     private(set) var isOffline = false
     private(set) var rawIsUltraConstrained = false
     // Hidden override for exercising the satellite UI without a real Direct-to-Cell dead zone
@@ -446,6 +453,51 @@ final class LocationManager {
     func selectSession(_ membership: SessionMembership) {
         sessionId = membership.sessionId
         status = membership.role == "viewer" ? "Viewer only" : "Ready"
+    }
+
+    /// URL of the web route-upload page for the active session, carrying a short-lived upload
+    /// token in the fragment (the web client has no sign-in). The server returns 403 to
+    /// non-members.
+    func createRouteUploadURL() async throws -> URL {
+        guard let membership = activeMembership else { throw DotWatcherAPIError.badResponse(0, "No active session.") }
+        let issued: RouteUploadTokenResponse = try await send(
+            path: "/sessions/\(membership.sessionId)/route-upload-token",
+            method: "POST"
+        )
+        var components = URLComponents(
+            url: webBaseURL.appendingPathComponent("route-upload/\(membership.sessionId)"),
+            resolvingAgainstBaseURL: false
+        )
+        components?.fragment = "token=\(issued.token)"
+        guard let url = components?.url else { throw DotWatcherAPIError.network }
+        return url
+    }
+
+    /// Fetches the active session's GPX route by invite code (no auth needed). A 404 means the
+    /// session has no route; any other failure keeps whatever route is already loaded.
+    func loadRoute() async {
+        guard let inviteCode = activeMembership?.inviteCode,
+              let url = URL(string: serverBaseURL.absoluteString + "/session-invites/\(inviteCode)/route")
+        else {
+            routeCoordinates = []
+            return
+        }
+
+        var request = URLRequest(url: url)
+        request.setValue(UIDevice.current.name, forHTTPHeaderField: "X-Device-Name")
+        request.setValue(Self.deviceId, forHTTPHeaderField: "X-Device-Id")
+        request.setValue(String(apiVersion), forHTTPHeaderField: "X-Api-Version")
+        request.setValue("ios", forHTTPHeaderField: "X-Client-Id")
+
+        guard let (data, response) = try? await URLSession.shared.data(for: request),
+              let statusCode = (response as? HTTPURLResponse)?.statusCode
+        else { return }
+
+        if statusCode == 404 {
+            routeCoordinates = []
+        } else if (200..<300).contains(statusCode) {
+            routeCoordinates = GpxRouteParser.parse(data)
+        }
     }
 
     func leaveSession(sessionId code: String) async throws {

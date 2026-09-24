@@ -12,6 +12,9 @@ struct ContentView: View {
     @State private var showUpdateRequired: Bool = false
     @State private var showLeaveConfirm: Bool = false
     @State private var showShareConsent: Bool = false
+    /// The web route-upload page while it's open in the in-app browser; nil otherwise.
+    @State private var routeUploadPage: IdentifiableURL?
+    @State private var routeUploadError: String?
     /// Display name of the participant a touch-and-hold just targeted, showing the block
     /// action sheet; nil when no sheet is up.
     @State private var blockCandidateName: String?
@@ -101,6 +104,24 @@ struct ContentView: View {
                 if location.runnerName.trimmingCharacters(in: .whitespaces).isEmpty {
                     showNameEntry = true
                 }
+            }
+            .fullScreenCover(item: $routeUploadPage, onDismiss: {
+                Task { await location.loadRoute() }
+            }) { page in
+                SafariView(url: page.url)
+                    .ignoresSafeArea()
+            }
+            .alert("Couldn't add a route", isPresented: Binding(
+                get: { routeUploadError != nil },
+                set: { if !$0 { routeUploadError = nil } }
+            )) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                if let routeUploadError { Text(routeUploadError) }
+            }
+            // Keeps the route in step with the active session (switching, joining, leaving).
+            .task(id: location.activeMembership?.inviteCode) {
+                await location.loadRoute()
             }
             .fullScreenCover(isPresented: $showUpdateRequired) {
                 UpdateRequiredView()
@@ -405,19 +426,47 @@ struct ContentView: View {
                 .buttonStyle(.plain)
             }
             if location.isAuthenticated {
-                Button { showAuth = true } label: {
-                    Image(systemName: "person.crop.circle")
+                Menu {
+                    if location.activeMembership != nil {
+                        Button {
+                            Task { await openRouteUpload() }
+                        } label: {
+                            Label(
+                                location.hasRoute ? "Replace route (GPX)…" : "Add route (GPX)…",
+                                systemImage: "point.topleft.down.to.point.bottomright.curvepath"
+                            )
+                        }
+                        Divider()
+                    }
+                    Button { showAuth = true } label: {
+                        Label("Account", systemImage: "person.crop.circle")
+                    }
+                    Button { showHelp = true } label: {
+                        Label("Help", systemImage: "questionmark.circle")
+                    }
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                        .font(.title)
+                        .foregroundStyle(.primary)
+                }
+            } else {
+                Button { showHelp = true } label: {
+                    Image(systemName: "questionmark.circle")
                         .font(.title)
                         .foregroundStyle(.primary)
                 }
                 .buttonStyle(.plain)
             }
-            Button { showHelp = true } label: {
-                Image(systemName: "questionmark.circle")
-                    .font(.title)
-                    .foregroundStyle(.primary)
-                }
-                .buttonStyle(.plain)
+        }
+    }
+
+    /// Asks the server for a short-lived upload link and opens the web route-upload page in an
+    /// in-app browser. The route is refetched when that browser is dismissed.
+    private func openRouteUpload() async {
+        do {
+            routeUploadPage = IdentifiableURL(url: try await location.createRouteUploadURL())
+        } catch {
+            routeUploadError = error.localizedDescription
         }
     }
 
