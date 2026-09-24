@@ -20,7 +20,7 @@ function makeArrowImage(): { width: number; height: number; data: Uint8Array } {
   canvas.width = size
   canvas.height = size
   const ctx = canvas.getContext('2d')!
-  ctx.fillStyle = '#1f6feb'
+  ctx.fillStyle = '#fff' // white, so it stands out on the orange route line
   ctx.beginPath()
   ctx.moveTo(2, 3)
   ctx.lineTo(14, 8)
@@ -145,7 +145,7 @@ export function useRouteLayer(
         type: 'line',
         source: SOURCE_ID,
         layout: { 'line-join': 'round', 'line-cap': 'round' },
-        paint: { 'line-color': '#1f6feb', 'line-width': 3, 'line-opacity': 0.85 },
+        paint: { 'line-color': '#fc4c02', 'line-width': 5, 'line-opacity': 0.9 },
       })
       // Repeats an arrow icon along the line, auto-oriented to match its direction (symbol-placement:
       // 'line' + rotation-alignment: 'map' rotates each icon to the line's local bearing), so viewers

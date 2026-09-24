@@ -29,6 +29,7 @@ builder.Host.UseSerilog((ctx, services, config) =>
 
 builder.Services.AddSingleton<BearerTokenAuth>();
 builder.Services.AddSingleton<UserTokenAuth>();
+builder.Services.AddSingleton<RouteUploadTokenAuth>();
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<AuthAttemptLimiter>();
 builder.Services.AddSingleton(sp =>
