@@ -7,7 +7,7 @@ using NpgsqlTypes;
 
 namespace DotWatcher.Server;
 
-public class SessionStore(string connectionString)
+public class SessionStore(string connectionString) : IDisposable
 {
     private static readonly JsonSerializerOptions _jsonOptions = new()
     {
@@ -219,6 +219,11 @@ public class SessionStore(string connectionString)
     }
 
     private NpgsqlConnection Connect() => _dataSource.OpenConnection();
+
+    // The DI container disposes singletons it created, so the data source's connection pool is
+    // closed when the host shuts down rather than lingering until the process exits (which, in
+    // tests that spin up a host per test, exhausted Postgres's connection limit).
+    public void Dispose() => _dataSource.Dispose();
 
     public bool CreateUser(UserAccount account)
     {
