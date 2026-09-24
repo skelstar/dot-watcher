@@ -1052,6 +1052,44 @@ public class SessionsApiTests
     }
 
     [Fact]
+    public async Task DeleteRoute_AsMember_RemovesRoute()
+    {
+        using var factory = new DotWatcherApiFactory();
+        using var client = factory.CreateClient();
+        var ownerToken = await AuthTestHelpers.RegisterAsync(client, "owner", "Owner");
+        var session = await AuthTestHelpers.CreateSessionAsync(client, ownerToken);
+        var memberToken = await AuthTestHelpers.RegisterAsync(client, "member", "Member");
+        await AuthTestHelpers.JoinSessionAsync(client, memberToken, session.InviteCode);
+
+        using var upload = AuthTestHelpers.WithUserToken(
+            HttpMethod.Post, $"/sessions/{session.SessionId}/route", ownerToken);
+        upload.Content = new StringContent(SampleGpx, Encoding.UTF8, "application/gpx+xml");
+        Assert.Equal(HttpStatusCode.OK, (await client.SendAsync(upload)).StatusCode);
+
+        var delete = await SendWithUserTokenAsync(
+            client, HttpMethod.Delete, $"/sessions/{session.SessionId}/route", memberToken);
+
+        Assert.Equal(HttpStatusCode.NoContent, delete.StatusCode);
+        var route = await client.GetAsync($"/session-invites/{session.InviteCode}/route");
+        Assert.Equal(HttpStatusCode.NotFound, route.StatusCode);
+    }
+
+    [Fact]
+    public async Task DeleteRoute_AsNonMember_ReturnsForbidden()
+    {
+        using var factory = new DotWatcherApiFactory();
+        using var client = factory.CreateClient();
+        var ownerToken = await AuthTestHelpers.RegisterAsync(client, "owner", "Owner");
+        var session = await AuthTestHelpers.CreateSessionAsync(client, ownerToken);
+        var outsiderToken = await AuthTestHelpers.RegisterAsync(client, "outsider", "Outsider");
+
+        var response = await SendWithUserTokenAsync(
+            client, HttpMethod.Delete, $"/sessions/{session.SessionId}/route", outsiderToken);
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    [Fact]
     public async Task UploadRoute_WithRouteUploadTokenForAnotherSession_ReturnsUnauthorized()
     {
         using var factory = new DotWatcherApiFactory();

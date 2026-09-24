@@ -17,7 +17,7 @@ token -> user picks a GPX file there -> server saves it -> app refetches and dra
 - Token (`Auth/RouteUploadTokenAuth.cs`): HMAC-signed, one session + route upload only, 15 min.
 - `POST /sessions/{id}/route` also accepts this token (admin / member token paths unchanged).
 - Not owner-restricted: any member can add/replace (owner check removed by decision).
-- Optional: let member delete their route (`DELETE` via `CanManageRoute`) for "Remove route".
+- `DELETE /sessions/{id}/route` also accepts any session member (iOS "Remove route").
 
 ## 2. Web (`client/`)
 - New route `/route-upload/{sessionId}` in `parseUrl` (App.tsx); read token from `location.hash`,
@@ -42,8 +42,8 @@ token -> user picks a GPX file there -> server saves it -> app refetches and dra
 Native file picker, "Open in DotWatcher" share-sheet import, route status row on the main screen.
 
 ## Status
-Built: server (+tests), web page, iOS (menu, in-app browser, route fetch, polyline). iOS is
-unbuilt/untested (no Xcode on the dev machine); route delete/remove not done.
+Built: server (+tests), web page, iOS (menu, in-app browser, route fetch, polyline, remove route). iOS is
+unbuilt/untested (no Xcode on the dev machine).
 
 ## Verification
 CI only (AGENTS.md); iOS visual check via the build-ios-simulator skill.

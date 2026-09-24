@@ -473,6 +473,18 @@ final class LocationManager {
         return url
     }
 
+    /// Deletes the active session's GPX route. A 404 (already gone) counts as success.
+    func removeRoute() async throws {
+        guard let token = accessToken else { throw DotWatcherAPIError.missingToken }
+        guard let membership = activeMembership else { throw DotWatcherAPIError.badResponse(0, "No active session.") }
+        do {
+            try await sendEmpty(path: "/sessions/\(membership.sessionId)/route", method: "DELETE", token: token)
+        } catch DotWatcherAPIError.badResponse(404, _) {
+            // Nothing to remove — same end state.
+        }
+        routeCoordinates = []
+    }
+
     /// Fetches the active session's GPX route by invite code (no auth needed). A 404 means the
     /// session has no route; any other failure keeps whatever route is already loaded.
     func loadRoute() async {

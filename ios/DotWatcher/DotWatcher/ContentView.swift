@@ -15,6 +15,7 @@ struct ContentView: View {
     /// The web route-upload page while it's open in the in-app browser; nil otherwise.
     @State private var routeUploadPage: IdentifiableURL?
     @State private var routeUploadError: String?
+    @State private var showRemoveRouteConfirm: Bool = false
     /// Display name of the participant a touch-and-hold just targeted, showing the block
     /// action sheet; nil when no sheet is up.
     @State private var blockCandidateName: String?
@@ -111,7 +112,18 @@ struct ContentView: View {
                 SafariView(url: page.url)
                     .ignoresSafeArea()
             }
-            .alert("Couldn't add a route", isPresented: Binding(
+            .alert("Remove route?", isPresented: $showRemoveRouteConfirm) {
+                Button("Remove", role: .destructive) {
+                    Task {
+                        do { try await location.removeRoute() }
+                        catch { routeUploadError = error.localizedDescription }
+                    }
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("This removes the route for everyone in the session.")
+            }
+            .alert("Couldn't update the route", isPresented: Binding(
                 get: { routeUploadError != nil },
                 set: { if !$0 { routeUploadError = nil } }
             )) {
@@ -435,6 +447,13 @@ struct ContentView: View {
                                 location.hasRoute ? "Replace route (GPX)…" : "Add route (GPX)…",
                                 systemImage: "point.topleft.down.to.point.bottomright.curvepath"
                             )
+                        }
+                        if location.hasRoute {
+                            Button(role: .destructive) {
+                                showRemoveRouteConfirm = true
+                            } label: {
+                                Label("Remove route", systemImage: "trash")
+                            }
                         }
                         Divider()
                     }

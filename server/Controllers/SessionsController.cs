@@ -490,19 +490,30 @@ public class SessionsController(
         return gpx is null ? NotFound() : Content(gpx, "application/gpx+xml");
     }
 
-    /// <summary>Admin/ops: deletes a session's saved GPX route.</summary>
+    /// <summary>Deletes a session's saved GPX route. Accepts either the admin bearer token or a session member's user token.</summary>
     [HttpDelete("/sessions/{sessionId}/route")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public IActionResult DeleteRoute(string sessionId)
     {
         if (!auth.IsAuthorized(Request))
-            return Unauthorized();
+        {
+            if (!userAuth.TryAuthenticate(Request, out var user))
+                return Unauthorized();
 
-        if (string.IsNullOrWhiteSpace(sessionId))
+            if (string.IsNullOrWhiteSpace(sessionId))
+                return BadRequest(new { error = "Invalid session ID." });
+
+            if (!store.CanReadSession(sessionId, user.UserId))
+                return StatusCode(StatusCodes.Status403Forbidden);
+        }
+        else if (string.IsNullOrWhiteSpace(sessionId))
+        {
             return BadRequest(new { error = "Invalid session ID." });
+        }
 
         if (!store.DeleteRoute(sessionId))
             return NotFound();
