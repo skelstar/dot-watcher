@@ -13,6 +13,19 @@ interface Props {
 
 type UploadState = 'idle' | 'uploading' | 'done'
 
+// The token is "base64url({sessionId}|{expiresUnixSeconds}).signature" (see the server's
+// RouteUploadTokenAuth) — the expiry can be read without any secret, purely to warn the user.
+// The server remains the only authority on whether the token is still valid.
+function tokenExpiresAtMs(token: string): number | null {
+  try {
+    const payload = token.split('.')[0].replace(/-/g, '+').replace(/_/g, '/')
+    const seconds = Number(atob(payload).split('|').pop())
+    return Number.isFinite(seconds) ? seconds * 1000 : null
+  } catch {
+    return null
+  }
+}
+
 // Opened by the iOS app (in an in-app browser) with a short-lived, single-session upload token in
 // the URL fragment — the fragment never reaches the server or its logs. The web client has no
 // sign-in, so that token is the only credential. It's moved into state and stripped from the
@@ -24,6 +37,7 @@ export default function RouteUploadPage({ serverUrl, sessionId }: Props) {
     const value = new URLSearchParams(window.location.hash.replace(/^#/, '')).get('token')
     return value || null
   })
+  const [expiresAtMs] = useState<number | null>(() => (token ? tokenExpiresAtMs(token) : null))
   const [gpx, setGpx] = useState<string | null>(null)
   const [fileName, setFileName] = useState<string | null>(null)
   const [coordinates, setCoordinates] = useState<[number, number][] | null>(null)
@@ -105,6 +119,7 @@ export default function RouteUploadPage({ serverUrl, sessionId }: Props) {
           <p style={successText}>Route added. You can close this page and return to the app.</p>
         ) : (
           <>
+            <p style={warning}><span aria-hidden="true">⚠️</span> {expiryWarning(expiresAtMs)}</p>
             <p style={hint}>Choose a GPX file for your session. You&rsquo;ll see a preview before it&rsquo;s uploaded.</p>
             <div style={actions}>
               <label style={pickButton}>
@@ -149,7 +164,23 @@ const header: React.CSSProperties = {
   borderBottom: '1px solid #e5e5e5',
 }
 
+function expiryWarning(expiresAtMs: number | null): string {
+  if (expiresAtMs === null) return 'This upload link only works for 15 minutes.'
+  const minutesLeft = Math.ceil((expiresAtMs - Date.now()) / 60000)
+  if (minutesLeft <= 0) return 'This upload link has expired. Go back to the app and tap “Add route” again.'
+  const time = new Date(expiresAtMs).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+  return `This upload link expires in ${minutesLeft} minute${minutesLeft === 1 ? '' : 's'} (at ${time}). Upload before then.`
+}
+
 const title: React.CSSProperties = { margin: '0 0 4px', fontSize: 20 }
+const warning: React.CSSProperties = {
+  margin: '0 0 12px',
+  padding: '8px 12px',
+  borderRadius: 8,
+  fontSize: 14,
+  background: '#fff4e5',
+  color: '#8a4b00',
+}
 const hint: React.CSSProperties = { margin: '0 0 12px', fontSize: 14, color: '#555' }
 const actions: React.CSSProperties = { display: 'flex', gap: 8, flexWrap: 'wrap' }
 const fileLabel: React.CSSProperties = { margin: '8px 0 0', fontSize: 13, color: '#555' }

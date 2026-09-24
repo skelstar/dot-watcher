@@ -77,7 +77,7 @@ struct NativeMapView: View {
             Map(position: $cameraPosition) {
                 if routeCoordinates.count > 1 {
                     MapPolyline(coordinates: routeCoordinates)
-                        .stroke(Color(red: 0.12, green: 0.44, blue: 0.92).opacity(0.85), lineWidth: 3)
+                        .stroke(Color(red: 252 / 255, green: 76 / 255, blue: 2 / 255).opacity(0.9), lineWidth: 5) // Strava orange
                 }
                 ForEach(pins) { pin in
                     Annotation("", coordinate: pin.coordinate) {
