@@ -20,6 +20,7 @@ import ReplayControls from './ReplayControls.tsx'
 import MapPlayButton from './MapPlayButton.tsx'
 import LegalPage from './LegalPage.tsx'
 import AdminPanel from './AdminPanel.tsx'
+import RouteUploadPage from './RouteUploadPage.tsx'
 import LandingPage from './LandingPage.tsx'
 import InitialsBadge from './components/InitialsBadge.tsx'
 import { useRunnerMarkers } from './useRunnerMarkers.ts'
@@ -41,25 +42,29 @@ interface RouteState {
   legalPage: 'privacy' | 'terms' | null
   isAdmin: boolean
   isLanding: boolean
+  routeUploadSessionId: string | null
 }
 
 // The only routes the app generates: '/' (landing) and '/code/{code}' (shared via the iOS
-// ShareLink), plus /admin and the legal pages. Watching is invite-code only — anything else
+// ShareLink), plus /admin, the legal pages and /route-upload/{sessionId} (opened by the iOS app
+// with an upload token in the URL fragment). Watching is invite-code only — anything else
 // falls back to the landing page.
 function parseUrl(): RouteState {
   const parts = window.location.pathname.replace(/^\//, '').split('/')
   const norm = (s: string) => s.toUpperCase() || null
-  if (parts[0] === 'admin') return { inviteCode: null, legalPage: null, isAdmin: true, isLanding: false }
-  if (parts[0] === 'privacy') return { inviteCode: null, legalPage: 'privacy', isAdmin: false, isLanding: false }
-  if (parts[0] === 'terms') return { inviteCode: null, legalPage: 'terms', isAdmin: false, isLanding: false }
-  if (parts[0] === 'code') return { inviteCode: norm(parts[1] ?? ''), legalPage: null, isAdmin: false, isLanding: false }
-  return { inviteCode: null, legalPage: null, isAdmin: false, isLanding: true }
+  const base = { inviteCode: null, legalPage: null, isAdmin: false, isLanding: false, routeUploadSessionId: null }
+  if (parts[0] === 'admin') return { ...base, isAdmin: true }
+  if (parts[0] === 'privacy') return { ...base, legalPage: 'privacy' }
+  if (parts[0] === 'terms') return { ...base, legalPage: 'terms' }
+  if (parts[0] === 'route-upload' && parts[1]) return { ...base, routeUploadSessionId: parts[1] }
+  if (parts[0] === 'code') return { ...base, inviteCode: norm(parts[1] ?? '') }
+  return { ...base, isLanding: true }
 }
 
 export default function App() {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<MapLibreMap | null>(null)
-  const { inviteCode, legalPage, isAdmin, isLanding } = parseUrl()
+  const { inviteCode, legalPage, isAdmin, isLanding, routeUploadSessionId } = parseUrl()
   const [routeCoordinates, setRouteCoordinates] = useState<[number, number][] | null>(null)
   const [mapStyleId, setMapStyleId] = useState<MapStyleId>(DEFAULT_MAP_STYLE_ID)
 
@@ -145,6 +150,10 @@ export default function App() {
 
   if (isAdmin) {
     return <AdminPanel serverUrl={SERVER_URL} />
+  }
+
+  if (routeUploadSessionId) {
+    return <RouteUploadPage serverUrl={SERVER_URL} sessionId={routeUploadSessionId} />
   }
 
   if (legalPage) {

@@ -7,7 +7,7 @@ using NpgsqlTypes;
 
 namespace DotWatcher.Server;
 
-public class SessionStore(string connectionString)
+public class SessionStore(string connectionString) : IDisposable
 {
     private static readonly JsonSerializerOptions _jsonOptions = new()
     {
@@ -219,6 +219,11 @@ public class SessionStore(string connectionString)
     }
 
     private NpgsqlConnection Connect() => _dataSource.OpenConnection();
+
+    // The DI container disposes singletons it created, so the data source's connection pool is
+    // closed when the host shuts down rather than lingering until the process exits (which, in
+    // tests that spin up a host per test, exhausted Postgres's connection limit).
+    public void Dispose() => _dataSource.Dispose();
 
     public bool CreateUser(UserAccount account)
     {
@@ -720,19 +725,6 @@ public class SessionStore(string connectionString)
         while (reader.Read())
             blocked.Add(new BlockedUser(reader.GetString(0), reader.GetString(1), reader.GetString(2)));
         return blocked;
-    }
-
-    // Route management is an ownership action, not a membership role — session_members.role is
-    // only ever "runner"/"viewer" (see UpsertMembership), while app_sessions.owner_user_id is the
-    // actual creator/owner concept.
-    public bool CanManageRoute(string sessionId, string userId)
-    {
-        using var conn = Connect();
-        using var cmd = conn.CreateCommand();
-        cmd.CommandText = "SELECT COUNT(1) FROM app_sessions WHERE id = @sessionId AND owner_user_id = @userId";
-        cmd.Parameters.AddWithValue("@sessionId", sessionId);
-        cmd.Parameters.AddWithValue("@userId", userId);
-        return (long)(cmd.ExecuteScalar() ?? 0L) > 0;
     }
 
     public IReadOnlyList<SessionRunner> GetSessionRunners(string sessionId, string? callerUserId = null)

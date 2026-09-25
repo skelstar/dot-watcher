@@ -8,6 +8,7 @@ public class SessionsController(
     SessionStore store,
     BearerTokenAuth auth,
     UserTokenAuth userAuth,
+    RouteUploadTokenAuth routeUploadAuth,
     ILogger<SessionsController> logger) : ControllerBase
 {
     /// <summary>Lists the caller's active session memberships.</summary>
@@ -396,7 +397,27 @@ public class SessionsController(
         return NoContent();
     }
 
-    /// <summary>Replaces a session's GPX route with an uploaded body (raw XML text). Accepts either the admin bearer token or the session owner's user token.</summary>
+    /// <summary>Issues a short-lived token that lets the web route-upload page add a route to this session. Any session member.</summary>
+    [HttpPost("/sessions/{sessionId}/route-upload-token")]
+    [ProducesResponseType(typeof(IssuedRouteUploadToken), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    public IActionResult CreateRouteUploadToken(string sessionId)
+    {
+        if (!userAuth.TryAuthenticate(Request, out var user))
+            return Unauthorized();
+
+        if (string.IsNullOrWhiteSpace(sessionId))
+            return BadRequest(new { error = "Invalid session ID." });
+
+        if (!store.CanReadSession(sessionId, user.UserId))
+            return StatusCode(StatusCodes.Status403Forbidden);
+
+        return Ok(routeUploadAuth.CreateToken(sessionId));
+    }
+
+    /// <summary>Replaces a session's GPX route with an uploaded body (raw XML text). Accepts the admin bearer token, a session member's user token, or a route-upload token for this session.</summary>
     [HttpPost("/sessions/{sessionId}/route")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -404,7 +425,11 @@ public class SessionsController(
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     public async Task<IActionResult> UploadRoute(string sessionId)
     {
-        if (!auth.IsAuthorized(Request))
+        if (!auth.IsAuthorized(Request) && routeUploadAuth.IsAuthorized(Request, sessionId))
+        {
+            // Authorized by a route-upload token scoped to this session; nothing more to check.
+        }
+        else if (!auth.IsAuthorized(Request))
         {
             if (!userAuth.TryAuthenticate(Request, out var user))
                 return Unauthorized();
@@ -412,7 +437,7 @@ public class SessionsController(
             if (string.IsNullOrWhiteSpace(sessionId))
                 return BadRequest(new { error = "Invalid session ID." });
 
-            if (!store.CanManageRoute(sessionId, user.UserId))
+            if (!store.CanReadSession(sessionId, user.UserId))
                 return StatusCode(StatusCodes.Status403Forbidden);
         }
         else if (string.IsNullOrWhiteSpace(sessionId))
@@ -465,19 +490,30 @@ public class SessionsController(
         return gpx is null ? NotFound() : Content(gpx, "application/gpx+xml");
     }
 
-    /// <summary>Admin/ops: deletes a session's saved GPX route.</summary>
+    /// <summary>Deletes a session's saved GPX route. Accepts either the admin bearer token or a session member's user token.</summary>
     [HttpDelete("/sessions/{sessionId}/route")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public IActionResult DeleteRoute(string sessionId)
     {
         if (!auth.IsAuthorized(Request))
-            return Unauthorized();
+        {
+            if (!userAuth.TryAuthenticate(Request, out var user))
+                return Unauthorized();
 
-        if (string.IsNullOrWhiteSpace(sessionId))
+            if (string.IsNullOrWhiteSpace(sessionId))
+                return BadRequest(new { error = "Invalid session ID." });
+
+            if (!store.CanReadSession(sessionId, user.UserId))
+                return StatusCode(StatusCodes.Status403Forbidden);
+        }
+        else if (string.IsNullOrWhiteSpace(sessionId))
+        {
             return BadRequest(new { error = "Invalid session ID." });
+        }
 
         if (!store.DeleteRoute(sessionId))
             return NotFound();

@@ -989,6 +989,147 @@ public class SessionsApiTests
         return await client.SendAsync(request);
     }
 
+    private const string SampleGpx =
+        "<gpx version=\"1.1\"><trk><trkseg><trkpt lat=\"-41.28\" lon=\"174.77\"/></trkseg></trk></gpx>";
+
+    private record RouteUploadTokenResponse(string Token, DateTimeOffset ExpiresAt);
+
+    [Fact]
+    public async Task CreateRouteUploadToken_AsOwner_ReturnsTokenThatUploadsRoute()
+    {
+        using var factory = new DotWatcherApiFactory();
+        using var client = factory.CreateClient();
+        var ownerToken = await AuthTestHelpers.RegisterAsync(client, "owner", "Owner");
+        var session = await AuthTestHelpers.CreateSessionAsync(client, ownerToken);
+
+        var tokenResponse = await SendWithUserTokenAsync(
+            client, HttpMethod.Post, $"/sessions/{session.SessionId}/route-upload-token", ownerToken);
+        Assert.Equal(HttpStatusCode.OK, tokenResponse.StatusCode);
+        var issued = await tokenResponse.Content.ReadFromJsonAsync<RouteUploadTokenResponse>();
+        Assert.NotNull(issued);
+        Assert.True(issued.ExpiresAt > DateTimeOffset.UtcNow);
+
+        using var upload = AuthTestHelpers.WithUserToken(
+            HttpMethod.Post, $"/sessions/{session.SessionId}/route", issued.Token);
+        upload.Content = new StringContent(SampleGpx, Encoding.UTF8, "application/gpx+xml");
+        var uploadResponse = await client.SendAsync(upload);
+        Assert.Equal(HttpStatusCode.OK, uploadResponse.StatusCode);
+
+        var route = await client.GetAsync($"/session-invites/{session.InviteCode}/route");
+        Assert.Equal(HttpStatusCode.OK, route.StatusCode);
+        Assert.Equal(SampleGpx, await route.Content.ReadAsStringAsync());
+    }
+
+    [Fact]
+    public async Task CreateRouteUploadToken_AsNonMemberOfSession_ReturnsForbidden()
+    {
+        using var factory = new DotWatcherApiFactory();
+        using var client = factory.CreateClient();
+        var ownerToken = await AuthTestHelpers.RegisterAsync(client, "owner", "Owner");
+        var session = await AuthTestHelpers.CreateSessionAsync(client, ownerToken);
+        var outsiderToken = await AuthTestHelpers.RegisterAsync(client, "outsider", "Outsider");
+
+        var response = await SendWithUserTokenAsync(
+            client, HttpMethod.Post, $"/sessions/{session.SessionId}/route-upload-token", outsiderToken);
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task CreateRouteUploadToken_AsNonOwnerMember_ReturnsToken()
+    {
+        using var factory = new DotWatcherApiFactory();
+        using var client = factory.CreateClient();
+        var ownerToken = await AuthTestHelpers.RegisterAsync(client, "owner", "Owner");
+        var session = await AuthTestHelpers.CreateSessionAsync(client, ownerToken);
+        var memberToken = await AuthTestHelpers.RegisterAsync(client, "member", "Member");
+        await AuthTestHelpers.JoinSessionAsync(client, memberToken, session.InviteCode);
+
+        var response = await SendWithUserTokenAsync(
+            client, HttpMethod.Post, $"/sessions/{session.SessionId}/route-upload-token", memberToken);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task DeleteRoute_AsMember_RemovesRoute()
+    {
+        using var factory = new DotWatcherApiFactory();
+        using var client = factory.CreateClient();
+        var ownerToken = await AuthTestHelpers.RegisterAsync(client, "owner", "Owner");
+        var session = await AuthTestHelpers.CreateSessionAsync(client, ownerToken);
+        var memberToken = await AuthTestHelpers.RegisterAsync(client, "member", "Member");
+        await AuthTestHelpers.JoinSessionAsync(client, memberToken, session.InviteCode);
+
+        using var upload = AuthTestHelpers.WithUserToken(
+            HttpMethod.Post, $"/sessions/{session.SessionId}/route", ownerToken);
+        upload.Content = new StringContent(SampleGpx, Encoding.UTF8, "application/gpx+xml");
+        Assert.Equal(HttpStatusCode.OK, (await client.SendAsync(upload)).StatusCode);
+
+        var delete = await SendWithUserTokenAsync(
+            client, HttpMethod.Delete, $"/sessions/{session.SessionId}/route", memberToken);
+
+        Assert.Equal(HttpStatusCode.NoContent, delete.StatusCode);
+        var route = await client.GetAsync($"/session-invites/{session.InviteCode}/route");
+        Assert.Equal(HttpStatusCode.NotFound, route.StatusCode);
+    }
+
+    [Fact]
+    public async Task DeleteRoute_AsNonMember_ReturnsForbidden()
+    {
+        using var factory = new DotWatcherApiFactory();
+        using var client = factory.CreateClient();
+        var ownerToken = await AuthTestHelpers.RegisterAsync(client, "owner", "Owner");
+        var session = await AuthTestHelpers.CreateSessionAsync(client, ownerToken);
+        var outsiderToken = await AuthTestHelpers.RegisterAsync(client, "outsider", "Outsider");
+
+        var response = await SendWithUserTokenAsync(
+            client, HttpMethod.Delete, $"/sessions/{session.SessionId}/route", outsiderToken);
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task UploadRoute_WithRouteUploadTokenForAnotherSession_ReturnsUnauthorized()
+    {
+        using var factory = new DotWatcherApiFactory();
+        using var client = factory.CreateClient();
+        var ownerToken = await AuthTestHelpers.RegisterAsync(client, "owner", "Owner");
+        var first = await AuthTestHelpers.CreateSessionAsync(client, ownerToken, "FIRST23");
+        var second = await AuthTestHelpers.CreateSessionAsync(client, ownerToken, "SECOND23");
+
+        var tokenResponse = await SendWithUserTokenAsync(
+            client, HttpMethod.Post, $"/sessions/{first.SessionId}/route-upload-token", ownerToken);
+        var issued = await tokenResponse.Content.ReadFromJsonAsync<RouteUploadTokenResponse>();
+
+        using var upload = AuthTestHelpers.WithUserToken(
+            HttpMethod.Post, $"/sessions/{second.SessionId}/route", issued!.Token);
+        upload.Content = new StringContent(SampleGpx, Encoding.UTF8, "application/gpx+xml");
+        var response = await client.SendAsync(upload);
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task UploadRoute_WithTamperedRouteUploadToken_ReturnsUnauthorized()
+    {
+        using var factory = new DotWatcherApiFactory();
+        using var client = factory.CreateClient();
+        var ownerToken = await AuthTestHelpers.RegisterAsync(client, "owner", "Owner");
+        var session = await AuthTestHelpers.CreateSessionAsync(client, ownerToken);
+
+        var tokenResponse = await SendWithUserTokenAsync(
+            client, HttpMethod.Post, $"/sessions/{session.SessionId}/route-upload-token", ownerToken);
+        var issued = await tokenResponse.Content.ReadFromJsonAsync<RouteUploadTokenResponse>();
+
+        using var upload = AuthTestHelpers.WithUserToken(
+            HttpMethod.Post, $"/sessions/{session.SessionId}/route", issued!.Token + "x");
+        upload.Content = new StringContent(SampleGpx, Encoding.UTF8, "application/gpx+xml");
+        var response = await client.SendAsync(upload);
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
     private static async Task<HttpResponseMessage> SendWithUserTokenAsync(
         HttpClient client,
         HttpMethod method,
