@@ -3,6 +3,7 @@ package nz.skelstar.dotwatcher.ui.map
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SmallFloatingActionButton
@@ -43,6 +44,7 @@ private const val POLL_INTERVAL_MS = 10_000L
  * (foreground only — see LocationTracker's kdoc) and polls everyone's latest positions to feed
  * [MapScreen]. This is Milestone 1's tracking loop; background operation is Milestone 2.
  */
+@OptIn(ExperimentalMaterial3Api::class) // TopAppBar is experimental in the pinned Material3 version.
 @Composable
 fun LiveMapScreen(
     membership: SessionMembership,
