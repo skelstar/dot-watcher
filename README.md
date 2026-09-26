@@ -13,7 +13,7 @@ dot-watcher/
   tests/       .NET integration tests
   client/      React web app (MapLibre + LINZ topo basemap)
   ios/         Swift iOS app
-  android/     Kotlin Android app (not started)
+  android/     Kotlin Android app (in progress, see android/README.md)
   AGENTS.md   Codex/agent repository instructions
   README.md
 ```
