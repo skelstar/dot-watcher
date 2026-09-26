@@ -129,7 +129,12 @@ iOS's).
   wall-clock boundaries (`:00`, `:30`, etc.) rather than "every N seconds
   from launch," so Android's positions line up with iOS's and the web
   client's on the shared map.
-- Configurable interval (e.g. 30s/60s/120s), matching iOS's options.
+- **Correction (checked against `ios/DotWatcher/DotWatcher/LocationManager.swift` while
+  implementing):** iOS does not actually have a user-facing post-interval picker — it uses a
+  fixed 15s cadence (90s when `isUltraConstrained`, e.g. satellite), which is what Android
+  matches instead of building a 30s/60s/120s picker as originally guessed here. iOS *does* have
+  a tracking-**duration** picker (2h/4h/8h/24h, auto-stops tracking at the cap) — that's the
+  option Android ports, not a post-interval one. No satellite-tier equivalent on Android yet.
 - Doze mode / App Standby / OEM battery-optimization interaction: request
   exemption from battery optimization for this app
   (`REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`) and document the various

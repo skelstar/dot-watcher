@@ -8,15 +8,22 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import nz.skelstar.dotwatcher.data.AuthTokenStore
 import nz.skelstar.dotwatcher.data.DotWatcherRepository
+import nz.skelstar.dotwatcher.location.LocationTrackingService
 import nz.skelstar.dotwatcher.network.DotWatcherApiClient
 import nz.skelstar.dotwatcher.network.SessionMembership
 import retrofit2.Response
+import java.time.Duration
 
 /** Where the nav graph should route to based on sign-in/session state. */
 sealed interface Destination {
     data object Auth : Destination
     data object Session : Destination
-    data class Map(val membership: SessionMembership) : Destination
+    /** Shown only for role "runner" — asks whether/how-long to share this device's own position
+     *  before starting the background tracking service. A "viewer" skips straight to Map, same
+     *  as iOS only asking runners (ShareLocationConsentView is only shown when
+     *  `canTrackSelectedSession`, i.e. role == "runner"). */
+    data class Consent(val membership: SessionMembership) : Destination
+    data class Map(val membership: SessionMembership, val isSharing: Boolean) : Destination
 }
 
 sealed interface AuthUiState {
@@ -32,8 +39,8 @@ sealed interface SessionUiState {
 }
 
 /**
- * App-scoped state holder for Milestone 1's single linear flow (auth -> session -> map). Owns
- * the repository so screens don't construct their own network stack. Kept as one ViewModel
+ * App-scoped state holder for the app's single linear flow (auth -> session -> consent -> map).
+ * Owns the repository so screens don't construct their own network stack. Kept as one ViewModel
  * rather than one per screen while the flow is this small; revisit if Milestone 3's fuller
  * session-list UI needs more independent state.
  */
@@ -105,22 +112,37 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         }
         val membership = response.body()
         return if (response.isSuccessful && membership != null) {
-            _destination.value = Destination.Map(membership)
+            _destination.value = if (membership.role == "runner") {
+                Destination.Consent(membership)
+            } else {
+                Destination.Map(membership, isSharing = false)
+            }
             SessionUiState.Idle
         } else {
             SessionUiState.Error("Could not join/create session (${response.code()}).")
         }
     }
 
+    fun startSharing(membership: SessionMembership, duration: Duration) {
+        LocationTrackingService.start(getApplication(), membership.sessionId, duration)
+        _destination.value = Destination.Map(membership, isSharing = true)
+    }
+
+    fun declineSharing(membership: SessionMembership) {
+        _destination.value = Destination.Map(membership, isSharing = false)
+    }
+
     /** Returns to the create/join screen without signing out — stopping tracking for this
      *  session, not leaving the app. There's no server-side "leave session" call from Milestone 1
      *  yet (that's Milestone 3's session-management UI), so this is purely local navigation. */
     fun returnToSessionPicker() {
+        LocationTrackingService.stop(getApplication())
         _sessionState.value = SessionUiState.Idle
         _destination.value = Destination.Session
     }
 
     fun signOut() {
+        LocationTrackingService.stop(getApplication())
         viewModelScope.launch {
             repository.logout()
             _destination.value = Destination.Auth

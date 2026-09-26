@@ -1,10 +1,20 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-permission android:name="android.permission.INTERNET" />
-    <!-- Foreground-only for Milestone 1 (app open, screen on). ACCESS_BACKGROUND_LOCATION and
-         the foreground-service location type are added in Milestone 2 — see .ai/plans/android-app.md. -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <!-- Android 10+ requires this as a separate grant after foreground location is already held
+         (see MainActivity's two-step permission flow) — repo root README.md's iOS equivalent is
+         allowsBackgroundLocationUpdates, granted as part of the single CLLocationManager prompt. -->
+    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
+    <!-- Required to run LocationTrackingService as a foreground service (Android 8+) and to
+         declare its type as "location" (Android 14+, API 34) — see LocationTrackingService.kt. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+    <!-- Android 13+ requires runtime consent to show the tracking notification itself. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- For the "exempt this app from battery optimization" prompt — see MainActivity. -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
     <application
         android:allowBackup="true"
@@ -20,6 +30,11 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <service
+            android:name=".location.LocationTrackingService"
+            android:exported="false"
+            android:foregroundServiceType="location" />
     </application>
 
 </manifest>

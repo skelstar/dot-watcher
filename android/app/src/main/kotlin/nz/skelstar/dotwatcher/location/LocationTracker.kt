@@ -23,14 +23,14 @@ data class Capture(
 )
 
 /**
- * Foreground-only location + heading capture for Milestone 1. Uses
+ * One-shot location + heading capture, used from [LocationTrackingService]'s tracking loop. Uses
  * [com.google.android.gms.location.FusedLocationProviderClient] for position (Android's rough
  * equivalent of iOS's CLLocationManager) and the rotation-vector sensor for heading — never
  * derived from consecutive GPS fixes, matching iOS/web.
  *
  * Caller must already hold ACCESS_FINE_LOCATION (or ACCESS_COARSE_LOCATION) before calling
- * [captureOnce]. Background operation (screen off, app backgrounded) is Milestone 2's job — see
- * .ai/plans/android-app.md.
+ * [captureOnce]; running from a foreground service (rather than a plain background app) is what
+ * makes this call reliable with the screen off — see .ai/plans/android-app.md's Milestone 2 notes.
  */
 class LocationTracker(context: Context) {
     private val appContext = context.applicationContext
