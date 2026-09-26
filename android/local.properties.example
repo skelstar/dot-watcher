@@ -1,0 +1,4 @@
+# Copy this file to `local.properties` in this directory (gitignored) and fill in real values.
+# Android Studio manages sdk.dir automatically; only LINZ_API_KEY needs to be added by hand.
+sdk.dir=/path/to/Android/sdk
+LINZ_API_KEY=your_linz_developer_api_key_here

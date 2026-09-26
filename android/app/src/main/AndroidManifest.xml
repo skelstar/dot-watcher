@@ -1,6 +1,10 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Foreground-only for Milestone 1 (app open, screen on). ACCESS_BACKGROUND_LOCATION and
+         the foreground-service location type are added in Milestone 2 — see .ai/plans/android-app.md. -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
 
     <application
         android:allowBackup="true"
