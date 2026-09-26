@@ -1,0 +1,8 @@
+<!--
+  Debug-only manifest override: merged only into debug builds, adding cleartext HTTP
+  support for the emulator's dev-server alias (http://10.0.2.2, see app/build.gradle.kts'
+  debug.API_BASE_URL). Release never gets this — production talks HTTPS only.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application android:usesCleartextTraffic="true" />
+</manifest>
