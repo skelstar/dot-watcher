@@ -15,10 +15,6 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- For the "exempt this app from battery optimization" prompt — see MainActivity. -->
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
-    <!-- Keeps the CPU (not the screen) awake for the tracking duration — without this, the
-         rotation-vector sensor used for heading can stop delivering events once the screen locks
-         on some devices, even inside a foreground service. See LocationTrackingService.kt. -->
-    <uses-permission android:name="android.permission.WAKE_LOCK" />
 
     <application
         android:allowBackup="true"
