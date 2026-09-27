@@ -200,15 +200,19 @@ Lower-priority items, roughly mapped to remaining iOS files:
   not just "has the same fields." Also covers porting per-runner marker
   coloring (`RunnerColorPalette.swift` equivalent) to `MapScreen.kt`,
   called out as deferred in that file's kdoc since Milestone 1.
-- **Boxed per-character invite-code entry**, matching
-  `CodeBoxField.swift`: one bordered square per character (36×44pt,
-  monospaced bold, active box highlighted) instead of a plain text field,
-  with the same paste-handling smarts — pasting a whole shared message
-  (e.g. from WhatsApp) extracts just the matching-length invite code rather
-  than dumping the whole string in, preferring a hex-looking word since
-  codes are hex. Confirmed on a real device (2026-09-27) that Android's
-  invite-code field is currently a plain `OutlinedTextField`, visibly
-  different from iOS's "Wordle-style" boxes.
+- ✅ **Boxed per-character invite-code entry** — `ui/CodeBoxField.kt`,
+  matching `CodeBoxField.swift`: one bordered square per character
+  (36×44dp, monospaced bold, active box highlighted), using a transparent
+  `BasicTextField` overlaid on drawn boxes (the same invisible-input
+  technique as the SwiftUI original), plus the same paste-handling —
+  pasting a whole shared message (e.g. from WhatsApp) extracts the
+  matching-length word, preferring a hex-looking one since codes are hex,
+  rather than dumping the whole pasted string in. Used for both the
+  join-by-invite-code field (6 chars) and the create-session-name field (8
+  chars) — including iOS's actual character-set gap on the latter
+  (`lettersOnly=false` only permits letters/digits, not the dashes/
+  underscores the server's `NormalizeSessionName` also accepts), a
+  deliberate bug-for-bug iOS-parity choice rather than an oversight.
 - Blocked users management (`BlockedUsersView.swift` equivalent).
 - GPX route import/display (`GpxRouteParser.swift`, `.ai/plans/ios-route-upload.md` if that's landed by then).
 - In-app help content (`HelpView.swift`/`Help.md` equivalent).

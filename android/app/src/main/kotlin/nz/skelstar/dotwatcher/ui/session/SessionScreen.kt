@@ -15,7 +15,6 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -27,6 +26,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import nz.skelstar.dotwatcher.SessionUiState
 import nz.skelstar.dotwatcher.network.SessionMembership
+import nz.skelstar.dotwatcher.ui.CodeBoxField
 
 /**
  * Lets a signed-in runner either start a new session ([POST /sessions]) or join an existing one
@@ -36,20 +36,27 @@ import nz.skelstar.dotwatcher.network.SessionMembership
  * `recentSessionsCard` (ContentView.swift). iOS shows this screen only when there's no active
  * session; Android's single linear flow reaches it the same way (via [leaveSession][
  * nz.skelstar.dotwatcher.AppViewModel.leaveSession] or first sign-in).
+ *
+ * No display-name field here: iOS doesn't ask per-session either — it auto-fills from the
+ * account's own registered display name on every login
+ * (`LocationManager.swift`'s `authenticate(path:body:)` sets `runnerName =
+ * session.user.displayName.uppercased()`), only falling back to a one-time 2-letter-initials
+ * entry sheet in the rare case that's empty. Android leaves `displayName` unset on
+ * create/join, which the server already defaults to the account's own display name
+ * (`server/Controllers/SessionsController.cs`) — the same outcome as iOS's common path,
+ * without needing to port that rarely-hit fallback sheet.
  */
 @Composable
 fun SessionScreen(
     state: SessionUiState,
     recentSessions: List<SessionMembership>,
-    onCreateSession: (sessionName: String?, displayName: String?) -> Unit,
-    onJoinSession: (inviteCode: String, displayName: String?) -> Unit,
+    onCreateSession: (sessionName: String?) -> Unit,
+    onJoinSession: (inviteCode: String) -> Unit,
     onRejoinSession: (inviteCode: String) -> Unit,
     onSignOut: () -> Unit,
 ) {
     var sessionName by remember { mutableStateOf("") }
-    var createDisplayName by remember { mutableStateOf("") }
     var inviteCode by remember { mutableStateOf("") }
-    var joinDisplayName by remember { mutableStateOf("") }
 
     Column(
         modifier = Modifier
@@ -63,33 +70,28 @@ fun SessionScreen(
         Spacer(modifier = Modifier.height(24.dp))
 
         Text(text = "Create a session", style = MaterialTheme.typography.titleMedium)
-        // Server-enforced rule (server/Stores/SessionStore.cs's NormalizeSessionName): 4-8 ASCII
-        // letters/digits/dashes/underscores if provided at all. Leaving it blank is valid — the
-        // server generates a name — so this only applies once the runner's typed something.
-        val isSessionNameValid = sessionName.isBlank() ||
-            (sessionName.length in 4..8 &&
-                sessionName.all { (it.isLetterOrDigit() && it.code < 128) || it == '-' || it == '_' })
-        OutlinedTextField(
+        Text(
+            text = "Session name (optional)",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(modifier = Modifier.height(4.dp))
+        // 8 boxes matching iOS's CreateSessionView.swift regardless of the actual 4-8 char range
+        // the server accepts (server/Stores/SessionStore.cs's NormalizeSessionName) — shorter
+        // names just leave trailing boxes empty, same as iOS. lettersOnly=false only screens
+        // letters/digits, not dashes/underscores the server also allows: this matches iOS's
+        // CodeBoxField exactly, dash/underscore gap included — see .ai/plans/android-app.md's
+        // Milestone 4 notes on that being a deliberate iOS-parity choice, not an oversight.
+        CodeBoxField(
             value = sessionName,
             onValueChange = { sessionName = it },
-            label = { Text("Session name (optional)") },
-            supportingText = { Text("4-8 letters, numbers, dashes, or underscores") },
-            isError = !isSessionNameValid,
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth(),
-        )
-        Spacer(modifier = Modifier.height(8.dp))
-        OutlinedTextField(
-            value = createDisplayName,
-            onValueChange = { createDisplayName = it },
-            label = { Text("Display name (optional)") },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth(),
+            length = 8,
         )
         Spacer(modifier = Modifier.height(8.dp))
         Button(
-            onClick = { onCreateSession(sessionName, createDisplayName) },
-            enabled = state !is SessionUiState.Loading && isSessionNameValid,
+            onClick = { onCreateSession(sessionName) },
+            enabled = state !is SessionUiState.Loading &&
+                (sessionName.isEmpty() || sessionName.length >= 4),
             modifier = Modifier.fillMaxWidth(),
         ) {
             Text("Create session")
@@ -100,25 +102,19 @@ fun SessionScreen(
         Spacer(modifier = Modifier.height(24.dp))
 
         Text(text = "Join with an invite code", style = MaterialTheme.typography.titleMedium)
-        OutlinedTextField(
+        Spacer(modifier = Modifier.height(4.dp))
+        // 6 boxes, matching iOS's ContentView.swift `noSessionJoinCard` (CodeBoxField length 6).
+        CodeBoxField(
             value = inviteCode,
             onValueChange = { inviteCode = it },
-            label = { Text("Invite code") },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth(),
-        )
-        Spacer(modifier = Modifier.height(8.dp))
-        OutlinedTextField(
-            value = joinDisplayName,
-            onValueChange = { joinDisplayName = it },
-            label = { Text("Display name (optional)") },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth(),
+            length = 6,
         )
         Spacer(modifier = Modifier.height(8.dp))
         Button(
-            onClick = { onJoinSession(inviteCode, joinDisplayName) },
-            enabled = state !is SessionUiState.Loading && inviteCode.isNotBlank(),
+            onClick = { onJoinSession(inviteCode) },
+            // Requires the full 6 characters, matching iOS's noSessionJoinCard
+            // (`disabled(... || noSessionInviteCode.count < 6)`).
+            enabled = state !is SessionUiState.Loading && inviteCode.length == 6,
             modifier = Modifier.fillMaxWidth(),
         ) {
             Text("Join as runner")
