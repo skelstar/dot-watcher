@@ -7,6 +7,7 @@ import {
   findLastSeenMs,
   findRunnersWithGap,
   findSleepingRunners,
+  findRunnersWithLowBattery,
   findUltraConstrainedRunners,
   formatCountdownSeconds,
   formatShortTimeOfDay,
@@ -226,6 +227,57 @@ test('findUltraConstrainedRunners ignores a position after cutoff', () => {
   ])
   const cutoff = new Date('2024-01-01T00:00:15Z').getTime()
   assert.deepEqual(findUltraConstrainedRunners(byRunner, cutoff), new Set())
+})
+
+test('findRunnersWithLowBattery flags "low" between the two thresholds', () => {
+  const byRunner = new Map([
+    ['Alice', [
+      { runnerName: 'Alice', latitude: 0, longitude: 0, heading: null, timestamp: '2024-01-01T00:00:00Z', batteryLevel: 30 },
+    ]],
+  ])
+  const cutoff = new Date('2024-01-01T00:00:05Z').getTime()
+  assert.deepEqual(findRunnersWithLowBattery(byRunner, cutoff), new Map([['Alice', 'low']]))
+})
+
+test('findRunnersWithLowBattery flags "critical" at or below the critical threshold, not "low"', () => {
+  const byRunner = new Map([
+    ['Alice', [
+      { runnerName: 'Alice', latitude: 0, longitude: 0, heading: null, timestamp: '2024-01-01T00:00:00Z', batteryLevel: 10 },
+    ]],
+  ])
+  const cutoff = new Date('2024-01-01T00:00:05Z').getTime()
+  assert.deepEqual(findRunnersWithLowBattery(byRunner, cutoff), new Map([['Alice', 'critical']]))
+})
+
+test('findRunnersWithLowBattery omits a runner above the low threshold', () => {
+  const byRunner = new Map([
+    ['Alice', [
+      { runnerName: 'Alice', latitude: 0, longitude: 0, heading: null, timestamp: '2024-01-01T00:00:00Z', batteryLevel: 31 },
+    ]],
+  ])
+  const cutoff = new Date('2024-01-01T00:00:05Z').getTime()
+  assert.deepEqual(findRunnersWithLowBattery(byRunner, cutoff), new Map())
+})
+
+test('findRunnersWithLowBattery omits a runner with no reported battery level, never assuming critical', () => {
+  const byRunner = new Map([
+    ['Alice', [
+      { runnerName: 'Alice', latitude: 0, longitude: 0, heading: null, timestamp: '2024-01-01T00:00:00Z' },
+    ]],
+  ])
+  const cutoff = new Date('2024-01-01T00:00:05Z').getTime()
+  assert.deepEqual(findRunnersWithLowBattery(byRunner, cutoff), new Map())
+})
+
+test('findRunnersWithLowBattery clears once a runner reports a recovered level again', () => {
+  const byRunner = new Map([
+    ['Alice', [
+      { runnerName: 'Alice', latitude: 0, longitude: 0, heading: null, timestamp: '2024-01-01T00:00:00Z', batteryLevel: 5 },
+      { runnerName: 'Alice', latitude: 1, longitude: 1, heading: null, timestamp: '2024-01-01T00:00:15Z', batteryLevel: 80 },
+    ]],
+  ])
+  const cutoff = new Date('2024-01-01T00:00:20Z').getTime()
+  assert.deepEqual(findRunnersWithLowBattery(byRunner, cutoff), new Map())
 })
 
 test('positionsAtCutoff returns the last position at or before cutoff, omitting runners with none yet', () => {

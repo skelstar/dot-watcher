@@ -168,3 +168,32 @@ Small–medium — same shape as `persist-isUltraConstrained.md`'s checklist (on
 path, three read paths, one re-import path), plus one new client derive function and one Legend
 icon. Slightly larger than that precedent only because this ships live+persisted in one pass instead
 of two.
+
+## Implementation status (2026-09-28)
+
+Shipped in full per the design above, on branch `add-battery-level-reporting`:
+
+- iOS captures `UIDevice.current.batteryLevel` in `captureAndPost()` (own
+  `isBatteryMonitoringEnabled = true` set in `LocationManager.init()`, not dependent on
+  `ContentView`), converts `-1.0` → `nil`, sends `batteryLevel` (0-100) on `POST /location`.
+- Server: `LocationUpdate`/`RunnerPosition`/`ValidatedLocationUpdate` all carry `BatteryLevel`;
+  `LocationUpdateValidation` rejects out-of-range values. `battery_level SMALLINT` column added to
+  `location_updates`, written by `AddPosition`, read by all three Postgres read paths
+  (`LoadLatestPositionsByRunner`, `LoadUpdatesByTimestamp`, `GetRecordingWindowAsNdjson`) and
+  round-tripped by `SaveRecording`/`ParseRecordingLine` — persisted from day one, not retrofitted.
+- Client: `RunnerPosition.batteryLevel` in `types.ts`; `findRunnersWithLowBattery` (30%/10%
+  thresholds) in `useSessionTimelineLogic.ts`; wired through `useSessionTimeline.ts` →
+  `App.tsx` → `Legend.tsx`, rendered as an independent overlay icon (hand-drawn battery glyph —
+  a charge bar for "low", an exclamation mark for "critical", so the two differ in shape, not
+  only color).
+- Tests: `LocationsApiTests` (validation + round-trip + null-when-absent) and `SessionsApiTests`
+  (cross-pod, full recording, windowed recording, re-import — mirroring every
+  `persist-isUltraConstrained.md` coverage point) on the server; `findRunnersWithLowBattery` unit
+  tests on the client.
+- `docs/database-schema.html` updated with the new column.
+
+Not done (per Non-goals above, unchanged): Android, native iOS map display of other runners'
+battery, a self-device low-battery alert, historical battery graphing, push notifications.
+
+Not run locally: `dotnet build`/`test`, `npm run test`/`build` — per repo convention, left to CI on
+the PR.

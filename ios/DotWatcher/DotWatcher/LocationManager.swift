@@ -3,6 +3,7 @@ import Foundation
 import Network
 import Security
 import SwiftUI
+import UIKit
 
 struct AppUser: Codable {
     let userId: String
@@ -250,6 +251,11 @@ final class LocationManager {
            let user = try? JSONDecoder().decode(AppUser.self, from: data) {
             currentUser = user
         }
+
+        // Enabled here rather than relying on ContentView.onAppear (which also sets this, for its
+        // own local battery display) — LocationManager shouldn't depend on view lifecycle to
+        // capture a correct value on every post. Idempotent to set redundantly.
+        UIDevice.current.isBatteryMonitoringEnabled = true
 
         locationDelegate.owner = self
         clManager.delegate = locationDelegate
@@ -623,6 +629,11 @@ final class LocationManager {
         // landing, and the value that should accompany this specific post is the one that was
         // true when it was decided to send it now, at this cadence.
         let isUltraConstrained = self.isUltraConstrained
+        // Same capture-before-Task reasoning as isUltraConstrained above. -1 (monitoring disabled,
+        // or unsupported/simulator) becomes nil on the wire — never a stand-in for a dead battery.
+        // See .ai/plans/battery-level-reporting.md.
+        let batteryLevel = UIDevice.current.batteryLevel
+        let batteryPercentage: Int? = batteryLevel >= 0 ? Int((batteryLevel * 100).rounded()) : nil
         Task {
             // Post the current time, not loc.timestamp: while stationary, CoreLocation's
             // distanceFilter withholds new fixes entirely, so latestLocation (and its original
@@ -637,12 +648,14 @@ final class LocationManager {
                 heading: heading,
                 timestamp: now,
                 nextExpectedAt: nextPostAt(from: now),
-                isUltraConstrained: isUltraConstrained)
+                isUltraConstrained: isUltraConstrained,
+                batteryLevel: batteryPercentage)
         }
     }
 
     private func post(
-        lat: Double, lon: Double, heading: Double?, timestamp: Date, nextExpectedAt: Date, isUltraConstrained: Bool
+        lat: Double, lon: Double, heading: Double?, timestamp: Date, nextExpectedAt: Date, isUltraConstrained: Bool,
+        batteryLevel: Int?
     ) async {
         let targetSessionId = sessionId
         do {
@@ -669,6 +682,7 @@ final class LocationManager {
                 "isUltraConstrained": isUltraConstrained,
             ]
             if let heading { body["heading"] = heading }
+            if let batteryLevel { body["batteryLevel"] = batteryLevel }
 
             let response: LocationPostResponse = try await send(
                 path: "/location", method: "POST", body: body, session: Self.ultraConstrainedSession)

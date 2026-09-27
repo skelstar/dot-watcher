@@ -125,6 +125,16 @@ public class SessionStore(string connectionString) : IDisposable
             """;
         addLiveOnlyColumns.ExecuteNonQuery();
 
+        // Nullable, no default - absent means "not reported" (older client, Android, battery
+        // monitoring unavailable), never a falsy stand-in for 0%. See
+        // .ai/plans/battery-level-reporting.md.
+        using var addBatteryLevelColumn = conn.CreateCommand();
+        addBatteryLevelColumn.CommandText = """
+            ALTER TABLE location_updates
+                ADD COLUMN IF NOT EXISTS battery_level SMALLINT;
+            """;
+        addBatteryLevelColumn.ExecuteNonQuery();
+
         // Nullable: pre-existing sessions, and sessions created by a client that doesn't send
         // this yet, fall back to DefaultMaxLengthHours in GetRunStartTimestamp.
         using var addMaxLengthColumn = conn.CreateCommand();
@@ -765,7 +775,8 @@ public class SessionStore(string connectionString) : IDisposable
                 update.Heading,
                 update.Timestamp,
                 update.NextExpectedAt,
-                update.IsUltraConstrained));
+                update.IsUltraConstrained,
+                update.BatteryLevel));
 
         // The demo session never persists positions - live viewing above is unaffected (it reads
         // the in-memory cache, not Postgres), but nothing here ever needs cleaning up.
@@ -775,8 +786,8 @@ public class SessionStore(string connectionString) : IDisposable
         using var conn = Connect();
         using var cmd = conn.CreateCommand();
         cmd.CommandText = """
-            INSERT INTO location_updates (session_id, runner_user_id, runner_name, latitude, longitude, heading, timestamp, next_expected_at, is_ultra_constrained)
-            VALUES (@sessionId, @userId, @name, @lat, @lon, @heading, @ts, @nextExpectedAt, @isUltraConstrained)
+            INSERT INTO location_updates (session_id, runner_user_id, runner_name, latitude, longitude, heading, timestamp, next_expected_at, is_ultra_constrained, battery_level)
+            VALUES (@sessionId, @userId, @name, @lat, @lon, @heading, @ts, @nextExpectedAt, @isUltraConstrained, @batteryLevel)
             """;
         cmd.Parameters.AddWithValue("@sessionId", sessionId);
         cmd.Parameters.AddWithValue("@userId", userId);
@@ -793,6 +804,10 @@ public class SessionStore(string connectionString) : IDisposable
             Value = update.NextExpectedAt.HasValue ? update.NextExpectedAt.Value.ToUniversalTime().ToString("O") : DBNull.Value
         });
         cmd.Parameters.AddWithValue("@isUltraConstrained", update.IsUltraConstrained);
+        cmd.Parameters.Add(new NpgsqlParameter("batteryLevel", NpgsqlDbType.Smallint)
+        {
+            Value = update.BatteryLevel.HasValue ? update.BatteryLevel.Value : DBNull.Value
+        });
         cmd.ExecuteNonQuery();
     }
 
@@ -871,7 +886,7 @@ public class SessionStore(string connectionString) : IDisposable
         using var cmd = conn.CreateCommand();
         cmd.CommandText = """
             SELECT DISTINCT ON (runner_user_id)
-                   runner_user_id, runner_name, latitude, longitude, heading, timestamp, next_expected_at, is_ultra_constrained
+                   runner_user_id, runner_name, latitude, longitude, heading, timestamp, next_expected_at, is_ultra_constrained, battery_level
             FROM location_updates
             WHERE session_id = @sessionId AND runner_user_id IS NOT NULL
             ORDER BY runner_user_id, timestamp DESC
@@ -888,7 +903,8 @@ public class SessionStore(string connectionString) : IDisposable
                 reader.IsDBNull(4) ? null : reader.GetDouble(4),
                 DateTimeOffset.Parse(reader.GetString(5)),
                 reader.IsDBNull(6) ? null : DateTimeOffset.Parse(reader.GetString(6)),
-                reader.GetBoolean(7));
+                reader.GetBoolean(7),
+                reader.IsDBNull(8) ? null : reader.GetInt16(8));
         }
         return positions;
     }
@@ -1039,7 +1055,7 @@ public class SessionStore(string connectionString) : IDisposable
         using var conn = Connect();
         using var cmd = conn.CreateCommand();
         cmd.CommandText = """
-            SELECT session_id, runner_name, latitude, longitude, heading, timestamp, next_expected_at, is_ultra_constrained
+            SELECT session_id, runner_name, latitude, longitude, heading, timestamp, next_expected_at, is_ultra_constrained, battery_level
             FROM location_updates
             WHERE session_id = @code
               AND (@since IS NULL OR timestamp >= @since)
@@ -1071,7 +1087,8 @@ public class SessionStore(string connectionString) : IDisposable
                     Heading: reader.IsDBNull(4) ? null : reader.GetDouble(4),
                     Timestamp: DateTimeOffset.Parse(reader.GetString(5)),
                     NextExpectedAt: reader.IsDBNull(6) ? null : DateTimeOffset.Parse(reader.GetString(6)),
-                    IsUltraConstrained: reader.GetBoolean(7)
+                    IsUltraConstrained: reader.GetBoolean(7),
+                    BatteryLevel: reader.IsDBNull(8) ? null : reader.GetInt16(8)
                 ));
             }
         }
@@ -1149,7 +1166,7 @@ public class SessionStore(string connectionString) : IDisposable
         using var conn = Connect();
         using var cmd = conn.CreateCommand();
         cmd.CommandText = """
-            SELECT session_id, runner_name, latitude, longitude, heading, timestamp, next_expected_at, is_ultra_constrained
+            SELECT session_id, runner_name, latitude, longitude, heading, timestamp, next_expected_at, is_ultra_constrained, battery_level
             FROM location_updates
             WHERE session_id = @code
             ORDER BY timestamp
@@ -1167,7 +1184,8 @@ public class SessionStore(string connectionString) : IDisposable
                 Heading: reader.IsDBNull(4) ? null : reader.GetDouble(4),
                 Timestamp: DateTimeOffset.Parse(reader.GetString(5)),
                 NextExpectedAt: reader.IsDBNull(6) ? null : DateTimeOffset.Parse(reader.GetString(6)),
-                IsUltraConstrained: reader.GetBoolean(7)
+                IsUltraConstrained: reader.GetBoolean(7),
+                BatteryLevel: reader.IsDBNull(8) ? null : reader.GetInt16(8)
             ));
         }
         return updates;
@@ -1198,8 +1216,8 @@ public class SessionStore(string connectionString) : IDisposable
 
         using var cmd = conn.CreateCommand();
         cmd.CommandText = """
-            INSERT INTO location_updates (session_id, runner_user_id, runner_name, latitude, longitude, heading, timestamp, next_expected_at, is_ultra_constrained)
-            VALUES (@code, NULL, @name, @lat, @lon, @heading, @ts, @nextExpectedAt, @isUltraConstrained)
+            INSERT INTO location_updates (session_id, runner_user_id, runner_name, latitude, longitude, heading, timestamp, next_expected_at, is_ultra_constrained, battery_level)
+            VALUES (@code, NULL, @name, @lat, @lon, @heading, @ts, @nextExpectedAt, @isUltraConstrained, @batteryLevel)
             """;
         var pCode               = cmd.Parameters.Add("code",               NpgsqlDbType.Text);
         var pName               = cmd.Parameters.Add("name",               NpgsqlDbType.Text);
@@ -1209,6 +1227,7 @@ public class SessionStore(string connectionString) : IDisposable
         var pTs                 = cmd.Parameters.Add("ts",                 NpgsqlDbType.Text);
         var pNextExpectedAt     = cmd.Parameters.Add("nextExpectedAt",     NpgsqlDbType.Text);
         var pIsUltraConstrained = cmd.Parameters.Add("isUltraConstrained", NpgsqlDbType.Boolean);
+        var pBatteryLevel       = cmd.Parameters.Add("batteryLevel",       NpgsqlDbType.Smallint);
 
         foreach (var u in updates)
         {
@@ -1220,6 +1239,7 @@ public class SessionStore(string connectionString) : IDisposable
             pTs.Value                 = u.Timestamp.ToUniversalTime().ToString("O");
             pNextExpectedAt.Value     = u.NextExpectedAt.HasValue ? (object)u.NextExpectedAt.Value.ToUniversalTime().ToString("O") : DBNull.Value;
             pIsUltraConstrained.Value = u.IsUltraConstrained;
+            pBatteryLevel.Value       = u.BatteryLevel.HasValue ? (object)u.BatteryLevel.Value : DBNull.Value;
             cmd.ExecuteNonQuery();
         }
 
