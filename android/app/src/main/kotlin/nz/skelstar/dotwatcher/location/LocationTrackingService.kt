@@ -1,5 +1,6 @@
 package nz.skelstar.dotwatcher.location
 
+import android.annotation.SuppressLint
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -10,6 +11,7 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
+import android.os.PowerManager
 import androidx.core.app.NotificationCompat
 import androidx.core.content.getSystemService
 import kotlinx.coroutines.CoroutineScope
@@ -59,6 +61,7 @@ sealed interface TrackingState {
 class LocationTrackingService : Service() {
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private var trackingJob: Job? = null
+    private var wakeLock: PowerManager.WakeLock? = null
 
     private lateinit var locationTracker: LocationTracker
     private lateinit var repository: DotWatcherRepository
@@ -92,6 +95,7 @@ class LocationTrackingService : Service() {
     private fun startTracking(sessionId: String, duration: Duration) {
         trackingJob?.cancel()
         locationTracker.startHeadingUpdates()
+        acquireWakeLock(duration)
 
         val expiresAt = Instant.now().plus(duration)
         _state.value = TrackingState.Tracking(expiresAt)
@@ -135,7 +139,34 @@ class LocationTrackingService : Service() {
         trackingJob?.cancel()
         trackingJob = null
         locationTracker.stopHeadingUpdates()
+        releaseWakeLock()
         _state.value = TrackingState.Stopped
+    }
+
+    /**
+     * Without this, the rotation-vector sensor (used for heading — see LocationTracker) can stop
+     * delivering events once the screen locks on many devices: the foreground service's CPU
+     * execution leniency doesn't automatically extend to sensor batching/delivery the way it does
+     * to GPS via FusedLocationProviderClient. Confirmed via a real-device test: sharing while
+     * locked showed every position with a null heading, tripping the web client's GPS
+     * signal-loss warning (client/src/useSessionTimelineLogic.ts's currentSignalLossForRunner)
+     * for the whole locked stretch. A PARTIAL_WAKE_LOCK keeps the CPU (not the screen) awake for
+     * exactly the tracking duration, capped defensively at that same duration so a stop() call
+     * that somehow got missed can't hold it forever and drain the battery.
+     */
+    @SuppressLint("WakelockTimeout") // Timeout is set explicitly below, not omitted.
+    private fun acquireWakeLock(duration: Duration) {
+        releaseWakeLock()
+        val powerManager = getSystemService<PowerManager>() ?: return
+        wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, WAKE_LOCK_TAG).apply {
+            setReferenceCounted(false)
+            acquire(duration.toMillis())
+        }
+    }
+
+    private fun releaseWakeLock() {
+        wakeLock?.let { if (it.isHeld) it.release() }
+        wakeLock = null
     }
 
     override fun onDestroy() {
@@ -182,6 +213,9 @@ class LocationTrackingService : Service() {
         private const val NOTIFICATION_ID = 1
         private const val EXTRA_SESSION_ID = "session_id"
         private const val EXTRA_DURATION_SECONDS = "duration_seconds"
+        // Android requires wake lock tags to be namespaced "component:purpose" — see
+        // PowerManager.newWakeLock's docs.
+        private const val WAKE_LOCK_TAG = "DotWatcher:LocationTrackingService"
 
         private val _state = MutableStateFlow<TrackingState>(TrackingState.Stopped)
         val state: StateFlow<TrackingState> = _state.asStateFlow()
