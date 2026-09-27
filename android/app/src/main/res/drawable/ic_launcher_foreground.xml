@@ -1,12 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Placeholder foreground: a single dot, standing in for the app's runner-position
-     marker until real icon assets are designed (see Milestone 4 in .ai/plans/android-app.md). -->
+<!-- Placeholder foreground: a single dot, standing in for the app's runner-position marker
+     until a real app icon is designed — a separate Milestone 4 item from the theme/color pass
+     this file's color was updated alongside (see .ai/plans/android-app.md, "App icon, Play
+     Store listing assets"). Color now matches the real app icon's badge blue
+     (ios/DotWatcher/DotWatcher/Assets.xcassets/AppIcon.appiconset), sampled directly from its
+     pixels, rather than an arbitrary placeholder color. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
     <path
-        android:fillColor="#FFD60A"
+        android:fillColor="#007AFF"
         android:pathData="M54,54m-22,0a22,22 0,1 1,44 0a22,22 0,1 1,-44 0" />
 </vector>
