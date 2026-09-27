@@ -149,33 +149,35 @@ actual walk/run, not just an emulator).
 
 ---
 
-## Milestone 3 — Parity features ("non-essential" layer)
+## Milestone 3 — Parity features ("non-essential" layer) — done
 
 Roughly ports the remaining iOS behavior documented in `README.md` and
 visible in the iOS source, once the essential path is proven:
 
-- **Session management UI:** list of sessions the user belongs to, swipe or
-  menu actions to share (Android share sheet — the equivalent of iOS's
-  SMS/Email/WhatsApp/Map share row) an invite code/link, and leave a
-  session.
-- **Failed-send handling / offline queue:** the gap called out in
-  `.ai/plans/offline-location-queue.md` is currently open for iOS too — if
-  it lands there first, port the same design (persisted queue, capped size,
-  flush-oldest-first) rather than designing it twice; if Android gets there
-  first, the design in that doc is a reasonable starting point for both
-  platforms.
-- **`426 Upgrade Required` handling:** blocking "Update Required" screen
-  when the server rejects the client's `X-Api-Version`, mirroring
-  `UpdateRequiredView.swift`.
-- **Consent / permissions UX:** an explicit "share your location" consent
-  screen before first tracking start, mirroring
-  `ShareLocationConsentView.swift`, plus handling permission-denied and
-  "don't ask again" states gracefully (Android's permission UX differs
-  enough from iOS's that this needs its own pass, not a direct port).
-- **Build variants:** Android's equivalent of the three Xcode configurations
-  (Debug/Device/Release) — Gradle build types/flavors pointing at
-  localhost (emulator's `10.0.2.2` alias), the LAN dev server, and
-  production.
+- ✅ **Session management UI:** Recent Sessions list with tap-to-rejoin
+  (`GET /me/sessions/recent`), a share button on the map screen (system
+  share sheet with the same message format as iOS's header `ShareLink`),
+  and a real "leave" that calls `DELETE /me/sessions/{id}/membership`
+  behind a confirmation dialog — matches what iOS *actually* does (a single
+  active session, not a swipeable list; the root README's earlier
+  "swipeable session row" description was stale and has been corrected).
+- ✅ **Failed-send handling / offline queue:** `.ai/plans/offline-location-queue.md`
+  was lost from the repo before iOS built this (iOS still has no queue as
+  of 2026-09-27); recreated the design and Android built it first — see
+  that doc and `location/LocationUpdateQueue.kt`. Persisted (survives the
+  foreground service being killed), capped at 200 entries, flush-oldest-first
+  via repeated single `POST /location` calls, with 4xx responses (e.g. 403
+  for a session the runner has since left) treated as permanent and dropped
+  rather than retried forever.
+- ✅ **`426 Upgrade Required` handling:** blocking "Update Required" screen
+  (`ui/UpdateRequiredScreen.kt`), set by an OkHttp interceptor watching
+  every response — mirrors `UpdateRequiredView.swift`'s single check point
+  inside iOS's shared low-level request function.
+- ✅ **Consent / permissions UX:** shipped in Milestone 2
+  (`ui/map/ShareLocationConsentScreen.kt`, `MainActivity.kt`'s two-step
+  foreground/background location permission flow).
+- ✅ **Build variants:** shipped in Milestone 2 — `debug` (emulator),
+  `device` (real phone, LAN dev server), `release` (production).
 
 **Exit criteria:** feature-for-feature parity with the iOS app's core
 session/tracking/sharing loop, still on an internal test track.

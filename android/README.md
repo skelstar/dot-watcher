@@ -4,21 +4,25 @@ Native Kotlin/Jetpack Compose client for Dot Watcher, targeting the same server 
 `ios/` and `client/`. See `.ai/plans/android-app.md` for the full milestone plan this
 app is being built against.
 
-**Status:** Milestone 2 (background tracking) — sign in/register, create or join a session,
-consent to share for a bounded duration (2h/4h/8h/24h, matching iOS), and keep sending
-position updates via a foreground service even with the screen locked or the app
-backgrounded. No offline queue/session management UI yet (Milestone 3).
-
-**Not yet tested on a real device.** Milestone 2's exit criteria (`.ai/plans/android-app.md`)
-is a real device, screen off, in a pocket, posting for the length of a real run — this still
-needs that pass, plus a look at OEM-specific "let this app run in background" settings
-(Samsung/Xiaomi/etc.), which the in-app battery-optimization exemption prompt can't reach.
+**Status:** Milestone 3 (parity features) — sign in/register, create/join/rejoin a session,
+consent to share for a bounded duration (2h/4h/8h/24h, matching iOS), keep sending position
+updates via a foreground service through screen lock/backgrounding, share the invite link via
+the system share sheet, leave a session (with confirmation), a blocking screen if the server
+ever rejects this build's API version, and a persisted offline queue for failed position
+posts. Confirmed working on a real device. Not yet done: the Milestone 4 visual design pass
+(current screens use bare Material3 defaults, not iOS's styling) and OEM-specific background
+restriction settings (Samsung/Xiaomi/etc.), which the in-app battery-optimization exemption
+prompt can't reach — worth a longer real-run test to confirm those don't interfere in practice.
 
 ## Requirements
 
 - Android Studio (Ladybug or newer) or a JDK 17 + Android SDK toolchain
 - Android SDK Platform 35, Build-Tools matching AGP 8.7.2 (see `gradle/libs.versions.toml`)
 - A LINZ developer API key for the map basemap (see below)
+
+Once Android Studio's SDK/JDK are installed, `./gradlew :app:compileDebugKotlin` (or
+`:app:assembleDebug` for a full build) can be run directly from a terminal to verify changes
+locally — faster and more certain than waiting on CI alone.
 
 ## Running locally
 
@@ -95,3 +99,6 @@ only if/when the codebase size justifies it.
 - Map: MapLibre Android + LINZ topo vector tiles, matching `client/`'s basemap
   (`client/src/map/mapStyle.ts`) rather than Google Maps — see `.ai/plans/android-app.md`'s
   "Open decisions".
+- A failed position post is queued (persisted to disk, capped, flush-oldest-first) rather
+  than dropped — see `.ai/plans/offline-location-queue.md` and
+  `location/LocationUpdateQueue.kt`. Not yet built on iOS; this is the first platform to have it.
