@@ -226,8 +226,16 @@ Lower-priority items, roughly mapped to remaining iOS files:
 - In-app help content (`HelpView.swift`/`Help.md` equivalent).
 - Push notifications (if/when relevant — check whether iOS has any first;
   not obviously present in the current iOS file list).
-- App icon, Play Store listing assets, privacy/terms links (the web client
-  already serves `/privacy` and `/terms` — reuse those rather than
+- ✅ **App icon** — `res/drawable/ic_launcher_{background,foreground}.xml`,
+  recreated as adaptive-icon vector drawables (not a copy of the source
+  PNG) from `ios/DotWatcher/DotWatcher/Assets.xcassets/AppIcon.appiconset`:
+  green topo-ring/dashed-trail background, white-ringed blue "DW" badge
+  (letterforms drawn as paths — vector drawables can't render text) plus
+  the chevron accent. Verified by rendering to PNG at multiple sizes and
+  checking against Android's adaptive-icon safe zone and a circular
+  launcher mask before committing to final coordinates.
+- Play Store listing assets, privacy/terms links still open (the web
+  client already serves `/privacy` and `/terms` — reuse those rather than
   duplicating).
 - Distribution via **Play Console internal testing track** (Android's
   equivalent of TestFlight) rather than public release, matching how iOS is
