@@ -87,6 +87,16 @@ class DotWatcherRepository(
         return api.getLatestPositions(sessionId, bearer(token))
     }
 
+    suspend fun getRecentSessions(): Response<List<SessionMembership>> {
+        val token = requireToken()
+        return api.getRecentSessions(bearer(token))
+    }
+
+    suspend fun leaveSession(sessionId: String): Response<Unit> {
+        val token = requireToken()
+        return api.leaveSession(sessionId, bearer(token))
+    }
+
     private fun requireToken(): String =
         tokenStore.accessToken ?: error("No access token — caller must be signed in.")
 

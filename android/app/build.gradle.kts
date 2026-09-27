@@ -37,6 +37,12 @@ android {
         versionName = "0.1.0"
 
         buildConfigField("String", "LINZ_API_KEY", "\"$linzApiKey\"")
+        // Used only to build the "join my session" share link (WEB_BASE_URL + "/code/" +
+        // inviteCode) — always the production web app, even for debug/device builds, since a
+        // shared invite link needs to work for whoever receives it, not just the sender's local
+        // dev setup. Matches DOTWATCHER_WEB_BASE_URL's Release value in
+        // ios/DotWatcher/DotWatcher.xcodeproj/project.pbxproj.
+        buildConfigField("String", "WEB_BASE_URL", "\"https://dot-watcher.skelstar.io\"")
     }
 
     // Three build types, matching iOS's Debug/Device/Release split

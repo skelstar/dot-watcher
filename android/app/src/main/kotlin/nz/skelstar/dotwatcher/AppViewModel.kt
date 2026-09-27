@@ -61,6 +61,16 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     private val _sessionState = MutableStateFlow<SessionUiState>(SessionUiState.Idle)
     val sessionState: StateFlow<SessionUiState> = _sessionState
 
+    /** Sessions the caller has left, most recently left first — populated whenever
+     *  [Destination.Session] is (re)shown, matching iOS's recentSessionsCard which loads on
+     *  appear and on pull-to-refresh (ContentView.swift's `noSessionView`). */
+    private val _recentSessions = MutableStateFlow<List<SessionMembership>>(emptyList())
+    val recentSessions: StateFlow<List<SessionMembership>> = _recentSessions
+
+    init {
+        if (tokenStore.isSignedIn) loadRecentSessions()
+    }
+
     fun register(username: String, password: String, displayName: String) {
         viewModelScope.launch {
             _authState.value = AuthUiState.Loading
@@ -83,10 +93,25 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         }
         return if (response.isSuccessful) {
             _destination.value = Destination.Session
+            loadRecentSessions()
             AuthUiState.Idle
         } else {
             AuthUiState.Error(response.errorMessageOrStatus())
         }
+    }
+
+    /** Best-effort: a failed load just leaves the list empty/stale rather than surfacing an
+     *  error, matching iOS's treatment of this as a background convenience list, not a screen
+     *  the runner can get stuck on. */
+    fun loadRecentSessions() {
+        viewModelScope.launch {
+            runCatching { repository.getRecentSessions() }
+                .onSuccess { response -> response.body()?.let { _recentSessions.value = it } }
+        }
+    }
+
+    fun rejoinSession(inviteCode: String) {
+        joinSession(inviteCode, displayName = null)
     }
 
     fun createSession(sessionName: String?, displayName: String?) {
@@ -134,21 +159,26 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     /** Stops sharing this device's own position while staying in the session and on the map —
-     *  distinct from [returnToSessionPicker], which also leaves the session entirely. The runner
-     *  can start sharing again by leaving and rejoining (Milestone 3's session-management UI is
-     *  the natural place for a proper "share again" action without a full round-trip). */
+     *  distinct from [leaveSession], which leaves the session entirely. The runner can start
+     *  sharing again by leaving and rejoining, or via a future dedicated "share again" action. */
     fun stopSharing(membership: SessionMembership) {
         LocationTrackingService.stop(getApplication())
         _destination.value = Destination.Map(membership, isSharing = false)
     }
 
-    /** Returns to the create/join screen without signing out — stopping tracking for this
-     *  session, not leaving the app. There's no server-side "leave session" call from Milestone 1
-     *  yet (that's Milestone 3's session-management UI), so this is purely local navigation. */
-    fun returnToSessionPicker() {
+    /** Leaves [membership]'s session for real ([DELETE /me/sessions/{sessionId}/membership] —
+     *  matches iOS's `leaveSession(sessionId:)`) and returns to the create/join screen. Stops
+     *  tracking first if active, mirroring iOS's `leaveOrDeleteSession` calling `location.stop()`
+     *  before the network call. The caller (UI) is responsible for confirming with the runner
+     *  first — this performs the leave unconditionally once called. */
+    fun leaveSession(membership: SessionMembership) {
         LocationTrackingService.stop(getApplication())
-        _sessionState.value = SessionUiState.Idle
-        _destination.value = Destination.Session
+        viewModelScope.launch {
+            runCatching { repository.leaveSession(membership.sessionId) }
+            _sessionState.value = SessionUiState.Idle
+            _destination.value = Destination.Session
+            loadRecentSessions()
+        }
     }
 
     fun signOut() {

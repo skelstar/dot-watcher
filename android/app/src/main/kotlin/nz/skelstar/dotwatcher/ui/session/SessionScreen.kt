@@ -2,11 +2,14 @@ package nz.skelstar.dotwatcher.ui.session
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
@@ -23,18 +26,24 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import nz.skelstar.dotwatcher.SessionUiState
+import nz.skelstar.dotwatcher.network.SessionMembership
 
 /**
- * Lets a signed-in runner either start a new session ([POST /sessions]) or join an existing
- * one by invite code ([POST /session-invites/{inviteCode}/join] with role "runner" — repo root
- * README.md, "Auth model"). Milestone 1 keeps this to the single essential path; the fuller
- * "list of my sessions" UI is Milestone 3 (.ai/plans/android-app.md).
+ * Lets a signed-in runner either start a new session ([POST /sessions]) or join an existing one
+ * by invite code ([POST /session-invites/{inviteCode}/join] with role "runner" — repo root
+ * README.md, "Auth model"), or tap to rejoin a session they've previously left
+ * ([recentSessions], [GET /me/sessions/recent]) — matches iOS's `noSessionView`'s
+ * `recentSessionsCard` (ContentView.swift). iOS shows this screen only when there's no active
+ * session; Android's single linear flow reaches it the same way (via [leaveSession][
+ * nz.skelstar.dotwatcher.AppViewModel.leaveSession] or first sign-in).
  */
 @Composable
 fun SessionScreen(
     state: SessionUiState,
+    recentSessions: List<SessionMembership>,
     onCreateSession: (sessionName: String?, displayName: String?) -> Unit,
     onJoinSession: (inviteCode: String, displayName: String?) -> Unit,
+    onRejoinSession: (inviteCode: String) -> Unit,
     onSignOut: () -> Unit,
 ) {
     var sessionName by remember { mutableStateOf("") }
@@ -45,6 +54,7 @@ fun SessionScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .verticalScroll(rememberScrollState())
             .padding(24.dp),
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -125,9 +135,57 @@ fun SessionScreen(
             SessionUiState.Idle -> Unit
         }
 
+        if (recentSessions.isNotEmpty()) {
+            Spacer(modifier = Modifier.height(24.dp))
+            HorizontalDivider()
+            Spacer(modifier = Modifier.height(24.dp))
+            RecentSessionsList(
+                sessions = recentSessions,
+                enabled = state !is SessionUiState.Loading,
+                onRejoin = onRejoinSession,
+            )
+        }
+
         Spacer(modifier = Modifier.height(24.dp))
         OutlinedButton(onClick = onSignOut) {
             Text("Sign out")
+        }
+    }
+}
+
+@Composable
+private fun RecentSessionsList(
+    sessions: List<SessionMembership>,
+    enabled: Boolean,
+    onRejoin: (inviteCode: String) -> Unit,
+) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Text(text = "Recent sessions", style = MaterialTheme.typography.titleMedium)
+        Spacer(modifier = Modifier.height(8.dp))
+        sessions.forEachIndexed { index, membership ->
+            if (index > 0) {
+                Spacer(modifier = Modifier.height(4.dp))
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column {
+                    Text(text = membership.sessionName, style = MaterialTheme.typography.bodyMedium)
+                    Text(
+                        text = "Invite ${membership.inviteCode}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Button(
+                    onClick = { onRejoin(membership.inviteCode) },
+                    enabled = enabled,
+                ) {
+                    Text("Rejoin")
+                }
+            }
         }
     }
 }

@@ -1,9 +1,12 @@
 package nz.skelstar.dotwatcher.ui.map
 
+import android.content.Context
+import android.content.Intent
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -21,6 +24,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -46,7 +50,9 @@ private val EXPIRY_TIME_FORMAT = DateTimeFormatter.ofPattern("h:mm a")
  * Hosts the live map for [membership]'s session: polls everyone's latest positions to feed
  * [MapScreen], and — when [isSharing] — surfaces [LocationTrackingService]'s state (a "Sharing ·
  * expires HH:MM" chip, plus a "Stop sharing" action distinct from leaving the session entirely)
- * without owning the tracking loop itself.
+ * without owning the tracking loop itself. Also offers sharing the session's invite link via the
+ * system share sheet and leaving the session (with confirmation) — matches iOS's header share
+ * button and leave-confirmation alert (ContentView.swift's `headerSection`/`leaveOrDeleteSession`).
  */
 @OptIn(ExperimentalMaterial3Api::class) // TopAppBar is experimental in the pinned Material3 version.
 @Composable
@@ -57,8 +63,10 @@ fun LiveMapScreen(
     onStopSharing: () -> Unit,
     onLeaveSession: () -> Unit,
 ) {
+    val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     var positions by remember { mutableStateOf<List<RunnerPosition>>(emptyList()) }
+    var showLeaveConfirm by remember { mutableStateOf(false) }
     val trackingState by LocationTrackingService.state.collectAsState()
 
     // Polls everyone's latest positions, including this device's own once the server has it.
@@ -77,6 +85,17 @@ fun LiveMapScreen(
         onDispose { job.cancel() }
     }
 
+    if (showLeaveConfirm) {
+        LeaveSessionDialog(
+            isSharing = isSharing,
+            onConfirm = {
+                showLeaveConfirm = false
+                onLeaveSession()
+            },
+            onDismiss = { showLeaveConfirm = false },
+        )
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -89,6 +108,9 @@ fun LiveMapScreen(
                     }
                 },
                 actions = {
+                    TextButton(onClick = { context.shareInviteLink(membership) }) {
+                        Text("Share")
+                    }
                     if (isSharing) {
                         TextButton(onClick = onStopSharing) {
                             Text("Stop sharing")
@@ -98,7 +120,7 @@ fun LiveMapScreen(
             )
         },
         floatingActionButton = {
-            SmallFloatingActionButton(onClick = onLeaveSession) {
+            SmallFloatingActionButton(onClick = { showLeaveConfirm = true }) {
                 Text("Leave")
             }
         },
@@ -141,4 +163,44 @@ private fun SharingStatusLine(trackingState: TrackingState) {
         TrackingState.Stopped -> "Sharing stopped"
     }
     Text(text = text, style = MaterialTheme.typography.labelSmall)
+}
+
+/** Matches iOS's leave-confirmation alert (ContentView.swift), including its wording branching
+ *  on whether tracking is currently active. */
+@Composable
+private fun LeaveSessionDialog(
+    isSharing: Boolean,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(if (isSharing) "Stop sharing and leave session?" else "Leave session?") },
+        text = { Text("Are you sure? You can rejoin later using the invite code.") },
+        confirmButton = {
+            TextButton(onClick = onConfirm) {
+                Text(if (isSharing) "Stop & Leave" else "Leave")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        },
+    )
+}
+
+/** Opens the system share sheet with the session's invite link — matches iOS's header
+ *  `ShareLink` (ContentView.swift's `headerSection`), which shares the same message format:
+ *  invite code plus a `{webBaseURL}/code/{inviteCode}` link the recipient can open directly. */
+private fun Context.shareInviteLink(membership: SessionMembership) {
+    val sessionUrl = "${BuildConfig.WEB_BASE_URL}/code/${membership.inviteCode}"
+    val message = "Join my DotWatcher session!\n\n" +
+        "Invite code: ${membership.inviteCode}\n\n" +
+        sessionUrl
+    val sendIntent = Intent(Intent.ACTION_SEND).apply {
+        type = "text/plain"
+        putExtra(Intent.EXTRA_TEXT, message)
+    }
+    startActivity(Intent.createChooser(sendIntent, "Share session"))
 }
