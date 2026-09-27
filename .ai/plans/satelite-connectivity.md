@@ -84,6 +84,25 @@ happened. `nextExpectedAt` was persisted in the same pass (see POST-nextExpected
 before 2026-08-12 still read back as `false` (they backfilled with that default), since none of
 them could have reported satellite before the column existed.
 
+## Update (2026-09-28): app not appearing in Settings' satellite-ready app list
+
+DotWatcher wasn't showing up in the iOS Settings screen that lists apps a carrier (One NZ)
+considers satellite-ready. Cause: `DotWatcher.entitlements` only declared
+`carrier-constrained.app-optimized`, never the separate
+`com.apple.developer.networking.carrier-constrained.appcategory` entitlement. That's the
+self-select array carriers read to decide which apps to enable for satellite data — with no
+category declared, there was nothing for One NZ to allow. `app-optimized` alone doesn't populate
+that list; it only certifies the app once optimised and suppresses the constrained-network
+permission alerts.
+
+Fix: added the `appcategory` array with `health-fitness-8014` (Apple's health/fitness category —
+the closest fit for DotWatcher; One NZ doesn't publish which categories it enables, so it's not
+guaranteed to appear even with this in place — worth confirming with a TestFlight build).
+
+The `URLSession`/`NWPathMonitor` side (essential-vs-non-essential session split,
+`allowsUltraConstrainedNetworkAccess`, reactive `isUltraConstrained` detection) was already correct
+and needed no change — see "Implementation status" above.
+
 ## Open questions
 
 - **iOS 26.0 support or 26.1+ minimum?** Leaning toward 26.1+ to avoid the NWConnection fallback path, but needs a call.
