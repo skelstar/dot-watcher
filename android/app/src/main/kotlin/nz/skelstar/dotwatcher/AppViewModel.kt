@@ -132,6 +132,15 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         _destination.value = Destination.Map(membership, isSharing = false)
     }
 
+    /** Stops sharing this device's own position while staying in the session and on the map —
+     *  distinct from [returnToSessionPicker], which also leaves the session entirely. The runner
+     *  can start sharing again by leaving and rejoining (Milestone 3's session-management UI is
+     *  the natural place for a proper "share again" action without a full round-trip). */
+    fun stopSharing(membership: SessionMembership) {
+        LocationTrackingService.stop(getApplication())
+        _destination.value = Destination.Map(membership, isSharing = false)
+    }
+
     /** Returns to the create/join screen without signing out — stopping tracking for this
      *  session, not leaving the app. There's no server-side "leave session" call from Milestone 1
      *  yet (that's Milestone 3's session-management UI), so this is purely local navigation. */

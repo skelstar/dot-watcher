@@ -1,6 +1,7 @@
 package nz.skelstar.dotwatcher.ui.map
 
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -8,6 +9,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SmallFloatingActionButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -29,6 +31,8 @@ import nz.skelstar.dotwatcher.location.LocationTrackingService
 import nz.skelstar.dotwatcher.location.TrackingState
 import nz.skelstar.dotwatcher.network.RunnerPosition
 import nz.skelstar.dotwatcher.network.SessionMembership
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 
 /** How often the map polls for other runners' positions, matching the web client's cadence
  *  (repo root README.md, "client" section). This is the read side only; posting this device's
@@ -36,10 +40,13 @@ import nz.skelstar.dotwatcher.network.SessionMembership
  *  lifecycle so it survives the screen being locked or the app being backgrounded. */
 private const val POLL_INTERVAL_MS = 10_000L
 
+private val EXPIRY_TIME_FORMAT = DateTimeFormatter.ofPattern("h:mm a")
+
 /**
  * Hosts the live map for [membership]'s session: polls everyone's latest positions to feed
- * [MapScreen], and — when [isSharing] — surfaces [LocationTrackingService]'s state (next
- * expiry, last post error) without owning the tracking loop itself.
+ * [MapScreen], and — when [isSharing] — surfaces [LocationTrackingService]'s state (a "Sharing ·
+ * expires HH:MM" chip, plus a "Stop sharing" action distinct from leaving the session entirely)
+ * without owning the tracking loop itself.
  */
 @OptIn(ExperimentalMaterial3Api::class) // TopAppBar is experimental in the pinned Material3 version.
 @Composable
@@ -47,6 +54,7 @@ fun LiveMapScreen(
     membership: SessionMembership,
     repository: DotWatcherRepository,
     isSharing: Boolean,
+    onStopSharing: () -> Unit,
     onLeaveSession: () -> Unit,
 ) {
     val coroutineScope = rememberCoroutineScope()
@@ -71,7 +79,23 @@ fun LiveMapScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(title = { Text(membership.sessionName) })
+            TopAppBar(
+                title = {
+                    Column {
+                        Text(membership.sessionName)
+                        if (isSharing) {
+                            SharingStatusLine(trackingState)
+                        }
+                    }
+                },
+                actions = {
+                    if (isSharing) {
+                        TextButton(onClick = onStopSharing) {
+                            Text("Stop sharing")
+                        }
+                    }
+                },
+            )
         },
         floatingActionButton = {
             SmallFloatingActionButton(onClick = onLeaveSession) {
@@ -82,18 +106,17 @@ fun LiveMapScreen(
         Box(modifier = Modifier.fillMaxSize().padding(padding)) {
             MapScreen(positions = positions, linzApiKey = BuildConfig.LINZ_API_KEY)
 
-            val statusMessage = if (!isSharing) {
+            val errorMessage = if (!isSharing) {
                 null
             } else {
-                when (val current = trackingState) {
-                    is TrackingState.Tracking -> current.lastError?.let { "Couldn't send your position: $it" }
-                    TrackingState.Stopped -> "Sharing has stopped."
+                (trackingState as? TrackingState.Tracking)?.lastError?.let {
+                    "Couldn't send your position: $it"
                 }
             }
 
-            if (statusMessage != null) {
+            if (errorMessage != null) {
                 Text(
-                    text = statusMessage,
+                    text = errorMessage,
                     color = MaterialTheme.colorScheme.error,
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
@@ -102,4 +125,20 @@ fun LiveMapScreen(
             }
         }
     }
+}
+
+/** "Sharing · expires 5:31 PM" while [LocationTrackingService] is actually running, or "Sharing
+ *  stopped" if it ended (duration cap reached, or stopped elsewhere) while this screen still
+ *  thinks [isSharing][LiveMapScreen] is true — e.g. right after the cap expires, before the
+ *  runner has dismissed/left. */
+@Composable
+private fun SharingStatusLine(trackingState: TrackingState) {
+    val text = when (trackingState) {
+        is TrackingState.Tracking -> {
+            val expiryTime = trackingState.expiresAt.atZone(ZoneId.systemDefault()).format(EXPIRY_TIME_FORMAT)
+            "Sharing · expires $expiryTime"
+        }
+        TrackingState.Stopped -> "Sharing stopped"
+    }
+    Text(text = text, style = MaterialTheme.typography.labelSmall)
 }

@@ -68,6 +68,7 @@ private fun MapDestinationScreen(membership: SessionMembership, isSharing: Boole
         membership = membership,
         repository = viewModel.repository,
         isSharing = isSharing,
+        onStopSharing = { viewModel.stopSharing(membership) },
         onLeaveSession = viewModel::returnToSessionPicker,
     )
 }
