@@ -2,7 +2,6 @@ package nz.skelstar.dotwatcher.ui.map
 
 import android.graphics.Bitmap
 import android.graphics.Canvas
-import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Path
 import androidx.compose.foundation.layout.Box
@@ -48,21 +47,23 @@ import org.maplibre.geojson.Point
 
 private const val RUNNERS_SOURCE_ID = "runners-source"
 private const val RUNNERS_LAYER_ID = "runners-layer"
-private const val RUNNER_ARROW_ICON_ID = "runner-arrow"
-private const val RUNNER_DOT_ICON_ID = "runner-dot"
 private const val HEADING_PROPERTY = "heading"
 private const val ICON_PROPERTY = "icon"
+
+private fun arrowIconId(colorIndex: Int) = "runner-arrow-$colorIndex"
+private fun dotIconId(colorIndex: Int) = "runner-dot-$colorIndex"
 
 /**
  * Live map for one session: LINZ topo basemap (matching client/'s style, see
  * client/src/map/mapStyle.ts) plus one marker per runner from [positions], a directional arrow
  * when [RunnerPosition.heading] is present and a plain dot otherwise — mirroring the fallback
- * rule in repo root README.md ("client" section). Per-runner coloring
- * (client/'s runnerColour, ios/DotWatcher/DotWatcher/RunnerColorPalette.swift) is not yet ported;
- * every marker renders in one accent color for Milestone 1.
+ * rule in repo root README.md ("client" section). Each runner is colored via
+ * [RunnerColorPalette]; [currentUserName]'s own marker always gets
+ * [RunnerColorPalette.CURRENT_USER_INDEX]'s color (blue), the way iOS highlights the local
+ * user's own marker.
  */
 @Composable
-fun MapScreen(positions: List<RunnerPosition>, linzApiKey: String) {
+fun MapScreen(positions: List<RunnerPosition>, linzApiKey: String, currentUserName: String) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
 
@@ -97,8 +98,12 @@ fun MapScreen(positions: List<RunnerPosition>, linzApiKey: String) {
                     getMapAsync { map ->
                         val styleUrl = "https://basemaps.linz.govt.nz/v1/styles/topographic-v2.json?api=$linzApiKey"
                         map.setStyle(styleUrl) { loadedStyle ->
-                            loadedStyle.addImage(RUNNER_ARROW_ICON_ID, arrowBitmap())
-                            loadedStyle.addImage(RUNNER_DOT_ICON_ID, dotBitmap())
+                            // One arrow + dot bitmap per palette color/index, registered up front,
+                            // rather than per-runner (names vary; the 8-color palette doesn't).
+                            RunnerColorPalette.allColors().forEachIndexed { index, color ->
+                                loadedStyle.addImage(arrowIconId(index), arrowBitmap(color))
+                                loadedStyle.addImage(dotIconId(index), dotBitmap(color))
+                            }
                             loadedStyle.addSource(GeoJsonSource(RUNNERS_SOURCE_ID))
                             loadedStyle.addLayer(
                                 SymbolLayer(RUNNERS_LAYER_ID, RUNNERS_SOURCE_ID).withProperties(
@@ -119,7 +124,7 @@ fun MapScreen(positions: List<RunnerPosition>, linzApiKey: String) {
             update = { view ->
                 val currentStyle = style ?: return@AndroidView
                 val source = currentStyle.getSourceAs<GeoJsonSource>(RUNNERS_SOURCE_ID) ?: return@AndroidView
-                source.setGeoJson(positions.toFeatureCollection())
+                source.setGeoJson(positions.toFeatureCollection(currentUserName))
 
                 if (positions.isNotEmpty()) {
                     view.getMapAsync { map -> fitToPositions(map, positions) }
@@ -139,17 +144,22 @@ fun MapScreen(positions: List<RunnerPosition>, linzApiKey: String) {
     }
 }
 
-private fun List<RunnerPosition>.toFeatureCollection(): FeatureCollection {
+private fun List<RunnerPosition>.toFeatureCollection(currentUserName: String): FeatureCollection {
     val features = map { position ->
+        val colorIndex = if (position.runnerName == currentUserName) {
+            RunnerColorPalette.CURRENT_USER_INDEX
+        } else {
+            RunnerColorPalette.indexForName(position.runnerName)
+        }
         val point = Point.fromLngLat(position.longitude, position.latitude)
         Feature.fromGeometry(point).apply {
             addStringProperty("runnerName", position.runnerName)
             if (position.heading != null) {
                 addNumberProperty(HEADING_PROPERTY, position.heading)
-                addStringProperty(ICON_PROPERTY, RUNNER_ARROW_ICON_ID)
+                addStringProperty(ICON_PROPERTY, arrowIconId(colorIndex))
             } else {
                 addNumberProperty(HEADING_PROPERTY, 0.0)
-                addStringProperty(ICON_PROPERTY, RUNNER_DOT_ICON_ID)
+                addStringProperty(ICON_PROPERTY, dotIconId(colorIndex))
             }
         }
     }
@@ -177,13 +187,14 @@ private fun fitToPositions(map: MapLibreMap, positions: List<RunnerPosition>) {
     }
 }
 
-/** Simple upward-pointing triangle, rotated per-feature by [iconRotate]; stands in for a
- *  designed asset until Milestone 4's icon pass (.ai/plans/android-app.md). */
-private fun arrowBitmap(): Bitmap {
+/** Simple upward-pointing triangle in [colorArgb], rotated per-feature by [iconRotate]; stands
+ *  in for a designed asset until Milestone 4's own icon pass covers marker artwork too (this
+ *  pass covers marker *color*, per [RunnerColorPalette]). */
+private fun arrowBitmap(colorArgb: Long): Bitmap {
     val size = 64
     val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
     val canvas = Canvas(bitmap)
-    val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.parseColor("#FFD60A") }
+    val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = colorArgb.toInt() }
     val path = Path().apply {
         moveTo(size / 2f, 0f)
         lineTo(size.toFloat(), size.toFloat())
@@ -195,11 +206,11 @@ private fun arrowBitmap(): Bitmap {
     return bitmap
 }
 
-private fun dotBitmap(): Bitmap {
+private fun dotBitmap(colorArgb: Long): Bitmap {
     val size = 48
     val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
     val canvas = Canvas(bitmap)
-    val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.parseColor("#FFD60A") }
+    val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = colorArgb.toInt() }
     canvas.drawCircle(size / 2f, size / 2f, size / 2.5f, paint)
     return bitmap
 }

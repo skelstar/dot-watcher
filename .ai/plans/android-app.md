@@ -188,18 +188,26 @@ session/tracking/sharing loop, still on an internal test track.
 
 Lower-priority items, roughly mapped to remaining iOS files:
 
-- **Visual design pass, matching iOS's actual look — not just its features.**
-  Milestones 1–3 deliberately used bare Material3 defaults (default
-  `OutlinedTextField`/`Button` styling, system fonts, no per-runner marker
-  colors) to keep functional milestones focused on behavior; the result
-  reads as an unstyled wireframe next to iOS's designed screens (title/
-  subtitle hierarchy, `.borderedProminent` button style,
-  `ShareLocationConsentView.swift`'s icon/badge treatment). This item
-  closes that gap: a real Compose theme (colors, typography, shapes)
-  matching iOS's visual language, plus screen-by-screen layout parity —
-  not just "has the same fields." Also covers porting per-runner marker
-  coloring (`RunnerColorPalette.swift` equivalent) to `MapScreen.kt`,
-  called out as deferred in that file's kdoc since Milestone 1.
+- ✅ **Visual design pass, matching iOS's actual look — not just its
+  features.** iOS's in-app screens turned out not to define a custom
+  `AccentColor` (its colorset is empty, so SwiftUI falls back to plain
+  system blue) — the real brand reference is the app icon itself
+  (`Assets.xcassets/AppIcon.appiconset`), sampled directly: badge blue is
+  exactly iOS system blue (`#007AFF`), background green is `#A6D583`. Built
+  a full Material3 `ColorScheme` (light + dark) from those two seed colors
+  with hand-derived tonal variants (`ui/theme/Theme.kt`), plus a bolder
+  headline/title typography pass matching iOS's frequent
+  `.title2.bold()`/`.headline` usage. Also: `ui/map/ShareLocationConsentScreen.kt`
+  now has the icon-in-a-tinted-rounded-square badge
+  `ShareLocationConsentView.swift` uses, and per-runner marker coloring is
+  ported (`ui/map/RunnerColorPalette.kt`, matching `RunnerColorPalette.swift`
+  exactly — note iOS's own comment claiming it mirrors the web client's
+  `runnerColour()` is wrong, the two use different palettes; Android
+  matches iOS, not web, per this milestone's actual goal). Full per-screen
+  layout parity (spacing, iconography beyond what's listed here) is still
+  looser than iOS's; revisit if a specific screen is later flagged as
+  still looking off, the way the session/invite-code screens were earlier
+  in this milestone.
 - ✅ **Boxed per-character invite-code entry** — `ui/CodeBoxField.kt`,
   matching `CodeBoxField.swift`: one bordered square per character
   (36×44dp, monospaced bold, active box highlighted), using a transparent
