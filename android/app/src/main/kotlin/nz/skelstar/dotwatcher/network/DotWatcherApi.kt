@@ -10,6 +10,7 @@ import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Response
 import retrofit2.Retrofit
 import retrofit2.http.Body
+import retrofit2.http.DELETE
 import retrofit2.http.GET
 import retrofit2.http.Header
 import retrofit2.http.POST
@@ -170,6 +171,24 @@ interface DotWatcherApi {
         @Header("X-Api-Version") apiVersion: String = API_VERSION,
     ): Response<List<SessionMembership>>
 
+    /** Sessions the caller has left, most recently left first — used for the "Recent Sessions"
+     *  tap-to-rejoin list (matches iOS's ContentView.swift `noSessionView`/`recentSessionsCard`,
+     *  shown when the caller has no active session). */
+    @GET("me/sessions/recent")
+    suspend fun getRecentSessions(
+        @Header("Authorization") bearerToken: String,
+        @Header("X-Api-Version") apiVersion: String = API_VERSION,
+    ): Response<List<SessionMembership>>
+
+    /** Removes the caller's own membership from a session — matches iOS's
+     *  LocationManager.swift `leaveSession(sessionId:)`. */
+    @DELETE("me/sessions/{sessionId}/membership")
+    suspend fun leaveSession(
+        @Path("sessionId") sessionId: String,
+        @Header("Authorization") bearerToken: String,
+        @Header("X-Api-Version") apiVersion: String = API_VERSION,
+    ): Response<Unit>
+
     @POST("location")
     suspend fun postLocation(
         @Header("Authorization") bearerToken: String,
@@ -185,12 +204,24 @@ interface DotWatcherApi {
     ): Response<List<List<RunnerPosition>>>
 }
 
+/** Flags [UpdateRequiredState] on any `426 Upgrade Required` response, regardless of which
+ *  endpoint triggered it — an application interceptor sees every request/response, mirroring
+ *  iOS's single check inside its shared low-level request-sending function. */
+private class UpdateRequiredInterceptor : okhttp3.Interceptor {
+    override fun intercept(chain: okhttp3.Interceptor.Chain): okhttp3.Response {
+        val response = chain.proceed(chain.request())
+        if (response.code == 426) UpdateRequiredState.markUpdateRequired()
+        return response
+    }
+}
+
 object DotWatcherApiClient {
     fun create(baseUrl: String): DotWatcherApi {
         val logging = HttpLoggingInterceptor().apply {
             level = HttpLoggingInterceptor.Level.BASIC
         }
         val okHttpClient = OkHttpClient.Builder()
+            .addInterceptor(UpdateRequiredInterceptor())
             .addInterceptor(logging)
             .build()
 
