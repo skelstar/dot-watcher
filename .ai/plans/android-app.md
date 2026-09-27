@@ -129,7 +129,12 @@ iOS's).
   wall-clock boundaries (`:00`, `:30`, etc.) rather than "every N seconds
   from launch," so Android's positions line up with iOS's and the web
   client's on the shared map.
-- Configurable interval (e.g. 30s/60s/120s), matching iOS's options.
+- **Correction (checked against `ios/DotWatcher/DotWatcher/LocationManager.swift` while
+  implementing):** iOS does not actually have a user-facing post-interval picker — it uses a
+  fixed 15s cadence (90s when `isUltraConstrained`, e.g. satellite), which is what Android
+  matches instead of building a 30s/60s/120s picker as originally guessed here. iOS *does* have
+  a tracking-**duration** picker (2h/4h/8h/24h, auto-stops tracking at the cap) — that's the
+  option Android ports, not a post-interval one. No satellite-tier equivalent on Android yet.
 - Doze mode / App Standby / OEM battery-optimization interaction: request
   exemption from battery optimization for this app
   (`REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`) and document the various
@@ -181,6 +186,19 @@ session/tracking/sharing loop, still on an internal test track.
 
 Lower-priority items, roughly mapped to remaining iOS files:
 
+- **Visual design pass, matching iOS's actual look — not just its features.**
+  Milestones 1–3 deliberately used bare Material3 defaults (default
+  `OutlinedTextField`/`Button` styling, system fonts, no per-runner marker
+  colors) to keep functional milestones focused on behavior; the result
+  reads as an unstyled wireframe next to iOS's designed screens (e.g.
+  `CreateSessionView.swift`'s `CodeBoxField` boxed-character invite-code
+  entry, title/subtitle hierarchy, `.borderedProminent` button style,
+  `ShareLocationConsentView.swift`'s icon/badge treatment). This item
+  closes that gap: a real Compose theme (colors, typography, shapes)
+  matching iOS's visual language, plus screen-by-screen layout parity —
+  not just "has the same fields." Also covers porting per-runner marker
+  coloring (`RunnerColorPalette.swift` equivalent) to `MapScreen.kt`,
+  called out as deferred in that file's kdoc since Milestone 1.
 - Blocked users management (`BlockedUsersView.swift` equivalent).
 - GPX route import/display (`GpxRouteParser.swift`, `.ai/plans/ios-route-upload.md` if that's landed by then).
 - In-app help content (`HelpView.swift`/`Help.md` equivalent).

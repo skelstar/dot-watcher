@@ -18,6 +18,12 @@ val localProperties = Properties().apply {
     }
 }
 val linzApiKey: String = localProperties.getProperty("LINZ_API_KEY", "")
+// LAN address of the dev server, for the "device" build type below — a real phone can't resolve
+// 10.0.2.2 (that's the emulator's own loopback alias) or a .local mDNS hostname the way iOS's
+// jakkuu.local (project.pbxproj's Device config) can, so this is a plain LAN IP instead. Falls
+// back to a value that fails obviously (unresolvable host) rather than silently pointing at
+// nothing, if a developer forgets to set it.
+val deviceApiBaseUrl: String = localProperties.getProperty("DEVICE_API_BASE_URL", "http://192.0.2.0:8080")
 
 android {
     namespace = "nz.skelstar.dotwatcher"
@@ -33,14 +39,27 @@ android {
         buildConfigField("String", "LINZ_API_KEY", "\"$linzApiKey\"")
     }
 
+    // Three build types, matching iOS's Debug/Device/Release split
+    // (ios/DotWatcher/DotWatcher.xcodeproj/project.pbxproj) — which target to use depends on
+    // where the dev server you're testing against is reachable from:
+    //   debug   - emulator, dev server on this same machine
+    //   device  - real phone (USB or Wi-Fi), dev server on this machine's LAN
+    //   release - any device, production server
     buildTypes {
         // Points at the Android emulator's host-loopback alias for the local dev server
         // (see docker-compose.yml / server/README.md for running it locally; launchSettings.json
-        // fixes the port at 8080). Mirrors iOS's Debug/Device/Release split (README.md, "ios"
-        // section) — this "debug" type stands in for iOS's Debug config until a real device / LAN
-        // dev server variant is needed (Milestone 3).
+        // fixes the port at 8080). Only reachable from the emulator, not a real device — see
+        // "device" below for that case.
         debug {
             buildConfigField("String", "API_BASE_URL", "\"http://10.0.2.2:8080\"")
+        }
+        // For running on a real, physically connected phone against a dev server on your LAN.
+        // Requires DEVICE_API_BASE_URL in local.properties (see local.properties.example) set to
+        // this machine's LAN IP, e.g. "http://192.168.1.23:8080" — found via `ipconfig getifaddr
+        // en0` on macOS. Phone and dev machine must be on the same Wi-Fi network.
+        create("device") {
+            initWith(getByName("debug"))
+            buildConfigField("String", "API_BASE_URL", "\"$deviceApiBaseUrl\"")
         }
         release {
             isMinifyEnabled = false
