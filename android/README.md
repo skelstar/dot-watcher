@@ -40,6 +40,29 @@ needs that pass, plus a look at OEM-specific "let this app run in background" se
    configuration pointing at the simulator's localhost (see repo root `README.md`,
    "ios" section, and `app/build.gradle.kts`).
 
+## Running on a real device
+
+A real phone can't reach `10.0.2.2` (that only means something to the emulator) or a `.local`
+mDNS hostname the way iOS's Device configuration can, so there's a third build type,
+`device`, for this case — matching iOS's Debug/Device/Release split.
+
+1. Set `DEVICE_API_BASE_URL` in `local.properties` to your dev machine's LAN IP (see
+   `local.properties.example`) — e.g. `http://192.168.1.23:8080`, found via
+   `ipconfig getifaddr en0` on macOS.
+2. Make sure your phone and dev machine are on the same Wi-Fi network, and the server is
+   listening on that interface, not just `localhost` (`dotnet run --urls http://0.0.0.0:8080`,
+   or adjust `launchSettings.json`).
+3. Enable Developer Options and USB debugging on the phone (Settings > About phone > tap
+   Build number 7 times, then Settings > System > Developer options > USB debugging).
+4. Connect via USB, select the phone as the target device in Android Studio, and choose the
+   `device` build variant (Build > Select Build Variant, or the variant dropdown) before
+   hitting Run.
+
+No Play Store account or upload needed for this — it's a debug-signed build installed
+directly over USB, the fastest loop for iterating on device-only behavior like Milestone 2's
+background tracking. Play Console internal testing (Milestone 4) is for distributing signed
+release builds to testers without a cable, not required to just see the app running locally.
+
 ## Structure
 
 ```
