@@ -190,15 +190,23 @@ Lower-priority items, roughly mapped to remaining iOS files:
   Milestones 1–3 deliberately used bare Material3 defaults (default
   `OutlinedTextField`/`Button` styling, system fonts, no per-runner marker
   colors) to keep functional milestones focused on behavior; the result
-  reads as an unstyled wireframe next to iOS's designed screens (e.g.
-  `CreateSessionView.swift`'s `CodeBoxField` boxed-character invite-code
-  entry, title/subtitle hierarchy, `.borderedProminent` button style,
+  reads as an unstyled wireframe next to iOS's designed screens (title/
+  subtitle hierarchy, `.borderedProminent` button style,
   `ShareLocationConsentView.swift`'s icon/badge treatment). This item
   closes that gap: a real Compose theme (colors, typography, shapes)
   matching iOS's visual language, plus screen-by-screen layout parity —
   not just "has the same fields." Also covers porting per-runner marker
   coloring (`RunnerColorPalette.swift` equivalent) to `MapScreen.kt`,
   called out as deferred in that file's kdoc since Milestone 1.
+- **Boxed per-character invite-code entry**, matching
+  `CodeBoxField.swift`: one bordered square per character (36×44pt,
+  monospaced bold, active box highlighted) instead of a plain text field,
+  with the same paste-handling smarts — pasting a whole shared message
+  (e.g. from WhatsApp) extracts just the matching-length invite code rather
+  than dumping the whole string in, preferring a hex-looking word since
+  codes are hex. Confirmed on a real device (2026-09-27) that Android's
+  invite-code field is currently a plain `OutlinedTextField`, visibly
+  different from iOS's "Wordle-style" boxes.
 - Blocked users management (`BlockedUsersView.swift` equivalent).
 - GPX route import/display (`GpxRouteParser.swift`, `.ai/plans/ios-route-upload.md` if that's landed by then).
 - In-app help content (`HelpView.swift`/`Help.md` equivalent).
