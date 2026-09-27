@@ -2,6 +2,7 @@ package nz.skelstar.dotwatcher.network
 
 import com.jakewharton.retrofit2.converter.kotlinx.serialization.asConverterFactory
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -100,6 +101,28 @@ data class LocationPostResponse(
     val participants: List<String> = emptyList(),
     val positions: List<List<RunnerPosition>> = emptyList(),
 )
+
+/** Shape of every error response body across the API — a bare `{ "error": "..." }`, per every
+ *  BadRequest/Conflict/etc. call in server/Controllers/*.cs. Not a server-declared contract type
+ *  (those controllers return anonymous objects), just this client's model of the convention. */
+@Serializable
+data class ApiErrorResponse(val error: String? = null)
+
+/**
+ * Best-effort extraction of the server's own error message from a failed response, falling back
+ * to the HTTP status code alone if the body isn't the expected shape (e.g. a proxy's HTML error
+ * page, or a genuinely empty body) — better UX than always showing a bare status code, without
+ * assuming the body is well-formed.
+ */
+fun Response<*>.errorMessageOrStatus(): String {
+    val bodyText = errorBody()?.string()
+    val parsedMessage = bodyText?.let {
+        runCatching { Json { ignoreUnknownKeys = true }.decodeFromString<ApiErrorResponse>(it) }
+            .getOrNull()
+            ?.error
+    }
+    return parsedMessage ?: "Request failed (${code()})."
+}
 
 // Paths below are deliberately relative (no leading "/"): Retrofit resolves them against
 // baseUrl with normal URL-relative semantics, and a leading "/" would resolve against the

@@ -53,10 +53,18 @@ fun SessionScreen(
         Spacer(modifier = Modifier.height(24.dp))
 
         Text(text = "Create a session", style = MaterialTheme.typography.titleMedium)
+        // Server-enforced rule (server/Stores/SessionStore.cs's NormalizeSessionName): 4-8 ASCII
+        // letters/digits/dashes/underscores if provided at all. Leaving it blank is valid — the
+        // server generates a name — so this only applies once the runner's typed something.
+        val isSessionNameValid = sessionName.isBlank() ||
+            (sessionName.length in 4..8 &&
+                sessionName.all { (it.isLetterOrDigit() && it.code < 128) || it == '-' || it == '_' })
         OutlinedTextField(
             value = sessionName,
             onValueChange = { sessionName = it },
             label = { Text("Session name (optional)") },
+            supportingText = { Text("4-8 letters, numbers, dashes, or underscores") },
+            isError = !isSessionNameValid,
             singleLine = true,
             modifier = Modifier.fillMaxWidth(),
         )
@@ -71,7 +79,7 @@ fun SessionScreen(
         Spacer(modifier = Modifier.height(8.dp))
         Button(
             onClick = { onCreateSession(sessionName, createDisplayName) },
-            enabled = state !is SessionUiState.Loading,
+            enabled = state !is SessionUiState.Loading && isSessionNameValid,
             modifier = Modifier.fillMaxWidth(),
         ) {
             Text("Create session")

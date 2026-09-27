@@ -11,6 +11,7 @@ import nz.skelstar.dotwatcher.data.DotWatcherRepository
 import nz.skelstar.dotwatcher.location.LocationTrackingService
 import nz.skelstar.dotwatcher.network.DotWatcherApiClient
 import nz.skelstar.dotwatcher.network.SessionMembership
+import nz.skelstar.dotwatcher.network.errorMessageOrStatus
 import retrofit2.Response
 import java.time.Duration
 
@@ -84,7 +85,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             _destination.value = Destination.Session
             AuthUiState.Idle
         } else {
-            AuthUiState.Error("Sign-in failed (${response.code()}).")
+            AuthUiState.Error(response.errorMessageOrStatus())
         }
     }
 
@@ -119,7 +120,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             }
             SessionUiState.Idle
         } else {
-            SessionUiState.Error("Could not join/create session (${response.code()}).")
+            SessionUiState.Error(response.errorMessageOrStatus())
         }
     }
 
