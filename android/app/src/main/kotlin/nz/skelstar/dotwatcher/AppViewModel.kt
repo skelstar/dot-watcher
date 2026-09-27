@@ -111,21 +111,24 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun rejoinSession(inviteCode: String) {
-        joinSession(inviteCode, displayName = null)
+        joinSession(inviteCode)
     }
 
-    fun createSession(sessionName: String?, displayName: String?) {
+    /** No displayName param: matches iOS's common path, which auto-fills the per-session
+     *  display name from the account's own registered display name rather than asking again
+     *  (see SessionScreen.kt's kdoc) — the server already defaults to that when none is sent. */
+    fun createSession(sessionName: String?) {
         viewModelScope.launch {
             _sessionState.value = SessionUiState.Loading
-            val result = runCatching { repository.createSession(sessionName?.ifBlank { null }, displayName?.ifBlank { null }) }
+            val result = runCatching { repository.createSession(sessionName?.ifBlank { null }, displayName = null) }
             _sessionState.value = handleSessionResult(result)
         }
     }
 
-    fun joinSession(inviteCode: String, displayName: String?) {
+    fun joinSession(inviteCode: String) {
         viewModelScope.launch {
             _sessionState.value = SessionUiState.Loading
-            val result = runCatching { repository.joinSession(inviteCode, displayName?.ifBlank { null }) }
+            val result = runCatching { repository.joinSession(inviteCode, displayName = null) }
             _sessionState.value = handleSessionResult(result)
         }
     }

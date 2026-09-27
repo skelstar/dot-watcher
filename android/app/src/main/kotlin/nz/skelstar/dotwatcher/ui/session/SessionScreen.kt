@@ -15,7 +15,6 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -37,20 +36,27 @@ import nz.skelstar.dotwatcher.ui.CodeBoxField
  * `recentSessionsCard` (ContentView.swift). iOS shows this screen only when there's no active
  * session; Android's single linear flow reaches it the same way (via [leaveSession][
  * nz.skelstar.dotwatcher.AppViewModel.leaveSession] or first sign-in).
+ *
+ * No display-name field here: iOS doesn't ask per-session either — it auto-fills from the
+ * account's own registered display name on every login
+ * (`LocationManager.swift`'s `authenticate(path:body:)` sets `runnerName =
+ * session.user.displayName.uppercased()`), only falling back to a one-time 2-letter-initials
+ * entry sheet in the rare case that's empty. Android leaves `displayName` unset on
+ * create/join, which the server already defaults to the account's own display name
+ * (`server/Controllers/SessionsController.cs`) — the same outcome as iOS's common path,
+ * without needing to port that rarely-hit fallback sheet.
  */
 @Composable
 fun SessionScreen(
     state: SessionUiState,
     recentSessions: List<SessionMembership>,
-    onCreateSession: (sessionName: String?, displayName: String?) -> Unit,
-    onJoinSession: (inviteCode: String, displayName: String?) -> Unit,
+    onCreateSession: (sessionName: String?) -> Unit,
+    onJoinSession: (inviteCode: String) -> Unit,
     onRejoinSession: (inviteCode: String) -> Unit,
     onSignOut: () -> Unit,
 ) {
     var sessionName by remember { mutableStateOf("") }
-    var createDisplayName by remember { mutableStateOf("") }
     var inviteCode by remember { mutableStateOf("") }
-    var joinDisplayName by remember { mutableStateOf("") }
 
     Column(
         modifier = Modifier
@@ -82,16 +88,8 @@ fun SessionScreen(
             length = 8,
         )
         Spacer(modifier = Modifier.height(8.dp))
-        OutlinedTextField(
-            value = createDisplayName,
-            onValueChange = { createDisplayName = it },
-            label = { Text("Display name (optional)") },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth(),
-        )
-        Spacer(modifier = Modifier.height(8.dp))
         Button(
-            onClick = { onCreateSession(sessionName, createDisplayName) },
+            onClick = { onCreateSession(sessionName) },
             enabled = state !is SessionUiState.Loading &&
                 (sessionName.isEmpty() || sessionName.length >= 4),
             modifier = Modifier.fillMaxWidth(),
@@ -112,16 +110,8 @@ fun SessionScreen(
             length = 6,
         )
         Spacer(modifier = Modifier.height(8.dp))
-        OutlinedTextField(
-            value = joinDisplayName,
-            onValueChange = { joinDisplayName = it },
-            label = { Text("Display name (optional)") },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth(),
-        )
-        Spacer(modifier = Modifier.height(8.dp))
         Button(
-            onClick = { onJoinSession(inviteCode, joinDisplayName) },
+            onClick = { onJoinSession(inviteCode) },
             // Requires the full 6 characters, matching iOS's noSessionJoinCard
             // (`disabled(... || noSessionInviteCode.count < 6)`).
             enabled = state !is SessionUiState.Loading && inviteCode.length == 6,
