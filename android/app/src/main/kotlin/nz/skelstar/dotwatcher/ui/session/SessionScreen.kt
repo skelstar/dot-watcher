@@ -27,6 +27,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import nz.skelstar.dotwatcher.SessionUiState
 import nz.skelstar.dotwatcher.network.SessionMembership
+import nz.skelstar.dotwatcher.ui.CodeBoxField
 
 /**
  * Lets a signed-in runner either start a new session ([POST /sessions]) or join an existing one
@@ -63,20 +64,22 @@ fun SessionScreen(
         Spacer(modifier = Modifier.height(24.dp))
 
         Text(text = "Create a session", style = MaterialTheme.typography.titleMedium)
-        // Server-enforced rule (server/Stores/SessionStore.cs's NormalizeSessionName): 4-8 ASCII
-        // letters/digits/dashes/underscores if provided at all. Leaving it blank is valid — the
-        // server generates a name — so this only applies once the runner's typed something.
-        val isSessionNameValid = sessionName.isBlank() ||
-            (sessionName.length in 4..8 &&
-                sessionName.all { (it.isLetterOrDigit() && it.code < 128) || it == '-' || it == '_' })
-        OutlinedTextField(
+        Text(
+            text = "Session name (optional)",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(modifier = Modifier.height(4.dp))
+        // 8 boxes matching iOS's CreateSessionView.swift regardless of the actual 4-8 char range
+        // the server accepts (server/Stores/SessionStore.cs's NormalizeSessionName) — shorter
+        // names just leave trailing boxes empty, same as iOS. lettersOnly=false only screens
+        // letters/digits, not dashes/underscores the server also allows: this matches iOS's
+        // CodeBoxField exactly, dash/underscore gap included — see .ai/plans/android-app.md's
+        // Milestone 4 notes on that being a deliberate iOS-parity choice, not an oversight.
+        CodeBoxField(
             value = sessionName,
             onValueChange = { sessionName = it },
-            label = { Text("Session name (optional)") },
-            supportingText = { Text("4-8 letters, numbers, dashes, or underscores") },
-            isError = !isSessionNameValid,
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth(),
+            length = 8,
         )
         Spacer(modifier = Modifier.height(8.dp))
         OutlinedTextField(
@@ -89,7 +92,8 @@ fun SessionScreen(
         Spacer(modifier = Modifier.height(8.dp))
         Button(
             onClick = { onCreateSession(sessionName, createDisplayName) },
-            enabled = state !is SessionUiState.Loading && isSessionNameValid,
+            enabled = state !is SessionUiState.Loading &&
+                (sessionName.isEmpty() || sessionName.length >= 4),
             modifier = Modifier.fillMaxWidth(),
         ) {
             Text("Create session")
@@ -100,12 +104,12 @@ fun SessionScreen(
         Spacer(modifier = Modifier.height(24.dp))
 
         Text(text = "Join with an invite code", style = MaterialTheme.typography.titleMedium)
-        OutlinedTextField(
+        Spacer(modifier = Modifier.height(4.dp))
+        // 6 boxes, matching iOS's ContentView.swift `noSessionJoinCard` (CodeBoxField length 6).
+        CodeBoxField(
             value = inviteCode,
             onValueChange = { inviteCode = it },
-            label = { Text("Invite code") },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth(),
+            length = 6,
         )
         Spacer(modifier = Modifier.height(8.dp))
         OutlinedTextField(
@@ -118,7 +122,9 @@ fun SessionScreen(
         Spacer(modifier = Modifier.height(8.dp))
         Button(
             onClick = { onJoinSession(inviteCode, joinDisplayName) },
-            enabled = state !is SessionUiState.Loading && inviteCode.isNotBlank(),
+            // Requires the full 6 characters, matching iOS's noSessionJoinCard
+            // (`disabled(... || noSessionInviteCode.count < 6)`).
+            enabled = state !is SessionUiState.Loading && inviteCode.length == 6,
             modifier = Modifier.fillMaxWidth(),
         ) {
             Text("Join as runner")
