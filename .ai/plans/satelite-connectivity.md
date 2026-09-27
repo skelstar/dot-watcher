@@ -95,9 +95,55 @@ category declared, there was nothing for One NZ to allow. `app-optimized` alone 
 that list; it only certifies the app once optimised and suppresses the constrained-network
 permission alerts.
 
-Fix: added the `appcategory` array with `health-fitness-8014` (Apple's health/fitness category —
-the closest fit for DotWatcher; One NZ doesn't publish which categories it enables, so it's not
-guaranteed to appear even with this in place — worth confirming with a TestFlight build).
+Fix: added the `appcategory` array with two categories:
+
+- `health-fitness-8014` — "apps for health and fitness".
+- `hiking-adventure-8003` — "apps that support hiking and outdoor activities". The closer fit for
+  trail runners, and One NZ's published list of satellite-enabled apps leans heavily this way
+  (AllTrails, Plan My Walk, Te Araroa, NZTopo50, GetHomeSafe).
+
+One NZ doesn't publish which categories it enables, so declaring both improves the odds without
+claiming anything untrue about the app. Deliberately *not* declared: `emergency-8007` (DotWatcher
+isn't an emergency service) and `maps-8002` (that category is for navigating to a destination).
+Full list of valid values:
+<https://developer.apple.com/documentation/bundleresources/entitlements/com.apple.developer.networking.carrier-constrained.appcategory>
+
+### Release checklist for entitlement changes
+
+1. **App ID capability.** `app-optimized` already signs, so the App ID has that capability. The
+   `appcategory` entitlement may be a separate capability in the Apple Developer portal
+   (Certificates, Identifiers & Profiles → Identifiers → DotWatcher's App ID). If it isn't enabled
+   there, archiving fails with a provisioning profile / entitlement mismatch. Enable it and
+   regenerate (or let Xcode refresh) the profile.
+2. **Verify what's actually signed.** The `.entitlements` file is only an input. On the archived
+   app (`.xcarchive` → Products/Applications/DotWatcher.app):
+   ```bash
+   codesign -d --entitlements - DotWatcher.app
+   ```
+   Both `carrier-constrained.app-optimized` and `carrier-constrained.appcategory` (with its array)
+   must appear.
+3. **Check the Settings list** on an iPhone 13+ with One NZ Satellite Data, while still in normal
+   coverage. Unconfirmed whether TestFlight builds appear there. If a build that definitely has the
+   entitlements (step 2) still doesn't show, TestFlight is the next suspect, then One NZ's
+   category allowlist.
+
+### Supported devices for satellite
+
+Satellite posting needs **iPhone 13 or later on iOS 26.1 or later**, plus a One NZ plan with
+Satellite Data. The app itself still installs from iOS 17.6. Below 26.1 it behaves as it always
+has: no satellite path, no satellite detection.
+
+iOS 26.0 is excluded on purpose. The entitlements exist from 26.0, but
+`URLSessionConfiguration.allowsUltraConstrainedNetworkAccess` (and `NWPath.isUltraConstrained`)
+only arrived in 26.1. Covering 26.0 would take a hand-rolled `NWConnection` HTTP client (as One NZ's
+Smudge sample does) for a population that has all but disappeared. Decided 2026-09-28; this closes
+the "iOS 26.0 support or 26.1+ minimum?" open question below.
+
+### Not doing
+
+- **Retry queue for failed `POST /location` calls.** A satellite handover can drop a post, but
+  DotWatcher is about where the runner is *now*. The next post, one cadence later, replaces a lost
+  one, so buffering stale positions isn't worth it here.
 
 The `URLSession`/`NWPathMonitor` side (essential-vs-non-essential session split,
 `allowsUltraConstrainedNetworkAccess`, reactive `isUltraConstrained` detection) was already correct
@@ -105,7 +151,7 @@ and needed no change — see "Implementation status" above.
 
 ## Open questions
 
-- **iOS 26.0 support or 26.1+ minimum?** Leaning toward 26.1+ to avoid the NWConnection fallback path, but needs a call.
+- ~~**iOS 26.0 support or 26.1+ minimum?**~~ Decided 2026-09-28: 26.1+ for satellite (see "Supported devices for satellite" above).
 - **Fully hide the map, or show a dimmed/frozen last-known frame behind the status message?** Leaning toward full hide + message, since a frozen frame risks being misread as live.
 - **Build this into the current external-browser map flow, or fold it directly into the planned native MapKit view?** Since the polling loop this logic hooks into is also central to the native map work already on the roadmap, it may make sense to build it once as part of that scaffold rather than twice.
 - Whether to visually reuse the SVG/design language from the existing paused-state treatment for the satellite status badge.
