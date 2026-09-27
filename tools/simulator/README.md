@@ -89,6 +89,11 @@ multi-runner scenarios without needing physical devices.
     only flips `isUltraConstrained: true` on the post, the same self-reported flag iOS sends from
     `NWPath.isUltraConstrained`, so it exercises the client's satellite indicator independently of
     GPS quality or posting cadence)
+  - Separately, battery can be toggled between **Battery: normal** (sends nothing, matching the
+    real app when the level is unavailable), **Battery: low** (sends `batteryLevel: 25`), and
+    **Battery: critical** (sends `batteryLevel: 5`) — a fixed value per mode, not a drain
+    simulation, just enough to exercise the client's two battery badge thresholds (see
+    `.ai/plans/battery-level-reporting.md`) independently of GPS quality/satellite
   - Can leave the session independently at any time
   - Renders on both its own mini map and the shared convergence map using the same visual
     language as the client's runner markers (`Arrow.tsx`): a coloured circle with a heading
