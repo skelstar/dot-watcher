@@ -103,8 +103,9 @@ data class LocationPostResponse(
 )
 
 /** Shape of every error response body across the API — a bare `{ "error": "..." }`, per every
- *  BadRequest/Conflict/etc. call in server/Controllers/*.cs. Not a server-declared contract type
- *  (those controllers return anonymous objects), just this client's model of the convention. */
+ *  BadRequest/Conflict/etc. call in the server's controllers (server/Controllers). Not a
+ *  server-declared contract type (those controllers return anonymous objects), just this
+ *  client's model of the convention. */
 @Serializable
 data class ApiErrorResponse(val error: String? = null)
 
