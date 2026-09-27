@@ -1,16 +1,69 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Placeholder foreground: a single dot, standing in for the app's runner-position marker
-     until a real app icon is designed — a separate Milestone 4 item from the theme/color pass
-     this file's color was updated alongside (see .ai/plans/android-app.md, "App icon, Play
-     Store listing assets"). Color now matches the real app icon's badge blue
-     (ios/DotWatcher/DotWatcher/Assets.xcassets/AppIcon.appiconset), sampled directly from its
-     pixels, rather than an arbitrary placeholder color. -->
+<!-- Recreated (as vectors, not a copy of the PNG) from
+     ios/DotWatcher/DotWatcher/Assets.xcassets/AppIcon.appiconset/dotwatchr-icon-5a.png: a
+     white-ringed blue circular badge with "DW" lettering, plus the chevron/flag shape from the
+     upper-right of the source icon. Positioned and sized to sit fully within Android's
+     adaptive-icon safe zone (centered on this 108dp canvas at (54,54), radius 33dp) so it
+     isn't clipped by a launcher's mask shape — checked by rendering this file and overlaying
+     the safe-zone circle before committing to these coordinates. Colors sampled directly from
+     the source icon's pixels: badge blue is exactly iOS system blue (#007AFF, see
+     ui/theme/Theme.kt's BrandBlue) and the ring/lettering are white. "DW" is drawn as
+     simplified geometric letterforms (vector drawables can't render text), not a font. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
+
+    <!-- Chevron/flag shape, upper-right of the badge, matching the source icon's white
+         rounded-rectangle-with-notch accent. -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M62,38
+                           h15
+                           a3,3 0 0,1 3,3
+                           v15
+                           a3,3 0 0,1 -6,0
+                           v-9
+                           l-12,12
+                           a3,3 0 0,1 -4.5,-4.5
+                           l12,-12
+                           h-7.5
+                           a3,3 0 0,1 0,-6
+                           z" />
+
+    <!-- White ring behind the blue badge fill. -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M50,54 m-16,0 a16,16 0 1,1 32,0 a16,16 0 1,1 -32,0" />
+
+    <!-- Blue badge fill (iOS system blue, matching ui/theme/Theme.kt's BrandBlue). -->
     <path
         android:fillColor="#007AFF"
-        android:pathData="M54,54m-22,0a22,22 0,1 1,44 0a22,22 0,1 1,-44 0" />
+        android:pathData="M50,54 m-13.5,0 a13.5,13.5 0 1,1 27,0 a13.5,13.5 0 1,1 -27,0" />
+
+    <!-- "D" — a rounded vertical bar plus a bowl, simplified to two overlapping shapes rather
+         than a font glyph. -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M42.5,47.5 h3 v13 h-3 z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M45.5,47.5
+                           a6.5,6.5 0 0,1 0,13
+                           h-2.2
+                           v-2.8
+                           h2.2
+                           a3.7,3.7 0 0,0 0,-7.4
+                           h-2.2
+                           v-2.8
+                           z" />
+
+    <!-- "W" — a simple zigzag stroke, bold enough to stay legible at small icon sizes. -->
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="2.1"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M53.5,47.5 L55.8,60.5 L58.5,52.5 L61.2,60.5 L63.5,47.5" />
 </vector>
