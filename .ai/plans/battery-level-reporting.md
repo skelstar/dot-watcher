@@ -45,8 +45,8 @@ this). Convert `-1.0` → `nil` on the wire, not `0`. A missing value must never
 battery — same "unknown ≠ bad" rule this codebase already applies to `isUltraConstrained: false`
 defaulting for older clients.
 
-**Two thresholds, two icons.** Proposed defaults, open to adjustment:
-- **Low** — ≤20% (matches iOS's own Low Power Mode suggestion point, a familiar mental model).
+**Two thresholds, two icons.** Decided:
+- **Low** — ≤30%.
 - **Critical** — ≤10%.
 
 Mutually exclusive per runner at any instant (like the existing missing/sleeping precedence in
@@ -156,8 +156,7 @@ Purely additive, matching every prior field added this way:
 
 ## Open questions
 
-- Confirm the 20%/10% threshold defaults, or make them configurable.
-- Exact icon glyphs for "low" (a Lucide battery-outline variant, TBD which one reads best at
+- Exact icon glyph for "low" (a Lucide battery-outline variant, TBD which one reads best at
   `Legend.tsx`'s small pill size).
 - Whether "critical" reusing the plain red "!" is distinctive enough next to GPS signal-loss (which
   uses the same badge) — consider a battery-specific critical icon instead if the two get confused
