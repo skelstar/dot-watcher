@@ -193,7 +193,55 @@ Shipped in full per the design above, on branch `add-battery-level-reporting`:
 - `docs/database-schema.html` updated with the new column.
 
 Not done (per Non-goals above, unchanged): Android, native iOS map display of other runners'
-battery, a self-device low-battery alert, historical battery graphing, push notifications.
+battery, historical battery graphing, push notifications. (The self-device low-battery alert
+listed as a non-goal above was later built — see the update directly below.)
 
 Not run locally: `dotnet build`/`test`, `npm run test`/`build` — per repo convention, left to CI on
 the PR.
+
+## Update (2026-09-28): pause automatic tracking at critical battery
+
+Two follow-up ideas were considered and rejected/accepted:
+
+**Rejected: slow the post cadence at low battery (e.g. every 5 minutes).** Doesn't help. GPS —
+continuous `CLLocationManager` tracking — is the dominant battery cost, already established in this
+codebase's own history (`cabb1a8`: *"GPS is the dominant battery drain (~30-100mW continuous), the
+marginal cost of one small HTTP POST every 15s is negligible by comparison"*) and in
+`satelite-connectivity.md` (*"GPS acquisition cost is unaffected by which network path the upload
+eventually takes"*). Slowing POSTs alone doesn't touch GPS, so it barely moves the real cost, while
+directly hurting position freshness at the exact moment (phone about to die) that freshness matters
+most.
+
+**Accepted: stop tracking entirely at critical battery, runner-controlled.** This targets the actual
+dominant cost by calling `clManager.stopUpdatingLocation()`, not just skipping POSTs. Design:
+
+- **Trigger:** `batteryLevel <= criticalBatteryThreshold` (10, matching the client's
+  `CRITICAL_BATTERY_THRESHOLD`) and not currently charging (`UIDevice.batteryState`) and not already
+  overridden this tracking session.
+- **On trigger:** stop `CLLocationManager` updates, skip the automatic post, show a persistent
+  banner (`ContentView.runnerRow`) — deliberately not silent, matching this app's existing rule that
+  a state change affecting what other people see must be surfaced, not hidden (same reasoning as the
+  satellite status badge).
+- **Two explicit choices offered, no default action taken on the runner's behalf:**
+  - **Send location now** — one-shot `CLLocationManager.requestLocation()` (reusing
+    `oneShotLocationContinuation`, scaffolding that already existed in `LocationManager.swift` but
+    had no caller) + a single POST. Does not resume automatic tracking.
+  - **Turn on automatic updates** — explicit override, resumes `startUpdatingLocation()` and the
+    normal cadence for the rest of this tracking session (`batteryOverrideAcknowledged`, reset on
+    `start()`).
+- **Auto-resume on charging**, even without the override button: if the runner plugs in, the reason
+  for pausing no longer applies, so tracking resumes automatically. This is an addition beyond what
+  was asked for, included because it has no downside (charging is an unambiguous, immediate signal)
+  and never overrides an explicit choice either way.
+- **No server/protocol changes.** Other session members don't need a new signal: once posts stop,
+  the existing gap/missing detection (`findRunnersWithGap`) kicks in on schedule, and the runner's
+  last known position still carries its persisted `batteryLevel`, so the critical-battery badge is
+  still showing on that last dot. "Last seen at critical battery, then went quiet" is already the
+  correct, honest story with zero new server work.
+
+### Non-goal (unchanged from this update)
+
+Detecting "phone unlocked" directly — iOS has no such signal for a backgrounded app. Foregrounding
+the app (which requires unlocking) is the closest equivalent and isn't what this design uses either;
+it's fully explicit (a button tap), not foreground-triggered, per the decision to default to
+*stopped* rather than *silently resumed on open*.
