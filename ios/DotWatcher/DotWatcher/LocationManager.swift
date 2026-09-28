@@ -891,9 +891,15 @@ final class LocationManager {
         )
     }
 
+    // Deliberately not routed by isTestFlightBuild, unlike configuredServerBaseURL above. That
+    // flag exists so a TestFlight tester's own app talks to the staging API pod — fine, since
+    // staging and production share one database. But this URL isn't for the tester: it's embedded
+    // in invite/route-upload links handed to other people (createRouteUploadURL, join links), who
+    // are never TestFlight testers and should always land on the stable public site regardless of
+    // which backend the sharer's build happens to be hitting.
     private static func configuredWebBaseURL() -> URL {
         configuredBaseURL(
-            infoKey: isTestFlightBuild ? "DotWatcherStagingWebBaseURL" : "DotWatcherWebBaseURL",
+            infoKey: "DotWatcherWebBaseURL",
             fallback: "https://dot-watcher.skelstar.io"
         )
     }
