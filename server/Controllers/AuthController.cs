@@ -39,7 +39,25 @@ public class AuthController(
         if (!store.CreateUser(account))
             return Conflict(new { error = "Username is already registered." });
 
+        // Via the same "Log:" HttpContext.Items convention LocationsController/Login already use -
+        // "Runner" is the summary logger's generic "who is this about" key (Program.cs), not
+        // specific to the runner role, so a new account's display name still shows in the
+        // request-log summary line, not just buried in the expanded properties.
+        HttpContext.Items["Log:Runner"] = account.DisplayName;
+        HttpContext.Items["Log:Initials"] = InitialsFor(account.DisplayName);
+
         return Ok(ToResponse(account));
+    }
+
+    // Mirrors client/src/components/InitialsBadge.tsx's initialsFor exactly (e.g. "Sean Kelly" ->
+    // "SK", "sean" -> "SE"), so registration logs show the same initials the client itself would
+    // display for this name.
+    private static string InitialsFor(string name)
+    {
+        var words = name.Trim().Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
+        if (words.Length == 0) return "";
+        if (words.Length == 1) return words[0][..Math.Min(2, words[0].Length)].ToUpperInvariant();
+        return $"{words[0][0]}{words[^1][0]}".ToUpperInvariant();
     }
 
     /// <summary>Exchanges credentials for an access token. Locks out after repeated failures.</summary>
