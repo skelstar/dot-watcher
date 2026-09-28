@@ -61,12 +61,12 @@ test('livePollingError names a missing invite and falls back to the status code'
 
 test('parseNdjson parses camelCase lines', () => {
   const line = JSON.stringify({ runnerName: 'Alice', latitude: 1, longitude: 2, heading: 90, timestamp: 't1' })
-  assert.deepEqual(parseNdjson(line), [{ runnerName: 'Alice', latitude: 1, longitude: 2, heading: 90, timestamp: 't1', nextExpectedAt: null, isUltraConstrained: false }])
+  assert.deepEqual(parseNdjson(line), [{ runnerName: 'Alice', latitude: 1, longitude: 2, heading: 90, timestamp: 't1', nextExpectedAt: null, isUltraConstrained: false, batteryLevel: null }])
 })
 
 test('parseNdjson normalises legacy PascalCase lines', () => {
   const line = JSON.stringify({ RunnerName: 'Bob', Latitude: 1, Longitude: 2, Timestamp: 't1' })
-  assert.deepEqual(parseNdjson(line), [{ runnerName: 'Bob', latitude: 1, longitude: 2, heading: null, timestamp: 't1', nextExpectedAt: null, isUltraConstrained: false }])
+  assert.deepEqual(parseNdjson(line), [{ runnerName: 'Bob', latitude: 1, longitude: 2, heading: null, timestamp: 't1', nextExpectedAt: null, isUltraConstrained: false, batteryLevel: null }])
 })
 
 test('mergeIntoByRunner appends and sorts by timestamp, de-duping exact repeats', () => {
