@@ -13,6 +13,7 @@ import 'maplibre-gl/dist/maplibre-gl.css'
 import maplibreWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url'
 import { MAP_STYLES, DEFAULT_MAP_STYLE_ID, LINZ_ATTRIBUTION, type MapStyleId } from './map/mapStyle.ts'
 import MapStyleToggle from './MapStyleToggle.tsx'
+import Terrain3DToggle from './Terrain3DToggle.tsx'
 import InvalidInvitePrompt from './InvalidInvitePrompt.tsx'
 import Legend from './Legend.tsx'
 import LegendHelp from './LegendHelp.tsx'
@@ -76,6 +77,29 @@ export default function App() {
     mapRef.current?.setStyle(MAP_STYLES[next].url)
   }
 
+  // Experimental 3D terrain: LINZ's 1m DEM (declared as the 'LINZ-Terrain' raster-dem source in
+  // both styles) draped under the imagery, with a pitched camera. See client/plans/linz-topo-migration.md.
+  const [terrain3d, setTerrain3d] = useState(false)
+  const terrain3dRef = useRef(false)
+
+  function handleToggleTerrain3d() {
+    const map = mapRef.current
+    const next = !terrain3d
+    terrain3dRef.current = next
+    setTerrain3d(next)
+    if (!map) return
+    if (next) {
+      map.setMaxPitch(85)
+      map.setTerrain({ source: 'LINZ-Terrain', exaggeration: 1 })
+      map.easeTo({ pitch: 60, duration: 800 })
+    } else {
+      map.setTerrain(null)
+      map.easeTo({ pitch: 0, bearing: 0, duration: 800 })
+      // Lock pitch again once the flatten animation finishes (clamping earlier would snap it).
+      map.once('moveend', () => { if (!terrain3dRef.current) map.setMaxPitch(0) })
+    }
+  }
+
   useEffect(() => {
     if (legalPage || isLanding || !containerRef.current) return
 
@@ -84,6 +108,7 @@ export default function App() {
       style: MAP_STYLES[DEFAULT_MAP_STYLE_ID].url,
       center: [174.7762, -41.2865], // Wellington, NZ - default before any session/positions load
       zoom: 13,
+      maxPitch: 0, // flat until the 3D toggle raises it
       attributionControl: { customAttribution: LINZ_ATTRIBUTION },
     })
 
@@ -92,6 +117,11 @@ export default function App() {
       positionOptions: { enableHighAccuracy: true },
       trackUserLocation: true,
     }), 'top-right')
+
+    // setStyle() wipes the terrain along with everything else, so re-apply it on every style load.
+    map.on('style.load', () => {
+      if (terrain3dRef.current) map.setTerrain({ source: 'LINZ-Terrain', exaggeration: 1 })
+    })
 
     mapRef.current = map
     return () => {
@@ -174,6 +204,7 @@ export default function App() {
       </div>
       <LegendHelp />
       <MapStyleToggle styleId={mapStyleId} onToggle={handleToggleMapStyle} />
+      <Terrain3DToggle enabled={terrain3d} onToggle={handleToggleTerrain3d} />
       <Legend
         runners={allRunners}
         onRunnerClick={followRunner}
