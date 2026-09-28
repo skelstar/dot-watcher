@@ -1,5 +1,55 @@
 # Android app — build plan
 
+## Current status (as of 2026-09-28)
+
+Milestones 0-3 are **done and merged** into `staging`. Milestone 4 is
+**in progress**: several items done (see checkmarks below), rest open.
+
+**Open PR:** [#131](https://github.com/skelstar/dot-watcher/pull/131) —
+`android-milestone-4-design` branch — theme/color pass, per-runner marker
+colors, consent-screen icon badge, real app icon. CI green, not yet
+merged/reviewed by the user as of this writing. If continuing this work in
+a new session, check whether #131 merged first (`gh pr view 131`); if not,
+either continue on that branch or wait for it to land before branching
+again, per this repo's one-branch-per-milestone-chunk pattern used
+throughout (see git history: `android-milestone-0` through
+`android-milestone-4-design`).
+
+**User feedback on the design pass (2026-09-28):** the map screen "doesn't
+look much different" after the theme change — accurate, since the map is
+mostly basemap tiles the theme doesn't touch; the visible changes there
+are just the top-bar button text color (now brand blue) and the current
+user's marker color (now blue instead of flat yellow). Auth/session/
+consent screens show the theme change more clearly (bold headlines,
+brand-colored buttons, backgrounds). User's verdict: "I think they were
+better. Functional." — i.e. acceptable as a modest improvement, not a
+full redesign, and they chose to **not** pursue a deeper per-screen layout
+pass right now (see the question/answer preserved in conversation history
+around 2026-09-28 for the exact framing, if it matters later). Treat the
+visual design pass as reasonably closed unless a specific screen is later
+flagged as still looking wrong.
+
+**Toolchain note:** this machine now has a working local JDK 21 + Android
+SDK + Gradle (installed while setting up real-device testing partway
+through this project) — see
+`~/.claude/projects/-Users-skelstar-Documents-GitHub-dot-watcher/memory/project_android_local_toolchain.md`.
+Run `cd android && ./gradlew :app:compileDebugKotlin` (fast) or
+`:app:assembleDebug` (full) directly to verify changes locally before
+pushing, rather than relying on CI alone or a review subagent — this
+caught real bugs (wrong Retrofit converter import, an unclosed block
+comment, a missing `security-crypto` API) faster than CI round-trips did
+in earlier milestones.
+
+**Remaining Milestone 4 items** (see the Milestone 4 section below for
+detail): blocked users management, GPX route import/display, in-app help
+content, push notifications (uncertain applicability — check iOS first),
+Play Store listing assets / privacy-terms links, Play Console internal
+testing distribution setup, and (if it ever becomes worth it) a deeper
+per-screen layout pass beyond the current color/typography-level design
+pass.
+
+---
+
 ## Background
 
 `android/` currently contains only a placeholder README ("not started"). The
@@ -40,7 +90,7 @@ natural PR boundary.
 
 ---
 
-## Milestone 0 — Project scaffold
+## Milestone 0 — Project scaffold — done
 
 **Goal:** empty Android app builds, runs on an emulator, and is wired into CI.
 
@@ -66,7 +116,7 @@ successfully calls the local server.
 
 ---
 
-## Milestone 1 — Essential runner flow (foreground only)
+## Milestone 1 — Essential runner flow (foreground only) — done
 
 **Goal:** a runner can sign in, start a session, and see live positions,
 while the app is open and the screen is on. No background tracking yet.
@@ -107,7 +157,7 @@ open in the foreground.
 
 ---
 
-## Milestone 2 — Essential background tracking
+## Milestone 2 — Essential background tracking — done
 
 **Goal:** tracking survives the screen being locked and the app being
 backgrounded — this is the feature that makes the app actually useful for a
@@ -146,6 +196,14 @@ iOS's).
 **Exit criteria:** a real device, screen off, in a pocket, posts positions
 at the configured interval for the length of a real run (test with an
 actual walk/run, not just an emulator).
+
+**Confirmed on a real device** (Samsung phone, "device" build variant —
+see `android/README.md`'s real-device testing section) during Milestone 3
+testing: airplane-mode test showed tracking correctly erroring while
+offline and recovering once reconnected. A shorter locked-screen/backgrounded
+test also ran without issue. Not yet stress-tested for a long real run or
+across multiple OEM devices — the OEM battery-optimization caveat above is
+still an open risk, just not a blocking one based on testing so far.
 
 ---
 
