@@ -18,5 +18,9 @@ public record LocationUpdate(
     // real-world case that sets it today. Deliberately independent of NextExpectedAt/cadence:
     // a slower posting interval could exist for unrelated reasons (e.g. battery saving), and this
     // could in principle be true without the cadence having changed.
-    bool IsUltraConstrained = false
+    bool IsUltraConstrained = false,
+    // Self-reported: UIDevice.batteryLevel as a 0-100 integer percentage at capture time. Null
+    // means unknown (battery monitoring disabled, an unsupported device, or an older client),
+    // never a stand-in for a dead battery — see .ai/plans/battery-level-reporting.md.
+    int? BatteryLevel = null
 );

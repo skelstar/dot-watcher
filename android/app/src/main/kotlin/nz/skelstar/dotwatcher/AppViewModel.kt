@@ -1,0 +1,194 @@
+package nz.skelstar.dotwatcher
+
+import android.app.Application
+import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.launch
+import nz.skelstar.dotwatcher.data.AuthTokenStore
+import nz.skelstar.dotwatcher.data.DotWatcherRepository
+import nz.skelstar.dotwatcher.location.LocationTrackingService
+import nz.skelstar.dotwatcher.network.DotWatcherApiClient
+import nz.skelstar.dotwatcher.network.SessionMembership
+import nz.skelstar.dotwatcher.network.errorMessageOrStatus
+import retrofit2.Response
+import java.time.Duration
+
+/** Where the nav graph should route to based on sign-in/session state. */
+sealed interface Destination {
+    data object Auth : Destination
+    data object Session : Destination
+    /** Shown only for role "runner" — asks whether/how-long to share this device's own position
+     *  before starting the background tracking service. A "viewer" skips straight to Map, same
+     *  as iOS only asking runners (ShareLocationConsentView is only shown when
+     *  `canTrackSelectedSession`, i.e. role == "runner"). */
+    data class Consent(val membership: SessionMembership) : Destination
+    data class Map(val membership: SessionMembership, val isSharing: Boolean) : Destination
+}
+
+sealed interface AuthUiState {
+    data object Idle : AuthUiState
+    data object Loading : AuthUiState
+    data class Error(val message: String) : AuthUiState
+}
+
+sealed interface SessionUiState {
+    data object Idle : SessionUiState
+    data object Loading : SessionUiState
+    data class Error(val message: String) : SessionUiState
+}
+
+/**
+ * App-scoped state holder for the app's single linear flow (auth -> session -> consent -> map).
+ * Owns the repository so screens don't construct their own network stack. Kept as one ViewModel
+ * rather than one per screen while the flow is this small; revisit if Milestone 3's fuller
+ * session-list UI needs more independent state.
+ */
+class AppViewModel(application: Application) : AndroidViewModel(application) {
+    private val tokenStore = AuthTokenStore(application)
+    private val api = DotWatcherApiClient.create(BuildConfig.API_BASE_URL)
+    val repository = DotWatcherRepository(api, tokenStore)
+
+    private val _destination = MutableStateFlow<Destination>(
+        if (tokenStore.isSignedIn) Destination.Session else Destination.Auth
+    )
+    val destination: StateFlow<Destination> = _destination
+
+    private val _authState = MutableStateFlow<AuthUiState>(AuthUiState.Idle)
+    val authState: StateFlow<AuthUiState> = _authState
+
+    private val _sessionState = MutableStateFlow<SessionUiState>(SessionUiState.Idle)
+    val sessionState: StateFlow<SessionUiState> = _sessionState
+
+    /** Sessions the caller has left, most recently left first — populated whenever
+     *  [Destination.Session] is (re)shown, matching iOS's recentSessionsCard which loads on
+     *  appear and on pull-to-refresh (ContentView.swift's `noSessionView`). */
+    private val _recentSessions = MutableStateFlow<List<SessionMembership>>(emptyList())
+    val recentSessions: StateFlow<List<SessionMembership>> = _recentSessions
+
+    init {
+        if (tokenStore.isSignedIn) loadRecentSessions()
+    }
+
+    fun register(username: String, password: String, displayName: String) {
+        viewModelScope.launch {
+            _authState.value = AuthUiState.Loading
+            val response = runCatching { repository.register(username, password, displayName) }
+            _authState.value = handleAuthResult(response)
+        }
+    }
+
+    fun login(username: String, password: String) {
+        viewModelScope.launch {
+            _authState.value = AuthUiState.Loading
+            val response = runCatching { repository.login(username, password) }
+            _authState.value = handleAuthResult(response)
+        }
+    }
+
+    private fun handleAuthResult(result: Result<Response<Unit>>): AuthUiState {
+        val response = result.getOrElse {
+            return AuthUiState.Error(it.message ?: "Network error.")
+        }
+        return if (response.isSuccessful) {
+            _destination.value = Destination.Session
+            loadRecentSessions()
+            AuthUiState.Idle
+        } else {
+            AuthUiState.Error(response.errorMessageOrStatus())
+        }
+    }
+
+    /** Best-effort: a failed load just leaves the list empty/stale rather than surfacing an
+     *  error, matching iOS's treatment of this as a background convenience list, not a screen
+     *  the runner can get stuck on. */
+    fun loadRecentSessions() {
+        viewModelScope.launch {
+            runCatching { repository.getRecentSessions() }
+                .onSuccess { response -> response.body()?.let { _recentSessions.value = it } }
+        }
+    }
+
+    fun rejoinSession(inviteCode: String) {
+        joinSession(inviteCode)
+    }
+
+    /** No displayName param: matches iOS's common path, which auto-fills the per-session
+     *  display name from the account's own registered display name rather than asking again
+     *  (see SessionScreen.kt's kdoc) — the server already defaults to that when none is sent. */
+    fun createSession(sessionName: String?) {
+        viewModelScope.launch {
+            _sessionState.value = SessionUiState.Loading
+            val result = runCatching { repository.createSession(sessionName?.ifBlank { null }, displayName = null) }
+            _sessionState.value = handleSessionResult(result)
+        }
+    }
+
+    fun joinSession(inviteCode: String) {
+        viewModelScope.launch {
+            _sessionState.value = SessionUiState.Loading
+            val result = runCatching { repository.joinSession(inviteCode, displayName = null) }
+            _sessionState.value = handleSessionResult(result)
+        }
+    }
+
+    private fun handleSessionResult(
+        result: Result<Response<SessionMembership>>,
+    ): SessionUiState {
+        val response = result.getOrElse {
+            return SessionUiState.Error(it.message ?: "Network error.")
+        }
+        val membership = response.body()
+        return if (response.isSuccessful && membership != null) {
+            _destination.value = if (membership.role == "runner") {
+                Destination.Consent(membership)
+            } else {
+                Destination.Map(membership, isSharing = false)
+            }
+            SessionUiState.Idle
+        } else {
+            SessionUiState.Error(response.errorMessageOrStatus())
+        }
+    }
+
+    fun startSharing(membership: SessionMembership, duration: Duration) {
+        LocationTrackingService.start(getApplication(), membership.sessionId, duration)
+        _destination.value = Destination.Map(membership, isSharing = true)
+    }
+
+    fun declineSharing(membership: SessionMembership) {
+        _destination.value = Destination.Map(membership, isSharing = false)
+    }
+
+    /** Stops sharing this device's own position while staying in the session and on the map —
+     *  distinct from [leaveSession], which leaves the session entirely. The runner can start
+     *  sharing again by leaving and rejoining, or via a future dedicated "share again" action. */
+    fun stopSharing(membership: SessionMembership) {
+        LocationTrackingService.stop(getApplication())
+        _destination.value = Destination.Map(membership, isSharing = false)
+    }
+
+    /** Leaves [membership]'s session for real ([DELETE /me/sessions/{sessionId}/membership] —
+     *  matches iOS's `leaveSession(sessionId:)`) and returns to the create/join screen. Stops
+     *  tracking first if active, mirroring iOS's `leaveOrDeleteSession` calling `location.stop()`
+     *  before the network call. The caller (UI) is responsible for confirming with the runner
+     *  first — this performs the leave unconditionally once called. */
+    fun leaveSession(membership: SessionMembership) {
+        LocationTrackingService.stop(getApplication())
+        viewModelScope.launch {
+            runCatching { repository.leaveSession(membership.sessionId) }
+            _sessionState.value = SessionUiState.Idle
+            _destination.value = Destination.Session
+            loadRecentSessions()
+        }
+    }
+
+    fun signOut() {
+        LocationTrackingService.stop(getApplication())
+        viewModelScope.launch {
+            repository.logout()
+            _destination.value = Destination.Auth
+        }
+    }
+}

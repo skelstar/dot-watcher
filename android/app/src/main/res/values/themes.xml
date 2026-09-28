@@ -1,0 +1,5 @@
+<resources>
+    <!-- Compose provides the actual Material3 theme (Theme.kt); this is only the
+         pre-Compose window theme Android needs before the first Composable draws. -->
+    <style name="Theme.DotWatcher" parent="android:Theme.Material.Light.NoActionBar" />
+</resources>

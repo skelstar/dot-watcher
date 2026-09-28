@@ -564,6 +564,12 @@
             <td class="col-constraints"><span class="tag tag-nn">NOT NULL</span></td>
             <td class="col-notes">Self-reported <code>NWPath.isUltraConstrained</code> at capture time (satellite connectivity, in practice). Added 2026-08-12; defaults to false for older clients, the demo runner, or rows from before this column existed</td>
           </tr>
+          <tr>
+            <td class="col-name">battery_level</td>
+            <td class="col-type">SMALLINT</td>
+            <td class="col-constraints"><span class="tag tag-null">NULLABLE</span></td>
+            <td class="col-notes">Self-reported <code>UIDevice.batteryLevel</code> (0-100 percentage) at capture time. Added 2026-09; NULL means unknown (older clients, Android, monitoring disabled, or rows from before this column existed) — never a stand-in for a dead battery</td>
+          </tr>
         </tbody>
       </table>
       <div class="indexes">

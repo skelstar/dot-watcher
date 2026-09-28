@@ -41,6 +41,7 @@ local.properties
 *.apk
 *.aab
 android/build/
+android/*/build/
 android/captures/
 
 # ─── AI review artifacts ─────────────────────────────────────────────────────

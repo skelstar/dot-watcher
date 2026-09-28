@@ -55,6 +55,16 @@ export default function LegendHelp() {
                 label="Update countdown"
                 description="Seconds remaining until the next expected position. Only shown when sending less often to save battery power."
               />
+              <Entry
+                swatch={<InlineBattery status="low" />}
+                label="Battery low"
+                description="The runner's phone battery is at 30% or below."
+              />
+              <Entry
+                swatch={<InlineBattery status="critical" />}
+                label="Battery critical"
+                description="The runner's phone battery is at 10% or below — it may die soon."
+              />
             </div>
           </div>
         </div>
@@ -147,6 +157,47 @@ function InlineSatellite() {
         <path d="m9 15 3-3" />
         <path d="M17 13a6 6 0 0 0-6-6" />
         <path d="M21 13A10 10 0 0 0 11 3" />
+      </svg>
+    </div>
+  )
+}
+
+// Mirrors Legend.tsx's BatteryIcon/batteryIconWrap exactly (same rect/nub/bar-or-exclamation
+// geometry and tint per status, just upscaled to 20px like InlineSatellite above) — this dialog
+// is a static reference, so it should show precisely what the map actually renders, not an
+// approximation of it.
+function InlineBattery({ status }: { status: 'low' | 'critical' }) {
+  const stroke = status === 'critical' ? '#dc2626' : '#92400e'
+  return (
+    <div style={{
+      width: 26,
+      height: 26,
+      borderRadius: '50%',
+      background: status === 'critical' ? '#fecaca' : '#fde68a',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+    }}>
+      <svg
+        viewBox="0 0 24 24"
+        width={20}
+        height={20}
+        fill="none"
+        stroke={stroke}
+        strokeWidth={2.0}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <rect x="2" y="6" width="18" height="12" rx="2" />
+        <path d="M22 10v4" />
+        {status === 'critical' ? (
+          <>
+            <path d="M10 9v4" />
+            <path d="M10 16h.01" />
+          </>
+        ) : (
+          <path d="M5 10v4" strokeWidth={4} />
+        )}
       </svg>
     </div>
   )

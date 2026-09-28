@@ -13,4 +13,9 @@ export interface RunnerPosition {
   // for why this isn't called isSatellite. False (not absent) for older clients, the demo runner,
   // or recordings from before 2026-08-12, since the server itself defaults it the same way.
   isUltraConstrained?: boolean
+  // Self-reported UIDevice.batteryLevel (0-100) at capture time. Absent means unknown — battery
+  // monitoring disabled, an older client/Android (neither sends this yet), or a recording from
+  // before this field existed — never a stand-in for a dead battery. See
+  // .ai/plans/battery-level-reporting.md.
+  batteryLevel?: number | null
 }

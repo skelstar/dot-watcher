@@ -6,6 +6,7 @@ import {
   findGpsSignalLoss,
   findLastSeenMs,
   findRunnersWithGap,
+  findRunnersWithLowBattery,
   findSleepingRunners,
   findUltraConstrainedRunners,
   isRangeCovered,
@@ -60,6 +61,7 @@ export interface SessionTimelineState {
   runnersWithGap: Set<string>
   runnersSleeping: Set<string>
   runnersUltraConstrained: Set<string>
+  runnerBatteryStatus: Map<string, 'low' | 'critical'>
   runnerCountdowns: Map<string, RunnerCountdown>
   runnerLastSeenMs: Map<string, number>
   playing: boolean
@@ -394,6 +396,14 @@ export function useSessionTimeline(
     [byRunner, virtualNowMs],
   )
 
+  // Runners whose most recent report at the current playhead is at or below one of the two
+  // battery thresholds — see findRunnersWithLowBattery. Independent of every other status here,
+  // same reasoning as runnersUltraConstrained above.
+  const runnerBatteryStatus = useMemo(
+    () => findRunnersWithLowBattery(byRunner, virtualNowMs),
+    [byRunner, virtualNowMs],
+  )
+
   return {
     positions,
     following: scrubTimeMs === null,
@@ -408,6 +418,7 @@ export function useSessionTimeline(
     runnersWithGap,
     runnersSleeping,
     runnersUltraConstrained,
+    runnerBatteryStatus,
     runnerCountdowns,
     runnerLastSeenMs,
     playing,

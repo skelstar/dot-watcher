@@ -99,7 +99,11 @@ export async function postLocation(
   lon: number,
   heading: number | null,
   isUltraConstrained = false,
-  nextExpectedAt?: Date
+  nextExpectedAt?: Date,
+  // Omitted (not 0/null) when undefined — matches the real app never sending batteryLevel when
+  // UIDevice.batteryLevel is unavailable, so the server/client correctly read it as unknown
+  // rather than assuming a dead battery. See .ai/plans/battery-level-reporting.md.
+  batteryLevel?: number
 ): Promise<void> {
   const res = await fetch(`${SERVER_URL}/location`, {
     method: 'POST',
@@ -112,6 +116,7 @@ export async function postLocation(
       timestamp: new Date().toISOString(),
       isUltraConstrained,
       ...(nextExpectedAt && { nextExpectedAt: nextExpectedAt.toISOString() }),
+      ...(batteryLevel !== undefined && { batteryLevel }),
     }),
   })
   if (!res.ok) throw new ApiError(await errorMessage(res, `Location post failed (${res.status}).`))

@@ -511,7 +511,10 @@ struct ContentView: View {
     private var runnerRow: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 12) {
-                if location.isTracking {
+                // Excludes pausedForBattery: a countdown to a post that isn't coming would be
+                // actively misleading, not just stale — the plain status-dot branch below already
+                // reads location.status ("Battery critical — paused") correctly in that case.
+                if location.isTracking && !location.pausedForBattery {
                     TimelineView(.periodic(from: .now, by: 1.0 / 10.0)) { context in
                         let nextPostAt = location.nextPostAt(from: location.lastSent ?? Date())
                         let remaining = max(0, nextPostAt.timeIntervalSince(context.date))
@@ -615,7 +618,48 @@ struct ContentView: View {
                     }
                 }
             }
+
+            if location.pausedForBattery {
+                batteryPausedBanner
+            }
         }
+    }
+
+    // Persistent, not a transient toast — a state change that affects what other session members
+    // see shouldn't be easy to miss, matching the satellite-status treatment elsewhere in this
+    // file. Two explicit choices, no default action taken silently on the runner's behalf. See
+    // .ai/plans/battery-level-reporting.md.
+    private var batteryPausedBanner: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label("Battery critical — automatic updates paused", systemImage: "battery.25")
+                .font(.subheadline)
+                .fontWeight(.semibold)
+                .foregroundStyle(.red)
+            Text("Your position will stop updating for others until you send it manually, plug in, or turn automatic updates back on.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            HStack(spacing: 10) {
+                Button {
+                    Task { await location.sendLocationNowWhilePaused() }
+                } label: {
+                    Text("Send location now")
+                        .font(.subheadline.weight(.semibold))
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+
+                Button {
+                    location.resumeAutomaticTrackingOverridingBattery()
+                } label: {
+                    Text("Turn on automatic updates")
+                        .font(.subheadline.weight(.semibold))
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+            }
+        }
+        .padding(12)
+        .background(Color.red.opacity(0.1), in: RoundedRectangle(cornerRadius: 12))
     }
 
     // MARK: - Session Name Card
