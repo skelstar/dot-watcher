@@ -3,6 +3,7 @@ import Foundation
 import Network
 import Security
 import SwiftUI
+import UIKit
 
 struct AppUser: Codable {
     let userId: String
@@ -202,6 +203,24 @@ final class LocationManager {
     private let ultraConstrainedInterval: TimeInterval = 90
     var interval: TimeInterval { isUltraConstrained ? ultraConstrainedInterval : normalInterval }
 
+    // Matches the client's CRITICAL_BATTERY_THRESHOLD in useSessionTimelineLogic.ts — same number,
+    // kept in sync manually (no shared source between the two codebases). Below this, GPS itself
+    // is the dominant battery cost (continuous CLLocationManager tracking, not the POST cadence —
+    // see the "Not doing" section of battery-level-reporting.md's cadence-slowdown discussion), so
+    // slowing the post interval wouldn't meaningfully help; only actually stopping CLLocationManager
+    // does. See .ai/plans/battery-level-reporting.md.
+    private static let criticalBatteryThreshold = 10
+    /// True once battery has dropped to/below `criticalBatteryThreshold` and automatic tracking has
+    /// been paused (GPS stopped, no more automatic posts) to save power. Surfaces a banner
+    /// (ContentView.runnerRow) offering a one-off manual send or an explicit override back to full
+    /// automatic tracking — deliberately not a silent behavior change, matching this app's existing
+    /// "never color/state alone" pattern for anything that changes what the runner should expect.
+    private(set) var pausedForBattery = false
+    /// Set once the runner explicitly chooses to keep automatic tracking on despite critical
+    /// battery (`resumeAutomaticTrackingOverridingBattery`). Sticky for the rest of this tracking
+    /// session — reset on `start()` — so overriding once doesn't mean re-confirming every tick.
+    private var batteryOverrideAcknowledged = false
+
     // App Store 5.1.2(i): automatic location posting must always be scoped to a bounded,
     // explicitly-started tracking session rather than indefinite background sharing — no
     // "automatic" mode may run without this cap. The user picks a duration up to this ceiling
@@ -250,6 +269,11 @@ final class LocationManager {
            let user = try? JSONDecoder().decode(AppUser.self, from: data) {
             currentUser = user
         }
+
+        // Enabled here rather than relying on ContentView.onAppear (which also sets this, for its
+        // own local battery display) — LocationManager shouldn't depend on view lifecycle to
+        // capture a correct value on every post. Idempotent to set redundantly.
+        UIDevice.current.isBatteryMonitoringEnabled = true
 
         locationDelegate.owner = self
         clManager.delegate = locationDelegate
@@ -576,6 +600,8 @@ final class LocationManager {
         clManager.startUpdatingLocation()
         isTracking = true
         status = "Tracking..."
+        pausedForBattery = false
+        batteryOverrideAcknowledged = false
         let cappedDuration = min(duration ?? maxTrackingDuration, maxTrackingDuration)
         trackingExpiresAt = Date().addingTimeInterval(cappedDuration)
         trackingTask = Task { [weak self] in await self?.trackingLoop() }
@@ -591,7 +617,66 @@ final class LocationManager {
         clManager.stopUpdatingLocation()
         isTracking = false
         trackingExpiresAt = nil
+        pausedForBattery = false
         status = "Stopped"
+    }
+
+    /// Explicit override for the runner-facing "Turn on automatic updates" button in the battery-
+    /// pause banner (ContentView.runnerRow). Resumes full automatic tracking immediately and, via
+    /// `batteryOverrideAcknowledged`, prevents `captureAndPost()` from re-pausing for the rest of
+    /// this tracking session even if the level drops further — an explicit choice, once made,
+    /// shouldn't need repeating every tick. See .ai/plans/battery-level-reporting.md.
+    func resumeAutomaticTrackingOverridingBattery() {
+        batteryOverrideAcknowledged = true
+        guard pausedForBattery else { return }
+        pausedForBattery = false
+        clManager.startUpdatingLocation()
+        status = "Tracking..."
+    }
+
+    /// The battery-pause banner's "Send location now" action — a single manual position, not a
+    /// resume of automatic tracking (unlike `resumeAutomaticTrackingOverridingBattery` above).
+    /// Uses `requestOneShotLocation()` since `CLLocationManager` is stopped while paused, so
+    /// `latestLocation` isn't being kept fresh. Reports the same `nextExpectedAt` cadence math as a
+    /// normal post — deliberately not special-cased to omit it — so this runner correctly starts
+    /// reading as overdue again shortly after, since no automatic follow-up is coming; that's the
+    /// honest state, not a bug to work around.
+    func sendLocationNowWhilePaused() async {
+        guard pausedForBattery else { return }
+        guard let loc = await requestOneShotLocation() else {
+            status = "Couldn't get a location fix"
+            return
+        }
+        latestLocation = loc
+        let heading: Double? = loc.course >= 0 ? loc.course : nil
+        let batteryPercentage = Self.currentBatteryPercentage()
+        let now = Date()
+        await post(
+            lat: loc.coordinate.latitude,
+            lon: loc.coordinate.longitude,
+            heading: heading,
+            timestamp: now,
+            nextExpectedAt: nextPostAt(from: now),
+            isUltraConstrained: isUltraConstrained,
+            batteryLevel: batteryPercentage)
+    }
+
+    /// Wires up `oneShotLocationContinuation`/`LocationDelegate.didUpdateLocations` — that
+    /// scaffolding already existed (declared, resumed) but had no caller until this feature needed
+    /// one. `requestLocation()` delivers through the same delegate callback as continuous updates,
+    /// so no delegate changes were needed.
+    private func requestOneShotLocation() async -> CLLocation? {
+        await withCheckedContinuation { continuation in
+            oneShotLocationContinuation = continuation
+            clManager.requestLocation()
+        }
+    }
+
+    /// -1.0 (monitoring disabled/unsupported) becomes nil — shared by every call site that needs
+    /// this conversion (captureAndPost, sendLocationNowWhilePaused) rather than duplicating it.
+    private static func currentBatteryPercentage() -> Int? {
+        let level = UIDevice.current.batteryLevel
+        return level >= 0 ? Int((level * 100).rounded()) : nil
     }
 
     private func trackingLoop() async {
@@ -612,6 +697,27 @@ final class LocationManager {
     }
 
     private func captureAndPost() {
+        // Checked first, before the GPS guard below: the whole point of pausing is that
+        // `latestLocation` is allowed to go stale (CLLocationManager is stopped), so this can't
+        // wait behind a "waiting for GPS" state. See .ai/plans/battery-level-reporting.md.
+        let batteryPercentage = Self.currentBatteryPercentage()
+        let isCharging = UIDevice.current.batteryState == .charging || UIDevice.current.batteryState == .full
+        if pausedForBattery {
+            guard isCharging || batteryOverrideAcknowledged else { return }
+            // Charging or an override arrived since the last tick (the override method itself
+            // already resumes immediately; this covers the "plugged in, no button tap" path,
+            // which the tracking loop's own 15s tick is what actually notices).
+            pausedForBattery = false
+            clManager.startUpdatingLocation()
+            status = "Tracking..."
+        } else if !batteryOverrideAcknowledged, !isCharging,
+                  let level = batteryPercentage, level <= Self.criticalBatteryThreshold {
+            pausedForBattery = true
+            clManager.stopUpdatingLocation()
+            status = "Battery critical — paused"
+            return
+        }
+
         guard let loc = latestLocation else {
             status = "Waiting for GPS"
             return
@@ -637,12 +743,14 @@ final class LocationManager {
                 heading: heading,
                 timestamp: now,
                 nextExpectedAt: nextPostAt(from: now),
-                isUltraConstrained: isUltraConstrained)
+                isUltraConstrained: isUltraConstrained,
+                batteryLevel: batteryPercentage)
         }
     }
 
     private func post(
-        lat: Double, lon: Double, heading: Double?, timestamp: Date, nextExpectedAt: Date, isUltraConstrained: Bool
+        lat: Double, lon: Double, heading: Double?, timestamp: Date, nextExpectedAt: Date, isUltraConstrained: Bool,
+        batteryLevel: Int?
     ) async {
         let targetSessionId = sessionId
         do {
@@ -669,6 +777,7 @@ final class LocationManager {
                 "isUltraConstrained": isUltraConstrained,
             ]
             if let heading { body["heading"] = heading }
+            if let batteryLevel { body["batteryLevel"] = batteryLevel }
 
             let response: LocationPostResponse = try await send(
                 path: "/location", method: "POST", body: body, session: Self.ultraConstrainedSession)

@@ -227,6 +227,32 @@ public class SessionsApiTests
     }
 
     [Fact]
+    public async Task GetLocationsByInviteCode_WhenPostLandedOnADifferentPod_IncludesBatteryLevel()
+    {
+        // Same cross-pod scenario/reasoning as the NextExpectedAt/IsUltraConstrained test above -
+        // battery_level is a third field only the Postgres fallback (LoadLatestPositionsByRunner)
+        // round-trips.
+        using var podA = new DotWatcherApiFactory();
+        using var podB = new DotWatcherApiFactory(podA.Schema);
+        using var clientA = podA.CreateClient();
+        using var clientB = podB.CreateClient();
+
+        var ownerToken = await AuthTestHelpers.RegisterAsync(clientA, "owner", "Owner");
+        var session = await AuthTestHelpers.CreateSessionAsync(clientA, ownerToken);
+        var location = LocationsApiTests.TestLocation("Owner", session.SessionId);
+
+        await LocationsApiTests.PostLocationAsync(clientA, location with { BatteryLevel = 27 }, ownerToken);
+
+        var response = await clientB.GetAsync($"/session-invites/{session.InviteCode}/locations");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var positions = await response.Content.ReadFromJsonAsync<List<List<RunnerPosition>>>();
+        Assert.NotNull(positions);
+        var position = Assert.Single(positions.SelectMany(group => group));
+        Assert.Equal(27, position.BatteryLevel);
+    }
+
+    [Fact]
     public async Task GetLocationsByInviteCode_WithUnknownInvite_ReturnsNotFound()
     {
         using var factory = new DotWatcherApiFactory();
@@ -441,6 +467,29 @@ public class SessionsApiTests
     }
 
     [Fact]
+    public async Task GetRecordingByInviteCode_IncludesBatteryLevel()
+    {
+        // Same reasoning as the NextExpectedAt/IsUltraConstrained test above - battery_level needs
+        // its own coverage on LoadUpdatesByTimestamp, the actual scrub-into-history read path.
+        using var factory = new DotWatcherApiFactory();
+        using var client = factory.CreateClient();
+        var token = await AuthTestHelpers.RegisterAsync(client, "isla", "Isla");
+        var session = await AuthTestHelpers.CreateSessionAsync(client, token);
+        var location = LocationsApiTests.TestLocation("Ignored", session.SessionId);
+
+        await LocationsApiTests.PostLocationAsync(client, location with { BatteryLevel = 42 }, token);
+
+        var response = await client.GetAsync($"/session-invites/{session.InviteCode}/recording");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadAsStringAsync();
+        var line = Assert.Single(body.Split('\n', StringSplitOptions.RemoveEmptyEntries));
+
+        using var json = JsonDocument.Parse(line);
+        Assert.Equal(42, json.RootElement.GetProperty("batteryLevel").GetInt32());
+    }
+
+    [Fact]
     public async Task GetRecordingByInviteCode_WithSinceUntil_IncludesNextExpectedAtAndIsUltraConstrained()
     {
         // GetRecordingWindowAsNdjson is the scrubber's actual data source while replaying
@@ -473,6 +522,35 @@ public class SessionsApiTests
         using var json = JsonDocument.Parse(line);
         Assert.True(json.RootElement.GetProperty("isUltraConstrained").GetBoolean());
         Assert.Equal(nextExpectedAt, json.RootElement.GetProperty("nextExpectedAt").GetDateTimeOffset());
+    }
+
+    [Fact]
+    public async Task GetRecordingByInviteCode_WithSinceUntil_IncludesBatteryLevel()
+    {
+        // Same reasoning as the NextExpectedAt/IsUltraConstrained test above -
+        // GetRecordingWindowAsNdjson is the scrubber's actual data source while replaying.
+        using var factory = new DotWatcherApiFactory();
+        using var client = factory.CreateClient();
+        var token = await AuthTestHelpers.RegisterAsync(client, "jonah", "Jonah");
+        var session = await AuthTestHelpers.CreateSessionAsync(client, token);
+        var location = LocationsApiTests.TestLocation("Ignored", session.SessionId) with
+        {
+            Timestamp = new DateTimeOffset(2024, 11, 15, 9, 10, 0, TimeSpan.Zero),
+        };
+
+        await LocationsApiTests.PostLocationAsync(client, location with { BatteryLevel = 9 }, token);
+
+        var since = Uri.EscapeDataString("2024-11-15T09:05:00Z");
+        var until = Uri.EscapeDataString("2024-11-15T09:15:00Z");
+        var response = await client.GetAsync(
+            $"/session-invites/{session.InviteCode}/recording?since={since}&until={until}");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadAsStringAsync();
+        var line = Assert.Single(body.Split('\n', StringSplitOptions.RemoveEmptyEntries));
+
+        using var json = JsonDocument.Parse(line);
+        Assert.Equal(9, json.RootElement.GetProperty("batteryLevel").GetInt32());
     }
 
     [Fact]
@@ -529,6 +607,33 @@ public class SessionsApiTests
         using var json = JsonDocument.Parse(recordedLine);
         Assert.True(json.RootElement.GetProperty("isUltraConstrained").GetBoolean());
         Assert.Equal(timestamp.AddSeconds(90), json.RootElement.GetProperty("nextExpectedAt").GetDateTimeOffset());
+    }
+
+    [Fact]
+    public async Task UploadRecording_PreservesBatteryLevel()
+    {
+        // Covers SaveRecording/ParseRecordingLine - the re-import path scripts/import-session.sh
+        // uses. Must survive an upload → download round trip, not just a live POST.
+        using var factory = new DotWatcherApiFactory();
+        using var client = factory.CreateClient();
+
+        var timestamp = new DateTimeOffset(2024, 11, 15, 9, 0, 0, TimeSpan.Zero);
+        var line = JsonSerializer.Serialize(LocationsApiTests.TestLocation("Kit", SomeSessionId) with
+        {
+            Timestamp = timestamp,
+            BatteryLevel = 15,
+        });
+
+        await SendWithAdminBearerAsync(client, HttpMethod.Post, $"/sessions/{SomeSessionId}/recording", line);
+
+        var response = await SendWithAdminBearerAsync(client, HttpMethod.Get, $"/sessions/{SomeSessionId}/recording");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadAsStringAsync();
+        var recordedLine = Assert.Single(body.Split('\n', StringSplitOptions.RemoveEmptyEntries));
+
+        using var json = JsonDocument.Parse(recordedLine);
+        Assert.Equal(15, json.RootElement.GetProperty("batteryLevel").GetInt32());
     }
 
     [Fact]
