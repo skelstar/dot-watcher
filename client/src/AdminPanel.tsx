@@ -42,7 +42,6 @@ export default function AdminPanel({ serverUrl }: { serverUrl: string }) {
   const [loading, setLoading] = useState(false)
   const [expandedSessionId, setExpandedSessionId] = useState<string | null>(null)
   const [memberStats, setMemberStats] = useState<Record<string, MemberStatsState>>({})
-  const [clearingRecordsId, setClearingRecordsId] = useState<string | null>(null)
   const [uploadingRouteId, setUploadingRouteId] = useState<string | null>(null)
   const [exportingRecordsId, setExportingRecordsId] = useState<string | null>(null)
   const [selectedUserIds, setSelectedUserIds] = useState<Set<string>>(new Set())
@@ -192,27 +191,6 @@ export default function AdminPanel({ serverUrl }: { serverUrl: string }) {
     }
     setExpandedSessionId(session.sessionId)
     await loadMemberStats(session.sessionId)
-  }
-
-  async function handleClearRecords(e: React.MouseEvent, sessionId: string) {
-    e.stopPropagation()
-    if (!window.confirm('Clear all location records for this session? This cannot be undone.')) return
-    setClearingRecordsId(sessionId)
-    try {
-      const r = await fetch(`${serverUrl}/sessions/${sessionId}/recording`, {
-        method: 'DELETE',
-        headers: apiHeaders(token, 'web-admin'),
-      })
-      if (r.ok || r.status === 204) {
-        await loadMemberStats(sessionId)
-      } else {
-        setError(`Failed to clear records (HTTP ${r.status}).`)
-      }
-    } catch {
-      setError('Network error.')
-    } finally {
-      setClearingRecordsId(null)
-    }
   }
 
   // Fetched with the bearer token (unlike the plain map link) because /records/export requires
@@ -467,13 +445,6 @@ export default function AdminPanel({ serverUrl }: { serverUrl: string }) {
                                   >
                                     {exportingRecordsId === session.sessionId ? '…' : 'Export records'}
                                   </button>
-                                  <button
-                                    style={clearBtn}
-                                    onClick={e => void handleClearRecords(e, session.sessionId)}
-                                    disabled={clearingRecordsId === session.sessionId}
-                                  >
-                                    {clearingRecordsId === session.sessionId ? '…' : 'Clear positions'}
-                                  </button>
                                   <button style={collapseBtn} onClick={() => setExpandedSessionId(null)}>✕</button>
                                 </div>
                               </div>
@@ -597,13 +568,6 @@ const deleteBtn: React.CSSProperties = {
   background: '#ef4444',
   fontSize: '0.8rem',
   padding: '0.3rem 0.6rem',
-}
-
-const clearBtn: React.CSSProperties = {
-  ...primaryBtn,
-  background: '#f97316',
-  fontSize: '0.75rem',
-  padding: '0.2rem 0.5rem',
 }
 
 const exportBtn: React.CSSProperties = {
