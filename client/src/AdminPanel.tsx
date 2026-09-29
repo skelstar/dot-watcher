@@ -27,6 +27,10 @@ interface AdminMemberStats {
 
 type MemberStatsState = AdminMemberStats[] | 'loading' | { error: string }
 
+// Owns imported demo sessions (see handleImportSubmit's default owner); excluded from bulk
+// deletion so importing doesn't leave the account orphaned mid-list.
+const PROTECTED_USERNAME = 'dw-demo'
+
 const BEARER_TOKEN_KEY = 'adminBearerToken'
 const APP_VERSION = import.meta.env.VITE_APP_VERSION ?? 'v-local'
 // Matches the simulator's own VITE_CLIENT_URL convention (tools/simulator/.env.example) —
@@ -48,6 +52,11 @@ export default function AdminPanel({ serverUrl }: { serverUrl: string }) {
   const [selectedSessionIds, setSelectedSessionIds] = useState<Set<string>>(new Set())
   const [bulkDeletingUsers, setBulkDeletingUsers] = useState(false)
   const [bulkDeletingSessions, setBulkDeletingSessions] = useState(false)
+  const [showImportForm, setShowImportForm] = useState(false)
+  const [importSessionName, setImportSessionName] = useState('')
+  const [importOwnerName, setImportOwnerName] = useState('dw-demo')
+  const [importFile, setImportFile] = useState<File | null>(null)
+  const [importing, setImporting] = useState(false)
 
   useLayoutEffect(() => {
     const root = document.getElementById('root')
@@ -111,7 +120,8 @@ export default function AdminPanel({ serverUrl }: { serverUrl: string }) {
   }
 
   function toggleAllUsersSelected() {
-    setSelectedUserIds(prev => prev.size === users.length ? new Set() : new Set(users.map(u => u.id)))
+    const selectableIds = users.filter(u => u.username !== PROTECTED_USERNAME).map(u => u.id)
+    setSelectedUserIds(prev => prev.size === selectableIds.length ? new Set() : new Set(selectableIds))
   }
 
   function toggleSessionSelected(id: string) {
@@ -241,6 +251,75 @@ export default function AdminPanel({ serverUrl }: { serverUrl: string }) {
     }
   }
 
+  // Imports an NDJSON recording as a brand-new session, owned by an existing account (POST
+  // /admin/sessions, which looks the owner up by username) rather than a throwaway one — so
+  // imports land on a known, reusable account (dw-demo by default) instead of scattering one-off
+  // owner accounts across the Users list.
+  async function handleImportSubmit(e: FormEvent) {
+    e.preventDefault()
+    if (!importFile) {
+      setError('Choose an NDJSON file to import.')
+      return
+    }
+    const sessionName = importSessionName.trim().toUpperCase()
+    if (!/^[A-Z0-9_-]{4,8}$/.test(sessionName)) {
+      setError('Session name must be 4-8 letters, numbers, dashes, or underscores.')
+      return
+    }
+    const ownerUsername = importOwnerName.trim() || 'dw-demo'
+
+    setImporting(true)
+    setError(null)
+    try {
+      const ndjson = await importFile.text()
+      if (!ndjson.trim()) {
+        setError('The selected file is empty.')
+        return
+      }
+
+      const sessionRes = await fetch(`${serverUrl}/admin/sessions`, {
+        method: 'POST',
+        headers: { ...apiHeaders(token, 'web-admin'), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ownerUsername, sessionName }),
+      })
+      if (!sessionRes.ok) {
+        const body = await sessionRes.json().catch(() => null) as { error?: string } | null
+        if (sessionRes.status === 404) {
+          setError(
+            `Owner "${ownerUsername}" not found.\n`
+            + (ownerUsername === 'dw-demo'
+              ? 'Tip: "dw-demo" is normally created automatically when the server starts — try restarting it, or register a user with that username first.'
+              : 'Tip: register a user with that username first, or leave the owner field as "dw-demo" (created automatically when the server starts).')
+          )
+        } else {
+          setError(body?.error ?? `Failed to create session (HTTP ${sessionRes.status}).`)
+        }
+        return
+      }
+      const { sessionId } = await sessionRes.json() as { sessionId: string }
+
+      const uploadRes = await fetch(`${serverUrl}/sessions/${sessionId}/recording`, {
+        method: 'POST',
+        headers: apiHeaders(token, 'web-admin'),
+        body: ndjson,
+      })
+      if (!uploadRes.ok) {
+        setError(`Session created, but the recording upload failed (HTTP ${uploadRes.status}).`)
+        return
+      }
+
+      setShowImportForm(false)
+      setImportSessionName('')
+      setImportOwnerName('dw-demo')
+      setImportFile(null)
+      await loadAll(token)
+    } catch {
+      setError('Network error.')
+    } finally {
+      setImporting(false)
+    }
+  }
+
   function timeAgo(timestamp: string) {
     try {
       const mins = Math.floor((Date.now() - new Date(timestamp).getTime()) / 60000)
@@ -316,7 +395,7 @@ export default function AdminPanel({ serverUrl }: { serverUrl: string }) {
               <th style={checkboxTh}>
                 <input
                   type="checkbox"
-                  checked={selectedUserIds.size === users.length}
+                  checked={selectedUserIds.size > 0 && selectedUserIds.size === users.filter(u => u.username !== PROTECTED_USERNAME).length}
                   onChange={toggleAllUsersSelected}
                   aria-label="Select all users"
                 />
@@ -330,12 +409,14 @@ export default function AdminPanel({ serverUrl }: { serverUrl: string }) {
             {users.map(user => (
               <tr key={user.id} style={tr}>
                 <td style={checkboxTd}>
-                  <input
-                    type="checkbox"
-                    checked={selectedUserIds.has(user.id)}
-                    onChange={() => toggleUserSelected(user.id)}
-                    aria-label={`Select ${user.username}`}
-                  />
+                  {user.username !== PROTECTED_USERNAME && (
+                    <input
+                      type="checkbox"
+                      checked={selectedUserIds.has(user.id)}
+                      onChange={() => toggleUserSelected(user.id)}
+                      aria-label={`Select ${user.username}`}
+                    />
+                  )}
                 </td>
                 <td style={td}>{user.username}</td>
                 <td style={td}>{user.displayName}</td>
@@ -352,16 +433,50 @@ export default function AdminPanel({ serverUrl }: { serverUrl: string }) {
 
       <div style={subheadingRow}>
         <h2 style={subheadingNoMargin}>Sessions</h2>
-        {selectedSessionIds.size > 0 && (
-          <button
-            style={deleteBtn}
-            onClick={() => void handleBulkDeleteSessions()}
-            disabled={bulkDeletingSessions}
-          >
-            {bulkDeletingSessions ? '…' : `Delete selected (${selectedSessionIds.size})`}
+        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+          {selectedSessionIds.size > 0 && (
+            <button
+              style={deleteBtn}
+              onClick={() => void handleBulkDeleteSessions()}
+              disabled={bulkDeletingSessions}
+            >
+              {bulkDeletingSessions ? '…' : `Delete selected (${selectedSessionIds.size})`}
+            </button>
+          )}
+          <button style={secondaryBtn} onClick={() => setShowImportForm(v => !v)}>
+            Import
           </button>
-        )}
+        </div>
       </div>
+      {showImportForm && (
+        <form onSubmit={e => void handleImportSubmit(e)} style={importForm}>
+          <input
+            style={importInput}
+            value={importSessionName}
+            onChange={e => setImportSessionName(e.target.value.replace(/[^a-zA-Z]/g, '').toUpperCase().slice(0, 8))}
+            placeholder="Session name (4-8 letters)"
+            maxLength={8}
+          />
+          <input
+            style={importInput}
+            value={importOwnerName}
+            onChange={e => setImportOwnerName(e.target.value)}
+            placeholder="Owner username"
+            title="Existing account to own the imported session"
+          />
+          <input
+            type="file"
+            accept=".ndjson,.jsonl,application/x-ndjson"
+            onChange={e => setImportFile(e.target.files?.[0] ?? null)}
+          />
+          <button style={primaryBtn} type="submit" disabled={importing}>
+            {importing ? 'Importing…' : 'Import'}
+          </button>
+          <button style={secondaryBtn} type="button" onClick={() => setShowImportForm(false)}>
+            Cancel
+          </button>
+        </form>
+      )}
       {sessions.length > 0 && (
         <table style={table}>
           <thead>
@@ -538,6 +653,25 @@ const tokenInput_: React.CSSProperties = {
   border: '1.5px solid #ccc',
 }
 
+const importForm: React.CSSProperties = {
+  display: 'flex',
+  flexWrap: 'wrap',
+  gap: '0.5rem',
+  alignItems: 'center',
+  marginBottom: '0.75rem',
+  padding: '0.75rem',
+  background: '#f8fafc',
+  border: '1px solid #e2e8f0',
+  borderRadius: 6,
+}
+
+const importInput: React.CSSProperties = {
+  fontSize: '0.9rem',
+  padding: '0.4rem 0.6rem',
+  borderRadius: 6,
+  border: '1.5px solid #ccc',
+}
+
 const toolbar: React.CSSProperties = {
   display: 'flex',
   gap: '0.5rem',
@@ -597,6 +731,7 @@ const collapseBtn: React.CSSProperties = {
 const errorText: React.CSSProperties = {
   color: '#dc2626',
   marginBottom: '1rem',
+  whiteSpace: 'pre-line',
 }
 
 const emptyText: React.CSSProperties = {
