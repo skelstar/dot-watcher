@@ -43,8 +43,17 @@ public class AuthController(
         // "Runner" is the summary logger's generic "who is this about" key (Program.cs), not
         // specific to the runner role, so a new account's display name still shows in the
         // request-log summary line, not just buried in the expanded properties.
+        //
+        // Runner/Initials end up identical here and that's not a bug: an account's DisplayName
+        // *is* a 2-letter initials tag by design (see AuthSheet.swift's "Your initials"
+        // CodeBoxField, length: 2) - there's no separate "full name" concept anywhere in this app.
+        // Username is the only other identifying string that actually differs; logged separately
+        // so a real signup's chosen handle is visible, and so simulator-created accounts
+        // ("sim-xxxxx", see tools/simulator/src/lib/dotwatcherApi.ts) are obviously test traffic
+        // at a glance rather than looking like a real, oddly-named user.
         HttpContext.Items["Log:Runner"] = account.DisplayName;
         HttpContext.Items["Log:Initials"] = InitialsFor(account.DisplayName);
+        HttpContext.Items["Log:Username"] = account.Username;
 
         return Ok(ToResponse(account));
     }
