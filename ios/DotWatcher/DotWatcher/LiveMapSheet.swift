@@ -18,7 +18,8 @@ struct LiveMapSheet: View {
                 fitAllTrigger: fitAllTrigger,
                 visibleFraction: visibleFraction,
                 isUltraConstrained: location.isUltraConstrained,
-                lastSent: location.lastSent
+                lastSent: location.lastSent,
+                nextRetryAt: location.nextRetryAt
             )
         } else {
             Color.clear

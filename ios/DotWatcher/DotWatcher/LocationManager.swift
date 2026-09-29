@@ -182,7 +182,7 @@ final class LocationManager {
             participantUserIds = [:]
             runnerPositions = []
             lastParticipantCount = 0
-            if isTracking { captureAndPost() }
+            if isTracking { captureAndPost(trigger: .sessionChange) }
         }
     }
 
@@ -287,10 +287,13 @@ final class LocationManager {
         pathMonitor.pathUpdateHandler = { [weak self] path in
             guard let self else { return }
             Task { @MainActor [self] in
+                let wasOffline = self.isOffline
+                let wasUltraConstrained = self.isUltraConstrained
                 self.isOffline = path.status != .satisfied
                 if #available(iOS 26.1, *) {
                     self.rawIsUltraConstrained = path.isUltraConstrained
                 }
+                self.handlePathChange(wasOffline: wasOffline, wasUltraConstrained: wasUltraConstrained)
             }
         }
         pathMonitor.start(queue: pathMonitorQueue)
@@ -608,12 +611,13 @@ final class LocationManager {
         if latestLocation == nil {
             latestLocation = clManager.location ?? CLLocation(latitude: 0, longitude: 0)
         }
-        captureAndPost()
+        captureAndPost(trigger: .start)
     }
 
     func stop() {
         trackingTask?.cancel()
         trackingTask = nil
+        cancelRetries()
         clManager.stopUpdatingLocation()
         isTracking = false
         trackingExpiresAt = nil
@@ -692,11 +696,96 @@ final class LocationManager {
                 stop()
                 break
             }
-            captureAndPost()
+            captureAndPost(trigger: .tick)
         }
     }
 
-    private func captureAndPost() {
+    /// Why a post is happening. Only `.tick` is the regular epoch-aligned cadence; the rest are
+    /// extra attempts between ticks. See .ai/plans/satellite-post-retry.md.
+    private enum PostTrigger: String {
+        case start, sessionChange, tick, retry, pathChange
+    }
+
+    private enum PostOutcome {
+        case success
+        /// Timeout / not connected / connection lost — the only outcome worth a quick retry.
+        case transportFailure
+        /// Server answered with a non-2xx (401, 403, 426, ...) — the next tick handles it as before.
+        case rejected
+        /// The selected session changed while the request was in flight; nothing to report.
+        case superseded
+    }
+
+    /// Debug-only counters (attempts by network mode) so a real walk shows how many attempts landed
+    /// vs failed, and how many were retries or path-change triggers, not just regular ticks.
+    struct PostStats {
+        var attempts = 0
+        var successes = 0
+        var transportFailures = 0
+        var retries = 0
+        var pathTriggers = 0
+    }
+    private(set) var normalPostStats = PostStats()
+    private(set) var satellitePostStats = PostStats()
+
+    private static let retryBaseDelay: TimeInterval = 5
+    private static let retryMaxDelay: TimeInterval = 40
+    private static let pathTriggerMinSpacing: TimeInterval = 5
+
+    /// At most one automatic post in flight; a hung satellite request must not stack with the
+    /// next tick, retry, or path-change trigger.
+    private var postInFlight = false
+    private var retryTask: Task<Void, Never>?
+    private var retryAttempt = 0
+    private var lastPathTriggerAt: Date?
+    /// When the next quick retry will fire, or nil if none is pending. Shown in the satellite
+    /// status badge so the runner can see the app is still trying.
+    private(set) var nextRetryAt: Date?
+
+    private func cancelRetries() {
+        retryTask?.cancel()
+        retryTask = nil
+        retryAttempt = 0
+        nextRetryAt = nil
+    }
+
+    /// Quick retry after a failed post, backing off 5s -> 10s -> 20s -> 40s. Skipped when the
+    /// retry would land at or after the next regular tick — that tick is the retry.
+    private func scheduleRetry() {
+        guard isTracking else { return }
+        let delay = min(Self.retryBaseDelay * pow(2, Double(retryAttempt)), Self.retryMaxDelay)
+        guard Date().addingTimeInterval(delay) < nextPostAt() else { return }
+        retryAttempt += 1
+        retryTask?.cancel()
+        nextRetryAt = Date().addingTimeInterval(delay)
+        retryTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(delay))
+            guard !Task.isCancelled, let self, self.isTracking else { return }
+            self.nextRetryAt = nil
+            self.captureAndPost(trigger: .retry)
+        }
+    }
+
+    /// The path just came back (or just became ultra-constrained) while tracking: post now rather
+    /// than waiting up to a full cadence. Free while there's no signal; debounced because path
+    /// updates can arrive in bursts.
+    private func handlePathChange(wasOffline: Bool, wasUltraConstrained: Bool) {
+        guard isTracking else { return }
+        let cameBack = wasOffline && !isOffline
+        let enteredSatellite = !wasUltraConstrained && isUltraConstrained
+        guard cameBack || enteredSatellite else { return }
+        if let last = lastPathTriggerAt, Date().timeIntervalSince(last) < Self.pathTriggerMinSpacing { return }
+        lastPathTriggerAt = Date()
+        captureAndPost(trigger: .pathChange)
+    }
+
+    private func captureAndPost(trigger: PostTrigger) {
+        if trigger == .tick {
+            // The regular tick supersedes any pending retry and starts a fresh backoff sequence.
+            cancelRetries()
+        }
+        if trigger != .start, trigger != .sessionChange, postInFlight { return }
+
         // Checked first, before the GPS guard below: the whole point of pausing is that
         // `latestLocation` is allowed to go stale (CLLocationManager is stopped), so this can't
         // wait behind a "waiting for GPS" state. See .ai/plans/battery-level-reporting.md.
@@ -729,15 +818,18 @@ final class LocationManager {
         // landing, and the value that should accompany this specific post is the one that was
         // true when it was decided to send it now, at this cadence.
         let isUltraConstrained = self.isUltraConstrained
+        postInFlight = true
         Task {
             // Post the current time, not loc.timestamp: while stationary, CoreLocation's
             // distanceFilter withholds new fixes entirely, so latestLocation (and its original
             // GPS timestamp) can go stale for as long as the device doesn't move. Re-sending that
             // stale timestamp every heartbeat made the server/web client see no recent activity
             // and incorrectly mark the session as no longer live, even though tracking was still
-            // active and posting successfully every interval.
+            // active and posting successfully every interval. A retry likewise captures a fresh
+            // position rather than resending the failed one — DotWatcher shows where the runner
+            // is *now* (see "Not doing" in satelite-connectivity.md).
             let now = Date()
-            await post(
+            let outcome = await post(
                 lat: loc.coordinate.latitude,
                 lon: loc.coordinate.longitude,
                 heading: heading,
@@ -745,13 +837,40 @@ final class LocationManager {
                 nextExpectedAt: nextPostAt(from: now),
                 isUltraConstrained: isUltraConstrained,
                 batteryLevel: batteryPercentage)
+            postInFlight = false
+            recordPostAttempt(trigger: trigger, isUltraConstrained: isUltraConstrained, outcome: outcome)
+            switch outcome {
+            case .success:
+                cancelRetries()
+            case .transportFailure:
+                // Satellite only: on normal cellular the regular 15s tick is already frequent
+                // enough, and this keeps dead-zone behaviour there unchanged.
+                if isUltraConstrained || self.isUltraConstrained { scheduleRetry() }
+            case .rejected, .superseded:
+                break
+            }
         }
     }
 
+    private func recordPostAttempt(trigger: PostTrigger, isUltraConstrained: Bool, outcome: PostOutcome) {
+        var stats = isUltraConstrained ? satellitePostStats : normalPostStats
+        stats.attempts += 1
+        switch outcome {
+        case .success: stats.successes += 1
+        case .transportFailure: stats.transportFailures += 1
+        case .rejected, .superseded: break
+        }
+        if trigger == .retry { stats.retries += 1 }
+        if trigger == .pathChange { stats.pathTriggers += 1 }
+        if isUltraConstrained { satellitePostStats = stats } else { normalPostStats = stats }
+        print("[post] trigger=\(trigger.rawValue) satellite=\(isUltraConstrained) outcome=\(outcome)")
+    }
+
+    @discardableResult
     private func post(
         lat: Double, lon: Double, heading: Double?, timestamp: Date, nextExpectedAt: Date, isUltraConstrained: Bool,
         batteryLevel: Int?
-    ) async {
+    ) async -> PostOutcome {
         let targetSessionId = sessionId
         do {
             var body: [String: Any] = [
@@ -781,7 +900,7 @@ final class LocationManager {
 
             let response: LocationPostResponse = try await send(
                 path: "/location", method: "POST", body: body, session: Self.ultraConstrainedSession)
-            guard sessionId == targetSessionId else { return }
+            guard sessionId == targetSessionId else { return .superseded }
             status = "Sent"
             lastSent = Date()
             // `response.participants`/`positions` only cover runners who have actually posted —
@@ -800,9 +919,14 @@ final class LocationManager {
                 mergedPositions[position.runnerName] = position
             }
             runnerPositions = Array(mergedPositions.values)
+            return .success
         } catch {
-            guard sessionId == targetSessionId else { return }
+            guard sessionId == targetSessionId else { return .superseded }
             status = error.localizedDescription
+            // Only transport failures are worth a quick retry; a 4xx/426 from the server won't
+            // fix itself in a few seconds and is handled by the next regular tick as before.
+            if case DotWatcherAPIError.network = error { return .transportFailure }
+            return .rejected
         }
     }
 
@@ -826,6 +950,10 @@ final class LocationManager {
     /// ultra-constrained, same as any other no-coverage scenario.
     private static let ultraConstrainedSession: URLSession = {
         let config = URLSessionConfiguration.default
+        // Default is 60s. On a flaky satellite link a request can hang rather than fail, so cap it
+        // well under the 90s satellite cadence to free the single in-flight slot (and let retries
+        // run). Normal cellular posts complete in well under a second, so this is safe there too.
+        config.timeoutIntervalForRequest = 25
         if #available(iOS 26.1, *) {
             config.allowsUltraConstrainedNetworkAccess = true
         }
