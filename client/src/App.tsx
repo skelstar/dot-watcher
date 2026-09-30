@@ -82,6 +82,12 @@ export default function App() {
   const [terrain3d, setTerrain3d] = useState(false)
   const terrain3dRef = useRef(false)
 
+  // Tilting the map by hand (right-drag / ctrl-drag, or a two-finger vertical drag on touch)
+  // switches 3D terrain on once past this pitch, so a stray nudge doesn't start fetching DEM tiles.
+  const AUTO_3D_PITCH_DEG = 10
+  // ...and tilting back to (nearly) flat switches it off again.
+  const AUTO_FLAT_PITCH_DEG = 3
+
   function handleToggleTerrain3d() {
     const map = mapRef.current
     const next = !terrain3d
@@ -89,14 +95,11 @@ export default function App() {
     setTerrain3d(next)
     if (!map) return
     if (next) {
-      map.setMaxPitch(85)
       map.setTerrain({ source: 'LINZ-Terrain', exaggeration: 1 })
       map.easeTo({ pitch: 60, duration: 800 })
     } else {
       map.setTerrain(null)
       map.easeTo({ pitch: 0, bearing: 0, duration: 800 })
-      // Lock pitch again once the flatten animation finishes (clamping earlier would snap it).
-      map.once('moveend', () => { if (!terrain3dRef.current) map.setMaxPitch(0) })
     }
   }
 
@@ -108,7 +111,7 @@ export default function App() {
       style: MAP_STYLES[DEFAULT_MAP_STYLE_ID].url,
       center: [174.7762, -41.2865], // Wellington, NZ - default before any session/positions load
       zoom: 13,
-      maxPitch: 0, // flat until the 3D toggle raises it
+      maxPitch: 85, // tilting past AUTO_3D_PITCH_DEG turns 3D terrain on; the toggle does the same
       attributionControl: { customAttribution: LINZ_ATTRIBUTION },
     })
 
@@ -121,6 +124,21 @@ export default function App() {
     // setStyle() wipes the terrain along with everything else, so re-apply it on every style load.
     map.on('style.load', () => {
       if (terrain3dRef.current) map.setTerrain({ source: 'LINZ-Terrain', exaggeration: 1 })
+    })
+
+    // Only user gestures carry an originalEvent; the toggle's own easeTo() animations don't, so
+    // they can't trigger these and fight the toggle.
+    map.on('pitch', e => {
+      if (!e.originalEvent || terrain3dRef.current || map.getPitch() < AUTO_3D_PITCH_DEG) return
+      terrain3dRef.current = true
+      setTerrain3d(true)
+      map.setTerrain({ source: 'LINZ-Terrain', exaggeration: 1 })
+    })
+    map.on('pitchend', e => {
+      if (!e.originalEvent || !terrain3dRef.current || map.getPitch() > AUTO_FLAT_PITCH_DEG) return
+      terrain3dRef.current = false
+      setTerrain3d(false)
+      map.setTerrain(null)
     })
 
     mapRef.current = map
