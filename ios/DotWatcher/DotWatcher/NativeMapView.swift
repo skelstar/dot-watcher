@@ -42,6 +42,9 @@ struct NativeMapView: View {
     /// The local device's own last successful `POST /location` time, shown in the satellite
     /// status badge so the runner has a concrete "still working" signal beyond the message text.
     var lastSent: Date?
+    /// When the next quick retry after a failed satellite send fires (nil = none pending), shown
+    /// in the satellite status badge. See `LocationManager.nextRetryAt`.
+    var nextRetryAt: Date?
 
     @State private var cameraPosition: MapCameraPosition = .automatic
     @State private var followSpan = MKCoordinateSpan(latitudeDelta: 0.01, longitudeDelta: 0.01)
@@ -122,7 +125,7 @@ struct NativeMapView: View {
         }
         .overlay(alignment: .top) {
             if isUltraConstrained {
-                SatelliteStatusBadge(lastSent: lastSent)
+                SatelliteStatusBadge(lastSent: lastSent, nextRetryAt: nextRetryAt)
                     .padding(.top, 12)
                     .padding(.horizontal, 12)
                     .transition(.move(edge: .top).combined(with: .opacity))
@@ -241,6 +244,7 @@ private extension RunnerPositionResponse {
 /// since this overlays just the map rather than the whole screen.
 private struct SatelliteStatusBadge: View {
     let lastSent: Date?
+    let nextRetryAt: Date?
 
     var body: some View {
         VStack(spacing: 2) {
@@ -249,6 +253,13 @@ private struct SatelliteStatusBadge: View {
                 .multilineTextAlignment(.leading)
             if let lastSent {
                 Text("Last sent \(lastSent, style: .relative) ago")
+                    .font(.caption)
+                    .foregroundStyle(.white.opacity(0.8))
+            }
+            // Only present after a failed send, and only until that retry fires (or the regular
+            // send takes over). `.timer` counts down live without needing a view refresh.
+            if let nextRetryAt, nextRetryAt > Date() {
+                Text("Send failed — retrying in \(nextRetryAt, style: .timer)")
                     .font(.caption)
                     .foregroundStyle(.white.opacity(0.8))
             }
