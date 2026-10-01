@@ -4,8 +4,10 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
@@ -28,6 +30,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
@@ -54,36 +57,49 @@ fun CodeBoxField(
     modifier: Modifier = Modifier,
 ) {
     var isFocused by remember { mutableStateOf(false) }
+    val spacing = 6.dp
 
-    BasicTextField(
-        value = value,
-        onValueChange = { new -> onValueChange(sanitizeCode(new, length, lettersOnly)) },
-        modifier = modifier.onFocusChanged { isFocused = it.isFocused },
-        textStyle = TextStyle(color = Color.Transparent),
-        keyboardOptions = KeyboardOptions(
-            capitalization = KeyboardCapitalization.Characters,
-            autoCorrectEnabled = false,
-            keyboardType = KeyboardType.Ascii,
-        ),
-        cursorBrush = SolidColor(Color.Transparent),
-        decorationBox = {
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                for (i in 0 until length) {
-                    val char = value.getOrNull(i)?.toString() ?: ""
-                    val isActive = isFocused && value.length == i
-                    CodeBox(char = char, isActive = isActive)
+    // Box width shrinks to fit whatever space is available (e.g. a narrower dialog hosting an
+    // 8-box field) rather than a fixed 36.dp that can overflow its container — capped at 36.dp so
+    // a roomy container (the 6-box invite-code card) still gets the original comfortable size.
+    BoxWithConstraints(modifier = modifier) {
+        val boxWidth = minOf(36.dp, (maxWidth - spacing * (length - 1)) / length)
+
+        BasicTextField(
+            value = value,
+            onValueChange = { new -> onValueChange(sanitizeCode(new, length, lettersOnly)) },
+            modifier = Modifier.onFocusChanged { isFocused = it.isFocused },
+            textStyle = TextStyle(color = Color.Transparent),
+            keyboardOptions = KeyboardOptions(
+                capitalization = KeyboardCapitalization.Characters,
+                autoCorrectEnabled = false,
+                keyboardType = KeyboardType.Ascii,
+            ),
+            cursorBrush = SolidColor(Color.Transparent),
+            decorationBox = {
+                Row(horizontalArrangement = Arrangement.spacedBy(spacing)) {
+                    for (i in 0 until length) {
+                        val char = value.getOrNull(i)?.toString() ?: ""
+                        val isActive = isFocused && value.length == i
+                        CodeBox(char = char, isActive = isActive, width = boxWidth)
+                    }
                 }
-            }
-        },
-    )
+            },
+        )
+    }
 }
 
 @Composable
-private fun CodeBox(char: String, isActive: Boolean) {
+private fun CodeBox(char: String, isActive: Boolean, width: Dp) {
     Box(
         modifier = Modifier
-            .size(width = 36.dp, height = 44.dp)
-            .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(8.dp))
+            .width(width)
+            .height(44.dp)
+            // Matches iOS's white boxes-on-gray-card look (media-files/Simulator Screenshot ...
+            // 16.19.49.png) — `colorScheme.surface` rather than `surfaceVariant`, which is now
+            // close enough to GroupedCard's own gray fill (ui/GroupedCard.kt) that the boxes
+            // would barely stand out against it.
+            .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(8.dp))
             .border(
                 width = if (isActive) 3.dp else 1.dp,
                 color = if (isActive) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.outline,
