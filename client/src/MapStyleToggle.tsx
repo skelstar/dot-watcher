@@ -7,7 +7,7 @@ interface Props {
 }
 
 // A small square button matching LegendHelp's "?" button, stacked directly below it — both sit
-// under MapLibre's top-right NavigationControl/GeolocateControl column (see LegendHelp.tsx).
+// under MapLibre's top-right NavigationControl (see LegendHelp.tsx).
 // Shows the style you'd switch *to*, not the one currently active.
 export default function MapStyleToggle({ styleId, onToggle }: Props) {
   const nextId = otherMapStyleId(styleId)
@@ -37,7 +37,7 @@ function LayersIcon() {
 
 const button: React.CSSProperties = {
   position: 'absolute',
-  top: 195,
+  top: 153,
   right: 10,
   width: 29,
   height: 29,

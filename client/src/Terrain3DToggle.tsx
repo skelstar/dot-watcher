@@ -31,7 +31,7 @@ function MountainIcon({ color }: { color: string }) {
 
 const button: React.CSSProperties = {
   position: 'absolute',
-  top: 230,
+  top: 188,
   right: 10,
   width: 29,
   height: 29,
