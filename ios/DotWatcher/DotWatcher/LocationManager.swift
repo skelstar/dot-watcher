@@ -210,6 +210,14 @@ final class LocationManager {
     // slowing the post interval wouldn't meaningfully help; only actually stopping CLLocationManager
     // does. See .ai/plans/battery-level-reporting.md.
     private static let criticalBatteryThreshold = 10
+    /// Above `criticalBatteryThreshold` but at/below this, GPS keeps running at full accuracy
+    /// (unlike the critical tier) but is sampled less often — a middle step between the normal
+    /// cadence and a full stop, so battery savings start ramping up before the runner hits the
+    /// hard pause. A position, when taken, is still precise; there are just fewer of them.
+    /// Reverts to the normal distance filter once above this threshold or once charging.
+    private static let lowBatteryThreshold = 30
+    private static let normalDistanceFilter: CLLocationDistance = 20.0
+    private static let lowBatteryDistanceFilter: CLLocationDistance = 50.0
     /// True once battery has dropped to/below `criticalBatteryThreshold` and automatic tracking has
     /// been paused (GPS stopped, no more automatic posts) to save power. Surfaces a banner
     /// (ContentView.runnerRow) offering a one-off manual send or an explicit override back to full
@@ -278,9 +286,14 @@ final class LocationManager {
         locationDelegate.owner = self
         clManager.delegate = locationDelegate
         clManager.desiredAccuracy = kCLLocationAccuracyNearestTenMeters
-        clManager.distanceFilter = 10.0
+        clManager.distanceFilter = Self.normalDistanceFilter
         clManager.activityType = .fitness
-        clManager.pausesLocationUpdatesAutomatically = false
+        // Lets the OS pause GPS during a genuine standstill (e.g. a break, left in a car) and
+        // resume automatically once movement resumes — `.fitness` activity type tunes that
+        // heuristic for exercise rather than, say, automotive navigation. Previously disabled
+        // (false) to avoid any risk of a stale-looking map during a pause; re-enabled since the
+        // battery cost of keeping GPS hot through every standstill outweighs that.
+        clManager.pausesLocationUpdatesAutomatically = true
         clManager.allowsBackgroundLocationUpdates = true
         clManager.showsBackgroundLocationIndicator = true
 
@@ -805,6 +818,12 @@ final class LocationManager {
             clManager.stopUpdatingLocation()
             status = "Battery critical — paused"
             return
+        }
+
+        if !isCharging, let level = batteryPercentage, level <= Self.lowBatteryThreshold {
+            clManager.distanceFilter = Self.lowBatteryDistanceFilter
+        } else {
+            clManager.distanceFilter = Self.normalDistanceFilter
         }
 
         guard let loc = latestLocation else {
