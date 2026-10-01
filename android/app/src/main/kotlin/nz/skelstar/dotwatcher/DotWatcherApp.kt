@@ -79,6 +79,7 @@ fun DotWatcherApp(hasBackgroundLocationPermission: Boolean) {
                     onCreateSession = viewModel::createSession,
                     onJoinSession = viewModel::joinSession,
                     onRejoinSession = viewModel::rejoinSession,
+                    onRefresh = viewModel::loadRecentSessions,
                     onSignOut = viewModel::signOut,
                 )
 
