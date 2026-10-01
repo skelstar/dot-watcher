@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 // maplibre-gl has no default export (unlike mapbox-gl) — named imports only.
-import { MapLibreMap, NavigationControl, GeolocateControl, setWorkerUrl } from 'maplibre-gl'
+import { MapLibreMap, NavigationControl, setWorkerUrl } from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
 // v6 no longer auto-detects its worker URL under a bundler (only plain CDN <script type=module>
 // loading gets that for free) — without this, every vector/GeoJSON source hangs forever waiting
@@ -113,10 +113,6 @@ export default function App() {
     })
 
     map.addControl(new NavigationControl(), 'top-right')
-    map.addControl(new GeolocateControl({
-      positionOptions: { enableHighAccuracy: true },
-      trackUserLocation: true,
-    }), 'top-right')
 
     // setStyle() wipes the terrain along with everything else, so re-apply it on every style load.
     map.on('style.load', () => {
