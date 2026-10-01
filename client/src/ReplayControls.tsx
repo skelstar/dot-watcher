@@ -18,8 +18,10 @@ function formatTime(ms: number): string {
 }
 
 export default function ReplayControls({ timeline }: Props) {
-  const { following, scrubTimeMs, runStartMs, nowMs, isLive, lastActivityMs, pollIntervalMs, dragTo, dragEnd, goLive } =
-    timeline
+  const {
+    following, scrubTimeMs, runStartMs, nowMs, isLive, lastActivityMs, pollIntervalMs,
+    canSkip, skipping, skipToNextPosition, dragTo, dragEnd, goLive,
+  } = timeline
   const trackRef = useRef<HTMLDivElement>(null)
   const [showTooltip, setShowTooltip] = useState(false)
   const lingerTimerRef = useRef<ReturnType<typeof setTimeout>>()
@@ -85,6 +87,24 @@ export default function ReplayControls({ timeline }: Props) {
           )}
           <div style={{ ...dot, left: `${fraction * 100}%`, background: trackColour }} />
         </div>
+      )}
+
+      {/* Right next to the LIVE/duration button, at the bottom edge where a thumb already is, and
+          always rendered (just dimmed when there's nothing ahead) so the track doesn't resize as
+          you scrub. */}
+      {runStartMs !== null && (
+        <button
+          onClick={skipToNextPosition}
+          disabled={!canSkip || skipping}
+          style={{ ...skipBtn, opacity: canSkip && !skipping ? 1 : 0.4 }}
+          title="Skip to next position"
+          aria-label="Skip to next position"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <path d="M5 5l9 7-9 7V5z" />
+            <rect x="16" y="5" width="3" height="14" rx="1" />
+          </svg>
+        </button>
       )}
 
       {isLive
@@ -189,8 +209,26 @@ const liveBtn: React.CSSProperties = {
   justifyContent: 'center',
   gap: 6,
   flexShrink: 0,
-  marginLeft: 13,
+  marginLeft: 8,
   padding: '0 12px',
+  boxShadow: '0 0 0 2px rgba(0,0,0,0.1)',
+  pointerEvents: 'auto',
+}
+
+const skipBtn: React.CSSProperties = {
+  height: 34,
+  minWidth: 34,
+  border: 'none',
+  borderRadius: 6,
+  background: '#fff',
+  color: '#334155',
+  cursor: 'pointer',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  flexShrink: 0,
+  marginLeft: 13,
+  padding: 0,
   boxShadow: '0 0 0 2px rgba(0,0,0,0.1)',
   pointerEvents: 'auto',
 }

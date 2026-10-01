@@ -15,6 +15,7 @@ import {
   maxOrNull,
   mergeIntoByRunner,
   mergeRange,
+  nextPositionAfterMs,
   parseNdjson,
   positionsAtCutoff,
   type RunnerCountdown,
@@ -27,6 +28,7 @@ import { usePageVisible } from './usePageVisible.ts'
 const TICK_MS = 100
 const WINDOW_MS = 10 * 60 * 1000 // default backward-fetch window when scrubbing into uncached history
 const DRAG_SETTLE_MS = 500 // how long to wait after the user releases the scrubber before fetching
+const SKIP_LOOKAHEAD_MS = 15 * 60 * 1000 // forward-search step when skipping to the next position
 
 // Mirrors the hardcoded `interval` in ios/DotWatcher/DotWatcher/LocationManager.swift:154 —
 // phones snap their sends to wall-clock boundaries (:00/:15/:30/:45 for 15s, via the same
@@ -69,6 +71,10 @@ export interface SessionTimelineState {
   loading: boolean
   error: string | null
   invalidInvite: boolean
+  /** True while replaying (not following live) with a later position still ahead. */
+  canSkip: boolean
+  skipping: boolean
+  skipToNextPosition: () => void
   dragTo: (ms: number) => void
   dragEnd: () => void
   goLive: () => void
@@ -109,6 +115,10 @@ export function useSessionTimeline(
   const fetchedRangesRef = useRef<TimeRange[]>([])
   fetchedRangesRef.current = fetchedRanges
   const inFlightRef = useRef<Set<string>>(new Set())
+  const byRunnerRef = useRef(byRunner)
+  byRunnerRef.current = byRunner
+  const skippingRef = useRef(false)
+  const [skipping, setSkipping] = useState(false)
 
   // Live-polling and scrub-driven window fetches both refetch overlapping ranges by design
   // (e.g. every live poll re-requests the same "latest position" endpoint), so logging every
@@ -310,6 +320,64 @@ export function useSessionTimeline(
     setPlaying(false)
   }
 
+  // Fetches (sinceMs, untilMs] forward of the playhead and returns what came back, merging it into
+  // the cache. Unlike fetchWindow it hands the rows back directly: skipToNextPosition needs them
+  // immediately, and state updates from setByRunner aren't visible until the next render.
+  async function fetchForwardWindow(sinceMs: number, untilMs: number): Promise<RunnerPosition[]> {
+    if (!recordingBase) return []
+    const since = new Date(sinceMs).toISOString()
+    const until = new Date(untilMs).toISOString()
+    const res = await fetch(`${recordingBase}/recording?since=${encodeURIComponent(since)}&until=${encodeURIComponent(until)}`, {
+      headers,
+    })
+    if (!res.ok) throw new Error(`Failed to load recording window: HTTP ${res.status}`)
+    const updates = parseNdjson(await res.text())
+    logNewPositions(updates)
+    setByRunner(prev => mergeIntoByRunner(prev, updates))
+    // A truncated response only covers part of the range, so it must not be recorded as fetched.
+    if (res.headers.get('X-Truncated') !== 'true') {
+      setFetchedRanges(prev => mergeRange(prev, { since: sinceMs, until: untilMs }))
+    }
+    return updates
+  }
+
+  // Jumps the playhead to the next position anyone reported after the current one — in practice,
+  // over a stretch where nobody was updating (out of coverage, etc). The next position may not be
+  // loaded (replay only caches windows around where you've scrubbed), so this searches forward in
+  // SKIP_LOOKAHEAD_MS steps, fetching each step, until it finds one or reaches the end of the run.
+  async function skipToNextPosition() {
+    const from = scrubTimeMs
+    const end = lastActivityMs
+    if (from === null || end === null || from >= end || skippingRef.current) return
+    skippingRef.current = true
+    setSkipping(true)
+    try {
+      const fetched: RunnerPosition[] = []
+      let searchedTo = from
+      while (searchedTo < end) {
+        const windowStart = searchedTo
+        searchedTo = Math.min(searchedTo + SKIP_LOOKAHEAD_MS, end)
+        if (!isRangeCovered(fetchedRangesRef.current, windowStart + 1, searchedTo)) {
+          fetched.push(...await fetchForwardWindow(windowStart + 1, searchedTo))
+        }
+        const next = nextPositionAfterMs(
+          mergeIntoByRunner(byRunnerRef.current, fetched),
+          from,
+        )
+        if (next !== null && next <= searchedTo) {
+          ensureCovered(next)
+          setScrubTimeMs(next)
+          return
+        }
+      }
+    } catch (err) {
+      console.error('[useSessionTimeline] skip failed', err)
+    } finally {
+      skippingRef.current = false
+      setSkipping(false)
+    }
+  }
+
   // Virtual clock driving playback once scrubbed. Rejoins live when it catches up to "now".
   // Also pauses (without touching `playing`/`scrubTimeMs`) while the page is hidden, so a
   // backgrounded replay doesn't keep ticking and issuing window fetches unseen — it resumes
@@ -426,6 +494,9 @@ export function useSessionTimeline(
     loading,
     error,
     invalidInvite,
+    canSkip: scrubTimeMs !== null && lastActivityMs !== null && scrubTimeMs < lastActivityMs,
+    skipping,
+    skipToNextPosition: () => void skipToNextPosition(),
     dragTo,
     dragEnd,
     goLive,

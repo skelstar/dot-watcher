@@ -124,6 +124,27 @@ export function earliestActivityMs(byRunner: Map<string, RunnerPosition[]>): num
   return earliest
 }
 
+// The earliest position timestamp across all runners that is strictly after `afterMs`, or null if
+// there isn't one in the data given. Backs the replay "skip" button, which jumps the playhead over
+// a stretch where nobody reported in. Only as complete as the data passed in — callers must have
+// fetched the range they care about first.
+export function nextPositionAfterMs(
+  byRunner: Map<string, RunnerPosition[]>,
+  afterMs: number,
+): number | null {
+  let next: number | null = null
+  for (const positions of byRunner.values()) {
+    for (const p of positions) {
+      const ts = new Date(p.timestamp).getTime()
+      if (ts > afterMs) {
+        if (next === null || ts < next) next = ts
+        break // positions are sorted ascending, so the first later one is this runner's earliest
+      }
+    }
+  }
+  return next
+}
+
 // The more recent of two possibly-unknown timestamps. Used to combine the client's own
 // live-polled activity with the server's DB-backed recording metadata, since either source can
 // be the only one with data (e.g. the in-memory poll cache is empty right after a server restart).
