@@ -139,6 +139,7 @@ export default function App() {
     timeline.runnersWithGpsSignalLoss,
     timeline.runnersWithGap,
     timeline.runnersSleeping,
+    timeline.runnersUltraConstrained,
   )
   useRouteLayer(mapRef, routeCoordinates, timeline.runStartMs === null)
   useSimulatorRouteOverlay(mapRef)

@@ -2,6 +2,7 @@
 // The dot stays upright at all times — only the chevron orbits to show heading.
 
 import { initialsFor } from './InitialsBadge.tsx'
+import SatelliteDishIcon from './SatelliteDishIcon.tsx'
 
 // Circle centre in SVG/element coordinates (element anchors at its centre)
 const CX = 24
@@ -32,10 +33,39 @@ interface Props {
   stationary?: boolean
   missing?: boolean
   signalLoss?: boolean
+  satellite?: boolean
   onClick?: () => void
 }
 
 export { ARROW_SIZE }
+
+// Yellow circle + dish glyph (same treatment as the Legend pill's satellite icon), pinned to the
+// dot's top-right to flag that this runner is currently reporting over a satellite link. Absolutely
+// positioned over the marker so it works for every variant; `style` supplies the per-variant offset.
+function SatelliteBadge({ size, style }: { size: number; style: React.CSSProperties }) {
+  return (
+    <div
+      title="Reporting over a satellite connection"
+      style={{
+        position: 'absolute',
+        width: size,
+        height: size,
+        borderRadius: '50%',
+        background: '#ffe88e',
+        border: '1.5px solid #ffffff',
+        boxShadow: '0 1px 2px rgba(0,0,0,0.4)',
+        boxSizing: 'border-box',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        pointerEvents: 'none',
+        ...style,
+      }}
+    >
+      <SatelliteDishIcon size={size - 5} />
+    </div>
+  )
+}
 
 // Small red exclamation badge, bottom-right of the dot, flagging that this runner's position may
 // currently be unreliable (see findGpsSignalLoss in useSessionTimelineLogic.ts).
@@ -58,7 +88,7 @@ function SignalLossBadge({ cx, cy, r }: { cx: number; cy: number; r: number }) {
   )
 }
 
-export default function Arrow({ name, heading, colour, label, stationary, missing, signalLoss, onClick }: Props) {
+export default function Arrow({ name, heading, colour, label, stationary, missing, signalLoss, satellite, onClick }: Props) {
   const displayLabel = label !== undefined ? label : name
   // Only show the label when it's a cluster label (multiple runners merged)
   const showLabel = displayLabel !== '' && displayLabel !== name
@@ -87,6 +117,7 @@ export default function Arrow({ name, heading, colour, label, stationary, missin
         }}>
           {initialsFor(name)}
         </div>
+        {satellite && <SatelliteBadge size={16} style={{ top: -4, right: -4 }} />}
         {showLabel && (
           <div style={{
             position: 'absolute',
@@ -154,6 +185,7 @@ export default function Arrow({ name, heading, colour, label, stationary, missin
             !
           </div>
         )}
+        {satellite && <SatelliteBadge size={16} style={{ top: -4, right: -4 }} />}
         {showLabel && (
           <div style={{
             position: 'absolute',
@@ -223,6 +255,10 @@ export default function Arrow({ name, heading, colour, label, stationary, missin
             chevron if the two ever overlap. */}
         {signalLoss && <SignalLossBadge cx={CX + 8.5} cy={CY + 8.5} r={6} />}
       </svg>
+
+      {/* Top-right of the dot (the signal-loss badge is bottom-right). Rendered after the svg so it
+          sits above the chevron when the heading points up and to the right. */}
+      {satellite && <SatelliteBadge size={16} style={{ left: CX + 2, top: CY - 19 }} />}
 
       {showLabel && (
         <div style={{
