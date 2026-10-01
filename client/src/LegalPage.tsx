@@ -49,7 +49,7 @@ const privacyPage = {
       heading: 'Data We Collect',
       paragraphs: [
         'Account data: username, display name, password hash, access token metadata, logout revocation records, and timestamps related to account activity.',
-        'Session data: session codes, invite codes, membership records, roles such as owner, runner, and viewer, and display names used inside a session.',
+        'Session data: session codes, invite codes, membership records (including your role — runner or viewer — in each session), which sessions you own, and display names used inside a session.',
         'Location data: precise latitude and longitude, heading when available, GPS capture timestamp, session code, and the display name associated with the authenticated session member.',
         'Operational data: server logs may include session codes, display names, request outcomes, and precise location details needed to debug tracking problems.',
       ],
@@ -65,7 +65,7 @@ const privacyPage = {
     {
       heading: 'Sharing and Visibility',
       paragraphs: [
-        'Precise location data is visible to authenticated users who are members of the same session. Owners can invite other users and can promote trusted viewers to runners.',
+        "Precise location data is visible to authenticated users who are members of the same session. Anyone with a session's invite code can join it directly and choose to join as a runner (shares location) or a viewer (does not) — there is no owner approval step.",
         'Invite links are onboarding mechanisms, not long-term credentials. Access after joining is based on stored membership and user authentication.',
         'You can block another user from account settings. Blocking ends any session membership you share with them immediately, prevents them from joining any session you own in the future, and stops your location and theirs from being visible to each other.',
         'We do not sell location data. We may disclose data if required by law or if necessary to protect users, the service, or others.',
@@ -119,7 +119,7 @@ const termsPage = {
       paragraphs: [
         'You are responsible for your account, password, session invitations, and the people you invite into a session.',
         'Only create, join, share, or track in sessions where everyone involved has consented to the intended location sharing.',
-        'Owners can manage member roles. Invite codes do not grant runner or owner privileges by themselves.',
+        "Anyone with a session's invite code can join it and choose to join as a runner, without owner approval — only share invite codes with people you want tracking in your session.",
       ],
     },
     {

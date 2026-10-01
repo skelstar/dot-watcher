@@ -273,7 +273,7 @@
     <tr>
       <td>Runner</td>
       <td><code>POST /location</code></td>
-      <td>User access token plus owner/runner session membership</td>
+      <td>User access token plus <code>runner</code> session membership</td>
     </tr>
     <tr>
       <td>Viewer</td>
@@ -334,14 +334,6 @@
               | POST /location          |
               | GET /.../recording      |
               +--------------------------+
-
-        owner/admin role management
-        +-----------------------------+
-        | GET /sessions/{code}/       |
-        |   members                   |
-        | POST /sessions/{code}/      |
-        |   members/{userId}/role     |
-        +-----------------------------+
 
         logout/deletion revoke access
         +-----------------------------+

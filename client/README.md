@@ -58,9 +58,8 @@ Public legal pages are available at `/privacy` and `/terms`. These should be rev
 - The server returns `{ accessToken, expiresAt, user }`; the app keeps the access token in `sessionStorage`, clears older `localStorage` token keys, and calls `POST /auth/logout` on sign-out.
 - The account settings dialog links Privacy/Terms and calls `DELETE /me` for self-service account deletion.
 - After sign-in, the app loads `GET /me/sessions`. Users can open live or replay views only for returned memberships.
-- Creating a session calls `POST /sessions` and stores the creator as `owner`.
-- Joining from an invite calls `POST /session-invites/{inviteCode}/join`. Invite joins create `viewer` membership for new members and preserve existing roles; invite codes do not grant runner or owner privileges.
-- Owners can open the member manager, load `GET /sessions/{sessionCode}/members`, and call `POST /sessions/{sessionCode}/members/{userId}/role` to promote viewers to runners or demote runners to viewers.
+- Creating a session calls `POST /sessions`. The creator's own membership is stored with role `runner`; they're recorded separately as the session's owner (`app_sessions.owner_user_id`), which is attribution only and grants no extra permissions over other members.
+- Joining from an invite calls `POST /session-invites/{inviteCode}/join` with an optional `role` in the request body, caller-selected rather than owner-granted: omitting it (or sending anything other than `"runner"`) joins as `viewer`, sending `"runner"` joins as `runner` outright. There is no owner-approval step, and no endpoint to list or change another member's role.
 - A raw session code in the URL is only an identifier. If the user lacks membership, protected server endpoints return `403`.
 - Requests include an `X-Api-Version` header via the `apiHeaders()` helper (`client/src/apiHeaders.ts`), bumped only when the web client adopts a change that could break against the server. The server may reject an outdated version with `426 Upgrade Required`; there is currently no dedicated UI for this on the web client (see `ios/README.md` for the iOS equivalent, `UpdateRequiredView.swift`).
 

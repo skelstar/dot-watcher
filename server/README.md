@@ -349,7 +349,7 @@ Deletes the authenticated app user account.
 
 ### `POST /sessions`
 
-Creates a new app session for the authenticated user. The creator is stored as an `owner` member and receives an invite code to share.
+Creates a new app session for the authenticated user. The creator's own membership is stored with role `runner` (same as any other runner); they're recorded separately as the session's owner (`app_sessions.owner_user_id`), which is attribution only — it grants no extra permissions over other members.
 
 **Auth:** User access token required.
 
@@ -370,7 +370,7 @@ Both fields are optional. If `sessionCode` is omitted, the server generates one.
 {
   "sessionCode": "SUNSET23",
   "inviteCode": "A1B2C3D4E5F6",
-  "role": "owner",
+  "role": "runner",
   "displayName": "Alice"
 }
 ```
@@ -387,60 +387,14 @@ Joins the authenticated user to a session from an invite code. Invite codes are 
 
 ```json
 {
-  "displayName": "Alice"
-}
-```
-
-Invite joins create `viewer` membership for new members and preserve any existing role for current members. Invite codes are not role grants; runner/owner privileges must be assigned by a trusted server-side flow.
-
-**Responses:** `200` with the resulting membership, `400` for invalid display name, `401` for missing or invalid user token, `404` for an unknown invite code.
-
----
-
-### `GET /sessions/{sessionCode}/members`
-
-Returns the stored members for a session so owners can manage runner access.
-
-**Auth:** Session owner user access token, or admin bearer token.
-
-**Response body:**
-
-```json
-[
-  {
-    "userId": "9b3d...",
-    "role": "owner",
-    "displayName": "Alice"
-  },
-  {
-    "userId": "2a8f...",
-    "role": "viewer",
-    "displayName": "Bob"
-  }
-]
-```
-
-**Responses:** `200` with members, `400` for invalid session code, `401` for missing or invalid credentials, `403` when the signed-in user is not the owner, `404` when an admin requests an unknown session.
-
----
-
-### `POST /sessions/{sessionCode}/members/{userId}/role`
-
-Promotes or demotes a non-owner member between `runner` and `viewer`.
-
-**Auth:** Session owner user access token, or admin bearer token.
-
-**Request body:**
-
-```json
-{
+  "displayName": "Alice",
   "role": "runner"
 }
 ```
 
-Only `runner` and `viewer` are accepted. `owner` is created by `POST /sessions` and cannot be assigned or removed through this endpoint.
+`role` is optional and caller-selected, not owner-granted: omitting it (or sending anything other than `"runner"`) joins as `viewer`; sending `"runner"` joins as `runner` outright. There is no owner-approval step and no separate endpoint to list or change another member's role.
 
-**Responses:** `200` with the updated member, `400` for invalid session code, invalid role, or attempts to change the owner role, `401` for missing or invalid credentials, `403` when the signed-in user is not the owner, `404` for unknown sessions or members.
+**Responses:** `200` with the resulting membership, `400` for invalid display name, `401` for missing or invalid user token, `404` for an unknown invite code.
 
 ---
 
