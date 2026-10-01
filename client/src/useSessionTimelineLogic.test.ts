@@ -19,6 +19,7 @@ import {
   maxOrNull,
   mergeIntoByRunner,
   mergeRange,
+  nextPositionAfterMs,
   normalizeUpdate,
   parseNdjson,
   positionsAtCutoff,
@@ -112,6 +113,31 @@ test('earliestActivityMs is the min first-position timestamp across all runners'
     ]],
   ])
   assert.equal(earliestActivityMs(byRunner), new Date('2024-01-01T00:00:05Z').getTime())
+})
+
+test('nextPositionAfterMs is null when nobody has a later position', () => {
+  assert.equal(nextPositionAfterMs(new Map(), 0), null)
+  const byRunner = new Map([
+    ['Alice', [{ runnerName: 'Alice', latitude: 0, longitude: 0, heading: null, timestamp: '2024-01-01T00:00:10Z' }]],
+  ])
+  assert.equal(nextPositionAfterMs(byRunner, new Date('2024-01-01T00:00:10Z').getTime()), null)
+})
+
+test('nextPositionAfterMs is the earliest strictly-later timestamp across all runners', () => {
+  const byRunner = new Map([
+    ['Alice', [
+      { runnerName: 'Alice', latitude: 0, longitude: 0, heading: null, timestamp: '2024-01-01T00:00:10Z' },
+      { runnerName: 'Alice', latitude: 1, longitude: 1, heading: null, timestamp: '2024-01-01T00:20:00Z' },
+    ]],
+    ['Bob', [
+      { runnerName: 'Bob', latitude: 2, longitude: 2, heading: null, timestamp: '2024-01-01T00:05:00Z' },
+    ]],
+  ])
+  const after = (iso: string) => nextPositionAfterMs(byRunner, new Date(iso).getTime())
+  assert.equal(after('2024-01-01T00:00:00Z'), new Date('2024-01-01T00:00:10Z').getTime())
+  assert.equal(after('2024-01-01T00:00:10Z'), new Date('2024-01-01T00:05:00Z').getTime())
+  // Past Bob's only position: skips the 15-minute gap straight to Alice's next one.
+  assert.equal(after('2024-01-01T00:05:00Z'), new Date('2024-01-01T00:20:00Z').getTime())
 })
 
 test('maxOrNull returns the larger value when both are known', () => {
