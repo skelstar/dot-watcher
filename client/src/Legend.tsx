@@ -1,3 +1,4 @@
+import SatelliteDishIcon from './components/SatelliteDishIcon.tsx'
 import { runnerColour } from './useRunnerMarkers.ts'
 import { formatCountdownSeconds, formatShortTimeOfDay, type RunnerCountdown } from './useSessionTimelineLogic.ts'
 
@@ -17,30 +18,6 @@ interface Props {
 const COUNTDOWN_RING_SIZE = 18
 const SATELLITE_ICON_SIZE = 18
 const BATTERY_ICON_SIZE = 18
-
-// Dish + signal-wave glyph (path data from Lucide's "satellite-dish" icon, ISC licensed) rather
-// than the 📡 emoji previously used here — emoji rendering is font/OS-dependent and reads as a
-// blurry smudge at this pill's small size; a stroked SVG stays crisp and legible regardless.
-function SatelliteDishIcon() {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      width={SATELLITE_ICON_SIZE}
-      height={SATELLITE_ICON_SIZE}
-      fill="none"
-      stroke="#000000"
-      strokeWidth={2.0}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      style={{ flexShrink: 0 }}
-    >
-      <path d="M4 10a7.31 7.31 0 0 0 10 10Z" />
-      <path d="m9 15 3-3" />
-      <path d="M17 13a6 6 0 0 0-6-6" />
-      <path d="M21 13A10 10 0 0 0 11 3" />
-    </svg>
-  )
-}
 
 // Hand-drawn battery glyph (not sourced from an icon set, unlike SatelliteDishIcon) — a plain
 // outline body plus terminal nub, per .ai/plans/battery-level-reporting.md. Deliberately not just
@@ -191,7 +168,7 @@ export default function Legend({
                 <span style={trailingContent(trailingMinWidth)}>
                   {satellite && (
                     <span title="Reporting over a satellite connection" style={satelliteIconWrap}>
-                      <SatelliteDishIcon />
+                      <SatelliteDishIcon size={SATELLITE_ICON_SIZE} />
                     </span>
                   )}
                   {battery && (

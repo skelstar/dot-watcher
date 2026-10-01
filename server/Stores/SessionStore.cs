@@ -1270,7 +1270,7 @@ public class SessionStore(string connectionString) : IDisposable
             FROM session_members m
             LEFT JOIN location_updates l ON l.session_id = @sessionId AND l.runner_user_id = m.user_id
             WHERE m.session_id = @sessionId
-            GROUP BY m.user_id, m.display_name, m.role
+            GROUP BY m.user_id, m.display_name, m.role, m.joined_at
             ORDER BY m.joined_at ASC
             """;
         cmd.Parameters.AddWithValue("@sessionId", sessionId);

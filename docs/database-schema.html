@@ -285,7 +285,7 @@
           <ul>
             <li>↑ belongs to one <span class="fk-ref">app_sessions</span></li>
             <li>↑ belongs to one <span class="fk-ref">users</span></li>
-            <li>role: <code>owner</code> | <code>runner</code> | <code>viewer</code></li>
+            <li>role: <code>runner</code> | <code>viewer</code> (a session's owner is a separate <code>app_sessions.owner_user_id</code> column, not a role value)</li>
           </ul>
         </div>
         <div class="erd-card">
@@ -480,9 +480,9 @@
         </div>
       </div>
       <div class="callout">
-        <strong>Role permissions:</strong> only <code>owner</code> and <code>runner</code> may post location updates
-        (<code>CanWriteLocation</code>). The <code>owner</code> role cannot be changed via
-        <code>UpdateSessionMemberRole</code> — it is set once at session creation and never altered.
+        <strong>Role permissions:</strong> only <code>runner</code> may post location updates
+        (<code>CanWriteLocation</code>). Role is caller-selected at join time (<code>POST /session-invites/{code}/join</code>)
+        — there's no endpoint to change another member's role after the fact.
       </div>
     </div>
 
