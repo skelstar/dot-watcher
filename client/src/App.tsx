@@ -19,6 +19,7 @@ import LegendHelp from './LegendHelp.tsx'
 import ReplayControls from './ReplayControls.tsx'
 import MapPlayButton from './MapPlayButton.tsx'
 import LegalPage from './LegalPage.tsx'
+import DeleteAccountPage from './DeleteAccountPage.tsx'
 import AdminPanel from './AdminPanel.tsx'
 import RouteUploadPage from './RouteUploadPage.tsx'
 import LandingPage from './LandingPage.tsx'
@@ -42,20 +43,23 @@ interface RouteState {
   legalPage: 'privacy' | 'terms' | null
   isAdmin: boolean
   isLanding: boolean
+  isDeleteAccount: boolean
   routeUploadSessionId: string | null
 }
 
 // The only routes the app generates: '/' (landing) and '/code/{code}' (shared via the iOS
-// ShareLink), plus /admin, the legal pages and /route-upload/{sessionId} (opened by the iOS app
-// with an upload token in the URL fragment). Watching is invite-code only — anything else
-// falls back to the landing page.
+// ShareLink), plus /admin, the legal pages, /delete-account (linked from the Play Store listing's
+// Data Safety section) and /route-upload/{sessionId} (opened by the iOS app with an upload token
+// in the URL fragment). Watching is invite-code only — anything else falls back to the landing
+// page.
 function parseUrl(): RouteState {
   const parts = window.location.pathname.replace(/^\//, '').split('/')
   const norm = (s: string) => s.toUpperCase() || null
-  const base = { inviteCode: null, legalPage: null, isAdmin: false, isLanding: false, routeUploadSessionId: null }
+  const base = { inviteCode: null, legalPage: null, isAdmin: false, isLanding: false, isDeleteAccount: false, routeUploadSessionId: null }
   if (parts[0] === 'admin') return { ...base, isAdmin: true }
   if (parts[0] === 'privacy') return { ...base, legalPage: 'privacy' }
   if (parts[0] === 'terms') return { ...base, legalPage: 'terms' }
+  if (parts[0] === 'delete-account') return { ...base, isDeleteAccount: true }
   if (parts[0] === 'route-upload' && parts[1]) return { ...base, routeUploadSessionId: parts[1] }
   if (parts[0] === 'code') return { ...base, inviteCode: norm(parts[1] ?? '') }
   return { ...base, isLanding: true }
@@ -64,7 +68,7 @@ function parseUrl(): RouteState {
 export default function App() {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<MapLibreMap | null>(null)
-  const { inviteCode, legalPage, isAdmin, isLanding, routeUploadSessionId } = parseUrl()
+  const { inviteCode, legalPage, isAdmin, isLanding, isDeleteAccount, routeUploadSessionId } = parseUrl()
   const [routeCoordinates, setRouteCoordinates] = useState<[number, number][] | null>(null)
   const [mapStyleId, setMapStyleId] = useState<MapStyleId>(DEFAULT_MAP_STYLE_ID)
 
@@ -158,6 +162,10 @@ export default function App() {
 
   if (legalPage) {
     return <LegalPage kind={legalPage} />
+  }
+
+  if (isDeleteAccount) {
+    return <DeleteAccountPage serverUrl={SERVER_URL} />
   }
 
   if (isLanding) {
