@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 // maplibre-gl has no default export (unlike mapbox-gl) — named imports only.
 import { MapLibreMap, NavigationControl, setWorkerUrl } from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
@@ -16,6 +16,7 @@ import MapStyleToggle from './MapStyleToggle.tsx'
 import Terrain3DToggle from './Terrain3DToggle.tsx'
 import InvalidInvitePrompt from './InvalidInvitePrompt.tsx'
 import Legend from './Legend.tsx'
+import TraceToggle from './TraceToggle.tsx'
 import LegendHelp from './LegendHelp.tsx'
 import ReplayControls from './ReplayControls.tsx'
 import MapPlayButton from './MapPlayButton.tsx'
@@ -26,6 +27,7 @@ import LandingPage from './LandingPage.tsx'
 import InitialsBadge from './components/InitialsBadge.tsx'
 import { useRunnerMarkers } from './useRunnerMarkers.ts'
 import { useRouteLayer } from './useRouteLayer.ts'
+import { useSignalTrailLayer } from './useSignalTrailLayer.ts'
 import { useSimulatorRouteOverlay } from './useSimulatorRouteOverlay.ts'
 import { useSessionTimeline } from './useSessionTimeline.ts'
 import { parseGpxCoordinates } from './gpx.ts'
@@ -156,6 +158,17 @@ export default function App() {
     timeline.runnersUltraConstrained,
   )
   useRouteLayer(mapRef, routeCoordinates, timeline.runStartMs === null)
+  // Signal trace (toggle button, or ?trace in the URL to start with it on): plots every position
+  // up to the playhead — a blue dot for a normal connection, the runner dot's satellite badge for
+  // an ultra-constrained path, and a red X where a satellite read probably failed.
+  const [showTrace, setShowTrace] = useState(() => new URLSearchParams(window.location.search).has('trace'))
+  const tracePositions = useMemo(
+    () => showTrace
+      ? timeline.allPositions.filter(p => Date.parse(p.timestamp) <= timeline.virtualNowMs)
+      : null,
+    [showTrace, timeline.allPositions, timeline.virtualNowMs],
+  )
+  useSignalTrailLayer(mapRef, tracePositions)
   useSimulatorRouteOverlay(mapRef)
 
   const routeBase = inviteCode ? `${SERVER_URL}/session-invites/${inviteCode}` : null
@@ -219,6 +232,9 @@ export default function App() {
       </div>
       <LegendHelp />
       <MapStyleToggle styleId={mapStyleId} onToggle={handleToggleMapStyle} />
+      {inviteCode && !timeline.invalidInvite && (
+        <TraceToggle on={showTrace} onToggle={() => setShowTrace(v => !v)} />
+      )}
       <Terrain3DToggle enabled={terrain3d} onToggle={handleToggleTerrain3d} />
       <Legend
         runners={allRunners}
