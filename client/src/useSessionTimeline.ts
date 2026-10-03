@@ -51,6 +51,8 @@ function msUntilNextPollBoundary(nowMs: number): number {
 
 export interface SessionTimelineState {
   positions: RunnerPosition[][] | undefined
+  // Every position loaded so far (not just the latest per runner at the playhead), flattened.
+  allPositions: RunnerPosition[]
   following: boolean
   scrubTimeMs: number | null
   runStartMs: number | null
@@ -410,6 +412,8 @@ export function useSessionTimeline(
     return result.length > 0 ? result : undefined
   }, [byRunner, virtualNowMs])
 
+  const allPositions = useMemo(() => [...byRunner.values()].flat(), [byRunner])
+
   const polledLatestMs = useMemo(() => latestActivityMs(byRunner), [byRunner])
   const lastActivityMs = useMemo(() => maxOrNull(polledLatestMs, metaLatestMs), [polledLatestMs, metaLatestMs])
   const isLive = useMemo(() => isSessionLive(lastActivityMs, nowMs, LIVE_STALE_MS), [lastActivityMs, nowMs])
@@ -474,6 +478,7 @@ export function useSessionTimeline(
 
   return {
     positions,
+    allPositions,
     following: scrubTimeMs === null,
     scrubTimeMs,
     runStartMs: effectiveRunStartMs,

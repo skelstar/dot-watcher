@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 // maplibre-gl has no default export (unlike mapbox-gl) — named imports only.
 import { MapLibreMap, NavigationControl, setWorkerUrl } from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
@@ -26,6 +26,7 @@ import LandingPage from './LandingPage.tsx'
 import InitialsBadge from './components/InitialsBadge.tsx'
 import { useRunnerMarkers } from './useRunnerMarkers.ts'
 import { useRouteLayer } from './useRouteLayer.ts'
+import { useSignalTrailLayer } from './useSignalTrailLayer.ts'
 import { useSimulatorRouteOverlay } from './useSimulatorRouteOverlay.ts'
 import { useSessionTimeline } from './useSessionTimeline.ts'
 import { parseGpxCoordinates } from './gpx.ts'
@@ -156,6 +157,16 @@ export default function App() {
     timeline.runnersUltraConstrained,
   )
   useRouteLayer(mapRef, routeCoordinates, timeline.runStartMs === null)
+  // Debug view: append ?trace to the URL to plot every position up to the playhead, coloured by
+  // whether it was sent over a cellular (blue) or ultra-constrained/satellite (orange) path.
+  const showTrace = new URLSearchParams(window.location.search).has('trace')
+  const tracePositions = useMemo(
+    () => showTrace
+      ? timeline.allPositions.filter(p => Date.parse(p.timestamp) <= timeline.virtualNowMs)
+      : null,
+    [showTrace, timeline.allPositions, timeline.virtualNowMs],
+  )
+  useSignalTrailLayer(mapRef, tracePositions)
   useSimulatorRouteOverlay(mapRef)
 
   const routeBase = inviteCode ? `${SERVER_URL}/session-invites/${inviteCode}` : null
@@ -218,6 +229,12 @@ export default function App() {
         <a href="/terms" style={legalLink}>Terms</a>
       </div>
       <LegendHelp />
+      {showTrace && (
+        <div style={signalKey}>
+          <span style={{ ...signalSwatch, background: '#2563eb' }} /> Cellular / Wi-Fi
+          <span style={{ ...signalSwatch, background: '#f97316' }} /> Satellite
+        </div>
+      )}
       <MapStyleToggle styleId={mapStyleId} onToggle={handleToggleMapStyle} />
       <Terrain3DToggle enabled={terrain3d} onToggle={handleToggleTerrain3d} />
       <Legend
@@ -290,6 +307,31 @@ const versionBadge: React.CSSProperties = {
   padding: '4px 7px',
   fontFamily: 'system-ui, sans-serif',
   fontSize: '0.75rem',
+}
+
+const signalKey: React.CSSProperties = {
+  position: 'absolute',
+  left: 12,
+  top: 12,
+  zIndex: 7,
+  display: 'flex',
+  alignItems: 'center',
+  gap: 6,
+  background: 'rgba(255,255,255,0.92)',
+  color: '#57606a',
+  borderRadius: 4,
+  boxShadow: '0 0 0 1px rgba(0,0,0,0.1)',
+  padding: '4px 8px',
+  fontFamily: 'system-ui, sans-serif',
+  fontSize: '0.8rem',
+}
+
+const signalSwatch: React.CSSProperties = {
+  width: 10,
+  height: 10,
+  borderRadius: '50%',
+  border: '1px solid #fff',
+  boxShadow: '0 0 0 1px rgba(0,0,0,0.3)',
 }
 
 const legalLink: React.CSSProperties = {
