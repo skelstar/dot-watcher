@@ -25,6 +25,15 @@ val linzApiKey: String = localProperties.getProperty("LINZ_API_KEY", "")
 // nothing, if a developer forgets to set it.
 val deviceApiBaseUrl: String = localProperties.getProperty("DEVICE_API_BASE_URL", "http://192.0.2.0:8080")
 
+// Release signing — absent for any developer who hasn't set these up (e.g. CI, or a fresh
+// checkout), in which case the release build type below falls back to unsigned rather than
+// failing the build; only an actual Play Store upload needs a signed bundle. See
+// local.properties.example for how to generate the keystore.
+val releaseStoreFile: String? = localProperties.getProperty("RELEASE_STORE_FILE")?.ifBlank { null }
+val releaseStorePassword: String? = localProperties.getProperty("RELEASE_STORE_PASSWORD")?.ifBlank { null }
+val releaseKeyAlias: String? = localProperties.getProperty("RELEASE_KEY_ALIAS")?.ifBlank { null }
+val releaseKeyPassword: String? = localProperties.getProperty("RELEASE_KEY_PASSWORD")?.ifBlank { null }
+
 android {
     namespace = "nz.skelstar.dotwatcher"
     compileSdk = 35
@@ -43,6 +52,17 @@ android {
         // dev setup. Matches DOTWATCHER_WEB_BASE_URL's Release value in
         // ios/DotWatcher/DotWatcher.xcodeproj/project.pbxproj.
         buildConfigField("String", "WEB_BASE_URL", "\"https://dot-watcher.skelstar.io\"")
+    }
+
+    signingConfigs {
+        if (releaseStoreFile != null && releaseStorePassword != null && releaseKeyAlias != null && releaseKeyPassword != null) {
+            create("release") {
+                storeFile = file(releaseStoreFile)
+                storePassword = releaseStorePassword
+                keyAlias = releaseKeyAlias
+                keyPassword = releaseKeyPassword
+            }
+        }
     }
 
     // Three build types, matching iOS's Debug/Device/Release split
@@ -76,6 +96,7 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            signingConfigs.findByName("release")?.let { signingConfig = it }
         }
     }
 

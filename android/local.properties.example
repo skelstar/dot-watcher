@@ -7,3 +7,13 @@ LINZ_API_KEY=your_linz_developer_api_key_here
 # on macOS. Phone and dev machine must be on the same Wi-Fi network. Leave unset for "debug"
 # (emulator) or "release" (production) builds.
 DEVICE_API_BASE_URL=http://192.168.1.23:8080
+
+# Release signing — only needed to build `bundleRelease`/`assembleRelease` for Play Store upload.
+# Generate the keystore once with:
+#   keytool -genkeypair -v -keystore dotwatcher-upload.jks -alias dotwatcher -keyalg RSA -keysize 2048 -validity 10000
+# Keep the .jks file and these passwords out of git and backed up somewhere durable (e.g. a
+# password manager) — losing them means you can never update the app under this upload key again.
+RELEASE_STORE_FILE=/path/to/dotwatcher-upload.jks
+RELEASE_STORE_PASSWORD=
+RELEASE_KEY_ALIAS=dotwatcher
+RELEASE_KEY_PASSWORD=
