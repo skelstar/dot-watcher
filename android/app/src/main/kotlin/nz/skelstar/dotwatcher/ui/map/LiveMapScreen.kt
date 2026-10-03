@@ -126,7 +126,11 @@ fun LiveMapScreen(
         },
     ) { padding ->
         Box(modifier = Modifier.fillMaxSize().padding(padding)) {
-            MapScreen(positions = positions, linzApiKey = BuildConfig.LINZ_API_KEY)
+            MapScreen(
+                positions = positions,
+                linzApiKey = BuildConfig.LINZ_API_KEY,
+                currentUserName = membership.displayName,
+            )
 
             val errorMessage = if (!isSharing) {
                 null

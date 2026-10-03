@@ -1,5 +1,55 @@
 # Android app — build plan
 
+## Current status (as of 2026-09-28)
+
+Milestones 0-3 are **done and merged** into `staging`. Milestone 4 is
+**in progress**: several items done (see checkmarks below), rest open.
+
+**Open PR:** [#131](https://github.com/skelstar/dot-watcher/pull/131) —
+`android-milestone-4-design` branch — theme/color pass, per-runner marker
+colors, consent-screen icon badge, real app icon. CI green, not yet
+merged/reviewed by the user as of this writing. If continuing this work in
+a new session, check whether #131 merged first (`gh pr view 131`); if not,
+either continue on that branch or wait for it to land before branching
+again, per this repo's one-branch-per-milestone-chunk pattern used
+throughout (see git history: `android-milestone-0` through
+`android-milestone-4-design`).
+
+**User feedback on the design pass (2026-09-28):** the map screen "doesn't
+look much different" after the theme change — accurate, since the map is
+mostly basemap tiles the theme doesn't touch; the visible changes there
+are just the top-bar button text color (now brand blue) and the current
+user's marker color (now blue instead of flat yellow). Auth/session/
+consent screens show the theme change more clearly (bold headlines,
+brand-colored buttons, backgrounds). User's verdict: "I think they were
+better. Functional." — i.e. acceptable as a modest improvement, not a
+full redesign, and they chose to **not** pursue a deeper per-screen layout
+pass right now (see the question/answer preserved in conversation history
+around 2026-09-28 for the exact framing, if it matters later). Treat the
+visual design pass as reasonably closed unless a specific screen is later
+flagged as still looking wrong.
+
+**Toolchain note:** this machine now has a working local JDK 21 + Android
+SDK + Gradle (installed while setting up real-device testing partway
+through this project) — see
+`~/.claude/projects/-Users-skelstar-Documents-GitHub-dot-watcher/memory/project_android_local_toolchain.md`.
+Run `cd android && ./gradlew :app:compileDebugKotlin` (fast) or
+`:app:assembleDebug` (full) directly to verify changes locally before
+pushing, rather than relying on CI alone or a review subagent — this
+caught real bugs (wrong Retrofit converter import, an unclosed block
+comment, a missing `security-crypto` API) faster than CI round-trips did
+in earlier milestones.
+
+**Remaining Milestone 4 items** (see the Milestone 4 section below for
+detail): blocked users management, GPX route import/display, in-app help
+content, push notifications (uncertain applicability — check iOS first),
+Play Store listing assets / privacy-terms links, Play Console internal
+testing distribution setup, and (if it ever becomes worth it) a deeper
+per-screen layout pass beyond the current color/typography-level design
+pass.
+
+---
+
 ## Background
 
 `android/` currently contains only a placeholder README ("not started"). The
@@ -40,7 +90,7 @@ natural PR boundary.
 
 ---
 
-## Milestone 0 — Project scaffold
+## Milestone 0 — Project scaffold — done
 
 **Goal:** empty Android app builds, runs on an emulator, and is wired into CI.
 
@@ -66,7 +116,7 @@ successfully calls the local server.
 
 ---
 
-## Milestone 1 — Essential runner flow (foreground only)
+## Milestone 1 — Essential runner flow (foreground only) — done
 
 **Goal:** a runner can sign in, start a session, and see live positions,
 while the app is open and the screen is on. No background tracking yet.
@@ -107,7 +157,7 @@ open in the foreground.
 
 ---
 
-## Milestone 2 — Essential background tracking
+## Milestone 2 — Essential background tracking — done
 
 **Goal:** tracking survives the screen being locked and the app being
 backgrounded — this is the feature that makes the app actually useful for a
@@ -146,6 +196,14 @@ iOS's).
 **Exit criteria:** a real device, screen off, in a pocket, posts positions
 at the configured interval for the length of a real run (test with an
 actual walk/run, not just an emulator).
+
+**Confirmed on a real device** (Samsung phone, "device" build variant —
+see `android/README.md`'s real-device testing section) during Milestone 3
+testing: airplane-mode test showed tracking correctly erroring while
+offline and recovering once reconnected. A shorter locked-screen/backgrounded
+test also ran without issue. Not yet stress-tested for a long real run or
+across multiple OEM devices — the OEM battery-optimization caveat above is
+still an open risk, just not a blocking one based on testing so far.
 
 ---
 
@@ -188,18 +246,26 @@ session/tracking/sharing loop, still on an internal test track.
 
 Lower-priority items, roughly mapped to remaining iOS files:
 
-- **Visual design pass, matching iOS's actual look — not just its features.**
-  Milestones 1–3 deliberately used bare Material3 defaults (default
-  `OutlinedTextField`/`Button` styling, system fonts, no per-runner marker
-  colors) to keep functional milestones focused on behavior; the result
-  reads as an unstyled wireframe next to iOS's designed screens (title/
-  subtitle hierarchy, `.borderedProminent` button style,
-  `ShareLocationConsentView.swift`'s icon/badge treatment). This item
-  closes that gap: a real Compose theme (colors, typography, shapes)
-  matching iOS's visual language, plus screen-by-screen layout parity —
-  not just "has the same fields." Also covers porting per-runner marker
-  coloring (`RunnerColorPalette.swift` equivalent) to `MapScreen.kt`,
-  called out as deferred in that file's kdoc since Milestone 1.
+- ✅ **Visual design pass, matching iOS's actual look — not just its
+  features.** iOS's in-app screens turned out not to define a custom
+  `AccentColor` (its colorset is empty, so SwiftUI falls back to plain
+  system blue) — the real brand reference is the app icon itself
+  (`Assets.xcassets/AppIcon.appiconset`), sampled directly: badge blue is
+  exactly iOS system blue (`#007AFF`), background green is `#A6D583`. Built
+  a full Material3 `ColorScheme` (light + dark) from those two seed colors
+  with hand-derived tonal variants (`ui/theme/Theme.kt`), plus a bolder
+  headline/title typography pass matching iOS's frequent
+  `.title2.bold()`/`.headline` usage. Also: `ui/map/ShareLocationConsentScreen.kt`
+  now has the icon-in-a-tinted-rounded-square badge
+  `ShareLocationConsentView.swift` uses, and per-runner marker coloring is
+  ported (`ui/map/RunnerColorPalette.kt`, matching `RunnerColorPalette.swift`
+  exactly — note iOS's own comment claiming it mirrors the web client's
+  `runnerColour()` is wrong, the two use different palettes; Android
+  matches iOS, not web, per this milestone's actual goal). Full per-screen
+  layout parity (spacing, iconography beyond what's listed here) is still
+  looser than iOS's; revisit if a specific screen is later flagged as
+  still looking off, the way the session/invite-code screens were earlier
+  in this milestone.
 - ✅ **Boxed per-character invite-code entry** — `ui/CodeBoxField.kt`,
   matching `CodeBoxField.swift`: one bordered square per character
   (36×44dp, monospaced bold, active box highlighted), using a transparent
@@ -218,8 +284,16 @@ Lower-priority items, roughly mapped to remaining iOS files:
 - In-app help content (`HelpView.swift`/`Help.md` equivalent).
 - Push notifications (if/when relevant — check whether iOS has any first;
   not obviously present in the current iOS file list).
-- App icon, Play Store listing assets, privacy/terms links (the web client
-  already serves `/privacy` and `/terms` — reuse those rather than
+- ✅ **App icon** — `res/drawable/ic_launcher_{background,foreground}.xml`,
+  recreated as adaptive-icon vector drawables (not a copy of the source
+  PNG) from `ios/DotWatcher/DotWatcher/Assets.xcassets/AppIcon.appiconset`:
+  green topo-ring/dashed-trail background, white-ringed blue "DW" badge
+  (letterforms drawn as paths — vector drawables can't render text) plus
+  the chevron accent. Verified by rendering to PNG at multiple sizes and
+  checking against Android's adaptive-icon safe zone and a circular
+  launcher mask before committing to final coordinates.
+- Play Store listing assets, privacy/terms links still open (the web
+  client already serves `/privacy` and `/terms` — reuse those rather than
   duplicating).
 - Distribution via **Play Console internal testing track** (Android's
   equivalent of TestFlight) rather than public release, matching how iOS is
