@@ -57,3 +57,6 @@ scripts/data/
 # ─── Android release signing (never commit — see android/local.properties) ──
 *.jks
 *.keystore
+
+# ─── Local scratch/temp files ────────────────────────────────────────────────
+scratch/
