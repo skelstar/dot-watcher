@@ -11,11 +11,13 @@ const SAT_IMAGE_ID = 'signal-trail-satellite-icon'
 const MISSED_LAYER_ID = 'signal-trail-missed'
 const MISSED_IMAGE_ID = 'signal-trail-missed-icon'
 
-// Satellite reads are expected every 90s. Two consecutive satellite reads further apart than that
-// have (gap / 90s) - 1 slots in between with no read; this much slack stops a read that merely
-// landed a bit late from counting as a miss.
+// The phone makes a satellite attempt at every multiple of 90s since the epoch (nextPostAt() in the
+// iOS LocationManager); quick retries between those ticks are ignored here. A tick that falls
+// between two received reads is a failed attempt, unless it is the one that delivered the later
+// read: that read lands within this slack after the tick, whereas a retry-delivered read lands at
+// least 5s after the tick it was retrying.
 const SATELLITE_INTERVAL_MS = 90_000
-const MISS_TOLERANCE_MS = 15_000
+const TICK_DELIVERY_SLACK_MS = 3_000
 // A track route between the two reads is only believed if the runner could plausibly have covered
 // it in the time between them; otherwise it's probably the wrong trail and we fall back to a line.
 const MAX_PLAUSIBLE_SPEED_MPS = 6
@@ -43,10 +45,10 @@ export interface MissedRead {
   timestamp: string
 }
 
-// Where satellite reads probably failed: for each runner, wherever a satellite read is followed by
-// a gap longer than the satellite interval, the missing slots are placed evenly in time along the
-// basemap's dotted track between the two recorded positions either side of the gap when one
-// connects them, else along the straight line between them.
+// Where satellite reads failed: for each runner, every 90s tick after a satellite read and before
+// the next received read (see TICK_DELIVERY_SLACK_MS) is a failed attempt. Each is placed at its
+// time along the basemap's dotted track between the two recorded positions either side of the gap
+// when one connects them, else along the straight line between them.
 export function findMissedSatelliteReads(positions: RunnerPosition[], tracks: TrackGraph | null = null): MissedRead[] {
   const byRunner = new Map<string, RunnerPosition[]>()
   for (const p of positions) {
@@ -62,21 +64,17 @@ export function findMissedSatelliteReads(positions: RunnerPosition[], tracks: Tr
       const b = list[i]
       if (!a.isUltraConstrained) continue
       const aMs = Date.parse(a.timestamp)
-      const gapMs = Date.parse(b.timestamp) - aMs
-      const misses = Math.floor((gapMs + MISS_TOLERANCE_MS) / SATELLITE_INTERVAL_MS) - 1
-      if (misses < 1) continue
+      const bMs = Date.parse(b.timestamp)
+      const gapMs = bMs - aMs
+      const firstTickMs = (Math.floor(aMs / SATELLITE_INTERVAL_MS) + 1) * SATELLITE_INTERVAL_MS
+      if (firstTickMs >= bMs - TICK_DELIVERY_SLACK_MS) continue
       const from: LngLat = [a.longitude, a.latitude]
       const to: LngLat = [b.longitude, b.latitude]
       const path = tracks ? cachedRoute(tracks, `${a.runnerName}|${a.timestamp}|${b.timestamp}`, from, to, gapMs) : null
       const route = path ?? [from, to]
-      for (let k = 1; k <= misses; k++) {
-        const f = k / (misses + 1)
-        const [longitude, latitude] = pointAlong(route, f)
-        missed.push({
-          latitude,
-          longitude,
-          timestamp: new Date(aMs + gapMs * f).toISOString(),
-        })
+      for (let tickMs = firstTickMs; tickMs < bMs - TICK_DELIVERY_SLACK_MS; tickMs += SATELLITE_INTERVAL_MS) {
+        const [longitude, latitude] = pointAlong(route, (tickMs - aMs) / gapMs)
+        missed.push({ latitude, longitude, timestamp: new Date(tickMs).toISOString() })
       }
     }
   }
