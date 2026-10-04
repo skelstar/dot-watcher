@@ -7,6 +7,12 @@ interface Props {
 }
 
 const TIME_TOOLTIP_LINGER_MS = 800
+// The tooltip is centred on the scrubber dot, so at the left end of the track it would spill off
+// the screen. Keeping its centre at least this far from the track's left edge (about half the
+// widest "12:34:56 PM" label) keeps it fully visible, at the cost of not being exactly over the dot
+// there. No such clamp on the right: the play/skip buttons sit beyond the track's end, so a label
+// centred on the dot there still lands on screen.
+const TOOLTIP_LEFT_INSET_PX = 30
 
 export default function ReplayControls({ timeline }: Props) {
   const {
@@ -72,7 +78,7 @@ export default function ReplayControls({ timeline }: Props) {
         >
           <div style={{ ...trackFill, width: `${fraction * 100}%`, background: trackColour }} />
           {(showTooltip || fraction < 1) && (
-            <span style={{ ...timeTooltip, left: `${fraction * 100}%` }}>
+            <span style={{ ...timeTooltip, left: `max(${TOOLTIP_LEFT_INSET_PX}px, ${fraction * 100}%)` }}>
               {formatTimeOfDay(currentMs)}
             </span>
           )}
