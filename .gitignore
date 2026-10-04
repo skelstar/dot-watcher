@@ -53,3 +53,7 @@ media-files/*.gpx
 
 # ─── Downloaded session data (scripts/download-session.sh) ──────────────────
 scripts/data/
+
+# ─── Local scratch space and TypeScript build info ────────────────────────────
+/scratch/
+*.tsbuildinfo
