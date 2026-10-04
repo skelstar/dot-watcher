@@ -154,6 +154,7 @@ final class LocationManager {
     private var lastParticipantCount = 0
     private var isLoadingSessions = false
     fileprivate var latestLocation: CLLocation?
+    private var awaitingFirstFix = false
     fileprivate var oneShotLocationContinuation: CheckedContinuation<CLLocation?, Never>?
 
     /// The phone's own current position, straight from CoreLocation — not from the last
@@ -621,9 +622,31 @@ final class LocationManager {
         let cappedDuration = min(duration ?? maxTrackingDuration, maxTrackingDuration)
         trackingExpiresAt = Date().addingTimeInterval(cappedDuration)
         trackingTask = Task { [weak self] in await self?.trackingLoop() }
-        if latestLocation == nil {
-            latestLocation = clManager.location ?? CLLocation(latitude: 0, longitude: 0)
+        // `latestLocation` isn't updated while not tracking, so whatever it (or CoreLocation's cached
+        // `location`) holds can be from wherever the phone last had a fix — e.g. where the session
+        // was created. Only accept a recent fix for the first post; otherwise wait for the first
+        // real one (see `postFirstFixIfAwaited`) rather than sending a stale or (0, 0) position.
+        if let cached = clManager.location, Self.isFresh(cached) {
+            latestLocation = cached
+            captureAndPost(trigger: .start)
+        } else {
+            latestLocation = nil
+            awaitingFirstFix = true
+            status = "Waiting for GPS"
         }
+    }
+
+    private static let maxFirstFixAge: TimeInterval = 10
+
+    private static func isFresh(_ loc: CLLocation) -> Bool {
+        loc.horizontalAccuracy >= 0 && -loc.timestamp.timeIntervalSinceNow <= maxFirstFixAge
+    }
+
+    /// Called from the CoreLocation delegate on every update; sends the deferred `.start` post
+    /// once the first fix arrives after `start()` found no fresh position.
+    fileprivate func postFirstFixIfAwaited() {
+        guard awaitingFirstFix, isTracking, latestLocation != nil else { return }
+        awaitingFirstFix = false
         captureAndPost(trigger: .start)
     }
 
@@ -633,6 +656,7 @@ final class LocationManager {
         cancelRetries()
         clManager.stopUpdatingLocation()
         isTracking = false
+        awaitingFirstFix = false
         trackingExpiresAt = nil
         pausedForBattery = false
         status = "Stopped"
@@ -1210,6 +1234,7 @@ private final class LocationDelegate: NSObject, CLLocationManagerDelegate {
         guard let loc = locations.last else { return }
         Task { @MainActor [weak self] in
             self?.owner?.latestLocation = loc
+            self?.owner?.postFirstFixIfAwaited()
             self?.owner?.oneShotLocationContinuation?.resume(returning: loc)
             self?.owner?.oneShotLocationContinuation = nil
         }
