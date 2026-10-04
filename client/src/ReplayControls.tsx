@@ -8,18 +8,11 @@ interface Props {
 
 const TIME_TOOLTIP_LINGER_MS = 800
 
-function formatTime(ms: number): string {
-  const totalSec = Math.floor(ms / 1000)
-  const h = Math.floor(totalSec / 3600)
-  const m = Math.floor((totalSec % 3600) / 60)
-  const s = totalSec % 60
-  if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
-  return `${m}:${String(s).padStart(2, '0')}`
-}
-
 export default function ReplayControls({ timeline }: Props) {
-  const { following, scrubTimeMs, runStartMs, nowMs, isLive, lastActivityMs, pollIntervalMs, dragTo, dragEnd, goLive } =
-    timeline
+  const {
+    following, scrubTimeMs, runStartMs, nowMs, isLive, lastActivityMs, pollIntervalMs,
+    canSkip, skipping, skipToNextPosition, dragTo, dragEnd, goLive, playing, play, pause,
+  } = timeline
   const trackRef = useRef<HTMLDivElement>(null)
   const [showTooltip, setShowTooltip] = useState(false)
   const lingerTimerRef = useRef<ReturnType<typeof setTimeout>>()
@@ -87,28 +80,55 @@ export default function ReplayControls({ timeline }: Props) {
         </div>
       )}
 
-      {isLive
-        ? (
-          <button
-            onClick={goLive}
-            style={{ ...liveBtn, ...(following ? liveBtnActive : liveBtnDimmed) }}
-            title={following ? 'Live' : 'Jump to most recent position'}
-          >
-            <span style={{ ...liveDot, background: following ? '#fff' : '#ef4444' }} />
-            LIVE
-            {following && secondsToNextUpdate !== null && (
-              <span style={countdownBadge}>{secondsToNextUpdate}s</span>
-            )}
-          </button>
-        )
-        : (
-          // Finished runs have a fixed length, so the badge always shows the total duration
-          // rather than "time behind" — there's no live edge to be behind once it's over.
-          <button onClick={goLive} style={{ ...liveBtn, ...liveBtnInactive }} title="Jump to most recent position">
-            {formatTime(durationMs)}
-          </button>
-        )
-      }
+      {/* Finished sessions have no live edge to jump to, so instead of a duration badge this is a
+          play/pause toggle, the same size as the skip button beside it. Live sessions keep the
+          LIVE button below, which is also their only way back to the live edge. */}
+      {runStartMs !== null && !isLive && (
+        <button
+          onClick={playing ? pause : play}
+          style={{ ...skipBtn, marginLeft: 8 }}
+          title={playing ? 'Pause' : 'Play'}
+          aria-label={playing ? 'Pause' : 'Play'}
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            {playing
+              ? <><rect x="6" y="5" width="4" height="14" rx="1" /><rect x="14" y="5" width="4" height="14" rx="1" /></>
+              : <path d="M7 4l13 8-13 8V4z" />}
+          </svg>
+        </button>
+      )}
+
+      {/* Right next to the play/pause (or LIVE) button, at the bottom edge where a thumb already is, and
+          always rendered (just dimmed when there's nothing ahead) so the track doesn't resize as
+          you scrub. */}
+      {runStartMs !== null && (
+        <button
+          onClick={skipToNextPosition}
+          disabled={!canSkip || skipping}
+          style={{ ...skipBtn, marginLeft: isLive ? 13 : 8, opacity: canSkip && !skipping ? 1 : 0.4 }}
+          title="Skip to next position"
+          aria-label="Skip to next position"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <path d="M5 5l9 7-9 7V5z" />
+            <rect x="16" y="5" width="3" height="14" rx="1" />
+          </svg>
+        </button>
+      )}
+
+      {isLive && (
+        <button
+          onClick={goLive}
+          style={{ ...liveBtn, ...(following ? liveBtnActive : liveBtnDimmed) }}
+          title={following ? 'Live' : 'Jump to most recent position'}
+        >
+          <span style={{ ...liveDot, background: following ? '#fff' : '#ef4444' }} />
+          LIVE
+          {following && secondsToNextUpdate !== null && (
+            <span style={countdownBadge}>{secondsToNextUpdate}s</span>
+          )}
+        </button>
+      )}
 
     </div>
   )
@@ -189,8 +209,26 @@ const liveBtn: React.CSSProperties = {
   justifyContent: 'center',
   gap: 6,
   flexShrink: 0,
-  marginLeft: 13,
+  marginLeft: 8,
   padding: '0 12px',
+  boxShadow: '0 0 0 2px rgba(0,0,0,0.1)',
+  pointerEvents: 'auto',
+}
+
+const skipBtn: React.CSSProperties = {
+  height: 34,
+  minWidth: 34,
+  border: 'none',
+  borderRadius: 6,
+  background: '#fff',
+  color: '#334155',
+  cursor: 'pointer',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  flexShrink: 0,
+  marginLeft: 13,
+  padding: 0,
   boxShadow: '0 0 0 2px rgba(0,0,0,0.1)',
   pointerEvents: 'auto',
 }
@@ -203,11 +241,6 @@ const liveBtnActive: React.CSSProperties = {
 const liveBtnDimmed: React.CSSProperties = {
   background: '#fff',
   color: '#ef4444',
-}
-
-const liveBtnInactive: React.CSSProperties = {
-  background: '#fff',
-  color: '#334155',
 }
 
 const liveDot: React.CSSProperties = {

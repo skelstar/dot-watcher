@@ -56,6 +56,7 @@ export function normalizeUpdate(obj: any): RunnerPosition {
     timestamp: obj.timestamp ?? obj.Timestamp,
     nextExpectedAt: obj.nextExpectedAt ?? obj.NextExpectedAt ?? null,
     isUltraConstrained: obj.isUltraConstrained ?? obj.IsUltraConstrained ?? false,
+    batteryLevel: obj.batteryLevel ?? obj.BatteryLevel ?? null,
   }
 }
 
@@ -121,6 +122,27 @@ export function earliestActivityMs(byRunner: Map<string, RunnerPosition[]>): num
     if (earliest === null || ts < earliest) earliest = ts
   }
   return earliest
+}
+
+// The earliest position timestamp across all runners that is strictly after `afterMs`, or null if
+// there isn't one in the data given. Backs the replay "skip" button, which jumps the playhead over
+// a stretch where nobody reported in. Only as complete as the data passed in — callers must have
+// fetched the range they care about first.
+export function nextPositionAfterMs(
+  byRunner: Map<string, RunnerPosition[]>,
+  afterMs: number,
+): number | null {
+  let next: number | null = null
+  for (const positions of byRunner.values()) {
+    for (const p of positions) {
+      const ts = new Date(p.timestamp).getTime()
+      if (ts > afterMs) {
+        if (next === null || ts < next) next = ts
+        break // positions are sorted ascending, so the first later one is this runner's earliest
+      }
+    }
+  }
+  return next
 }
 
 // The more recent of two possibly-unknown timestamps. Used to combine the client's own
@@ -192,6 +214,36 @@ export function findUltraConstrainedRunners(
     if (before?.isUltraConstrained) affected.add(runnerName)
   }
   return affected
+}
+
+// Battery thresholds — see .ai/plans/battery-level-reporting.md. Mutually exclusive per runner
+// (like the existing missing/sleeping precedence above): a runner at or below CRITICAL is also
+// at or below LOW, but only ever renders as 'critical'.
+export const LOW_BATTERY_THRESHOLD = 30
+export const CRITICAL_BATTERY_THRESHOLD = 10
+
+// Runners whose most recent position at or before cutoffMs reports a self-reported battery level
+// at or below one of the two thresholds. Same "trust the latest report directly" reasoning as
+// findUltraConstrainedRunners — battery level is a stable device reading, not noisy per-fix
+// telemetry. Runners with no batteryLevel at all (older clients, Android, monitoring disabled) are
+// omitted entirely — absence means unknown, never "assume critical."
+export function findRunnersWithLowBattery(
+  byRunner: Map<string, RunnerPosition[]>,
+  cutoffMs: number,
+): Map<string, 'low' | 'critical'> {
+  const statuses = new Map<string, 'low' | 'critical'>()
+  for (const [runnerName, positions] of byRunner) {
+    let before: RunnerPosition | null = null
+    for (const pos of positions) {
+      const ts = new Date(pos.timestamp).getTime()
+      if (ts > cutoffMs) break
+      before = pos
+    }
+    if (before?.batteryLevel == null) continue
+    if (before.batteryLevel <= CRITICAL_BATTERY_THRESHOLD) statuses.set(runnerName, 'critical')
+    else if (before.batteryLevel <= LOW_BATTERY_THRESHOLD) statuses.set(runnerName, 'low')
+  }
+  return statuses
 }
 
 // A position update is expected roughly every 15s (see the iOS tracking interval), so a gap much

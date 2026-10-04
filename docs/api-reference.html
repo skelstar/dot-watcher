@@ -241,7 +241,6 @@
       <ul>
         <li><a href="#auth" class="toc-auth">Authentication</a></li>
         <li><a href="#sessions" class="toc-sessions">Sessions</a></li>
-        <li><a href="#members" class="toc-members">Members</a></li>
         <li><a href="#location" class="toc-location">Location Tracking</a></li>
       </ul>
     </div>
@@ -375,7 +374,7 @@
   "sessionId": "string",
   "sessionName": "string",
   "inviteCode": "string",
-  "role": "owner" | "runner" | "viewer",
+  "role": "runner" | "viewer",
   "displayName": "string"
 }]</pre>
         </div>
@@ -403,7 +402,7 @@
   "sessionId": "string",
   "sessionName": "string",
   "inviteCode": "string",
-  "role": "owner",
+  "role": "runner",
   "displayName": "string"
 }</pre>
         </div>
@@ -416,12 +415,13 @@
         <span class="path">/session-invites/<span class="param">{inviteCode}</span>/join</span>
         <span class="auth-badge auth-required">Bearer token</span>
       </div>
-      <p class="purpose">Join an existing session using a 6-character invite code (uppercase). Returns the new membership with role assigned by the owner's settings.</p>
+      <p class="purpose">Join an existing session using a 6-character invite code (uppercase). The role is caller-selected, not owner-granted: omit it (or send anything other than <code>"runner"</code>) to join as <code>viewer</code>, or send <code>"runner"</code> to join as <code>runner</code> outright.</p>
       <div class="details">
         <div class="detail-block">
           <h4>Request Body</h4>
           <pre>{
-  "displayName": "string | null"
+  "displayName": "string | null",
+  "role": "runner" | "viewer" | null
 }</pre>
         </div>
         <div class="detail-block">
@@ -440,11 +440,10 @@
     <div class="card">
       <div class="endpoint-header">
         <span class="method method-delete">DELETE</span>
-        <span class="path">/me/sessions/<span class="param">{sessionId}</span></span>
+        <span class="path">/me/sessions/<span class="param">{sessionId}</span>/membership</span>
         <span class="auth-badge auth-required">Bearer token</span>
-        <span class="owner-only">Owner only</span>
       </div>
-      <p class="purpose">Permanently delete a session and all its members and locations. Only callable by the session owner.</p>
+      <p class="purpose">Removes the caller's own membership from a session (leave). Callable by any member, not just the owner — a session's owner is attribution only and has no extra permissions over other members. Deleting a whole session is an admin-only operation (see <code>DELETE /admin/sessions/{sessionId}</code>), not something the owner can call directly.</p>
       <div class="details">
         <div class="detail-block">
           <h4>Request Body</h4>
@@ -456,61 +455,6 @@
         </div>
       </div>
     </div>
-
-
-    <!-- ═══════════════════════════════════════════════ MEMBERS -->
-    <p class="section-title" id="members">Members</p>
-
-    <div class="card">
-      <div class="endpoint-header">
-        <span class="method method-get">GET</span>
-        <span class="path">/sessions/<span class="param">{sessionId}</span>/members</span>
-        <span class="auth-badge auth-required">Bearer token</span>
-        <span class="owner-only">Owner only</span>
-      </div>
-      <p class="purpose">Load all members of a session with their roles and display names. Called when the owner opens the Member Management sheet or selects a session.</p>
-      <div class="details">
-        <div class="detail-block">
-          <h4>Request Body</h4>
-          <p class="none-label">None</p>
-        </div>
-        <div class="detail-block">
-          <h4>Response — [SessionMember]</h4>
-          <pre>[{
-  "userId": "string",
-  "role": "owner" | "runner" | "viewer",
-  "displayName": "string"
-}]</pre>
-        </div>
-      </div>
-    </div>
-
-    <div class="card">
-      <div class="endpoint-header">
-        <span class="method method-post">POST</span>
-        <span class="path">/sessions/<span class="param">{sessionId}</span>/members/<span class="param">{userId}</span>/role</span>
-        <span class="auth-badge auth-required">Bearer token</span>
-        <span class="owner-only">Owner only</span>
-      </div>
-      <p class="purpose">Change an existing member's role (e.g. promote a viewer to runner, or demote a runner back to viewer). Returns the updated member record.</p>
-      <div class="details">
-        <div class="detail-block">
-          <h4>Request Body</h4>
-          <pre>{
-  "role": "runner" | "viewer"
-}</pre>
-        </div>
-        <div class="detail-block">
-          <h4>Response — SessionMember</h4>
-          <pre>{
-  "userId": "string",
-  "role": "runner" | "viewer",
-  "displayName": "string"
-}</pre>
-        </div>
-      </div>
-    </div>
-
 
 
 
@@ -552,7 +496,7 @@
         </div>
       </div>
       <div class="notes">
-        <strong>Role requirement:</strong> Only users with role <code>owner</code> or <code>runner</code> can post location updates.
+        <strong>Role requirement:</strong> Only users with membership role <code>runner</code> can post location updates. A session's owner has no special write access beyond that — their own membership just happens to be created with role <code>runner</code> too.
         <code>positions</code> is the same shape as <code>GET /locations/{sessionId}</code>, included here so the app can render the map from this response alone.
       </div>
     </div>

@@ -1,3 +1,4 @@
+import SatelliteDishIcon from './components/SatelliteDishIcon.tsx'
 import { runnerColour } from './useRunnerMarkers.ts'
 import { formatCountdownSeconds, formatShortTimeOfDay, type RunnerCountdown } from './useSessionTimelineLogic.ts'
 
@@ -9,33 +10,44 @@ interface Props {
   runnersSleeping?: Set<string>
   runnersWithGpsSignalLoss?: Set<string>
   runnersUltraConstrained?: Set<string>
+  runnerBatteryStatus?: Map<string, 'low' | 'critical'>
   runnerCountdowns?: Map<string, RunnerCountdown>
   runnerLastSeenMs?: Map<string, number>
 }
 
 const COUNTDOWN_RING_SIZE = 18
 const SATELLITE_ICON_SIZE = 18
+const BATTERY_ICON_SIZE = 18
 
-// Dish + signal-wave glyph (path data from Lucide's "satellite-dish" icon, ISC licensed) rather
-// than the 📡 emoji previously used here — emoji rendering is font/OS-dependent and reads as a
-// blurry smudge at this pill's small size; a stroked SVG stays crisp and legible regardless.
-function SatelliteDishIcon() {
+// Hand-drawn battery glyph (not sourced from an icon set, unlike SatelliteDishIcon) — a plain
+// outline body plus terminal nub, per .ai/plans/battery-level-reporting.md. Deliberately not just
+// two colors of the same glyph: 'critical' draws an exclamation mark inside the body rather than a
+// charge bar, so the two states differ in shape, not only in color (this repo's "never color
+// alone" rule — see the GPS signal-loss "!" badge below).
+function BatteryIcon({ status }: { status: 'low' | 'critical' }) {
+  const stroke = status === 'critical' ? '#dc2626' : '#92400e'
   return (
     <svg
       viewBox="0 0 24 24"
-      width={SATELLITE_ICON_SIZE}
-      height={SATELLITE_ICON_SIZE}
+      width={BATTERY_ICON_SIZE}
+      height={BATTERY_ICON_SIZE}
       fill="none"
-      stroke="#000000"
+      stroke={stroke}
       strokeWidth={2.0}
       strokeLinecap="round"
       strokeLinejoin="round"
       style={{ flexShrink: 0 }}
     >
-      <path d="M4 10a7.31 7.31 0 0 0 10 10Z" />
-      <path d="m9 15 3-3" />
-      <path d="M17 13a6 6 0 0 0-6-6" />
-      <path d="M21 13A10 10 0 0 0 11 3" />
+      <rect x="2" y="6" width="18" height="12" rx="2" />
+      <path d="M22 10v4" />
+      {status === 'critical' ? (
+        <>
+          <path d="M10 9v4" />
+          <path d="M10 16h.01" />
+        </>
+      ) : (
+        <path d="M5 10v4" strokeWidth={4} />
+      )}
     </svg>
   )
 }
@@ -77,6 +89,7 @@ export default function Legend({
   runnersSleeping = new Set(),
   runnersWithGpsSignalLoss = new Set(),
   runnersUltraConstrained = new Set(),
+  runnerBatteryStatus = new Map(),
   runnerCountdowns = new Map(),
   runnerLastSeenMs = new Map(),
 }: Props) {
@@ -96,6 +109,10 @@ export default function Legend({
         // versa, so it renders as its own icon alongside whichever message/countdown is active
         // rather than competing for the single message slot below.
         const satellite = runnersUltraConstrained.has(name)
+        // Independent overlay too, same reasoning as satellite above — a low/critical battery is
+        // an unrelated fact from cadence, satellite state, or GPS signal, and can combine with any
+        // of them.
+        const battery = runnerBatteryStatus.get(name)
         // Countdown only ever shown for an actively-reporting, non-missing runner (per the plan:
         // "Only show the live countdown for actively-reporting runners") — a runner already
         // flagged missing shows that instead, not a stale/contradictory countdown alongside it.
@@ -125,7 +142,7 @@ export default function Legend({
         const showCountdown = !message && countdown
         // message/countdown still fill the single message slot exclusively of each other, but
         // satellite is an independent overlay and can make the pill active on its own.
-        const active = showCountdown || message || satellite
+        const active = showCountdown || message || satellite || battery
         const title = showCountdown
           ? countdown.status === 'counting-down'
             ? `Next update in ${formatCountdownSeconds(countdown.remainingMs)}`
@@ -151,7 +168,15 @@ export default function Legend({
                 <span style={trailingContent(trailingMinWidth)}>
                   {satellite && (
                     <span title="Reporting over a satellite connection" style={satelliteIconWrap}>
-                      <SatelliteDishIcon />
+                      <SatelliteDishIcon size={SATELLITE_ICON_SIZE} />
+                    </span>
+                  )}
+                  {battery && (
+                    <span
+                      title={battery === 'critical' ? 'Battery critical' : 'Battery low'}
+                      style={batteryIconWrap(battery)}
+                    >
+                      <BatteryIcon status={battery} />
                     </span>
                   )}
                   {showCountdown && <CountdownRing countdown={countdown} />}
@@ -281,6 +306,22 @@ const satelliteIconWrap: React.CSSProperties = {
   height: SATELLITE_ICON_SIZE + 8,
   borderRadius: '50%',
   background: '#ffe88e',
+}
+
+// Same high-contrast circle-behind-glyph treatment as satelliteIconWrap, tinted by severity —
+// secondary reinforcement only; the glyph itself (bar vs "!") is what actually distinguishes low
+// from critical, per BatteryIcon's comment.
+function batteryIconWrap(status: 'low' | 'critical'): React.CSSProperties {
+  return {
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+    width: BATTERY_ICON_SIZE + 8,
+    height: BATTERY_ICON_SIZE + 8,
+    borderRadius: '50%',
+    background: status === 'critical' ? '#fecaca' : '#fde68a',
+  }
 }
 
 const countdownText: React.CSSProperties = {

@@ -48,6 +48,14 @@ public record CreateSessionRequest(
     int? MaxLengthHours = null
 );
 
+/// <summary>Admin/ops: creates a session owned by an existing account, for callers (e.g. the admin
+/// panel's NDJSON import) that have no session-owning user token of their own.</summary>
+public record AdminCreateSessionRequest(
+    string OwnerUsername,
+    string? SessionName = null,
+    string? DisplayName = null
+);
+
 public record JoinSessionRequest(
     string? DisplayName = null,
     string? Role = null

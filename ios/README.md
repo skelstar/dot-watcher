@@ -63,7 +63,7 @@ The session row (once in a session) is swipeable:
 - Sign-out should call `POST /auth/logout` and remove the token from Keychain.
 - Account deletion should call `DELETE /me`, stop tracking, clear local account state, and remove the token from Keychain.
 - After sign-in, load `GET /me/sessions` to show the user's current memberships.
-- The app can post locations only when the selected membership role is `owner` or `runner`.
+- The app can post locations only when the selected membership role is `runner`. A session's owner has no special write access beyond that — their own membership just happens to be created with role `runner` too.
 - `POST /location` must send `Authorization: Bearer <user access token>`. The server stores the authenticated member display name and ignores any client-supplied runner name.
 - `GET /locations/{sessionCode}` returns `403` for valid-looking session codes where the signed-in user is not a member.
 - Every request also sends `X-Api-Version: <int>` (the `apiVersion` constant in `LocationManager.swift`), bumped only when this client adopts a change that could break against the server — not on every release. If the server rejects a request with `426` (client below its configured floor), `LocationManager.updateRequired` flips to `true` and `ContentView` presents a blocking "Update Required" screen (`UpdateRequiredView.swift`) — there's no in-app fix, only installing a newer build via TestFlight.

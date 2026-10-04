@@ -9,9 +9,18 @@ import {
   leaveSession,
   type AuthedUser,
 } from './lib/dotwatcherApi'
-import type { LatLon, Quality, PhoneStatus, PhoneSnapshot } from './lib/types'
+import type { LatLon, Quality, BatteryMode, PhoneStatus, PhoneSnapshot } from './lib/types'
 
-export type { LatLon, Quality, PhoneStatus, PhoneSnapshot }
+export type { LatLon, Quality, BatteryMode, PhoneStatus, PhoneSnapshot }
+
+// Fixed values rather than a free-entry percentage — this only needs to exercise the two
+// threshold badges in the real client (see .ai/plans/battery-level-reporting.md), not simulate
+// an actual drain curve. Comfortably inside each band so which badge should show is unambiguous.
+const BATTERY_LEVEL_FOR_MODE: Record<BatteryMode, number | undefined> = {
+  normal: undefined,
+  low: 25,
+  critical: 5,
+}
 
 // Real iOS uses 90s while isUltraConstrained (LocationManager.ultraConstrainedInterval) —
 // satellite bursts are slower/costlier than a normal handshake. 20s here instead: long enough to
@@ -47,6 +56,7 @@ export default function PhoneSimulator({
   const [inviteCode, setInviteCode] = useState(defaultInviteCode)
   const [status, setStatus] = useState<PhoneStatus>('idle')
   const [quality, setQuality] = useState<Quality>('good')
+  const [batteryMode, setBatteryMode] = useState<BatteryMode>('normal')
   const [heading, setHeading] = useState<number | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [lastSentAt, setLastSentAt] = useState<string | null>(null)
@@ -56,6 +66,7 @@ export default function PhoneSimulator({
   const userRef = useRef<AuthedUser | null>(null)
   const sessionIdRef = useRef<string | null>(null)
   const qualityRef = useRef(quality)
+  const batteryModeRef = useRef(batteryMode)
   const positionRef = useRef(position)
   const convergenceRef = useRef(convergencePoint)
   const routeRef = useRef(route)
@@ -72,6 +83,7 @@ export default function PhoneSimulator({
   const color = runnerColour(displayName)
 
   useEffect(() => { qualityRef.current = quality }, [quality])
+  useEffect(() => { batteryModeRef.current = batteryMode }, [batteryMode])
   useEffect(() => { tickMsRef.current = tickMs }, [tickMs])
   useEffect(() => { positionRef.current = position }, [position])
   useEffect(() => { convergenceRef.current = convergencePoint }, [convergencePoint])
@@ -173,7 +185,9 @@ export default function PhoneSimulator({
       // with when the next post will actually fire — this is what drives the Legend's countdown
       // ring (findAdaptiveCountdowns skips any runner with no nextExpectedAt at all).
       const nextExpectedAt = new Date(Date.now() + tickIntervalMs)
-      await postLocation(user, sessionId, next.lat, next.lon, nextHeading, qualityRef.current === 'satellite', nextExpectedAt)
+      await postLocation(
+        user, sessionId, next.lat, next.lon, nextHeading, qualityRef.current === 'satellite', nextExpectedAt,
+        BATTERY_LEVEL_FOR_MODE[batteryModeRef.current])
       onPositionChange(id, next)
       setHeading(nextHeading)
       setLastSentAt(new Date().toLocaleTimeString())
@@ -349,6 +363,24 @@ export default function PhoneSimulator({
             ))}
           </div>
 
+          {/* Separate row, not folded into quality above — battery is an independent field on the
+              real POST (see BatteryMode's comment), takes effect on the next tick via
+              batteryModeRef the same way a mid-run quality change does. */}
+          <div style={qualityRow}>
+            {(['normal', 'low', 'critical'] as BatteryMode[]).map(b => (
+              <label key={b} style={qualityLabel(batteryMode === b, status === 'left')}>
+                <input
+                  type="checkbox"
+                  checked={batteryMode === b}
+                  disabled={status === 'left'}
+                  onChange={() => setBatteryMode(b)}
+                  style={{ marginRight: '0.3rem' }}
+                />
+                {batteryText(b)}
+              </label>
+            ))}
+          </div>
+
           <div style={actionRow}>
             {status !== 'running'
               ? <button style={primaryBtn(!canStart)} disabled={!canStart} onClick={handleStart}>Start</button>
@@ -385,6 +417,14 @@ function qualityText(q: Quality): string {
     case 'bad': return 'Bad GPS'
     case 'missing': return 'Missing'
     case 'satellite': return 'Satellite'
+  }
+}
+
+function batteryText(b: BatteryMode): string {
+  switch (b) {
+    case 'normal': return 'Battery: normal'
+    case 'low': return `Battery: low (${BATTERY_LEVEL_FOR_MODE.low}%)`
+    case 'critical': return `Battery: critical (${BATTERY_LEVEL_FOR_MODE.critical}%)`
   }
 }
 

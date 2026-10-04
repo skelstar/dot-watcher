@@ -7,6 +7,7 @@ import {
   findLastSeenMs,
   findRunnersWithGap,
   findSleepingRunners,
+  findRunnersWithLowBattery,
   findUltraConstrainedRunners,
   formatCountdownSeconds,
   formatShortTimeOfDay,
@@ -18,6 +19,7 @@ import {
   maxOrNull,
   mergeIntoByRunner,
   mergeRange,
+  nextPositionAfterMs,
   normalizeUpdate,
   parseNdjson,
   positionsAtCutoff,
@@ -60,12 +62,12 @@ test('livePollingError names a missing invite and falls back to the status code'
 
 test('parseNdjson parses camelCase lines', () => {
   const line = JSON.stringify({ runnerName: 'Alice', latitude: 1, longitude: 2, heading: 90, timestamp: 't1' })
-  assert.deepEqual(parseNdjson(line), [{ runnerName: 'Alice', latitude: 1, longitude: 2, heading: 90, timestamp: 't1', nextExpectedAt: null, isUltraConstrained: false }])
+  assert.deepEqual(parseNdjson(line), [{ runnerName: 'Alice', latitude: 1, longitude: 2, heading: 90, timestamp: 't1', nextExpectedAt: null, isUltraConstrained: false, batteryLevel: null }])
 })
 
 test('parseNdjson normalises legacy PascalCase lines', () => {
   const line = JSON.stringify({ RunnerName: 'Bob', Latitude: 1, Longitude: 2, Timestamp: 't1' })
-  assert.deepEqual(parseNdjson(line), [{ runnerName: 'Bob', latitude: 1, longitude: 2, heading: null, timestamp: 't1', nextExpectedAt: null, isUltraConstrained: false }])
+  assert.deepEqual(parseNdjson(line), [{ runnerName: 'Bob', latitude: 1, longitude: 2, heading: null, timestamp: 't1', nextExpectedAt: null, isUltraConstrained: false, batteryLevel: null }])
 })
 
 test('mergeIntoByRunner appends and sorts by timestamp, de-duping exact repeats', () => {
@@ -111,6 +113,31 @@ test('earliestActivityMs is the min first-position timestamp across all runners'
     ]],
   ])
   assert.equal(earliestActivityMs(byRunner), new Date('2024-01-01T00:00:05Z').getTime())
+})
+
+test('nextPositionAfterMs is null when nobody has a later position', () => {
+  assert.equal(nextPositionAfterMs(new Map(), 0), null)
+  const byRunner = new Map([
+    ['Alice', [{ runnerName: 'Alice', latitude: 0, longitude: 0, heading: null, timestamp: '2024-01-01T00:00:10Z' }]],
+  ])
+  assert.equal(nextPositionAfterMs(byRunner, new Date('2024-01-01T00:00:10Z').getTime()), null)
+})
+
+test('nextPositionAfterMs is the earliest strictly-later timestamp across all runners', () => {
+  const byRunner = new Map([
+    ['Alice', [
+      { runnerName: 'Alice', latitude: 0, longitude: 0, heading: null, timestamp: '2024-01-01T00:00:10Z' },
+      { runnerName: 'Alice', latitude: 1, longitude: 1, heading: null, timestamp: '2024-01-01T00:20:00Z' },
+    ]],
+    ['Bob', [
+      { runnerName: 'Bob', latitude: 2, longitude: 2, heading: null, timestamp: '2024-01-01T00:05:00Z' },
+    ]],
+  ])
+  const after = (iso: string) => nextPositionAfterMs(byRunner, new Date(iso).getTime())
+  assert.equal(after('2024-01-01T00:00:00Z'), new Date('2024-01-01T00:00:10Z').getTime())
+  assert.equal(after('2024-01-01T00:00:10Z'), new Date('2024-01-01T00:05:00Z').getTime())
+  // Past Bob's only position: skips the 15-minute gap straight to Alice's next one.
+  assert.equal(after('2024-01-01T00:05:00Z'), new Date('2024-01-01T00:20:00Z').getTime())
 })
 
 test('maxOrNull returns the larger value when both are known', () => {
@@ -226,6 +253,57 @@ test('findUltraConstrainedRunners ignores a position after cutoff', () => {
   ])
   const cutoff = new Date('2024-01-01T00:00:15Z').getTime()
   assert.deepEqual(findUltraConstrainedRunners(byRunner, cutoff), new Set())
+})
+
+test('findRunnersWithLowBattery flags "low" between the two thresholds', () => {
+  const byRunner = new Map([
+    ['Alice', [
+      { runnerName: 'Alice', latitude: 0, longitude: 0, heading: null, timestamp: '2024-01-01T00:00:00Z', batteryLevel: 30 },
+    ]],
+  ])
+  const cutoff = new Date('2024-01-01T00:00:05Z').getTime()
+  assert.deepEqual(findRunnersWithLowBattery(byRunner, cutoff), new Map([['Alice', 'low']]))
+})
+
+test('findRunnersWithLowBattery flags "critical" at or below the critical threshold, not "low"', () => {
+  const byRunner = new Map([
+    ['Alice', [
+      { runnerName: 'Alice', latitude: 0, longitude: 0, heading: null, timestamp: '2024-01-01T00:00:00Z', batteryLevel: 10 },
+    ]],
+  ])
+  const cutoff = new Date('2024-01-01T00:00:05Z').getTime()
+  assert.deepEqual(findRunnersWithLowBattery(byRunner, cutoff), new Map([['Alice', 'critical']]))
+})
+
+test('findRunnersWithLowBattery omits a runner above the low threshold', () => {
+  const byRunner = new Map([
+    ['Alice', [
+      { runnerName: 'Alice', latitude: 0, longitude: 0, heading: null, timestamp: '2024-01-01T00:00:00Z', batteryLevel: 31 },
+    ]],
+  ])
+  const cutoff = new Date('2024-01-01T00:00:05Z').getTime()
+  assert.deepEqual(findRunnersWithLowBattery(byRunner, cutoff), new Map())
+})
+
+test('findRunnersWithLowBattery omits a runner with no reported battery level, never assuming critical', () => {
+  const byRunner = new Map([
+    ['Alice', [
+      { runnerName: 'Alice', latitude: 0, longitude: 0, heading: null, timestamp: '2024-01-01T00:00:00Z' },
+    ]],
+  ])
+  const cutoff = new Date('2024-01-01T00:00:05Z').getTime()
+  assert.deepEqual(findRunnersWithLowBattery(byRunner, cutoff), new Map())
+})
+
+test('findRunnersWithLowBattery clears once a runner reports a recovered level again', () => {
+  const byRunner = new Map([
+    ['Alice', [
+      { runnerName: 'Alice', latitude: 0, longitude: 0, heading: null, timestamp: '2024-01-01T00:00:00Z', batteryLevel: 5 },
+      { runnerName: 'Alice', latitude: 1, longitude: 1, heading: null, timestamp: '2024-01-01T00:00:15Z', batteryLevel: 80 },
+    ]],
+  ])
+  const cutoff = new Date('2024-01-01T00:00:20Z').getTime()
+  assert.deepEqual(findRunnersWithLowBattery(byRunner, cutoff), new Map())
 })
 
 test('positionsAtCutoff returns the last position at or before cutoff, omitting runners with none yet', () => {

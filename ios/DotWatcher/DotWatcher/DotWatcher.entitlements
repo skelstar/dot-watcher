@@ -4,5 +4,10 @@
 <dict>
 	<key>com.apple.developer.networking.carrier-constrained.app-optimized</key>
 	<true/>
+	<key>com.apple.developer.networking.carrier-constrained.appcategory</key>
+	<array>
+		<string>health-fitness-8014</string>
+		<string>hiking-adventure-8003</string>
+	</array>
 </dict>
 </plist>

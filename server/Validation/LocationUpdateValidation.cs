@@ -14,7 +14,8 @@ public sealed record ValidatedLocationUpdate(
     double? Heading,
     DateTimeOffset Timestamp,
     DateTimeOffset? NextExpectedAt = null,
-    bool IsUltraConstrained = false);
+    bool IsUltraConstrained = false,
+    int? BatteryLevel = null);
 
 public static class LocationUpdateValidation
 {
@@ -56,6 +57,12 @@ public static class LocationUpdateValidation
                 errors.Add($"nextExpectedAt must be within {MaxNextExpectedAtLookahead.TotalMinutes:0} minutes of timestamp.");
         }
 
+        // Optional - older clients, Android, and devices with battery monitoring unavailable
+        // don't send it. When present, must be a real percentage; out-of-range values are almost
+        // certainly a units/encoding bug (e.g. sending the raw 0.0-1.0 float unconverted).
+        if (update.BatteryLevel is { } batteryLevel && batteryLevel is < 0 or > 100)
+            errors.Add("batteryLevel must be between 0 and 100.");
+
         return errors;
     }
 
@@ -79,7 +86,8 @@ public static class LocationUpdateValidation
             update.Heading,
             update.Timestamp!.Value,
             update.NextExpectedAt,
-            update.IsUltraConstrained);
+            update.IsUltraConstrained,
+            update.BatteryLevel);
         return true;
     }
 }

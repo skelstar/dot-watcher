@@ -32,6 +32,7 @@ export function useRunnerMarkers(
   runnersWithGpsSignalLoss: Set<string> = new Set(),
   runnersWithGap: Set<string> = new Set(),
   runnersSleeping: Set<string> = new Set(),
+  runnersUltraConstrained: Set<string> = new Set(),
 ): RunnerMarkersResult {
   const markersRef = useRef<Record<string, MarkerEntry>>({})
   const latestPositionsRef = useRef<Record<string, [number, number]>>({})
@@ -43,6 +44,8 @@ export function useRunnerMarkers(
   gapRef.current = runnersWithGap
   const sleepingRef = useRef<Set<string>>(runnersSleeping)
   sleepingRef.current = runnersSleeping
+  const satelliteRef = useRef<Set<string>>(runnersUltraConstrained)
+  satelliteRef.current = runnersUltraConstrained
   const pendingUnmountsRef = useRef<Root[]>([])
   const [visibleRunners, setVisibleRunners] = useState<string[]>([])
   const [offScreenRunners, setOffScreenRunners] = useState<string[]>([])
@@ -230,6 +233,7 @@ export function useRunnerMarkers(
         stationary,
         missing,
         signalLoss: signalLossRef.current.has(name),
+        satellite: satelliteRef.current.has(name),
         onClick: () => followRunner(name),
       }))
     }

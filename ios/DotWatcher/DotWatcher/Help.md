@@ -6,7 +6,7 @@ DotWatcher shares your location in real time so other runners in the session kno
 
 **Sign in** — use your DotWatcher account so the server can check which sessions you can read or write.
 
-**Choose a session** — if someone gave you an invite code, enter it to join as a viewer. Only create a new session if you're organizing one yourself; that makes you the owner. Tracking requires an owner or runner membership; owners can promote invited viewers to runners.
+**Choose a session** — if someone gave you an invite code, enter it to join as a runner and start tracking. Only create a new session if you're organizing one yourself; that makes you its owner, but ownership doesn't grant extra tracking permissions — you track the same way as anyone else who joined.
 
 ## Tracking
 

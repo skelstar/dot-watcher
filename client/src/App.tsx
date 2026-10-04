@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 // maplibre-gl has no default export (unlike mapbox-gl) — named imports only.
-import { MapLibreMap, NavigationControl, GeolocateControl, setWorkerUrl } from 'maplibre-gl'
+import { MapLibreMap, NavigationControl, setWorkerUrl } from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
 // v6 no longer auto-detects its worker URL under a bundler (only plain CDN <script type=module>
 // loading gets that for free) — without this, every vector/GeoJSON source hangs forever waiting
@@ -13,8 +13,10 @@ import 'maplibre-gl/dist/maplibre-gl.css'
 import maplibreWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url'
 import { MAP_STYLES, DEFAULT_MAP_STYLE_ID, LINZ_ATTRIBUTION, type MapStyleId } from './map/mapStyle.ts'
 import MapStyleToggle from './MapStyleToggle.tsx'
+import Terrain3DToggle from './Terrain3DToggle.tsx'
 import InvalidInvitePrompt from './InvalidInvitePrompt.tsx'
 import Legend from './Legend.tsx'
+import TraceToggle from './TraceToggle.tsx'
 import LegendHelp from './LegendHelp.tsx'
 import ReplayControls from './ReplayControls.tsx'
 import MapPlayButton from './MapPlayButton.tsx'
@@ -25,6 +27,7 @@ import LandingPage from './LandingPage.tsx'
 import InitialsBadge from './components/InitialsBadge.tsx'
 import { useRunnerMarkers } from './useRunnerMarkers.ts'
 import { useRouteLayer } from './useRouteLayer.ts'
+import { useSignalTrailLayer } from './useSignalTrailLayer.ts'
 import { useSimulatorRouteOverlay } from './useSimulatorRouteOverlay.ts'
 import { useSessionTimeline } from './useSessionTimeline.ts'
 import { parseGpxCoordinates } from './gpx.ts'
@@ -76,6 +79,32 @@ export default function App() {
     mapRef.current?.setStyle(MAP_STYLES[next].url)
   }
 
+  // Experimental 3D terrain: LINZ's 1m DEM (declared as the 'LINZ-Terrain' raster-dem source in
+  // both styles) draped under the imagery, with a pitched camera. See client/plans/linz-topo-migration.md.
+  const [terrain3d, setTerrain3d] = useState(false)
+  const terrain3dRef = useRef(false)
+
+  // Tilting the map by hand (right-drag / ctrl-drag, or a two-finger vertical drag on touch)
+  // switches 3D terrain on once past this pitch, so a stray nudge doesn't start fetching DEM tiles.
+  const AUTO_3D_PITCH_DEG = 10
+  // ...and tilting back to (nearly) flat switches it off again.
+  const AUTO_FLAT_PITCH_DEG = 3
+
+  function handleToggleTerrain3d() {
+    const map = mapRef.current
+    const next = !terrain3d
+    terrain3dRef.current = next
+    setTerrain3d(next)
+    if (!map) return
+    if (next) {
+      map.setTerrain({ source: 'LINZ-Terrain', exaggeration: 1 })
+      map.easeTo({ pitch: 60, duration: 800 })
+    } else {
+      map.setTerrain(null)
+      map.easeTo({ pitch: 0, bearing: 0, duration: 800 })
+    }
+  }
+
   useEffect(() => {
     if (legalPage || isLanding || !containerRef.current) return
 
@@ -84,14 +113,31 @@ export default function App() {
       style: MAP_STYLES[DEFAULT_MAP_STYLE_ID].url,
       center: [174.7762, -41.2865], // Wellington, NZ - default before any session/positions load
       zoom: 13,
+      maxPitch: 85, // tilting past AUTO_3D_PITCH_DEG turns 3D terrain on; the toggle does the same
       attributionControl: { customAttribution: LINZ_ATTRIBUTION },
     })
 
     map.addControl(new NavigationControl(), 'top-right')
-    map.addControl(new GeolocateControl({
-      positionOptions: { enableHighAccuracy: true },
-      trackUserLocation: true,
-    }), 'top-right')
+
+    // setStyle() wipes the terrain along with everything else, so re-apply it on every style load.
+    map.on('style.load', () => {
+      if (terrain3dRef.current) map.setTerrain({ source: 'LINZ-Terrain', exaggeration: 1 })
+    })
+
+    // Only user gestures carry an originalEvent; the toggle's own easeTo() animations don't, so
+    // they can't trigger these and fight the toggle.
+    map.on('pitch', e => {
+      if (!e.originalEvent || terrain3dRef.current || map.getPitch() < AUTO_3D_PITCH_DEG) return
+      terrain3dRef.current = true
+      setTerrain3d(true)
+      map.setTerrain({ source: 'LINZ-Terrain', exaggeration: 1 })
+    })
+    map.on('pitchend', e => {
+      if (!e.originalEvent || !terrain3dRef.current || map.getPitch() > AUTO_FLAT_PITCH_DEG) return
+      terrain3dRef.current = false
+      setTerrain3d(false)
+      map.setTerrain(null)
+    })
 
     mapRef.current = map
     return () => {
@@ -109,8 +155,20 @@ export default function App() {
     timeline.runnersWithGpsSignalLoss,
     timeline.runnersWithGap,
     timeline.runnersSleeping,
+    timeline.runnersUltraConstrained,
   )
   useRouteLayer(mapRef, routeCoordinates, timeline.runStartMs === null)
+  // Signal trace (toggle button, or ?trace in the URL to start with it on): plots every position
+  // up to the playhead — a blue dot for a normal connection, the runner dot's satellite badge for
+  // an ultra-constrained path, and a red X where a satellite read probably failed.
+  const [showTrace, setShowTrace] = useState(() => new URLSearchParams(window.location.search).has('trace'))
+  const tracePositions = useMemo(
+    () => showTrace
+      ? timeline.allPositions.filter(p => Date.parse(p.timestamp) <= timeline.virtualNowMs)
+      : null,
+    [showTrace, timeline.allPositions, timeline.virtualNowMs],
+  )
+  useSignalTrailLayer(mapRef, tracePositions)
   useSimulatorRouteOverlay(mapRef)
 
   const routeBase = inviteCode ? `${SERVER_URL}/session-invites/${inviteCode}` : null
@@ -174,6 +232,10 @@ export default function App() {
       </div>
       <LegendHelp />
       <MapStyleToggle styleId={mapStyleId} onToggle={handleToggleMapStyle} />
+      {inviteCode && !timeline.invalidInvite && (
+        <TraceToggle on={showTrace} onToggle={() => setShowTrace(v => !v)} />
+      )}
+      <Terrain3DToggle enabled={terrain3d} onToggle={handleToggleTerrain3d} />
       <Legend
         runners={allRunners}
         onRunnerClick={followRunner}
@@ -182,6 +244,7 @@ export default function App() {
         runnersSleeping={timeline.runnersSleeping}
         runnersWithGpsSignalLoss={timeline.runnersWithGpsSignalLoss}
         runnersUltraConstrained={timeline.runnersUltraConstrained}
+        runnerBatteryStatus={timeline.runnerBatteryStatus}
         runnerCountdowns={timeline.runnerCountdowns}
         runnerLastSeenMs={timeline.runnerLastSeenMs}
       />
