@@ -8,35 +8,40 @@ export default function LandingPage() {
         <nav className="dw-nav" style={navRow}>
           <div style={brand}>
             <img src="/landing/assets/app-icon.png" alt="" style={brandIcon} />
-            dot-watchr
+            dot-watcher
           </div>
           <div className="dw-nav-links" style={navLinks}>
             <a href="#dw-how" style={navLink}>How it works</a>
             <a href="#dw-features" style={navLink}>Features</a>
             <a href="#dw-faq" style={navLink}>FAQ</a>
           </div>
-          <a href={APP_STORE_URL} target="_blank" rel="noopener" style={navCta}>Get the App</a>
+          <a href={APP_STORE_URL} target="_blank" rel="noopener" style={navCta}>
+            <img src="/landing/assets/app-store-badge.svg" alt="Download on the App Store" style={navBadge} />
+          </a>
         </nav>
 
         <section className="dw-hero" style={hero}>
           <div>
-            <div style={heroBadgeRow}>
-              <img src="/landing/assets/app-icon.png" alt="" style={heroIcon} />
-              <div style={betaPill}>
-                <span style={betaDot} /> Now on the App Store
-              </div>
-            </div>
             <h1 className="dw-hero-headline" style={headline}>Your run group,<br />one shared dot each.</h1>
             <p style={subhead}>
-              Dot-watchr keeps every runner visible on one live map — so supporters know where to cheer, and nobody gets left behind.
+              Dot-watcher keeps every runner visible on one live map — so supporters know where to cheer, and nobody gets left behind.
             </p>
             <div style={heroCtaRow}>
-              <a href={APP_STORE_URL} target="_blank" rel="noopener" style={heroCta}>Download on the App Store</a>
+              <a href={APP_STORE_URL} target="_blank" rel="noopener" style={storeLink}>
+                <img src="/landing/assets/app-store-badge.svg" alt="Download on the App Store" style={heroBadge} />
+              </a>
+              {/* Android isn't released yet: shown greyed out and not clickable. */}
+              <div style={comingSoonWrap} aria-disabled="true">
+                <span style={playBadgeBox}>
+                  <img src="/landing/assets/google-play-badge.png" alt="Get it on Google Play (coming soon)" style={playBadgeImg} />
+                </span>
+                <span style={comingSoonLabel}>Coming soon</span>
+              </div>
             </div>
           </div>
 
           <div className="dw-phones" style={phones}>
-            <div className="dw-phone-a" style={phoneA}>
+            <div className="dw-phone-a" style={phoneA} tabIndex={0}>
               <img src="/landing/assets/dw-sending-screenshot.png" alt="Sending location in the Dot Watcher iOS app" style={phoneAImg} />
             </div>
             <div className="dw-phone-b" style={phoneB}>
@@ -114,6 +119,11 @@ function FaqItem({ q, a, last }: { q: string; a: string; last?: boolean }) {
 
 const responsiveCss = `
   .dw-phones { max-width: 100%; }
+  /* The rear (app) phone comes to the front while hovered or focused (a tap focuses it on touch
+     screens), then drops back behind the map phone when the pointer or focus leaves. */
+  .dw-phone-a { position:relative; z-index:0; transition:transform .25s ease; }
+  .dw-phone-a:hover, .dw-phone-a:focus-within { z-index:2; transform:translateY(-6px); }
+  .dw-phone-a:focus { outline:none; }
   @media (max-width: 980px) {
     .dw-nav { flex-wrap:wrap; padding:22px 28px 0 !important; }
     .dw-nav-links { order:3; width:100%; justify-content:center; padding-top:14px; }
@@ -153,8 +163,8 @@ const navRow: React.CSSProperties = {
 const brand: React.CSSProperties = {
   display: 'flex',
   alignItems: 'center',
-  gap: 8,
-  fontSize: 20,
+  gap: 12,
+  fontSize: 24,
   fontWeight: 800,
   color: '#14151A',
   letterSpacing: '-0.5px',
@@ -163,9 +173,9 @@ const brand: React.CSSProperties = {
 }
 
 const brandIcon: React.CSSProperties = {
-  width: 26,
-  height: 26,
-  borderRadius: 7,
+  width: 44,
+  height: 44,
+  borderRadius: 11,
   boxShadow: '0 1px 3px rgba(20,21,26,.2)',
 }
 
@@ -183,14 +193,14 @@ const navLink: React.CSSProperties = {
 }
 
 const navCta: React.CSSProperties = {
-  textDecoration: 'none',
-  padding: '10px 20px',
-  borderRadius: 999,
-  background: '#14151A',
-  color: '#fff',
-  fontSize: 13.5,
-  fontWeight: 700,
+  display: 'block',
   flex: 'none',
+  lineHeight: 0,
+}
+
+const navBadge: React.CSSProperties = {
+  height: 40,
+  display: 'block',
 }
 
 const hero: React.CSSProperties = {
@@ -199,42 +209,6 @@ const hero: React.CSSProperties = {
   gap: 24,
   padding: '48px 48px 24px',
   alignItems: 'center',
-}
-
-const heroBadgeRow: React.CSSProperties = {
-  display: 'flex',
-  alignItems: 'center',
-  gap: 12,
-  marginBottom: 20,
-  flexWrap: 'wrap',
-}
-
-const heroIcon: React.CSSProperties = {
-  width: 44,
-  height: 44,
-  borderRadius: 11,
-  boxShadow: '0 3px 10px rgba(20,21,26,.2)',
-}
-
-const betaPill: React.CSSProperties = {
-  display: 'inline-flex',
-  alignItems: 'center',
-  gap: 6,
-  padding: '6px 14px',
-  borderRadius: 999,
-  background: '#fff',
-  fontSize: 12.5,
-  fontWeight: 700,
-  color: '#22C55E',
-  whiteSpace: 'nowrap',
-}
-
-const betaDot: React.CSSProperties = {
-  width: 7,
-  height: 7,
-  borderRadius: '50%',
-  background: '#22C55E',
-  flex: 'none',
 }
 
 const headline: React.CSSProperties = {
@@ -256,19 +230,60 @@ const subhead: React.CSSProperties = {
 
 const heroCtaRow: React.CSSProperties = {
   display: 'flex',
+  flexWrap: 'wrap',
+  alignItems: 'flex-start',
   gap: 14,
   marginBottom: 30,
 }
 
-const heroCta: React.CSSProperties = {
-  textDecoration: 'none',
-  padding: '15px 28px',
-  borderRadius: 999,
-  background: '#000',
-  color: '#fff',
-  fontSize: 15,
+// Both store badges are 48px tall at the visible edge so they sit level side by side.
+const BADGE_HEIGHT = 48
+
+const storeLink: React.CSSProperties = {
+  display: 'block',
+  lineHeight: 0,
+}
+
+const heroBadge: React.CSSProperties = {
+  height: BADGE_HEIGHT,
+  display: 'block',
+}
+
+const comingSoonWrap: React.CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  alignItems: 'center',
+  gap: 4,
+  cursor: 'not-allowed',
+  userSelect: 'none',
+}
+
+// Google's badge PNG carries transparent padding (visible badge is ~565x168 of 646x250), so it is
+// scaled up and the box crops the padding so the visible badge matches BADGE_HEIGHT.
+const PLAY_BADGE_SCALE = BADGE_HEIGHT / (168 / 250)
+const playBadgeBox: React.CSSProperties = {
+  display: 'block',
+  height: BADGE_HEIGHT,
+  width: (565 / 250) * PLAY_BADGE_SCALE,
+  overflow: 'hidden',
+  filter: 'grayscale(1)',
+  opacity: 0.45,
+}
+
+const playBadgeImg: React.CSSProperties = {
+  display: 'block',
+  height: PLAY_BADGE_SCALE,
+  marginTop: -(40 / 250) * PLAY_BADGE_SCALE,
+  marginLeft: -(40 / 250) * PLAY_BADGE_SCALE,
+  pointerEvents: 'none',
+}
+
+const comingSoonLabel: React.CSSProperties = {
+  fontSize: 11.5,
   fontWeight: 700,
-  boxShadow: '0 8px 20px rgba(0,0,0,.25)',
+  letterSpacing: '0.5px',
+  textTransform: 'uppercase',
+  color: '#8B8D97',
 }
 
 const phones: React.CSSProperties = {
