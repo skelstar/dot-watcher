@@ -225,7 +225,8 @@ app.Use(async (ctx, next) =>
 // browser landing there is sent to the site's landing page instead. Locally the proxy is the Vite dev
 // server, which the server only sees as Host "localhost"; redirecting to "/" there would loop.
 app.MapGet("/", (HttpContext ctx) =>
-    Results.Redirect(ResolveEnvironment(ctx.Request.Host.Host) == "Local" ? "http://localhost:5173/" : "/"));
+    Results.Redirect(ResolveEnvironment(ctx.Request.Host.Host) == "Local" ? "http://localhost:5173/" : "/"))
+    .ExcludeFromDescription();
 
 app.MapControllers();
 
