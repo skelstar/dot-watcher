@@ -57,6 +57,11 @@ export default function AdminPanel({ serverUrl }: { serverUrl: string }) {
   const [importOwnerName, setImportOwnerName] = useState('dw-demo')
   const [importFile, setImportFile] = useState<File | null>(null)
   const [importing, setImporting] = useState(false)
+  // Session IDs with a saved recording (GET /sessions), for the Recording column and merge targets.
+  const [recordedSessionIds, setRecordedSessionIds] = useState<Set<string>>(new Set())
+  const [sessionActionId, setSessionActionId] = useState<string | null>(null)
+  const [logLines, setLogLines] = useState<string[] | null>(null)
+  const [logBusy, setLogBusy] = useState(false)
 
   useLayoutEffect(() => {
     const root = document.getElementById('root')
@@ -76,20 +81,22 @@ export default function AdminPanel({ serverUrl }: { serverUrl: string }) {
     setError(null)
     try {
       const headers = apiHeaders(bearerToken, 'web-admin')
-      const [usersRes, sessionsRes] = await Promise.all([
+      const [usersRes, sessionsRes, recordedRes] = await Promise.all([
         fetch(`${serverUrl}/admin/users`, { headers }),
         fetch(`${serverUrl}/admin/sessions`, { headers }),
+        fetch(`${serverUrl}/sessions`, { headers }),
       ])
-      if (usersRes.status === 401 || sessionsRes.status === 401) {
+      if (usersRes.status === 401 || sessionsRes.status === 401 || recordedRes.status === 401) {
         setError('Invalid bearer token.')
         return
       }
-      if (!usersRes.ok || !sessionsRes.ok) {
+      if (!usersRes.ok || !sessionsRes.ok || !recordedRes.ok) {
         setError('Failed to load data.')
         return
       }
       setUsers(await usersRes.json() as AdminUser[])
       setSessions(await sessionsRes.json() as AdminSession[])
+      setRecordedSessionIds(new Set(await recordedRes.json() as string[]))
       setSelectedUserIds(new Set())
       setSelectedSessionIds(new Set())
     } catch {
@@ -248,6 +255,112 @@ export default function AdminPanel({ serverUrl }: { serverUrl: string }) {
       setError('Network error.')
     } finally {
       setUploadingRouteId(null)
+    }
+  }
+
+  // The replay view of the recording (latest run only, run-gap trimmed), unlike Export records'
+  // raw dump of every row; comparing the two shows what the replay is leaving out.
+  async function handleDownloadReplay(sessionId: string, inviteCode: string) {
+    setSessionActionId(sessionId)
+    setError(null)
+    try {
+      const r = await fetch(`${serverUrl}/sessions/${sessionId}/recording`, {
+        headers: apiHeaders(token, 'web-admin'),
+      })
+      if (!r.ok) {
+        setError(`Failed to download replay (HTTP ${r.status}).`)
+        return
+      }
+      const blob = new Blob([await r.text()], { type: 'application/x-ndjson' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `${inviteCode}-replay.ndjson`
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch {
+      setError('Network error.')
+    } finally {
+      setSessionActionId(null)
+    }
+  }
+
+  // Clears the in-memory live positions only; the saved recording is untouched.
+  async function handleClearLive(session: AdminSession) {
+    if (!window.confirm(`Clear live positions for ${session.sessionName}? The saved recording is kept.`)) return
+    setSessionActionId(session.sessionId)
+    setError(null)
+    try {
+      const r = await fetch(`${serverUrl}/sessions/${session.sessionId}`, {
+        method: 'DELETE',
+        headers: apiHeaders(token, 'web-admin'),
+      })
+      if (!r.ok) setError(`Failed to clear live positions (HTTP ${r.status}).`)
+    } catch {
+      setError('Network error.')
+    } finally {
+      setSessionActionId(null)
+    }
+  }
+
+  // Moves this session's recorded rows into the target session; the source recording is removed.
+  async function handleMergeInto(source: AdminSession, targetId: string) {
+    const target = sessions.find(s => s.sessionId === targetId)
+    if (!target) return
+    if (!window.confirm(`Merge ${source.sessionName}'s recording into ${target.sessionName}? ${source.sessionName}'s recording will be removed. This cannot be undone.`)) return
+    setSessionActionId(source.sessionId)
+    setError(null)
+    try {
+      const r = await fetch(`${serverUrl}/sessions/${targetId}/merge-from/${source.sessionId}`, {
+        method: 'POST',
+        headers: apiHeaders(token, 'web-admin'),
+      })
+      if (!r.ok) {
+        const body = await r.json().catch(() => null) as { error?: string } | null
+        setError(body?.error ?? `Failed to merge (HTTP ${r.status}).`)
+        return
+      }
+      await loadAll(token)
+      await loadMemberStats(source.sessionId)
+    } catch {
+      setError('Network error.')
+    } finally {
+      setSessionActionId(null)
+    }
+  }
+
+  async function handleLoadLog() {
+    setLogBusy(true)
+    setError(null)
+    try {
+      const r = await fetch(`${serverUrl}/log`, { headers: apiHeaders(token, 'web-admin') })
+      if (!r.ok) {
+        setError(`Failed to load log (HTTP ${r.status}).`)
+        return
+      }
+      setLogLines(await r.json() as string[])
+    } catch {
+      setError('Network error.')
+    } finally {
+      setLogBusy(false)
+    }
+  }
+
+  async function handleClearLog() {
+    if (!window.confirm('Clear the server log buffer?')) return
+    setLogBusy(true)
+    setError(null)
+    try {
+      const r = await fetch(`${serverUrl}/log`, { method: 'DELETE', headers: apiHeaders(token, 'web-admin') })
+      if (!r.ok) {
+        setError(`Failed to clear log (HTTP ${r.status}).`)
+        return
+      }
+      setLogLines([])
+    } catch {
+      setError('Network error.')
+    } finally {
+      setLogBusy(false)
     }
   }
 
@@ -493,6 +606,7 @@ export default function AdminPanel({ serverUrl }: { serverUrl: string }) {
               <th style={th}>Invite code</th>
               <th style={th}>Owner</th>
               <th style={th}>Members</th>
+              <th style={th}>Recording</th>
               <th style={th}>Created</th>
             </tr>
           </thead>
@@ -529,17 +643,21 @@ export default function AdminPanel({ serverUrl }: { serverUrl: string }) {
                     </td>
                     <td style={td}>{session.ownerUsername}</td>
                     <td style={td}>{session.memberCount}</td>
+                    <td style={td}>{recordedSessionIds.has(session.sessionId) ? '●' : '—'}</td>
                     <td style={td}>{timeAgo(session.createdAt)}</td>
                   </tr>
                   {isExpanded && (
                     <tr>
                       <td
-                        colSpan={6}
+                        colSpan={7}
                         style={{ padding: 0, cursor: 'pointer' }}
                         onClick={() => setExpandedSessionId(null)}
                       >
                         {(() => {
                           const stats = memberStats[session.sessionId]
+                          const hasRecording = recordedSessionIds.has(session.sessionId)
+                          const busy = sessionActionId === session.sessionId
+                          const mergeTargets = sessions.filter(s => s.sessionId !== session.sessionId)
                           return (
                             <div style={recordsPanel} onClick={e => e.stopPropagation()}>
                               <div style={recordsHeader}>
@@ -548,7 +666,7 @@ export default function AdminPanel({ serverUrl }: { serverUrl: string }) {
                                     : !Array.isArray(stats) ? `Error: ${(stats as { error: string }).error}`
                                     : `${stats.length} member${stats.length !== 1 ? 's' : ''}`}
                                 </span>
-                                <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                                <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'flex-end', gap: '0.5rem', alignItems: 'center' }}>
                                   <LoadRouteButton
                                     style={{ ...routeBtn, opacity: uploadingRouteId === session.sessionId ? 0.6 : 1 }}
                                     onLoadRoute={file => void handleUploadRoute(session.sessionId, file)}
@@ -560,6 +678,38 @@ export default function AdminPanel({ serverUrl }: { serverUrl: string }) {
                                   >
                                     {exportingRecordsId === session.sessionId ? '…' : 'Export records'}
                                   </button>
+                                  {hasRecording && (
+                                    <button
+                                      style={exportBtn}
+                                      onClick={() => void handleDownloadReplay(session.sessionId, session.inviteCode)}
+                                      disabled={busy}
+                                      title="The replay view: latest run only, run-gap trimmed"
+                                    >
+                                      Download replay
+                                    </button>
+                                  )}
+                                  <button
+                                    style={routeBtn}
+                                    onClick={() => void handleClearLive(session)}
+                                    disabled={busy}
+                                    title="Clear in-memory live positions; the recording is kept"
+                                  >
+                                    Clear live
+                                  </button>
+                                  {hasRecording && mergeTargets.length > 0 && (
+                                    <select
+                                      style={mergeSelect}
+                                      value=""
+                                      disabled={busy}
+                                      onChange={e => { if (e.target.value) void handleMergeInto(session, e.target.value) }}
+                                      title="Move this session's recording into another session"
+                                    >
+                                      <option value="">Merge into…</option>
+                                      {mergeTargets.map(t => (
+                                        <option key={t.sessionId} value={t.sessionId}>{t.sessionName} ({t.inviteCode})</option>
+                                      ))}
+                                    </select>
+                                  )}
                                   <button style={collapseBtn} onClick={() => setExpandedSessionId(null)}>✕</button>
                                 </div>
                               </div>
@@ -602,6 +752,29 @@ export default function AdminPanel({ serverUrl }: { serverUrl: string }) {
       )}
       {token && !loading && sessions.length === 0 && !error && (
         <p style={emptyText}>No sessions.</p>
+      )}
+
+      {token && (
+        <>
+          <div style={subheadingRow}>
+            <h2 style={subheadingNoMargin}>Server log</h2>
+            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+              <button style={secondaryBtn} onClick={() => void handleLoadLog()} disabled={logBusy}>
+                {logLines === null ? 'Load' : 'Refresh'}
+              </button>
+              {logLines !== null && (
+                <button style={deleteBtn} onClick={() => void handleClearLog()} disabled={logBusy}>
+                  Clear
+                </button>
+              )}
+            </div>
+          </div>
+          {logLines !== null && (
+            logLines.length === 0
+              ? <p style={emptyText}>Log is empty.</p>
+              : <pre style={logPre}>{logLines.join('\n')}</pre>
+          )}
+        </>
       )}
     </div>
   )
@@ -716,6 +889,26 @@ const routeBtn: React.CSSProperties = {
   background: '#64748b',
   fontSize: '0.75rem',
   padding: '0.2rem 0.5rem',
+}
+
+const mergeSelect: React.CSSProperties = {
+  fontSize: '0.75rem',
+  padding: '0.15rem 0.3rem',
+  borderRadius: 6,
+  border: '1px solid #cbd5e1',
+  background: '#fff',
+}
+
+const logPre: React.CSSProperties = {
+  maxHeight: 400,
+  overflow: 'auto',
+  background: '#0f172a',
+  color: '#e2e8f0',
+  fontSize: '0.75rem',
+  padding: '0.75rem',
+  borderRadius: 6,
+  whiteSpace: 'pre-wrap',
+  wordBreak: 'break-word',
 }
 
 const collapseBtn: React.CSSProperties = {

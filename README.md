@@ -150,7 +150,7 @@ Three Xcode configurations: Debug (simulator → localhost), Device (physical de
 | App user   | `POST /auth/register`, `POST /auth/login`, `POST /auth/logout`, `DELETE /me` | Username/password, returns revocable user access token |
 | Runner     | `POST /location`               | User access token plus `runner` session membership |
 | Viewer     | `GET /locations/{sessionCode}` | User access token plus session membership |
-| Admin/debug dashboard | `GET /sessions`, `GET /log`, recording mutations | Admin bearer token in `Authorization` header |
+| Admin panel (`/admin`) and ops scripts | `/admin/*`, `GET /sessions`, `GET`/`DELETE /log`, recording upload/delete/merge | Admin bearer token in `Authorization` header |
 
 Session codes are identifiers, not credentials. Membership is granted via:
 
