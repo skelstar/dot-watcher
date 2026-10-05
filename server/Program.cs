@@ -87,8 +87,6 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
-app.UseDefaultFiles();
-app.UseStaticFiles();
 app.UseCors();
 
 // Environment isn't set via ASPNETCORE_ENVIRONMENT in deployed containers, so it's derived from the
@@ -222,6 +220,12 @@ app.Use(async (ctx, next) =>
 
     await next();
 });
+
+// The server's root is what the front proxy exposes as /api/ (the proxy strips that prefix), so a
+// browser landing there is sent to the site's landing page instead. Locally the proxy is the Vite dev
+// server, which the server only sees as Host "localhost"; redirecting to "/" there would loop.
+app.MapGet("/", (HttpContext ctx) =>
+    Results.Redirect(ResolveEnvironment(ctx.Request.Host.Host) == "Local" ? "http://localhost:5173/" : "/"));
 
 app.MapControllers();
 

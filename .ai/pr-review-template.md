@@ -169,13 +169,12 @@ Include a short rationale and next steps.
 
 ### Main App Areas
 
-- `server/Program.cs` - startup, DI, static files, CORS, controller routing, and legacy NDJSON migration.
+- `server/Program.cs` - startup, DI, CORS, controller routing, and legacy NDJSON migration.
 - `server/Controllers/` - HTTP API endpoints.
 - `server/Auth/` - bearer token authorization helper.
 - `server/Stores/` - in-memory live positions and SQLite-backed recordings.
 - `server/Models/` - API payload records.
 - `server/Logging/` - debug dashboard log buffering and logging provider.
-- `server/wwwroot/index.html` - debug dashboard.
 - `tests/DotWatcher.Server.Tests/` - API integration tests.
 - `client/` - web viewer.
 - `ios/` - iOS GPS tracker.
