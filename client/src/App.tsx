@@ -36,9 +36,6 @@ import { apiHeaders } from './apiHeaders.ts'
 setWorkerUrl(maplibreWorkerUrl)
 
 const SERVER_URL: string = import.meta.env.VITE_SERVER_URL ?? '/api'
-const APP_VERSION = import.meta.env.VITE_APP_VERSION ?? 'v-local'
-const APP_UPDATED_AT = import.meta.env.VITE_APP_UPDATED_AT ?? 'Updated local'
-const VERSION_LABEL = `${APP_VERSION} · ${APP_UPDATED_AT}`
 
 interface RouteState {
   inviteCode: string | null
@@ -226,7 +223,6 @@ export default function App() {
     <>
       <div ref={containerRef} style={{ width: '100%', height: '100%' }} />
       <div style={versionBadge}>
-        <span>{VERSION_LABEL}</span>
         <a href="/privacy" style={legalLink}>Privacy</a>
         <a href="/terms" style={legalLink}>Terms</a>
       </div>
