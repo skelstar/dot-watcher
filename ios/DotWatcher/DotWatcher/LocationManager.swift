@@ -116,7 +116,6 @@ final class LocationManager {
     private(set) var isTracking = false
     private(set) var currentUser: AppUser?
     private(set) var memberships: [SessionMembership] = []
-    private(set) var recentSessions: [SessionMembership] = []
     /// The active session's GPX route (track points), empty when it has none. Kept in sync by `loadRoute()`.
     private(set) var routeCoordinates: [CLLocationCoordinate2D] = []
     var hasRoute: Bool { !routeCoordinates.isEmpty }
@@ -374,7 +373,6 @@ final class LocationManager {
         accessToken = nil
         currentUser = nil
         memberships = []
-        recentSessions = []
         sessionId = ""
         Self.storeToken(nil)
         UserDefaults.standard.removeObject(forKey: "currentUser")
@@ -444,17 +442,6 @@ final class LocationManager {
         if case .success(let runners) = runners {
             participants = Array(Set(runners.map(\.displayName))).sorted()
             for runner in runners { participantUserIds[runner.displayName] = runner.userId }
-        }
-    }
-
-    // Sessions the user has left; the server keeps these as archived (left_at set)
-    // memberships rather than deleting them, so this survives across devices/reinstalls.
-    func loadRecentSessions() async {
-        guard isAuthenticated else { return }
-        do {
-            recentSessions = try await send(path: "/me/sessions/recent")
-        } catch {
-            // Leave the existing list in place; this is a secondary, best-effort fetch.
         }
     }
 
@@ -556,10 +543,6 @@ final class LocationManager {
         if isTracking && sessionId == code { stop() }
         guard let token = accessToken else { throw DotWatcherAPIError.missingToken }
         try await sendEmpty(path: "/me/sessions/\(code)/membership", method: "DELETE", token: token)
-        if let left = memberships.first(where: { $0.sessionId == code }) {
-            recentSessions.removeAll { $0.sessionId == code }
-            recentSessions.insert(left, at: 0)
-        }
         memberships.removeAll { $0.sessionId == code }
         if sessionId == code {
             sessionId = ""
