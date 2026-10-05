@@ -122,8 +122,7 @@ public class ContractTests
         await LocationsApiTests.PostLocationAsync(
             client, LocationsApiTests.TestLocation("Ignored", session.SessionId), token);
 
-        var response = await LocationsApiTests.SendWithUserTokenAsync(
-            client, HttpMethod.Get, $"/sessions/{session.SessionId}/recording/meta", token);
+        var response = await client.GetAsync($"/session-invites/{session.InviteCode}/recording/meta");
 
         var root = await ParseAsync(response);
 

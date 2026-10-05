@@ -655,8 +655,7 @@ public class SessionsApiTests
         await LocationsApiTests.PostLocationAsync(client, start, token);
         await LocationsApiTests.PostLocationAsync(client, latest, token);
 
-        var response = await SendWithUserTokenAsync(
-            client, HttpMethod.Get, $"/sessions/{session.SessionId}/recording/meta", token);
+        var response = await client.GetAsync($"/session-invites/{session.InviteCode}/recording/meta");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var meta = await response.Content.ReadFromJsonAsync<RecordingMeta>();
@@ -684,8 +683,7 @@ public class SessionsApiTests
         var token = await AuthTestHelpers.RegisterAsync(client, "gwen", "Gwen");
         var session = await AuthTestHelpers.CreateSessionAsync(client, token);
 
-        var response = await SendWithUserTokenAsync(
-            client, HttpMethod.Get, $"/sessions/{session.SessionId}/recording/meta", token);
+        var response = await client.GetAsync($"/session-invites/{session.InviteCode}/recording/meta");
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }

@@ -97,14 +97,6 @@ public record AdminSessionSummary(
     string CreatedAt
 );
 
-public record AdminLocationRecord(
-    string RunnerName,
-    double Latitude,
-    double Longitude,
-    double? Heading,
-    string Timestamp
-);
-
 public record AdminMemberStats(
     string DisplayName,
     string Role,

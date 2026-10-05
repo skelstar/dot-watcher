@@ -59,19 +59,6 @@ public class AdminController(SessionStore store, BearerTokenAuth auth) : Control
         return store.DeleteSession(sessionId) ? NoContent() : NotFound();
     }
 
-    /// <summary>Admin/ops: gets the most recent recorded location updates for a session (default 20, max 100).</summary>
-    [HttpGet("/admin/sessions/{sessionId}/records")]
-    [ProducesResponseType(typeof(IReadOnlyList<AdminLocationRecord>), StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-    public IActionResult GetSessionRecords(string sessionId, [FromQuery] int limit = 20)
-    {
-        if (!auth.IsAuthorized(Request))
-            return Unauthorized();
-
-        var records = store.GetRecentLocationUpdates(sessionId, Math.Min(limit, 100));
-        return Ok(records);
-    }
-
     /// <summary>Admin/ops: exports every stored location update for a session as NDJSON, with no
     /// run-gap or row-count truncation applied - for diagnosing replay truncation issues.</summary>
     [HttpGet("/admin/sessions/{sessionId}/records/export")]

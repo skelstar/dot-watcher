@@ -347,35 +347,6 @@ public class SessionsController(
         return RecordingResult(sessionId, since, until);
     }
 
-    /// <summary>Gets a session's recording start/latest timestamps. Accepts either the admin bearer token or a member's user token.</summary>
-    [HttpGet("/sessions/{sessionId}/recording/meta")]
-    [ProducesResponseType(typeof(RecordingMeta), StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status400BadRequest)]
-    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-    [ProducesResponseType(StatusCodes.Status403Forbidden)]
-    [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public IActionResult GetRecordingMeta(string sessionId)
-    {
-        if (!auth.IsAuthorized(Request))
-        {
-            if (!userAuth.TryAuthenticate(Request, out var user))
-                return Unauthorized();
-
-            if (string.IsNullOrWhiteSpace(sessionId))
-                return BadRequest(new { error = "Invalid session ID." });
-
-            if (!store.CanReadSession(sessionId, user.UserId))
-                return StatusCode(StatusCodes.Status403Forbidden);
-        }
-        else if (string.IsNullOrWhiteSpace(sessionId))
-        {
-            return BadRequest(new { error = "Invalid session ID." });
-        }
-
-        var meta = store.GetRecordingMeta(sessionId);
-        return meta is null ? NotFound() : Ok(meta);
-    }
-
     /// <summary>Admin/ops: deletes a session's saved recording.</summary>
     [HttpDelete("/sessions/{sessionId}/recording")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
@@ -459,35 +430,6 @@ public class SessionsController(
 
         logger.LogInformation("Uploaded route for {Session} ({Bytes} bytes)", sessionId, content.Length);
         return Ok(new { sessionId = sessionId });
-    }
-
-    /// <summary>Downloads a session's GPX route (application/gpx+xml). Accepts either the admin bearer token or a member's user token.</summary>
-    [HttpGet("/sessions/{sessionId}/route")]
-    [ProducesResponseType(StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status400BadRequest)]
-    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-    [ProducesResponseType(StatusCodes.Status403Forbidden)]
-    [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public IActionResult DownloadRoute(string sessionId)
-    {
-        if (!auth.IsAuthorized(Request))
-        {
-            if (!userAuth.TryAuthenticate(Request, out var user))
-                return Unauthorized();
-
-            if (string.IsNullOrWhiteSpace(sessionId))
-                return BadRequest(new { error = "Invalid session ID." });
-
-            if (!store.CanReadSession(sessionId, user.UserId))
-                return StatusCode(StatusCodes.Status403Forbidden);
-        }
-        else if (string.IsNullOrWhiteSpace(sessionId))
-        {
-            return BadRequest(new { error = "Invalid session ID." });
-        }
-
-        var gpx = store.GetRoute(sessionId);
-        return gpx is null ? NotFound() : Content(gpx, "application/gpx+xml");
     }
 
     /// <summary>Deletes a session's saved GPX route. Accepts either the admin bearer token or a session member's user token.</summary>

@@ -1285,31 +1285,6 @@ public class SessionStore(string connectionString) : IDisposable
         return stats;
     }
 
-    public IReadOnlyList<AdminLocationRecord> GetRecentLocationUpdates(string sessionId, int limit = 20)
-    {
-        using var conn = Connect();
-        using var cmd = conn.CreateCommand();
-        cmd.CommandText = """
-            SELECT runner_name, latitude, longitude, heading, timestamp
-            FROM location_updates
-            WHERE session_id = @sessionId
-            ORDER BY id DESC
-            LIMIT @limit
-            """;
-        cmd.Parameters.AddWithValue("@sessionId", sessionId);
-        cmd.Parameters.AddWithValue("@limit", limit);
-        using var reader = cmd.ExecuteReader();
-        var records = new List<AdminLocationRecord>();
-        while (reader.Read())
-            records.Add(new AdminLocationRecord(
-                reader.GetString(0),
-                reader.GetDouble(1),
-                reader.GetDouble(2),
-                reader.IsDBNull(3) ? null : reader.GetDouble(3),
-                reader.GetString(4)));
-        return records;
-    }
-
     public bool DeleteRecording(string sessionId)
     {
         using var conn = Connect();
