@@ -105,6 +105,14 @@ export default function App() {
     }
   }
 
+  // Unknown paths (e.g. /log) fall back to the landing page above; rewrite the address bar to '/' so
+  // they don't sit on a URL that means nothing.
+  useEffect(() => {
+    if (isLanding && window.location.pathname !== '/') {
+      window.history.replaceState(null, '', `/${window.location.search}${window.location.hash}`)
+    }
+  }, [isLanding])
+
   useEffect(() => {
     if (legalPage || isLanding || !containerRef.current) return
 
