@@ -23,6 +23,11 @@
   padding: 0;
 }
 
+/* Park the map attribution (LINZ / Toitū Te Whenua licence text) at the very bottom edge. */
+.maplibregl-ctrl-bottom-right {
+  bottom: 2px;
+}
+
 html, body, #root {
   width: 100%;
   height: 100%;

@@ -42,3 +42,6 @@ export function otherMapStyleId(id: MapStyleId): MapStyleId {
 export const LINZ_ATTRIBUTION =
   '© <a href="https://www.linz.govt.nz/linz-copyright" target="_blank" rel="noopener">LINZ CC BY 4.0</a> · ' +
   '<a href="https://www.linz.govt.nz/data/linz-data/linz-basemaps/data-attribution" target="_blank" rel="noopener">Basemaps data attribution</a>'
+
+// Dot Watcher's own legal pages, appended to the attribution so all the small print is one block.
+export const LEGAL_LINKS_ATTRIBUTION = '<a href="/privacy">Privacy</a> · <a href="/terms">Terms</a>'
