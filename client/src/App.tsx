@@ -11,7 +11,7 @@ import 'maplibre-gl/dist/maplibre-gl.css'
 // https://maplibre.org/maplibre-gl-js/docs/guides/v5-to-v6-migration-guide/ and
 // https://github.com/maplibre/maplibre-gl-js/issues/8018.
 import maplibreWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url'
-import { MAP_STYLES, DEFAULT_MAP_STYLE_ID, LINZ_ATTRIBUTION, type MapStyleId } from './map/mapStyle.ts'
+import { MAP_STYLES, DEFAULT_MAP_STYLE_ID, LINZ_ATTRIBUTION, LEGAL_LINKS_ATTRIBUTION, type MapStyleId } from './map/mapStyle.ts'
 import MapStyleToggle from './MapStyleToggle.tsx'
 import Terrain3DToggle from './Terrain3DToggle.tsx'
 import InvalidInvitePrompt from './InvalidInvitePrompt.tsx'
@@ -111,7 +111,8 @@ export default function App() {
       center: [174.7762, -41.2865], // Wellington, NZ - default before any session/positions load
       zoom: 13,
       maxPitch: 85, // tilting past AUTO_3D_PITCH_DEG turns 3D terrain on; the toggle does the same
-      attributionControl: { customAttribution: LINZ_ATTRIBUTION },
+      // compact: false keeps the attribution expanded — LINZ requires it to be always visible.
+      attributionControl: { compact: false, customAttribution: [LEGAL_LINKS_ATTRIBUTION, LINZ_ATTRIBUTION] },
     })
 
     map.addControl(new NavigationControl(), 'top-right')
@@ -222,10 +223,6 @@ export default function App() {
   return (
     <>
       <div ref={containerRef} style={{ width: '100%', height: '100%' }} />
-      <div style={versionBadge}>
-        <a href="/privacy" style={legalLink}>Privacy</a>
-        <a href="/terms" style={legalLink}>Terms</a>
-      </div>
       <LegendHelp />
       <MapStyleToggle styleId={mapStyleId} onToggle={handleToggleMapStyle} />
       {inviteCode && !timeline.invalidInvite && (
@@ -282,33 +279,6 @@ export default function App() {
   )
 }
 
-
-const versionBadge: React.CSSProperties = {
-  position: 'absolute',
-  left: 12,
-  bottom: 12,
-  zIndex: 7,
-  maxWidth: 'min(620px, calc(100vw - 96px))',
-  overflow: 'hidden',
-  textOverflow: 'ellipsis',
-  whiteSpace: 'nowrap',
-  display: 'flex',
-  alignItems: 'center',
-  gap: 8,
-  background: 'rgba(255,255,255,0.92)',
-  color: '#57606a',
-  borderRadius: 4,
-  boxShadow: '0 0 0 1px rgba(0,0,0,0.1)',
-  padding: '4px 7px',
-  fontFamily: 'system-ui, sans-serif',
-  fontSize: '0.75rem',
-}
-
-const legalLink: React.CSSProperties = {
-  flex: '0 0 auto',
-  color: '#1f6feb',
-  textDecoration: 'none',
-}
 
 const notStartedToast: React.CSSProperties = {
   position: 'absolute',
