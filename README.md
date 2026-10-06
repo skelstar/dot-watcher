@@ -150,11 +150,11 @@ Three Xcode configurations: Debug (simulator → localhost), Device (physical de
 | App user   | `POST /auth/register`, `POST /auth/login`, `POST /auth/logout`, `DELETE /me` | Username/password, returns revocable user access token |
 | Runner     | `POST /location`               | User access token plus `runner` session membership |
 | Viewer     | `GET /locations/{sessionCode}` | User access token plus session membership |
-| Admin/debug dashboard | `GET /sessions`, `GET /log`, recording mutations | Admin bearer token in `Authorization` header |
+| Admin panel (`/admin`) and ops scripts | `/admin/*`, `GET /sessions`, `GET`/`DELETE /log`, recording upload/delete/merge | Admin bearer token in `Authorization` header |
 
 Session codes are identifiers, not credentials. Membership is granted via:
 
-- **Invite code join** (`POST /session-invites/{inviteCode}/join`) — grants `runner` when the iOS app sends `role: runner`, or `viewer` when joining via the web client. Preserves any existing role for returning members.
+- **Invite code join** (`POST /session-invites/{inviteCode}/join`) — called by the iOS and Android apps (and the dev simulator/scripts). Grants `runner` when the request sends `role: runner`, otherwise `viewer`. Preserves any existing role for returning members. The web viewer doesn't join: it reads a session anonymously through the `/session-invites/{inviteCode}/...` endpoints.
 
 `GET /locations/{sessionCode}` returns `403` for authenticated users without membership, including unknown session codes, and returns `200 []` only for a member session with no live positions yet.
 

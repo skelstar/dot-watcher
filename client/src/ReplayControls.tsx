@@ -13,11 +13,14 @@ const TIME_TOOLTIP_LINGER_MS = 800
 // there. No such clamp on the right: the play/skip buttons sit beyond the track's end, so a label
 // centred on the dot there still lands on screen.
 const TOOLTIP_LEFT_INSET_PX = 30
+// Replay speeds the speed button cycles through, as multiples of real time. The first is the default.
+const REPLAY_SPEEDS = [10, 60, 200]
 
 export default function ReplayControls({ timeline }: Props) {
   const {
     following, scrubTimeMs, runStartMs, nowMs, isLive, lastActivityMs, pollIntervalMs,
     canSkip, skipping, skipToNextPosition, dragTo, dragEnd, goLive, playing, play, pause,
+    speed, setSpeed,
   } = timeline
   const trackRef = useRef<HTMLDivElement>(null)
   const [showTooltip, setShowTooltip] = useState(false)
@@ -47,6 +50,11 @@ export default function ReplayControls({ timeline }: Props) {
     const rect = track.getBoundingClientRect()
     const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width))
     return rangeStart + ratio * durationMs
+  }
+
+  function cycleSpeed() {
+    const index = REPLAY_SPEEDS.indexOf(speed)
+    setSpeed(REPLAY_SPEEDS[(index + 1) % REPLAY_SPEEDS.length])
   }
 
   function handlePointerDown(event: React.PointerEvent<HTMLDivElement>) {
@@ -104,6 +112,18 @@ export default function ReplayControls({ timeline }: Props) {
         </button>
       )}
 
+      {/* Cycles the replay speed; only meaningful alongside the play button. */}
+      {runStartMs !== null && !isLive && (
+        <button
+          onClick={cycleSpeed}
+          style={{ ...skipBtn, marginLeft: 8, padding: '0 8px', fontSize: 12, fontWeight: 700, fontFamily: 'system-ui, sans-serif' }}
+          title={`Replay speed ${speed}× (tap to change)`}
+          aria-label={`Replay speed ${speed} times, tap to change`}
+        >
+          {speed}×
+        </button>
+      )}
+
       {/* Right next to the play/pause (or LIVE) button, at the bottom edge where a thumb already is, and
           always rendered (just dimmed when there's nothing ahead) so the track doesn't resize as
           you scrub. */}
@@ -142,7 +162,7 @@ export default function ReplayControls({ timeline }: Props) {
 
 const bar: React.CSSProperties = {
   position: 'absolute',
-  bottom: 27,
+  bottom: 50,
   left: 0,
   right: 0,
   display: 'flex',
