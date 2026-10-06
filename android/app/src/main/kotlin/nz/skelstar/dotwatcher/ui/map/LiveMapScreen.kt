@@ -191,13 +191,15 @@ private fun LeaveSessionDialog(
 }
 
 /** Opens the system share sheet with the session's invite link — matches iOS's header
- *  `ShareLink` (ContentView.swift's `headerSection`), which shares the same message format:
- *  invite code plus a `{webBaseURL}/code/{inviteCode}` link the recipient can open directly. */
+ *  `ShareLink` (`InviteLink.shareMessage` in InviteLink.swift), which shares the same message format:
+ *  a `{webBaseURL}/join/{inviteCode}` link (opens the iOS app, or a web page with the code and an
+ *  App Store link elsewhere), the invite code, and a `/code/{inviteCode}` link for watching on the web. */
 private fun Context.shareInviteLink(membership: SessionMembership) {
-    val sessionUrl = "${BuildConfig.WEB_BASE_URL}/code/${membership.inviteCode}"
+    val code = membership.inviteCode
     val message = "Join my DotWatcher session!\n\n" +
-        "Invite code: ${membership.inviteCode}\n\n" +
-        sessionUrl
+        "Tap to join in the app:\n${BuildConfig.WEB_BASE_URL}/join/$code\n\n" +
+        "Invite code: $code\n\n" +
+        "Just want to watch?\n${BuildConfig.WEB_BASE_URL}/code/$code"
     val sendIntent = Intent(Intent.ACTION_SEND).apply {
         type = "text/plain"
         putExtra(Intent.EXTRA_TEXT, message)

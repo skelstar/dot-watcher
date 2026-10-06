@@ -56,32 +56,31 @@ Bundle ID `io.skelstar.DotWatcher`, team `8A9JZATC8G`.
 
 ### 3. iOS: claim the links
 
-- [ ] Add the Associated Domains entitlement to `DotWatcher.entitlements`:
+- [x] Add the Associated Domains entitlement to `DotWatcher.entitlements`:
       `applinks:dot-watcher.skelstar.io` and `applinks:dot-watcher-staging.skelstar.io`.
 - [ ] Enable Associated Domains on the App ID in the Apple Developer portal
       (manual step, outside the repo) and refresh provisioning.
 
 ### 4. iOS: handle the link
 
-- [ ] `.onOpenURL` in `DotWatcherApp.swift` parses `/join/{CODE}`
+- [x] `.onOpenURL` in `ContentView` (via `InviteLink.code(from:)`) parses `/join/{CODE}`
       (case-insensitive, trims, ignores anything that isn't a valid 6-character code).
-- [ ] Put the code into `noSessionInviteCode` so the code boxes show it.
-- [ ] If the user is signed out, keep the code across the sign-in sheet and prefill after.
-- [ ] If the user is already in a session, decide what a link does (see open questions).
-- [ ] Joining still needs a tap on "Join Session". The link only prefills.
-- [ ] Unit test for the URL parsing.
+- [x] Put the code into `noSessionInviteCode` so the code boxes show it.
+- [x] If the user is signed out, keep the code across the sign-in sheet and prefill after.
+- [x] If the user is already in a session, an alert asks "Join session CODE?" (nothing happens if they are already in it).
+- [x] Joining still needs a tap on "Join Session". The link only prefills.
+- [ ] Unit test for the URL parsing. Blocked: the Xcode project has no test target. Add one, or accept manual verification.
 
 ### 5. Change the share message
 
 The current message (`ContentView.swift`, `headerSection`) is:
 "Join my DotWatcher session! / Invite code: CODE / https://…/code/CODE".
 
-- [ ] Primary link becomes `…/join/{CODE}` ("tap to join in the app").
-- [ ] Keep the plain invite code in the text, for people who copy it by hand.
-- [ ] Add the `…/code/{CODE}` link as "Just want to watch?".
-- [ ] Message reads sensibly if the link isn't tappable.
-- [ ] Android's share message (`LiveMapScreen.kt`) is documented as matching iOS.
-      Update it to match, or note the gap. The Android app links are a later task.
+- [x] Primary link becomes `…/join/{CODE}` ("tap to join in the app").
+- [x] Keep the plain invite code in the text, for people who copy it by hand.
+- [x] Add the `…/code/{CODE}` link as "Just want to watch?".
+- [x] Message reads sensibly if the link isn't tappable.
+- [x] Android share message (`LiveMapScreen.kt`) updated to match. Android App Links remain a later task.
 
 ### 6. Verify (real device, signed build, staging first)
 
@@ -96,7 +95,7 @@ CI only builds, so these are manual checks.
 
 ### 7. Wrap up
 
-- [ ] `ios/README.md`: document the link flow and the entitlement.
+- [x] `ios/README.md`: document the link flow and the entitlement.
 - [ ] Open the PR against `staging`.
 
 ## Open questions
