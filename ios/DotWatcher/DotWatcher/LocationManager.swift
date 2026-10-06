@@ -458,7 +458,7 @@ final class LocationManager {
         }
     }
 
-    func createSession(name: String, displayName: String?) async throws {
+    func createSession(name: String, displayName: String?, maxLengthHours: Int) async throws {
         let requestedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
         let dispName = displayName?.trimmingCharacters(in: .whitespacesAndNewlines)
         let membership: SessionMembership = try await send(
@@ -467,6 +467,7 @@ final class LocationManager {
             body: [
                 "sessionName": requestedName.isEmpty ? NSNull() : requestedName,
                 "displayName": (dispName?.isEmpty ?? true) ? NSNull() : dispName!,
+                "maxLengthHours": maxLengthHours,
             ])
         upsertMembership(membership)
         selectSession(membership)

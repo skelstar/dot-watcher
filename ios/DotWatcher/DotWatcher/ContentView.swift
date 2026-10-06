@@ -22,6 +22,7 @@ struct ContentView: View {
     @State private var blockError: String?
     @State private var showCreateSession: Bool = false
     @State private var noSessionCreateCode = ""
+    @State private var noSessionCreateLengthHours = CreateSessionView.defaultLengthHours
     @State private var noSessionInviteCode = ""
     @State private var isBusy = false
     @State private var formError: String?
@@ -85,6 +86,7 @@ struct ContentView: View {
             .sheet(isPresented: $showCreateSession) {
                 CreateSessionView(
                     sessionCode: $noSessionCreateCode,
+                    maxLengthHours: $noSessionCreateLengthHours,
                     isBusy: isBusy,
                     isOffline: location.isOffline
                 ) {
@@ -835,8 +837,12 @@ struct ContentView: View {
         isBusy = true
         formError = nil
         do {
-            try await location.createSession(name: noSessionCreateCode, displayName: location.runnerName)
+            try await location.createSession(
+                name: noSessionCreateCode,
+                displayName: location.runnerName,
+                maxLengthHours: noSessionCreateLengthHours)
             noSessionCreateCode = ""
+            noSessionCreateLengthHours = CreateSessionView.defaultLengthHours
         } catch {
             formError = error.localizedDescription
         }
