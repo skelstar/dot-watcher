@@ -254,21 +254,30 @@ struct ContentView: View {
     }
 
     private var noSessionCreateLink: some View {
-        Button {
-            showCreateSession = true
-        } label: {
-            Text("Session doesn't exist yet? Create one")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
+        HStack {
+            Text("Create a session?")
+                .font(.title2.weight(.bold))
+                .padding(.leading, 4)
+            Spacer()
+            Button {
+                showCreateSession = true
+            } label: {
+                Text("Create")
+                    .fontWeight(.bold)
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 24)
+                    .padding(.vertical, 10)
+                    .background(Color.blue)
+                    .clipShape(Capsule())
+            }
+            .buttonStyle(.plain)
         }
-        .frame(maxWidth: .infinity)
     }
 
     private var noSessionJoinCard: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Join a Session")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
+            Text("Have an invite code?")
+                .font(.title2.weight(.bold))
                 .padding(.leading, 4)
             VStack(spacing: 0) {
                 VStack(alignment: .leading, spacing: 10) {
