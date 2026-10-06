@@ -2,6 +2,26 @@
 
 Branch: `ios-universal-invite-links` (from `staging`).
 
+
+## Status (for whoever picks this up)
+
+Code is complete for sections 1-5 and 7 (README). Nothing has been built or run locally; CI only builds.
+Remaining work:
+
+1. **Apple Developer portal (manual):** enable Associated Domains on the App ID `io.skelstar.DotWatcher`.
+   Without it the signed build fails provisioning or the links won't open the app.
+2. **Deploy the web client to staging**, then check
+   `https://dot-watcher-staging.skelstar.io/.well-known/apple-app-site-association` returns JSON,
+   `application/json`, no redirect. Same for prod.
+3. **Section 6 device checks** on a real phone with a signed build.
+   Fallback page without uninstalling the app: open `/join/CODE` on a desktop browser, or paste it into
+   Safari's address bar on the iPhone (universal links don't fire from the address bar).
+4. Optional: unit test for `InviteLink.code(from:)` (needs an Xcode test target, which doesn't exist yet).
+
+Key files: `ios/DotWatcher/DotWatcher/InviteLink.swift`, `ContentView.swift` (`.onOpenURL`,
+`resolvePendingLink`), `DotWatcher.entitlements`, `client/src/JoinPage.tsx`,
+`client/public/.well-known/apple-app-site-association`, `client/nginx.conf`.
+
 ## Goal
 
 Someone shares a session by WhatsApp (or any messenger). The recipient taps the
@@ -101,9 +121,8 @@ CI only builds, so these are manual checks.
 ## Open questions
 
 - ~~Where is `client/` deployed~~ — nginx container (`client/Dockerfile`); content type set in `client/nginx.conf`.
-- What should a link do if the user is already in a session? Prefill only and
-  show a hint, or ignore it?
-- Should the link auto-join when the user is signed in, or always wait for a tap? (Plan: always wait.)
+- ~~What should a link do if the user is already in a session?~~ Decided: an alert asks "Join session CODE?" (see `resolvePendingLink` in `ContentView.swift`).
+- ~~Auto-join when signed in?~~ Decided: never. The link only prefills or asks for confirmation.
 - ~~App Store URL for the web fallback page~~ — already in `LandingPage.tsx`, now shared via `client/src/appStore.ts`.
 
 ## Out of scope
