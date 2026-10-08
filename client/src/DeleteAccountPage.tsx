@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import { apiHeaders } from './apiHeaders.ts'
 
-const contactEmail = 'support@dot-watcher.skelstar.io'
+const contactEmail = 'dotwatchr@skelstar.io'
 
 type Step =
   | { kind: 'form' }
