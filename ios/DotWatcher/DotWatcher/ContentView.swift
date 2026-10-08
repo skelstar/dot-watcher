@@ -45,7 +45,10 @@ struct ContentView: View {
     @State private var versionTapCount = 0
     @State private var lastVersionTap: Date?
 
-    var body: some View {
+    /// The first half of `body`'s modifier chain. Split from `body` because one chain this long
+    /// exceeds the Swift type-checker's budget ("unable to type-check this expression in
+    /// reasonable time").
+    private var bodyWithSheets: some View {
         mainContent
             .preferredColorScheme(location.appearanceMode.colorScheme)
             .onAppear {
@@ -112,6 +115,10 @@ struct ContentView: View {
                     showNameEntry = true
                 }
             }
+    }
+
+    var body: some View {
+        bodyWithSheets
             .onOpenURL { url in
                 guard let code = InviteLink.code(from: url) else { return }
                 pendingLinkCode = code
@@ -182,10 +189,7 @@ struct ContentView: View {
             }
             .confirmationDialog(
                 blockCandidateName ?? "",
-                isPresented: Binding(
-                    get: { blockCandidateName != nil },
-                    set: { if !$0 { blockCandidateName = nil } }
-                ),
+                isPresented: blockDialogPresented,
                 titleVisibility: .visible
             ) {
                 if let name = blockCandidateName {
@@ -218,6 +222,13 @@ struct ContentView: View {
                     Text("Are you sure? You can rejoin later using the invite code.")
                 }
             }
+    }
+
+    private var blockDialogPresented: Binding<Bool> {
+        Binding(
+            get: { blockCandidateName != nil },
+            set: { if !$0 { blockCandidateName = nil } }
+        )
     }
 
     // MARK: - Main Content
