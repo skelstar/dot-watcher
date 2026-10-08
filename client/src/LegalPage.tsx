@@ -5,7 +5,7 @@ interface Props {
 }
 
 const lastUpdated = '24 Jul 2026'
-const contactEmail = 'support@dot-watcher.skelstar.io'
+const contactEmail = 'dotwatchr@skelstar.io'
 
 export default function LegalPage({ kind }: Props) {
   const page = kind === 'privacy' ? privacyPage : termsPage
