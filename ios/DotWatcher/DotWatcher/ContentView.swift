@@ -22,6 +22,7 @@ struct ContentView: View {
     @State private var blockError: String?
     @State private var showCreateSession: Bool = false
     @State private var noSessionCreateCode = ""
+    @State private var noSessionCreateLengthHours = CreateSessionView.defaultLengthHours
     @State private var noSessionInviteCode = ""
     @State private var isBusy = false
     @State private var formError: String?
@@ -85,6 +86,7 @@ struct ContentView: View {
             .sheet(isPresented: $showCreateSession) {
                 CreateSessionView(
                     sessionCode: $noSessionCreateCode,
+                    maxLengthHours: $noSessionCreateLengthHours,
                     isBusy: isBusy,
                     isOffline: location.isOffline
                 ) {
@@ -252,21 +254,30 @@ struct ContentView: View {
     }
 
     private var noSessionCreateLink: some View {
-        Button {
-            showCreateSession = true
-        } label: {
-            Text("Session doesn't exist yet? Create one")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
+        HStack {
+            Text("Create a session?")
+                .font(.title2.weight(.bold))
+                .padding(.leading, 4)
+            Spacer()
+            Button {
+                showCreateSession = true
+            } label: {
+                Text("Create")
+                    .fontWeight(.bold)
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 24)
+                    .padding(.vertical, 10)
+                    .background(Color.blue)
+                    .clipShape(Capsule())
+            }
+            .buttonStyle(.plain)
         }
-        .frame(maxWidth: .infinity)
     }
 
     private var noSessionJoinCard: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Join a Session")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
+            Text("Have an invite code?")
+                .font(.title2.weight(.bold))
                 .padding(.leading, 4)
             VStack(spacing: 0) {
                 VStack(alignment: .leading, spacing: 10) {
@@ -835,8 +846,12 @@ struct ContentView: View {
         isBusy = true
         formError = nil
         do {
-            try await location.createSession(name: noSessionCreateCode, displayName: location.runnerName)
+            try await location.createSession(
+                name: noSessionCreateCode,
+                displayName: location.runnerName,
+                maxLengthHours: noSessionCreateLengthHours)
             noSessionCreateCode = ""
+            noSessionCreateLengthHours = CreateSessionView.defaultLengthHours
         } catch {
             formError = error.localizedDescription
         }
