@@ -68,7 +68,6 @@
 				497F89C22FDC6E6300022FF1 /* Sources */,
 				497F89C32FDC6E6300022FF1 /* Frameworks */,
 				497F89C42FDC6E6300022FF1 /* Resources */,
-				46931019F0BE4081AB9CB839 /* Bump Build Number (Archive only) */,
 				497F89ED2FDCE39200022FF1 /* Stamp Git Commit SHA */,
 			);
 			buildRules = (
@@ -130,21 +129,6 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXShellScriptBuildPhase section */
-		46931019F0BE4081AB9CB839 /* Bump Build Number (Archive only) */ = {
-			isa = PBXShellScriptBuildPhase;
-			alwaysOutOfDate = 1;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputPaths = (
-			);
-			name = "Bump Build Number (Archive only)";
-			outputPaths = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = /bin/sh;
-			shellScript = "# Only archives invoke the 'install' action — a plain Run/Debug build must never\n# mutate the committed Info.plist, or every local run would dirty git. CFBundleVersion\n# was previously bumped by hand and kept going stale/duplicate on upload; this keeps it\n# monotonic automatically, committed after each archive.\nif [ \"$ACTION\" != \"install\" ]; then\n  echo \"Skipping build-number bump (ACTION=$ACTION, not an archive).\"\n  exit 0\nfi\n\nPLIST=\"$SRCROOT/DotWatcher/Info.plist\"\nCURRENT=$(/usr/libexec/PlistBuddy -c \"Print :CFBundleVersion\" \"$PLIST\")\nNEXT=$((CURRENT + 1))\n/usr/libexec/PlistBuddy -c \"Set :CFBundleVersion $NEXT\" \"$PLIST\"\necho \"Bumped CFBundleVersion $CURRENT -> $NEXT\"\n\n# Also stamp the build output so *this* archive carries the new number even\n# though Info.plist was already processed from the pre-bump source.\n/usr/libexec/PlistBuddy -c \"Set :CFBundleVersion $NEXT\" \"$CODESIGNING_FOLDER_PATH/Info.plist\"\n";
-		};
 		497F89ED2FDCE39200022FF1 /* Stamp Git Commit SHA */ = {
 			isa = PBXShellScriptBuildPhase;
 			alwaysOutOfDate = 1;
