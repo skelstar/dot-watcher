@@ -1,0 +1,12 @@
+{
+  "applinks": {
+    "details": [
+      {
+        "appIDs": ["8A9JZATC8G.io.skelstar.DotWatcher"],
+        "components": [
+          { "/": "/join/*", "comment": "Invite links open the iOS app to join a session" }
+        ]
+      }
+    ]
+  }
+}
