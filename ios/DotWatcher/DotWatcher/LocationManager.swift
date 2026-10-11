@@ -195,6 +195,19 @@ final class LocationManager {
         didSet { UserDefaults.standard.set(appearanceMode.rawValue, forKey: "appearanceMode") }
     }
 
+    /// Local notification when the phone switches to satellite (on by default). The sound is a
+    /// separate toggle so the alert can stay as a silent banner.
+    var satelliteAlertsEnabled: Bool = UserDefaults.standard.object(forKey: "satelliteAlertsEnabled") as? Bool ?? true {
+        didSet {
+            UserDefaults.standard.set(satelliteAlertsEnabled, forKey: "satelliteAlertsEnabled")
+            if satelliteAlertsEnabled { SatelliteAlerts.shared.requestAuthorizationIfNeeded() }
+        }
+    }
+
+    var satelliteAlertSound: Bool = UserDefaults.standard.object(forKey: "satelliteAlertSound") as? Bool ?? true {
+        didSet { UserDefaults.standard.set(satelliteAlertSound, forKey: "satelliteAlertSound") }
+    }
+
     /// Normal post cadence. While `isUltraConstrained` (on satellite), a much longer cadence is
     /// used instead — satellite acquisition/registration is slower than a normal handshake, and
     /// Direct-to-Cell is designed for infrequent, small-payload bursts rather than a steady
@@ -613,6 +626,7 @@ final class LocationManager {
             status = "Owner/runner required"
             return
         }
+        if satelliteAlertsEnabled { SatelliteAlerts.shared.requestAuthorizationIfNeeded() }
 
         clManager.requestAlwaysAuthorization()
         clManager.startUpdatingLocation()
@@ -815,6 +829,9 @@ final class LocationManager {
         guard isTracking else { return }
         let cameBack = wasOffline && !isOffline
         let enteredSatellite = !wasUltraConstrained && isUltraConstrained
+        if enteredSatellite, satelliteAlertsEnabled {
+            SatelliteAlerts.shared.notifyEnteredSatellite(playSound: satelliteAlertSound)
+        }
         guard cameBack || enteredSatellite else { return }
         if let last = lastPathTriggerAt, Date().timeIntervalSince(last) < Self.pathTriggerMinSpacing { return }
         lastPathTriggerAt = Date()

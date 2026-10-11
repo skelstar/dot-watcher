@@ -501,7 +501,7 @@ struct ContentView: View {
                         Divider()
                     }
                     Button { showAuth = true } label: {
-                        Label("Account", systemImage: "person.crop.circle")
+                        Label(location.isAuthenticated ? "Settings" : "Account", systemImage: location.isAuthenticated ? "gearshape" : "person.crop.circle")
                     }
                     Button { showHelp = true } label: {
                         Label("Help", systemImage: "questionmark.circle")
