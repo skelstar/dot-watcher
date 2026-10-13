@@ -1,4 +1,4 @@
-import InitialsBadge, { initialsFor } from './components/InitialsBadge.tsx'
+import { initialsFor } from './components/InitialsBadge.tsx'
 
 interface Props {
   // Signed-in user's display name (the 2-letter initials the account was created with), or null when
@@ -8,18 +8,22 @@ interface Props {
 }
 
 // Optional viewer sign-in entry at the top of the right-hand button column, above MapLibre's compass.
-// A plain person outline when anonymous; the signed-in user's own initials badge once signed in.
+// A plain person outline when anonymous. Signed in, the whole button turns blue and shows the user's
+// initials, the same "on" treatment as Terrain3DToggle, so it can't be mistaken for a runner dot.
 export default function AccountButton({ displayName, onClick }: Props) {
-  const signedIn = displayName !== null
+  const initials = displayName === null ? '' : initialsFor(displayName)
+  const signedIn = initials !== ''
   const label = signedIn ? `Account (signed in as ${displayName})` : 'Sign in or create an account'
 
   return (
-    <button type="button" onClick={onClick} style={button} title={label} aria-label={label}>
-      {signedIn && initialsFor(displayName) !== '' ? (
-        <InitialsBadge name={displayName} size={21} />
-      ) : (
-        <PersonIcon />
-      )}
+    <button
+      type="button"
+      onClick={onClick}
+      style={{ ...button, background: signedIn ? '#1f6feb' : '#fff' }}
+      title={label}
+      aria-label={label}
+    >
+      {signedIn ? <span style={initialsText}>{initials}</span> : <PersonIcon />}
     </button>
   )
 }
@@ -50,4 +54,13 @@ const button: React.CSSProperties = {
   padding: 0,
   zIndex: 1,
   pointerEvents: 'auto',
+}
+
+const initialsText: React.CSSProperties = {
+  color: '#fff',
+  fontFamily: 'system-ui, sans-serif',
+  fontWeight: 700,
+  fontSize: 12,
+  lineHeight: 1,
+  letterSpacing: 0.3,
 }

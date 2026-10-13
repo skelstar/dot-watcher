@@ -17,7 +17,8 @@ what a viewer sees changes yet.
 - Session lifetime matches the app: use the server's `expiresAt` as given, no web-specific shortening.
 - Entry point is an icon-only button (head in a circle) at the top of the right-hand map button column
   (`AccountButton.tsx`), replacing MapLibre's +/- zoom buttons (compass stays, below it). Signed out it
-  is a plain person outline; signed in it becomes the user's initials badge (`InitialsBadge`). (First attempt put it in
+  is a plain person outline; signed in the whole button turns blue and shows the user's initials (not a
+  circle badge, which would look like a runner dot). Registration requires exactly two initials. (First attempt put it in
   the attribution block; MapLibre 6 sanitizes attribution HTML and strips SVG, and a button column
   matches the other map controls better.)
 - Sign-in opens a small panel over the map; it does not navigate away, so the viewer keeps their place.

@@ -51,7 +51,7 @@ export default function SignInPanel({ serverUrl, onClose }: Props) {
   }
 
   const isRegister = mode === 'register'
-  const canSubmit = username.trim() !== '' && password !== '' && (!isRegister || initials.trim() !== '')
+  const canSubmit = username.trim() !== '' && password !== '' && (!isRegister || initials.trim().length === 2)
 
   return (
     <div style={overlay} onClick={onClose}>
@@ -112,6 +112,7 @@ export default function SignInPanel({ serverUrl, onClose }: Props) {
                   autoCorrect="off"
                   spellCheck={false}
                 />
+                <span style={hint}>Two letters, shown on your account button.</span>
               </>
             )}
 

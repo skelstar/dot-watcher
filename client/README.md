@@ -54,7 +54,7 @@ Public legal pages are available at `/privacy` and `/terms`. These should be rev
 
 ## Optional viewer sign-in
 
-The map viewer (`/code/{INVITE}`) works anonymously. A person-icon button (your initials badge once signed in) at the top of the map's right-hand button column opens a panel to sign in or create an account (`POST /auth/login`, `POST /auth/register`). The session (`{ accessToken, expiresAt, user }`) is kept in `localStorage` under `dotwatcher-auth`, shared across tabs and dropped once expired. While signed in, `apiHeaders()` sends the token as `Authorization: Bearer` on map requests; the server does not yet use it to change what a viewer sees. Code: `authStorage.ts` (storage and change notification), `auth.ts` (network), `SignInPanel.tsx` (UI). The sections below describe an older client flow.
+The map viewer (`/code/{INVITE}`) works anonymously. A person-icon button (your initials on a blue button once signed in) at the top of the map's right-hand button column opens a panel to sign in or create an account (`POST /auth/login`, `POST /auth/register`). The session (`{ accessToken, expiresAt, user }`) is kept in `localStorage` under `dotwatcher-auth`, shared across tabs and dropped once expired. While signed in, `apiHeaders()` sends the token as `Authorization: Bearer` on map requests; the server does not yet use it to change what a viewer sees. Code: `authStorage.ts` (storage and change notification), `auth.ts` (network), `SignInPanel.tsx` (UI). The sections below describe an older client flow.
 
 ## Auth and sessions
 
