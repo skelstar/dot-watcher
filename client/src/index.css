@@ -30,7 +30,8 @@
 
 /* The top-right column is AccountButton (y 10-39, absolutely positioned like the other map buttons)
    followed by MapLibre's compass; push the compass control below the account button. */
-.maplibregl-ctrl-top-right {
+/* Prefixed with .maplibregl-map so it out-ranks maplibre-gl.css, which is imported after this file. */
+.maplibregl-map .maplibregl-ctrl-top-right {
   top: 37px;
 }
 
