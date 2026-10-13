@@ -15,10 +15,11 @@ what a viewer sees changes yet.
   No server changes in this slice.
 - Registration is included, so family and support crew who don't run can make an account on the web.
 - Session lifetime matches the app: use the server's `expiresAt` as given, no web-specific shortening.
-- Entry point is a small "Sign in" link in the map attribution block, beside Privacy / Terms
-  (`LEGAL_LINKS_ATTRIBUTION` in `map/mapStyle.ts`). It is icon-only: a head-in-a-circle glyph (inline
-  SVG, `aria-label="Account"` and a title tooltip). Signed-in state is shown by filling the glyph, not by
-  changing its size or adding text.
+- Entry point is an icon-only button (head in a circle) at the top of the right-hand map button column
+  (`AccountButton.tsx`), replacing MapLibre's +/- zoom buttons (compass stays, below it). Signed-in
+  state is shown by filling the glyph, not by changing its size or adding text. (First attempt put it in
+  the attribution block; MapLibre 6 sanitizes attribution HTML and strips SVG, and a button column
+  matches the other map controls better.)
 - Sign-in opens a small panel over the map; it does not navigate away, so the viewer keeps their place.
 - Token is kept in `localStorage` (not `sessionStorage` like the admin panel) so it is shared across tabs,
   matching the concept's storage reasoning. All reads/writes wrapped in try/catch, like `apiHeaders.ts`.
@@ -52,11 +53,11 @@ what a viewer sees changes yet.
   Short line under Create account: why an account (follow runners across devices), no more. Style to match `InvalidInvitePrompt` / the toasts in `App.tsx` (plain inline
   styles, system-ui).
 - Signed-in state in the same panel: "Signed in as {displayName}" and Sign out.
-- Attribution link: `LEGAL_LINKS_ATTRIBUTION` is a static string given to MapLibre once at map creation,
-  so it cannot re-render when sign-in state changes. Approach: keep the string static and append a fixed
-  `<a href="#account" class="dw-account">` containing the inline SVG glyph, and handle the click with
-  event delegation on the map container (MapLibre injects the attribution HTML). Reflect signed-in state
-  by toggling a CSS class on that element from `useAuth()`.
+- `AccountButton.tsx` (new): a 29px white button styled like `MapStyleToggle` / `Terrain3DToggle`, at the
+  top of the right-hand column. `NavigationControl` is created with `showZoom: false` (compass only) and
+  pushed down by a `.maplibregl-ctrl-top-right { top: 37px }` rule; the `?`, layers, terrain and trace
+  buttons move up 30px to close the gap left by the removed +/- buttons. Glyph is inline SVG (fine in a
+  React component; only MapLibre's attribution HTML is sanitized).
 - Not shown on `/`, `/join/{code}`, legal pages or `/admin`. Landing page copy is unchanged.
 
 ## 4. Registration

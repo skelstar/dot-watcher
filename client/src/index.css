@@ -28,49 +28,10 @@
   bottom: 2px;
 }
 
-/* Account icon in the attribution (see ACCOUNT_LINK_ATTRIBUTION): a head in a circle drawn with CSS,
-   since MapLibre strips SVG from attribution HTML. Outline when signed out, filled when the map
-   container carries data-signed-in="true". */
-.maplibregl-ctrl-attrib a.dw-account {
-  display: inline-block;
-  vertical-align: -3px;
-  line-height: 0;
-  color: #57606a;
-}
-.maplibregl-ctrl-attrib a.dw-account:hover {
-  color: #1f6feb;
-}
-.dw-account-icon {
-  position: relative;
-  display: inline-block;
-  width: 15px;
-  height: 15px;
-  border: 1.5px solid currentColor;
-  border-radius: 50%;
-  overflow: hidden;
-}
-.dw-account-icon::before,
-.dw-account-icon::after {
-  content: '';
-  position: absolute;
-  left: 50%;
-  transform: translateX(-50%);
-  border: 1.5px solid currentColor;
-  border-radius: 50%;
-}
-.dw-account-icon::before { /* head */
-  top: 1.5px;
-  width: 5px;
-  height: 5px;
-}
-.dw-account-icon::after { /* shoulders, clipped by the circle */
-  top: 7px;
-  width: 10px;
-  height: 10px;
-}
-[data-signed-in="true"] .dw-account-icon::before,
-[data-signed-in="true"] .dw-account-icon::after {
-  background: currentColor;
+/* The top-right column is AccountButton (y 10-39, absolutely positioned like the other map buttons)
+   followed by MapLibre's compass; push the compass control below the account button. */
+.maplibregl-ctrl-top-right {
+  top: 37px;
 }
 
 html, body, #root {
