@@ -248,7 +248,7 @@ export default function App() {
   return (
     <>
       <div ref={containerRef} style={{ width: '100%', height: '100%' }} />
-      <AccountButton signedIn={authSession !== null} onClick={() => setAccountOpen(true)} />
+      <AccountButton displayName={authSession?.user.displayName ?? null} onClick={() => setAccountOpen(true)} />
       <LegendHelp />
       <MapStyleToggle styleId={mapStyleId} onToggle={handleToggleMapStyle} />
       {inviteCode && !timeline.invalidInvite && (
