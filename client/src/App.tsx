@@ -11,10 +11,11 @@ import 'maplibre-gl/dist/maplibre-gl.css'
 // https://maplibre.org/maplibre-gl-js/docs/guides/v5-to-v6-migration-guide/ and
 // https://github.com/maplibre/maplibre-gl-js/issues/8018.
 import maplibreWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url'
-import { MAP_STYLES, DEFAULT_MAP_STYLE_ID, LINZ_ATTRIBUTION, LEGAL_LINKS_ATTRIBUTION, type MapStyleId } from './map/mapStyle.ts'
+import { MAP_STYLES, DEFAULT_MAP_STYLE_ID, LINZ_ATTRIBUTION, LEGAL_LINKS_ATTRIBUTION, ACCOUNT_LINK_ATTRIBUTION, type MapStyleId } from './map/mapStyle.ts'
 import MapStyleToggle from './MapStyleToggle.tsx'
 import Terrain3DToggle from './Terrain3DToggle.tsx'
 import InvalidInvitePrompt from './InvalidInvitePrompt.tsx'
+import SignInPanel from './SignInPanel.tsx'
 import Legend from './Legend.tsx'
 import TraceToggle from './TraceToggle.tsx'
 import LegendHelp from './LegendHelp.tsx'
@@ -33,6 +34,7 @@ import { useSimulatorRouteOverlay } from './useSimulatorRouteOverlay.ts'
 import { useSessionTimeline } from './useSessionTimeline.ts'
 import { parseGpxCoordinates } from './gpx.ts'
 import { apiHeaders } from './apiHeaders.ts'
+import { useAuthSession } from './useAuthSession.ts'
 
 setWorkerUrl(maplibreWorkerUrl)
 
@@ -123,7 +125,7 @@ export default function App() {
       zoom: 13,
       maxPitch: 85, // tilting past AUTO_3D_PITCH_DEG turns 3D terrain on; the toggle does the same
       // compact: false keeps the attribution expanded — LINZ requires it to be always visible.
-      attributionControl: { compact: false, customAttribution: [LEGAL_LINKS_ATTRIBUTION, LINZ_ATTRIBUTION] },
+      attributionControl: { compact: false, customAttribution: [`${LEGAL_LINKS_ATTRIBUTION} · ${ACCOUNT_LINK_ATTRIBUTION}`, LINZ_ATTRIBUTION] },
     })
 
     map.addControl(new NavigationControl(), 'top-right')
@@ -154,6 +156,19 @@ export default function App() {
       mapRef.current = null
     }
   }, [legalPage])
+
+  // Optional viewer sign-in, reached only through the small account icon in the map attribution.
+  // Anonymous viewing is unaffected; the panel just stores a session that apiHeaders() then sends.
+  const authSession = useAuthSession()
+  const [accountOpen, setAccountOpen] = useState(false)
+
+  // The attribution HTML is injected by MapLibre, so the icon's click is caught here by delegation.
+  function handleMapContainerClick(event: React.MouseEvent<HTMLDivElement>) {
+    if ((event.target as Element).closest('a.dw-account')) {
+      event.preventDefault()
+      setAccountOpen(true)
+    }
+  }
 
   const timeline = useSessionTimeline(SERVER_URL, inviteCode)
 
@@ -237,7 +252,12 @@ export default function App() {
 
   return (
     <>
-      <div ref={containerRef} style={{ width: '100%', height: '100%' }} />
+      <div
+        ref={containerRef}
+        style={{ width: '100%', height: '100%' }}
+        data-signed-in={authSession ? 'true' : 'false'}
+        onClick={handleMapContainerClick}
+      />
       <LegendHelp />
       <MapStyleToggle styleId={mapStyleId} onToggle={handleToggleMapStyle} />
       {inviteCode && !timeline.invalidInvite && (
@@ -281,6 +301,7 @@ export default function App() {
       {timeline.error && !timeline.invalidInvite && inviteCode && (
         <div style={statusToast}>{timeline.error}</div>
       )}
+      {accountOpen && <SignInPanel serverUrl={SERVER_URL} onClose={() => setAccountOpen(false)} />}
       {timeline.invalidInvite && (
         <InvalidInvitePrompt
           message={

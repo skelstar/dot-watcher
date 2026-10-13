@@ -45,3 +45,14 @@ export const LINZ_ATTRIBUTION =
 
 // Dot Watcher's own legal pages, appended to the attribution so all the small print is one block.
 export const LEGAL_LINKS_ATTRIBUTION = '<a href="/privacy">Privacy</a> · <a href="/terms">Terms</a>'
+
+// Icon-only account entry (a head in a circle) appended to the same block. MapLibre injects this HTML
+// once at map creation, so the link is static; App.tsx opens the sign-in panel by event delegation on
+// 'a.dw-account', and index.css fills the glyph when `data-signed-in="true"` is set on the map container.
+export const ACCOUNT_LINK_ATTRIBUTION =
+  '<a href="#account" class="dw-account" role="button" aria-label="Account" title="Account">' +
+  '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">' +
+  '<circle cx="8" cy="8" r="7" fill="none" stroke="currentColor" stroke-width="1.3"/>' +
+  '<circle class="dw-account-fill" cx="8" cy="6.2" r="2.1" fill="none" stroke="currentColor" stroke-width="1.1"/>' +
+  '<path class="dw-account-fill" d="M3.7 12.7c.6-2.2 2.3-3.4 4.3-3.4s3.7 1.2 4.3 3.4z" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round"/>' +
+  '</svg></a>'

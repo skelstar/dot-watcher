@@ -28,6 +28,21 @@
   bottom: 2px;
 }
 
+/* Account icon in the attribution (see ACCOUNT_LINK_ATTRIBUTION): outline when signed out, filled when
+   the map container carries data-signed-in="true". */
+.maplibregl-ctrl-attrib a.dw-account {
+  display: inline-block;
+  vertical-align: -3px;
+  line-height: 0;
+  color: #57606a;
+}
+.maplibregl-ctrl-attrib a.dw-account:hover {
+  color: #1f6feb;
+}
+[data-signed-in="true"] .dw-account-fill {
+  fill: currentColor;
+}
+
 html, body, #root {
   width: 100%;
   height: 100%;
