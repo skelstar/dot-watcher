@@ -100,7 +100,7 @@ export default function SignInPanel({ serverUrl, onClose }: Props) {
 
             {isRegister && (
               <>
-                <label style={fieldLabel} htmlFor="dw-account-initials">Your initials (2 char)</label>
+                <label style={fieldLabel} htmlFor="dw-account-initials">Your initials</label>
                 <input
                   id="dw-account-initials"
                   style={{ ...input, textTransform: 'uppercase' }}
