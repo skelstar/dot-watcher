@@ -118,7 +118,11 @@ export default function SignInPanel({ serverUrl, onClose }: Props) {
 
             {error && <p style={errorText} role="alert">{error}</p>}
 
-            <button style={primaryButton} type="submit" disabled={!canSubmit || busy}>
+            <button
+              style={canSubmit && !busy ? primaryButton : { ...primaryButton, ...primaryButtonDisabled }}
+              type="submit"
+              disabled={!canSubmit || busy}
+            >
               {busy ? 'Please wait…' : isRegister ? 'Create account' : 'Sign in'}
             </button>
             <button style={linkButton} type="button" onClick={() => switchMode(isRegister ? 'signIn' : 'register')}>
@@ -214,6 +218,13 @@ const primaryButton: React.CSSProperties = {
   color: '#fff',
   cursor: 'pointer',
   fontWeight: 600,
+}
+
+// Inline styles can't use :disabled, so the form picks this when the submit button is not usable.
+const primaryButtonDisabled: React.CSSProperties = {
+  background: '#d0d7de',
+  color: '#8b949e',
+  cursor: 'not-allowed',
 }
 
 const secondaryButton: React.CSSProperties = {
