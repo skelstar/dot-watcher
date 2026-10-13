@@ -1,5 +1,8 @@
 import { initialsFor } from './components/InitialsBadge.tsx'
 
+// Signed-in button colour; SignInPanel's initials preview reuses it so the two match.
+export const ACCOUNT_BLUE = '#1f6feb'
+
 interface Props {
   // Signed-in user's display name (the 2-letter initials the account was created with), or null when
   // browsing anonymously.
@@ -19,7 +22,7 @@ export default function AccountButton({ displayName, onClick }: Props) {
     <button
       type="button"
       onClick={onClick}
-      style={{ ...button, background: signedIn ? '#1f6feb' : '#fff' }}
+      style={{ ...button, background: signedIn ? ACCOUNT_BLUE : '#fff' }}
       title={label}
       aria-label={label}
     >
@@ -56,7 +59,7 @@ const button: React.CSSProperties = {
   pointerEvents: 'auto',
 }
 
-const initialsText: React.CSSProperties = {
+export const initialsText: React.CSSProperties = {
   color: '#fff',
   fontFamily: 'system-ui, sans-serif',
   fontWeight: 700,

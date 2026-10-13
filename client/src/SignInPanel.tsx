@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { register, signIn, signOut } from './auth.ts'
+import { ACCOUNT_BLUE, initialsText } from './AccountButton.tsx'
 import { useAuthSession } from './useAuthSession.ts'
 
 interface Props {
@@ -101,17 +102,23 @@ export default function SignInPanel({ serverUrl, onClose }: Props) {
             {isRegister && (
               <>
                 <label style={fieldLabel} htmlFor="dw-account-initials">Your initials</label>
-                <input
-                  id="dw-account-initials"
-                  style={{ ...input, textTransform: 'uppercase' }}
-                  value={initials}
-                  onChange={event => setInitials(event.target.value.slice(0, 2))}
-                  maxLength={2}
-                  autoComplete="off"
-                  autoCapitalize="characters"
-                  autoCorrect="off"
-                  spellCheck={false}
-                />
+                <div style={initialsRow}>
+                  <input
+                    id="dw-account-initials"
+                    style={{ ...input, ...initialsInput }}
+                    value={initials}
+                    onChange={event => setInitials(event.target.value.slice(0, 2))}
+                    maxLength={2}
+                    autoComplete="off"
+                    autoCapitalize="characters"
+                    autoCorrect="off"
+                    spellCheck={false}
+                  />
+                  {/* Preview of the signed-in account button: "??" until each initial is typed. */}
+                  <span style={initialsPreview} aria-hidden="true">
+                    <span style={initialsText}>{previewInitials(initials)}</span>
+                  </span>
+                </div>
                 <span style={hint}>Two letters, shown on your account button.</span>
               </>
             )}
@@ -134,6 +141,12 @@ export default function SignInPanel({ serverUrl, onClose }: Props) {
       </div>
     </div>
   )
+}
+
+// "ST" typed -> "ST"; "S" -> "S?"; nothing -> "??".
+function previewInitials(value: string): string {
+  const typed = value.trim().toUpperCase()
+  return [typed[0] ?? '?', typed[1] ?? '?'].join('')
 }
 
 const overlay: React.CSSProperties = {
@@ -195,6 +208,31 @@ const input: React.CSSProperties = {
   borderRadius: 6,
   border: '1px solid #d0d7de',
   outline: 'none',
+}
+
+const initialsRow: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 10,
+}
+
+const initialsInput: React.CSSProperties = {
+  flex: 1,
+  minWidth: 0,
+  textTransform: 'uppercase',
+}
+
+// Same size, colour and corners as the signed-in AccountButton in the map's button column.
+const initialsPreview: React.CSSProperties = {
+  flex: 'none',
+  width: 29,
+  height: 29,
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  background: ACCOUNT_BLUE,
+  borderRadius: 4,
+  boxShadow: '0 0 0 2px rgba(0,0,0,0.1)',
 }
 
 const hint: React.CSSProperties = {
