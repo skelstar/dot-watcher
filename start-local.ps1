@@ -3,9 +3,9 @@
 # restarted independently. Close a window (or Ctrl+C inside it) to stop that half.
 #
 # Before starting anything, this script:
-#   1. Requires Docker to already be running (it never starts Docker itself - the server needs
-#      the Postgres container started separately via `docker compose up -d`, see the "Local
-#      Postgres" section of server/README.md).
+#   1. Requires Docker to already be running (it never starts Docker itself), then starts the
+#      local Postgres container via `docker compose up -d` if it isn't running and waits until
+#      it accepts connections (see the "Local Postgres" section of server/README.md).
 #   2. Finds and stops any existing server/client instance left over from a previous run, so
 #      re-running this script always ends up with exactly one of each, cleanly bound to the
 #      expected ports.
@@ -63,9 +63,35 @@ function Test-DockerRunning {
 }
 
 if (-not (Test-DockerRunning)) {
-    Write-Error "Docker isn't running. Start Docker Desktop (or your Docker engine), run 'docker compose up -d' from the repo root to bring up local Postgres, then re-run this script."
+    Write-Error "Docker isn't running. Start Docker Desktop (or your Docker engine), then re-run this script."
     exit 1
 }
+
+# Starts the compose Postgres container if it isn't already running, then waits until it accepts
+# connections (the server connects eagerly at startup, so "container started" isn't enough).
+function Start-LocalPostgres {
+    $running = docker compose --project-directory $root ps --status running --services 2>$null
+    if ($running -contains 'postgres') {
+        Write-Host 'Local Postgres is already running.'
+    } else {
+        Write-Host 'Starting local Postgres (docker compose up -d)...'
+        docker compose --project-directory $root up -d postgres
+        if ($LASTEXITCODE -ne 0) {
+            Write-Error "'docker compose up -d' failed - see output above."
+            exit 1
+        }
+    }
+
+    for ($i = 0; $i -lt 30; $i++) {
+        docker compose --project-directory $root exec -T postgres pg_isready -U dotwatcher -d dotwatcher 1>$null 2>$null
+        if ($LASTEXITCODE -eq 0) { return }
+        Start-Sleep -Seconds 1
+    }
+    Write-Error 'Local Postgres did not become ready within 30 seconds.'
+    exit 1
+}
+
+Start-LocalPostgres
 
 # Finds whatever's listening on $Port (almost always a previous run of this same script left
 # over from a crashed/closed window) and stops it, so this script can always start fresh rather
