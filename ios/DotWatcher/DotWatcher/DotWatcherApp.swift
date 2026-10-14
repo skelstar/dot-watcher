@@ -9,6 +9,10 @@ import SwiftUI
 
 @main
 struct DotWatcherApp: App {
+    init() {
+        SatelliteAlerts.shared.install()
+    }
+
     var body: some Scene {
         WindowGroup {
             ContentView()
