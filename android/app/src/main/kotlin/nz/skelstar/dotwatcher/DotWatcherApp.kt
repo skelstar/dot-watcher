@@ -3,11 +3,14 @@ package nz.skelstar.dotwatcher
 import android.content.Intent
 import android.net.Uri
 import android.provider.Settings
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -62,6 +65,13 @@ fun DotWatcherApp(hasBackgroundLocationPermission: Boolean) {
                     onRegister = viewModel::register,
                     onLogin = viewModel::login,
                 )
+
+                Destination.Restoring -> Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    CircularProgressIndicator()
+                }
 
                 Destination.Session -> SessionScreen(
                     state = sessionState,
