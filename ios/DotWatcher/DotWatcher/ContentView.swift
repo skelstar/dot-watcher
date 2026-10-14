@@ -60,7 +60,6 @@ struct ContentView: View {
                         showNameEntry = true
                     }
                     Task { await location.loadSessions() }
-                    Task { await location.loadRecentSessions() }
                 } else {
                     showAuth = true
                 }
@@ -254,9 +253,6 @@ struct ContentView: View {
                     headerSection
                     runnerRow
                     noSessionJoinCard
-                    if !location.recentSessions.isEmpty {
-                        recentSessionsCard
-                    }
                     noSessionCreateLink
                     if let formError {
                         Label(formError, systemImage: "exclamationmark.triangle.fill")
@@ -272,7 +268,6 @@ struct ContentView: View {
             }
             .refreshable {
                 await location.loadSessions()
-                await location.loadRecentSessions()
             }
         }
     }
@@ -348,50 +343,6 @@ struct ContentView: View {
                 }
                 .buttonStyle(.plain)
                 .disabled(isBusy || noSessionInviteCode.count < 6)
-            }
-            .background(Color(.systemGray5))
-            .clipShape(RoundedRectangle(cornerRadius: 14))
-        }
-    }
-
-    private var recentSessionsCard: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Recent Sessions")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
-                .padding(.leading, 4)
-            VStack(spacing: 0) {
-                ForEach(Array(location.recentSessions.enumerated()), id: \.element.id) { index, membership in
-                    if index > 0 {
-                        Divider().padding(.leading, 16)
-                    }
-                    HStack {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(membership.sessionName)
-                                .font(.subheadline.weight(.medium))
-                                .foregroundStyle(.primary)
-                            Text("Invite \(membership.inviteCode)")
-                                .font(.caption.monospaced())
-                                .foregroundStyle(.secondary)
-                        }
-                        Spacer()
-                        Button {
-                            Task { await rejoinSession(inviteCode: membership.inviteCode) }
-                        } label: {
-                            Text("Rejoin")
-                                .font(.subheadline.weight(.semibold))
-                                .foregroundStyle(.white)
-                                .padding(.horizontal, 14)
-                                .padding(.vertical, 8)
-                                .background(Color.accentColor, in: RoundedRectangle(cornerRadius: 8))
-                        }
-                        .buttonStyle(.plain)
-                        .disabled(isBusy)
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 14)
-                }
             }
             .background(Color(.systemGray5))
             .clipShape(RoundedRectangle(cornerRadius: 14))
@@ -631,10 +582,7 @@ struct ContentView: View {
                     .buttonStyle(.plain)
                 } else if location.isAuthenticated {
                     Button {
-                        Task {
-                            await location.loadSessions()
-                            await location.loadRecentSessions()
-                        }
+                        Task { await location.loadSessions() }
                     } label: {
                         Image(systemName: "arrow.clockwise")
                             .font(.system(size: 20))
@@ -925,17 +873,6 @@ struct ContentView: View {
         formError = nil
         do {
             try await location.joinInvite(code: code, displayName: location.runnerName)
-        } catch {
-            formError = error.localizedDescription
-        }
-        isBusy = false
-    }
-
-    private func rejoinSession(inviteCode: String) async {
-        isBusy = true
-        formError = nil
-        do {
-            try await location.joinInvite(code: inviteCode, displayName: location.runnerName)
         } catch {
             formError = error.localizedDescription
         }
