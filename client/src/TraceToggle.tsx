@@ -35,7 +35,7 @@ function TraceIcon() {
 
 const button: React.CSSProperties = {
   position: 'absolute',
-  top: 225,
+  top: 195,
   right: 10,
   width: 29,
   height: 29,

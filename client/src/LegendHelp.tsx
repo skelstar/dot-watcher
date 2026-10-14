@@ -215,11 +215,11 @@ function InlineCountdown() {
   )
 }
 
-// Positioned below MapLibre's top-right NavigationControl (zoom +/-, compass, y 10-106), with a
+// Positioned below the top-right column's AccountButton and MapLibre's compass (y 10-76), with a
 // small gap under it.
 const helpButton: React.CSSProperties = {
   position: 'absolute',
-  top: 116,
+  top: 86,
   right: 10,
   width: 29,
   height: 29,

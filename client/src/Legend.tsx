@@ -204,7 +204,7 @@ const container: React.CSSProperties = {
   position: 'absolute',
   top: 12,
   left: 12,
-  // Leaves a gutter clear of MapLibre's top-right NavigationControl (zoom +/-, compass), which
+  // Leaves a gutter clear of MapLibre's top-right controls (account button, compass), which
   // would otherwise sit at the same right edge and visually/z-index-cover our own button.
   right: 56,
   maxHeight: 'calc(100vh - 24px)',
