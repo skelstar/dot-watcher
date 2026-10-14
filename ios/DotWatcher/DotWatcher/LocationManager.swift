@@ -773,6 +773,10 @@ final class LocationManager {
     /// At most one automatic post in flight; a hung satellite request must not stack with the
     /// next tick, retry, or path-change trigger.
     private var postInFlight = false
+    /// The in-flight post's task, kept so a path-change trigger can supersede it: a request that
+    /// hung on a dead path would otherwise swallow the trigger for the length of its timeout,
+    /// which can outlast a short satellite window.
+    private var postTask: Task<Void, Never>?
     private var retryTask: Task<Void, Never>?
     private var retryAttempt = 0
     private var lastPathTriggerAt: Date?
@@ -822,7 +826,17 @@ final class LocationManager {
             // The regular tick supersedes any pending retry and starts a fresh backoff sequence.
             cancelRetries()
         }
-        if trigger != .start, trigger != .sessionChange, postInFlight { return }
+        if postInFlight {
+            if trigger == .pathChange {
+                // The path just changed, so whatever is in flight was started on the old one and
+                // is likely stuck waiting out its timeout. Drop it and send from the new path.
+                postTask?.cancel()
+                postTask = nil
+                postInFlight = false
+            } else if trigger != .start, trigger != .sessionChange {
+                return
+            }
+        }
 
         // Checked first, before the GPS guard below: the whole point of pausing is that
         // `latestLocation` is allowed to go stale (CLLocationManager is stopped), so this can't
@@ -863,7 +877,7 @@ final class LocationManager {
         // true when it was decided to send it now, at this cadence.
         let isUltraConstrained = self.isUltraConstrained
         postInFlight = true
-        Task {
+        postTask = Task {
             // Post the current time, not loc.timestamp: while stationary, CoreLocation's
             // distanceFilter withholds new fixes entirely, so latestLocation (and its original
             // GPS timestamp) can go stale for as long as the device doesn't move. Re-sending that
@@ -881,6 +895,9 @@ final class LocationManager {
                 nextExpectedAt: nextPostAt(from: now),
                 isUltraConstrained: isUltraConstrained,
                 batteryLevel: batteryPercentage)
+            // Superseded by a path-change post: that one now owns `postInFlight`, the stats and
+            // any retry, so this stale attempt must not touch them.
+            guard !Task.isCancelled else { return }
             postInFlight = false
             recordPostAttempt(trigger: trigger, isUltraConstrained: isUltraConstrained, outcome: outcome)
             switch outcome {
@@ -965,7 +982,7 @@ final class LocationManager {
             runnerPositions = Array(mergedPositions.values)
             return .success
         } catch {
-            guard sessionId == targetSessionId else { return .superseded }
+            guard sessionId == targetSessionId, !Task.isCancelled else { return .superseded }
             status = error.localizedDescription
             // Only transport failures are worth a quick retry; a 4xx/426 from the server won't
             // fix itself in a few seconds and is handled by the next regular tick as before.
