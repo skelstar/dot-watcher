@@ -1,4 +1,6 @@
 import SwiftUI
+import UIKit
+import UserNotifications
 
 private let privacyURL = URL(string: "https://dot-watcher.skelstar.io/privacy")!
 private let termsURL = URL(string: "https://dot-watcher.skelstar.io/terms")!
@@ -13,7 +15,10 @@ struct AuthSheet: View {
     @State private var error: String?
     @State private var isBusy = false
     @State private var showDeleteConfirmation = false
+    @State private var notificationStatus: UNAuthorizationStatus = .notDetermined
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.openURL) private var openURL
+    @Environment(\.scenePhase) private var scenePhase
 
     enum AuthMode: Hashable {
         case signIn
@@ -49,6 +54,7 @@ struct AuthSheet: View {
                         .pickerStyle(.segmented)
                         .labelsHidden()
                     }
+                    notificationsSection
                     #if DEBUG
                     Section {
                         Toggle("Force satellite mode", isOn: $location.debugForceUltraConstrained)
@@ -103,13 +109,18 @@ struct AuthSheet: View {
                     }
                 }
             }
-            .navigationTitle("Account")
+            .navigationTitle(location.isAuthenticated ? "Settings" : "Account")
             .toolbar {
                 if location.isAuthenticated {
                     ToolbarItem(placement: .confirmationAction) {
                         Button("Done") { dismiss() }
                     }
                 }
+            }
+            .task { notificationStatus = await SatelliteAlerts.shared.authorizationStatus() }
+            .onChange(of: scenePhase) { _, phase in
+                guard phase == .active else { return }
+                Task { notificationStatus = await SatelliteAlerts.shared.authorizationStatus() }
             }
             .alert("Delete account?", isPresented: $showDeleteConfirmation) {
                 Button("Delete", role: .destructive) {
@@ -119,6 +130,25 @@ struct AuthSheet: View {
             } message: {
                 Text("This removes your account, memberships, owned sessions, and stored location rows linked to your account. This cannot be undone.")
             }
+        }
+    }
+
+    private var notificationsSection: some View {
+        Section {
+            Toggle("Satellite alerts", isOn: $location.satelliteAlertsEnabled)
+            Toggle("Play sound", isOn: $location.satelliteAlertSound)
+                .disabled(!location.satelliteAlertsEnabled)
+            if notificationStatus == .denied {
+                Button("Allow notifications in Settings") {
+                    if let url = URL(string: UIApplication.openSettingsURLString) { openURL(url) }
+                }
+            }
+        } header: {
+            Text("Notifications")
+        } footer: {
+            Text(notificationStatus == .denied
+                 ? "Notifications are turned off for DotWatcher in iOS Settings, so satellite alerts can't be shown."
+                 : "Alerts you when your phone switches to satellite while you're tracking.")
         }
     }
 

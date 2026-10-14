@@ -22,7 +22,12 @@ struct ContentView: View {
     @State private var blockError: String?
     @State private var showCreateSession: Bool = false
     @State private var noSessionCreateCode = ""
+    @State private var noSessionCreateLengthHours = CreateSessionView.defaultLengthHours
     @State private var noSessionInviteCode = ""
+    /// Invite code from a tapped `/join/{CODE}` link (see `InviteLink`), held until it's been prefilled
+    /// or confirmed. Survives the sign-in sheet and the initial sessions load.
+    @State private var pendingLinkCode: String?
+    @State private var showJoinLinkPrompt = false
     @State private var isBusy = false
     @State private var formError: String?
     /// The runner the live map is currently centered on and tracking, set by tapping their
@@ -40,7 +45,10 @@ struct ContentView: View {
     @State private var versionTapCount = 0
     @State private var lastVersionTap: Date?
 
-    var body: some View {
+    /// The first half of `body`'s modifier chain. Split from `body` because one chain this long
+    /// exceeds the Swift type-checker's budget ("unable to type-check this expression in
+    /// reasonable time").
+    private var bodyWithSheets: some View {
         mainContent
             .preferredColorScheme(location.appearanceMode.colorScheme)
             .onAppear {
@@ -84,6 +92,7 @@ struct ContentView: View {
             .sheet(isPresented: $showCreateSession) {
                 CreateSessionView(
                     sessionCode: $noSessionCreateCode,
+                    maxLengthHours: $noSessionCreateLengthHours,
                     isBusy: isBusy,
                     isOffline: location.isOffline
                 ) {
@@ -104,6 +113,28 @@ struct ContentView: View {
                 if location.runnerName.trimmingCharacters(in: .whitespaces).isEmpty {
                     showNameEntry = true
                 }
+            }
+    }
+
+    var body: some View {
+        bodyWithSheets
+            .onOpenURL { url in
+                guard let code = InviteLink.code(from: url) else { return }
+                pendingLinkCode = code
+                resolvePendingLink()
+            }
+            .onChange(of: location.memberships.count) {
+                resolvePendingLink()
+            }
+            .alert("Join session \(pendingLinkCode ?? "")?", isPresented: $showJoinLinkPrompt) {
+                Button("Join") {
+                    Task { await joinLinkSession() }
+                }
+                Button("Cancel", role: .cancel) {
+                    pendingLinkCode = nil
+                }
+            } message: {
+                Text("You followed an invite link.")
             }
             .fullScreenCover(item: $routeUploadPage, onDismiss: {
                 Task { await location.loadRoute() }
@@ -157,10 +188,7 @@ struct ContentView: View {
             }
             .confirmationDialog(
                 blockCandidateName ?? "",
-                isPresented: Binding(
-                    get: { blockCandidateName != nil },
-                    set: { if !$0 { blockCandidateName = nil } }
-                ),
+                isPresented: blockDialogPresented,
                 titleVisibility: .visible
             ) {
                 if let name = blockCandidateName {
@@ -193,6 +221,13 @@ struct ContentView: View {
                     Text("Are you sure? You can rejoin later using the invite code.")
                 }
             }
+    }
+
+    private var blockDialogPresented: Binding<Bool> {
+        Binding(
+            get: { blockCandidateName != nil },
+            set: { if !$0 { blockCandidateName = nil } }
+        )
     }
 
     // MARK: - Main Content
@@ -247,21 +282,30 @@ struct ContentView: View {
     }
 
     private var noSessionCreateLink: some View {
-        Button {
-            showCreateSession = true
-        } label: {
-            Text("Session doesn't exist yet? Create one")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
+        HStack {
+            Text("Create a session?")
+                .font(.title2.weight(.bold))
+                .padding(.leading, 4)
+            Spacer()
+            Button {
+                showCreateSession = true
+            } label: {
+                Text("Create")
+                    .fontWeight(.bold)
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 24)
+                    .padding(.vertical, 10)
+                    .background(Color.blue)
+                    .clipShape(Capsule())
+            }
+            .buttonStyle(.plain)
         }
-        .frame(maxWidth: .infinity)
     }
 
     private var noSessionJoinCard: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Join a Session")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
+            Text("Have an invite code?")
+                .font(.title2.weight(.bold))
                 .padding(.leading, 4)
             VStack(spacing: 0) {
                 VStack(alignment: .leading, spacing: 10) {
@@ -379,8 +423,7 @@ struct ContentView: View {
             }
             Spacer()
             if let inviteCode = location.activeMembership?.inviteCode {
-                let sessionUrl = location.webBaseURL.appendingPathComponent("code/\(inviteCode)")
-                let shareMessage = "Join my DotWatcher session!\n\nInvite code: \(inviteCode)\n\n\(sessionUrl.absoluteString)"
+                let shareMessage = InviteLink.shareMessage(base: location.webBaseURL, code: inviteCode)
                 ShareLink(item: shareMessage) {
                     Image(systemName: "square.and.arrow.up")
                         .font(.title2)
@@ -409,7 +452,7 @@ struct ContentView: View {
                         Divider()
                     }
                     Button { showAuth = true } label: {
-                        Label("Account", systemImage: "person.crop.circle")
+                        Label(location.isAuthenticated ? "Settings" : "Account", systemImage: location.isAuthenticated ? "gearshape" : "person.crop.circle")
                     }
                     Button { showHelp = true } label: {
                         Label("Help", systemImage: "questionmark.circle")
@@ -783,8 +826,12 @@ struct ContentView: View {
         isBusy = true
         formError = nil
         do {
-            try await location.createSession(name: noSessionCreateCode, displayName: location.runnerName)
+            try await location.createSession(
+                name: noSessionCreateCode,
+                displayName: location.runnerName,
+                maxLengthHours: noSessionCreateLengthHours)
             noSessionCreateCode = ""
+            noSessionCreateLengthHours = CreateSessionView.defaultLengthHours
         } catch {
             formError = error.localizedDescription
         }
@@ -797,6 +844,35 @@ struct ContentView: View {
         do {
             try await location.joinInvite(code: noSessionInviteCode, displayName: location.runnerName)
             noSessionInviteCode = ""
+            pendingLinkCode = nil
+        } catch {
+            formError = error.localizedDescription
+        }
+        isBusy = false
+    }
+
+    /// Acts on a tapped invite link. With no sessions the no-session card shows the code prefilled and
+    /// the user taps Join; with existing sessions they confirm first. The link never joins on its own.
+    /// `pendingLinkCode` stays set after prefilling so the code isn't lost if the sessions list is
+    /// still loading (it briefly looks empty on launch) and arrives afterwards.
+    private func resolvePendingLink() {
+        guard let code = pendingLinkCode else { return }
+        if location.memberships.isEmpty {
+            noSessionInviteCode = code
+        } else if location.memberships.contains(where: { $0.inviteCode == code }) {
+            pendingLinkCode = nil
+        } else if location.isAuthenticated {
+            showJoinLinkPrompt = true
+        }
+    }
+
+    private func joinLinkSession() async {
+        guard let code = pendingLinkCode else { return }
+        pendingLinkCode = nil
+        isBusy = true
+        formError = nil
+        do {
+            try await location.joinInvite(code: code, displayName: location.runnerName)
         } catch {
             formError = error.localizedDescription
         }

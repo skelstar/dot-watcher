@@ -153,6 +153,7 @@ final class LocationManager {
     private var lastParticipantCount = 0
     private var isLoadingSessions = false
     fileprivate var latestLocation: CLLocation?
+    private var awaitingFirstFix = false
     fileprivate var oneShotLocationContinuation: CheckedContinuation<CLLocation?, Never>?
 
     /// The phone's own current position, straight from CoreLocation — not from the last
@@ -191,6 +192,19 @@ final class LocationManager {
 
     var appearanceMode: AppearanceMode = AppearanceMode(rawValue: UserDefaults.standard.string(forKey: "appearanceMode") ?? "") ?? .system {
         didSet { UserDefaults.standard.set(appearanceMode.rawValue, forKey: "appearanceMode") }
+    }
+
+    /// Local notification when the phone switches to satellite (on by default). The sound is a
+    /// separate toggle so the alert can stay as a silent banner.
+    var satelliteAlertsEnabled: Bool = UserDefaults.standard.object(forKey: "satelliteAlertsEnabled") as? Bool ?? true {
+        didSet {
+            UserDefaults.standard.set(satelliteAlertsEnabled, forKey: "satelliteAlertsEnabled")
+            if satelliteAlertsEnabled { SatelliteAlerts.shared.requestAuthorizationIfNeeded() }
+        }
+    }
+
+    var satelliteAlertSound: Bool = UserDefaults.standard.object(forKey: "satelliteAlertSound") as? Bool ?? true {
+        didSet { UserDefaults.standard.set(satelliteAlertSound, forKey: "satelliteAlertSound") }
     }
 
     /// Normal post cadence. While `isUltraConstrained` (on satellite), a much longer cadence is
@@ -445,7 +459,7 @@ final class LocationManager {
         }
     }
 
-    func createSession(name: String, displayName: String?) async throws {
+    func createSession(name: String, displayName: String?, maxLengthHours: Int) async throws {
         let requestedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
         let dispName = displayName?.trimmingCharacters(in: .whitespacesAndNewlines)
         let membership: SessionMembership = try await send(
@@ -454,6 +468,7 @@ final class LocationManager {
             body: [
                 "sessionName": requestedName.isEmpty ? NSNull() : requestedName,
                 "displayName": (dispName?.isEmpty ?? true) ? NSNull() : dispName!,
+                "maxLengthHours": maxLengthHours,
             ])
         upsertMembership(membership)
         selectSession(membership)
@@ -594,6 +609,7 @@ final class LocationManager {
             status = "Owner/runner required"
             return
         }
+        if satelliteAlertsEnabled { SatelliteAlerts.shared.requestAuthorizationIfNeeded() }
 
         clManager.requestAlwaysAuthorization()
         clManager.startUpdatingLocation()
@@ -604,9 +620,31 @@ final class LocationManager {
         let cappedDuration = min(duration ?? maxTrackingDuration, maxTrackingDuration)
         trackingExpiresAt = Date().addingTimeInterval(cappedDuration)
         trackingTask = Task { [weak self] in await self?.trackingLoop() }
-        if latestLocation == nil {
-            latestLocation = clManager.location ?? CLLocation(latitude: 0, longitude: 0)
+        // `latestLocation` isn't updated while not tracking, so whatever it (or CoreLocation's cached
+        // `location`) holds can be from wherever the phone last had a fix — e.g. where the session
+        // was created. Only accept a recent fix for the first post; otherwise wait for the first
+        // real one (see `postFirstFixIfAwaited`) rather than sending a stale or (0, 0) position.
+        if let cached = clManager.location, Self.isFresh(cached) {
+            latestLocation = cached
+            captureAndPost(trigger: .start)
+        } else {
+            latestLocation = nil
+            awaitingFirstFix = true
+            status = "Waiting for GPS"
         }
+    }
+
+    private static let maxFirstFixAge: TimeInterval = 10
+
+    private static func isFresh(_ loc: CLLocation) -> Bool {
+        loc.horizontalAccuracy >= 0 && -loc.timestamp.timeIntervalSinceNow <= maxFirstFixAge
+    }
+
+    /// Called from the CoreLocation delegate on every update; sends the deferred `.start` post
+    /// once the first fix arrives after `start()` found no fresh position.
+    fileprivate func postFirstFixIfAwaited() {
+        guard awaitingFirstFix, isTracking, latestLocation != nil else { return }
+        awaitingFirstFix = false
         captureAndPost(trigger: .start)
     }
 
@@ -616,6 +654,7 @@ final class LocationManager {
         cancelRetries()
         clManager.stopUpdatingLocation()
         isTracking = false
+        awaitingFirstFix = false
         trackingExpiresAt = nil
         pausedForBattery = false
         status = "Stopped"
@@ -731,6 +770,10 @@ final class LocationManager {
     /// At most one automatic post in flight; a hung satellite request must not stack with the
     /// next tick, retry, or path-change trigger.
     private var postInFlight = false
+    /// The in-flight post's task, kept so a path-change trigger can supersede it: a request that
+    /// hung on a dead path would otherwise swallow the trigger for the length of its timeout,
+    /// which can outlast a short satellite window.
+    private var postTask: Task<Void, Never>?
     private var retryTask: Task<Void, Never>?
     private var retryAttempt = 0
     private var lastPathTriggerAt: Date?
@@ -769,6 +812,9 @@ final class LocationManager {
         guard isTracking else { return }
         let cameBack = wasOffline && !isOffline
         let enteredSatellite = !wasUltraConstrained && isUltraConstrained
+        if enteredSatellite, satelliteAlertsEnabled {
+            SatelliteAlerts.shared.notifyEnteredSatellite(playSound: satelliteAlertSound)
+        }
         guard cameBack || enteredSatellite else { return }
         if let last = lastPathTriggerAt, Date().timeIntervalSince(last) < Self.pathTriggerMinSpacing { return }
         lastPathTriggerAt = Date()
@@ -780,7 +826,17 @@ final class LocationManager {
             // The regular tick supersedes any pending retry and starts a fresh backoff sequence.
             cancelRetries()
         }
-        if trigger != .start, trigger != .sessionChange, postInFlight { return }
+        if postInFlight {
+            if trigger == .pathChange {
+                // The path just changed, so whatever is in flight was started on the old one and
+                // is likely stuck waiting out its timeout. Drop it and send from the new path.
+                postTask?.cancel()
+                postTask = nil
+                postInFlight = false
+            } else if trigger != .start, trigger != .sessionChange {
+                return
+            }
+        }
 
         // Checked first, before the GPS guard below: the whole point of pausing is that
         // `latestLocation` is allowed to go stale (CLLocationManager is stopped), so this can't
@@ -821,7 +877,7 @@ final class LocationManager {
         // true when it was decided to send it now, at this cadence.
         let isUltraConstrained = self.isUltraConstrained
         postInFlight = true
-        Task {
+        postTask = Task {
             // Post the current time, not loc.timestamp: while stationary, CoreLocation's
             // distanceFilter withholds new fixes entirely, so latestLocation (and its original
             // GPS timestamp) can go stale for as long as the device doesn't move. Re-sending that
@@ -839,6 +895,9 @@ final class LocationManager {
                 nextExpectedAt: nextPostAt(from: now),
                 isUltraConstrained: isUltraConstrained,
                 batteryLevel: batteryPercentage)
+            // Superseded by a path-change post: that one now owns `postInFlight`, the stats and
+            // any retry, so this stale attempt must not touch them.
+            guard !Task.isCancelled else { return }
             postInFlight = false
             recordPostAttempt(trigger: trigger, isUltraConstrained: isUltraConstrained, outcome: outcome)
             switch outcome {
@@ -923,7 +982,7 @@ final class LocationManager {
             runnerPositions = Array(mergedPositions.values)
             return .success
         } catch {
-            guard sessionId == targetSessionId else { return .superseded }
+            guard sessionId == targetSessionId, !Task.isCancelled else { return .superseded }
             status = error.localizedDescription
             // Only transport failures are worth a quick retry; a 4xx/426 from the server won't
             // fix itself in a few seconds and is handled by the next regular tick as before.
@@ -1193,6 +1252,7 @@ private final class LocationDelegate: NSObject, CLLocationManagerDelegate {
         guard let loc = locations.last else { return }
         Task { @MainActor [weak self] in
             self?.owner?.latestLocation = loc
+            self?.owner?.postFirstFixIfAwaited()
             self?.owner?.oneShotLocationContinuation?.resume(returning: loc)
             self?.owner?.oneShotLocationContinuation = nil
         }

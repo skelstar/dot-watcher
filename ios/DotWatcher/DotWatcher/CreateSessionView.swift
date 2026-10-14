@@ -1,7 +1,15 @@
 import SwiftUI
 
 struct CreateSessionView: View {
+    /// Event length choices, in hours. The server accepts 1-240; these are the presets offered.
+    static let lengthOptions: [(hours: Int, label: String)] = [
+        (12, "12 hours"), (24, "24 hours"), (48, "2 days"), (72, "3 days"), (120, "5 days"), (240, "10 days"),
+    ]
+    /// Default event length, in hours (also what the picker starts on).
+    static let defaultLengthHours = 12
+
     @Binding var sessionCode: String
+    @Binding var maxLengthHours: Int
     let isBusy: Bool
     let isOffline: Bool
     let onCreate: () -> Void
@@ -31,6 +39,26 @@ struct CreateSessionView: View {
                     .foregroundStyle(.secondary)
 
                 CodeBoxField(text: $sessionCode, length: 8)
+
+                VStack(spacing: 6) {
+                    HStack {
+                        Text("Event length")
+                            .foregroundStyle(.primary)
+                        Spacer()
+                        Picker("Event length", selection: $maxLengthHours) {
+                            ForEach(Self.lengthOptions, id: \.hours) { option in
+                                Text(option.label).tag(option.hours)
+                            }
+                        }
+                        .pickerStyle(.menu)
+                    }
+                    Text("Pick the longest your event could run. Going over won't stop tracking, but replay will start later.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.leading)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
 
                 Button("Create Session") {
                     onCreate()

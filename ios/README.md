@@ -54,6 +54,15 @@ The session row (once in a session) is swipeable:
 - **Swipe right** — reveals share buttons: SMS, Email, WhatsApp, Map. Each sends or opens the invite link.
 - **Swipe left** — reveals a red Leave button. Owners leave without deleting the session; the session persists for other members.
 
+### Invite links (universal links)
+
+The share message carries two links built by `InviteLink` (`InviteLink.swift`):
+
+- `{webBaseURL}/join/{CODE}` — claimed by the app. Tapping it in WhatsApp, Messages etc. on an iPhone with the app opens it; `.onOpenURL` in `ContentView` prefills the invite code boxes (or, if the user is already in a session, asks them to confirm joining). The link never joins on its own. Without the app, it opens a web page with the code and an App Store link.
+- `{webBaseURL}/code/{CODE}` — the web viewer, deliberately **not** claimed by the app, for people who only want to watch.
+
+This depends on three things lining up: the `applinks:` entries in `DotWatcher.entitlements` (prod and staging web hosts), Associated Domains enabled on the App ID in the Apple Developer portal, and `client/public/.well-known/apple-app-site-association` being served as JSON from each host with no redirect. Universal links only work on a real device with a signed build.
+
 ---
 
 ## Auth and session contract
