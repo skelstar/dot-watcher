@@ -2,6 +2,7 @@ package nz.skelstar.dotwatcher
 
 import android.content.Intent
 import android.net.Uri
+import android.provider.Settings
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
@@ -14,6 +15,7 @@ import nz.skelstar.dotwatcher.network.SessionMembership
 import nz.skelstar.dotwatcher.network.UpdateRequiredState
 import nz.skelstar.dotwatcher.ui.UpdateRequiredScreen
 import nz.skelstar.dotwatcher.ui.auth.AuthScreen
+import nz.skelstar.dotwatcher.ui.map.BackgroundLocationRequiredScreen
 import nz.skelstar.dotwatcher.ui.map.LiveMapScreen
 import nz.skelstar.dotwatcher.ui.map.ShareLocationConsentScreen
 import nz.skelstar.dotwatcher.ui.session.SessionScreen
@@ -77,10 +79,22 @@ fun DotWatcherApp(hasBackgroundLocationPermission: Boolean) {
                         onDecline = { viewModel.declineSharing(current.membership) },
                     )
                 } else {
-                    // Background location was denied (or not yet granted) — sharing while
-                    // backgrounded can't work, so skip straight to viewing rather than offer a
-                    // consent screen for a feature that can't function.
-                    MapDestinationScreen(current.membership, isSharing = false, viewModel)
+                    // Background location isn't granted — sharing while backgrounded can't work,
+                    // so explain why it's needed rather than offer a consent screen for a feature
+                    // that can't function (or silently drop to view-only).
+                    val context = LocalContext.current
+                    BackgroundLocationRequiredScreen(
+                        sessionName = current.membership.sessionName,
+                        onOpenSettings = {
+                            context.startActivity(
+                                Intent(
+                                    Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                                    Uri.fromParts("package", context.packageName, null),
+                                )
+                            )
+                        },
+                        onViewOnly = { viewModel.declineSharing(current.membership) },
+                    )
                 }
 
                 is Destination.Map -> MapDestinationScreen(current.membership, current.isSharing, viewModel)
