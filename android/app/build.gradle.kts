@@ -36,13 +36,13 @@ val releaseKeyPassword: String? = localProperties.getProperty("RELEASE_KEY_PASSW
 
 android {
     namespace = "nz.skelstar.dotwatcher"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "nz.skelstar.dotwatcher"
         minSdk = 26
-        targetSdk = 35
-        versionCode = 1
+        targetSdk = 36
+        versionCode = 2
         versionName = "0.1.0"
 
         buildConfigField("String", "LINZ_API_KEY", "\"$linzApiKey\"")
