@@ -15,6 +15,8 @@ import { MAP_STYLES, DEFAULT_MAP_STYLE_ID, LINZ_ATTRIBUTION, LEGAL_LINKS_ATTRIBU
 import MapStyleToggle from './MapStyleToggle.tsx'
 import Terrain3DToggle from './Terrain3DToggle.tsx'
 import InvalidInvitePrompt from './InvalidInvitePrompt.tsx'
+import SignInPanel from './SignInPanel.tsx'
+import AccountButton from './AccountButton.tsx'
 import Legend from './Legend.tsx'
 import TraceToggle from './TraceToggle.tsx'
 import LegendHelp from './LegendHelp.tsx'
@@ -33,6 +35,7 @@ import { useSimulatorRouteOverlay } from './useSimulatorRouteOverlay.ts'
 import { useSessionTimeline } from './useSessionTimeline.ts'
 import { parseGpxCoordinates } from './gpx.ts'
 import { apiHeaders } from './apiHeaders.ts'
+import { useAuthSession } from './useAuthSession.ts'
 
 setWorkerUrl(maplibreWorkerUrl)
 
@@ -126,7 +129,9 @@ export default function App() {
       attributionControl: { compact: false, customAttribution: [LEGAL_LINKS_ATTRIBUTION, LINZ_ATTRIBUTION] },
     })
 
-    map.addControl(new NavigationControl(), 'top-right')
+    // Compass only: the +/- buttons are dropped (pinch/scroll still zoom) and AccountButton takes the
+    // top of this column, with the compass pushed below it by index.css.
+    map.addControl(new NavigationControl({ showZoom: false }), 'top-right')
 
     // setStyle() wipes the terrain along with everything else, so re-apply it on every style load.
     map.on('style.load', () => {
@@ -154,6 +159,11 @@ export default function App() {
       mapRef.current = null
     }
   }, [legalPage])
+
+  // Optional viewer sign-in, reached only through the account button in the top-right column.
+  // Anonymous viewing is unaffected; the panel just stores a session that apiHeaders() then sends.
+  const authSession = useAuthSession()
+  const [accountOpen, setAccountOpen] = useState(false)
 
   const timeline = useSessionTimeline(SERVER_URL, inviteCode)
 
@@ -238,6 +248,7 @@ export default function App() {
   return (
     <>
       <div ref={containerRef} style={{ width: '100%', height: '100%' }} />
+      <AccountButton displayName={authSession?.user.displayName ?? null} onClick={() => setAccountOpen(true)} />
       <LegendHelp />
       <MapStyleToggle styleId={mapStyleId} onToggle={handleToggleMapStyle} />
       {inviteCode && !timeline.invalidInvite && (
@@ -281,6 +292,7 @@ export default function App() {
       {timeline.error && !timeline.invalidInvite && inviteCode && (
         <div style={statusToast}>{timeline.error}</div>
       )}
+      {accountOpen && <SignInPanel serverUrl={SERVER_URL} onClose={() => setAccountOpen(false)} />}
       {timeline.invalidInvite && (
         <InvalidInvitePrompt
           message={

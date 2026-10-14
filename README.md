@@ -126,7 +126,6 @@ A native Swift app.
 - Runner starts/stops tracking manually
 - One active session at a time: share its invite link via the header share button (the system
   share sheet — SMS, Email, WhatsApp, etc.); leave via the overflow menu
-- When there's no active session, a "Recent Sessions" list offers tap-to-rejoin by invite code
 
 **Auth**
 

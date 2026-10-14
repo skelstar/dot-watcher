@@ -45,7 +45,10 @@ struct ContentView: View {
     @State private var versionTapCount = 0
     @State private var lastVersionTap: Date?
 
-    var body: some View {
+    /// The first half of `body`'s modifier chain. Split from `body` because one chain this long
+    /// exceeds the Swift type-checker's budget ("unable to type-check this expression in
+    /// reasonable time").
+    private var bodyWithSheets: some View {
         mainContent
             .preferredColorScheme(location.appearanceMode.colorScheme)
             .onAppear {
@@ -57,7 +60,6 @@ struct ContentView: View {
                         showNameEntry = true
                     }
                     Task { await location.loadSessions() }
-                    Task { await location.loadRecentSessions() }
                 } else {
                     showAuth = true
                 }
@@ -112,6 +114,10 @@ struct ContentView: View {
                     showNameEntry = true
                 }
             }
+    }
+
+    var body: some View {
+        bodyWithSheets
             .onOpenURL { url in
                 guard let code = InviteLink.code(from: url) else { return }
                 pendingLinkCode = code
@@ -182,10 +188,7 @@ struct ContentView: View {
             }
             .confirmationDialog(
                 blockCandidateName ?? "",
-                isPresented: Binding(
-                    get: { blockCandidateName != nil },
-                    set: { if !$0 { blockCandidateName = nil } }
-                ),
+                isPresented: blockDialogPresented,
                 titleVisibility: .visible
             ) {
                 if let name = blockCandidateName {
@@ -220,6 +223,13 @@ struct ContentView: View {
             }
     }
 
+    private var blockDialogPresented: Binding<Bool> {
+        Binding(
+            get: { blockCandidateName != nil },
+            set: { if !$0 { blockCandidateName = nil } }
+        )
+    }
+
     // MARK: - Main Content
 
     @ViewBuilder
@@ -243,9 +253,6 @@ struct ContentView: View {
                     headerSection
                     runnerRow
                     noSessionJoinCard
-                    if !location.recentSessions.isEmpty {
-                        recentSessionsCard
-                    }
                     noSessionCreateLink
                     if let formError {
                         Label(formError, systemImage: "exclamationmark.triangle.fill")
@@ -261,7 +268,6 @@ struct ContentView: View {
             }
             .refreshable {
                 await location.loadSessions()
-                await location.loadRecentSessions()
             }
         }
     }
@@ -337,50 +343,6 @@ struct ContentView: View {
                 }
                 .buttonStyle(.plain)
                 .disabled(isBusy || noSessionInviteCode.count < 6)
-            }
-            .background(Color(.systemGray5))
-            .clipShape(RoundedRectangle(cornerRadius: 14))
-        }
-    }
-
-    private var recentSessionsCard: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Recent Sessions")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
-                .padding(.leading, 4)
-            VStack(spacing: 0) {
-                ForEach(Array(location.recentSessions.enumerated()), id: \.element.id) { index, membership in
-                    if index > 0 {
-                        Divider().padding(.leading, 16)
-                    }
-                    HStack {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(membership.sessionName)
-                                .font(.subheadline.weight(.medium))
-                                .foregroundStyle(.primary)
-                            Text("Invite \(membership.inviteCode)")
-                                .font(.caption.monospaced())
-                                .foregroundStyle(.secondary)
-                        }
-                        Spacer()
-                        Button {
-                            Task { await rejoinSession(inviteCode: membership.inviteCode) }
-                        } label: {
-                            Text("Rejoin")
-                                .font(.subheadline.weight(.semibold))
-                                .foregroundStyle(.white)
-                                .padding(.horizontal, 14)
-                                .padding(.vertical, 8)
-                                .background(Color.accentColor, in: RoundedRectangle(cornerRadius: 8))
-                        }
-                        .buttonStyle(.plain)
-                        .disabled(isBusy)
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 14)
-                }
             }
             .background(Color(.systemGray5))
             .clipShape(RoundedRectangle(cornerRadius: 14))
@@ -490,7 +452,7 @@ struct ContentView: View {
                         Divider()
                     }
                     Button { showAuth = true } label: {
-                        Label("Account", systemImage: "person.crop.circle")
+                        Label(location.isAuthenticated ? "Settings" : "Account", systemImage: location.isAuthenticated ? "gearshape" : "person.crop.circle")
                     }
                     Button { showHelp = true } label: {
                         Label("Help", systemImage: "questionmark.circle")
@@ -620,10 +582,7 @@ struct ContentView: View {
                     .buttonStyle(.plain)
                 } else if location.isAuthenticated {
                     Button {
-                        Task {
-                            await location.loadSessions()
-                            await location.loadRecentSessions()
-                        }
+                        Task { await location.loadSessions() }
                     } label: {
                         Image(systemName: "arrow.clockwise")
                             .font(.system(size: 20))
@@ -914,17 +873,6 @@ struct ContentView: View {
         formError = nil
         do {
             try await location.joinInvite(code: code, displayName: location.runnerName)
-        } catch {
-            formError = error.localizedDescription
-        }
-        isBusy = false
-    }
-
-    private func rejoinSession(inviteCode: String) async {
-        isBusy = true
-        formError = nil
-        do {
-            try await location.joinInvite(code: inviteCode, displayName: location.runnerName)
         } catch {
             formError = error.localizedDescription
         }
