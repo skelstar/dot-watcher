@@ -39,6 +39,21 @@ explicitly out of scope. See satelite-connectivity.md for the satellite backgrou
 - No "left satellite" alert (could be added next to the `enteredSatellite` branch).
 - Android not touched.
 
+## Status (2026-10-14)
+
+Code complete, **unverified**. Branch `ios-satellite-alerts`, PR #175 -> `staging` (open,
+mergeable, no CI checks have run). Stacked on PR #173 (`ios-path-change-supersedes-inflight`,
+also open) — merge #173 first or together.
+
+### Next steps
+
+- [ ] Get a green build (CI or the build-ios-simulator skill); watch for a ContentView
+      type-check timeout.
+- [ ] Manual test: Debug "Force satellite mode" while tracking -> banner; repeat with screen
+      locked; repeat with notification permission denied (button + footer).
+- [ ] Merge #173 then #175 into `staging`.
+- [ ] Optional: sound picker, "left satellite" alert, Android parity.
+
 ## Not verified
 
 Built/tested by CI only (AGENTS.md). To test manually: Debug builds have "Force satellite mode"
