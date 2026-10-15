@@ -1,9 +1,5 @@
 package nz.skelstar.dotwatcher.ui.map
 
-import android.graphics.Bitmap
-import android.graphics.Canvas
-import android.graphics.Paint
-import android.graphics.Path
 import android.graphics.PointF
 import android.graphics.RectF
 import androidx.compose.foundation.layout.Box
@@ -15,6 +11,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.rememberUpdatedState
+import kotlinx.coroutines.delay
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -27,6 +24,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import nz.skelstar.dotwatcher.location.nextPostAt
 import nz.skelstar.dotwatcher.network.RunnerPosition
 import org.maplibre.android.MapLibre
 import org.maplibre.android.camera.CameraPosition
@@ -53,7 +51,10 @@ import org.maplibre.android.style.sources.GeoJsonSource
 import org.maplibre.geojson.Feature
 import org.maplibre.geojson.FeatureCollection
 import org.maplibre.geojson.Point
+import java.time.Duration
+import java.time.Instant
 import kotlin.math.abs
+import kotlin.math.ceil
 
 private const val RUNNERS_SOURCE_ID = "runners-source"
 private const val RUNNERS_LAYER_ID = "runners-layer"
@@ -66,14 +67,16 @@ private const val RELEASE_THRESHOLD = 0.1
 private const val HEADING_PROPERTY = "heading"
 private const val ICON_PROPERTY = "icon"
 
-private fun arrowIconId(colorIndex: Int) = "runner-arrow-$colorIndex"
-private fun dotIconId(colorIndex: Int) = "runner-dot-$colorIndex"
+private const val CHEVRONS_SOURCE_ID = "chevrons-source"
+private const val CHEVRONS_LAYER_ID = "chevrons-layer"
+
+private fun chevronIconId(colorIndex: Int) = "runner-chevron-$colorIndex"
 
 /**
  * Live map for one session: LINZ topo basemap (matching client/'s style, see
- * client/src/map/mapStyle.ts) plus one marker per runner from [positions], a directional arrow
- * when [RunnerPosition.heading] is present and a plain dot otherwise — mirroring the fallback
- * rule in repo root README.md ("client" section). Each runner is colored via
+ * client/src/map/mapStyle.ts) plus one marker per runner from [positions], with a heading chevron
+ * when [RunnerPosition.heading] is present — mirroring the fallback rule in repo root README.md
+ * ("client" section). Each runner is colored via
  * [RunnerColorPalette]; [currentUserName]'s own marker always gets
  * [RunnerColorPalette.CURRENT_USER_INDEX]'s color (blue), the way iOS highlights the local
  * user's own marker.
@@ -83,6 +86,10 @@ private fun dotIconId(colorIndex: Int) = "runner-dot-$colorIndex"
  * leaves the camera more than 10% of the visible width from where it was aimed calls
  * [onUserMovedCamera]; zoom alone never does, since it doesn't move the centre. Tapping a runner's
  * marker calls [onRunnerTapped].
+ *
+ * Markers are initials circles (see RunnerPins.kt) with a heading chevron orbiting them. While
+ * [sendIntervalSeconds] is set (this device is sharing), the local user's pin wears a ring that
+ * empties toward the next clock-aligned position send.
  */
 @Composable
 fun MapScreen(
@@ -94,6 +101,7 @@ fun MapScreen(
     fitAllTick: Int = 0,
     onRunnerTapped: (String) -> Unit = {},
     onUserMovedCamera: () -> Unit = {},
+    sendIntervalSeconds: Long? = null,
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -105,6 +113,16 @@ fun MapScreen(
 
     var style: Style? by remember { mutableStateOf<Style?>(null) }
     val camera = remember { CameraAim() }
+    val density = context.resources.displayMetrics.density
+
+    // 1 Hz clock: drives stale/disconnected transitions and the send-countdown ring.
+    var now by remember { mutableStateOf(Instant.now()) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            now = Instant.now()
+            delay(1_000L)
+        }
+    }
     val currentOnRunnerTapped by rememberUpdatedState(onRunnerTapped)
     val currentOnUserMoved by rememberUpdatedState(onUserMovedCamera)
 
@@ -181,27 +199,33 @@ fun MapScreen(
                         }
                         val styleUrl = "https://basemaps.linz.govt.nz/v1/styles/topographic-v2.json?api=$linzApiKey"
                         map.setStyle(styleUrl) { loadedStyle ->
-                            // One arrow + dot bitmap per palette color/index, registered up front,
-                            // rather than per-runner (names vary; the 8-color palette doesn't).
+                            // One heading chevron per palette color, registered up front. Pin bitmaps
+                            // depend on runner state, so those are registered lazily in `update`.
                             RunnerColorPalette.allColors().forEachIndexed { index, color ->
-                                loadedStyle.addImage(arrowIconId(index), arrowBitmap(color))
-                                loadedStyle.addImage(dotIconId(index), dotBitmap(color))
+                                loadedStyle.addImage(chevronIconId(index), chevronBitmap(color, density))
                             }
-                            loadedStyle.addSource(GeoJsonSource(RUNNERS_SOURCE_ID))
+                            loadedStyle.addSource(GeoJsonSource(CHEVRONS_SOURCE_ID))
                             loadedStyle.addLayer(
-                                SymbolLayer(RUNNERS_LAYER_ID, RUNNERS_SOURCE_ID).withProperties(
+                                SymbolLayer(CHEVRONS_LAYER_ID, CHEVRONS_SOURCE_ID).withProperties(
                                     iconImage(get(ICON_PROPERTY)),
                                     iconRotate(get(HEADING_PROPERTY)),
                                     iconRotationAlignment("map"),
                                     iconAllowOverlap(true),
                                     iconIgnorePlacement(true),
-                                    iconSize(1.0f),
+                                )
+                            )
+                            loadedStyle.addSource(GeoJsonSource(RUNNERS_SOURCE_ID))
+                            loadedStyle.addLayer(
+                                SymbolLayer(RUNNERS_LAYER_ID, RUNNERS_SOURCE_ID).withProperties(
+                                    iconImage(get(ICON_PROPERTY)),
+                                    iconAllowOverlap(true),
+                                    iconIgnorePlacement(true),
                                 )
                             )
                             loadedStyle.addSource(GeoJsonSource(FOLLOW_SOURCE_ID))
                             loadedStyle.addLayerBelow(
                                 CircleLayer(FOLLOW_LAYER_ID, FOLLOW_SOURCE_ID).withProperties(
-                                    circleRadius(22f),
+                                    circleRadius(25f),
                                     circleOpacity(0f),
                                     circleStrokeColor("#0A84FF"),
                                     circleStrokeWidth(3f),
@@ -217,7 +241,19 @@ fun MapScreen(
             update = { view ->
                 val currentStyle = style ?: return@AndroidView
                 val source = currentStyle.getSourceAs<GeoJsonSource>(RUNNERS_SOURCE_ID) ?: return@AndroidView
-                source.setGeoJson(positions.toFeatureCollection(currentUserName))
+                val ringStep = sendIntervalSeconds?.let { interval ->
+                    val remainingMs = Duration.between(now, nextPostAt(now, interval)).toMillis()
+                    ceil(RING_STEPS * remainingMs / (interval * 1000.0)).toInt().coerceIn(0, RING_STEPS)
+                }
+                val specs = positions.associate { it.runnerName to pinSpecFor(it, currentUserName, now, ringStep) }
+                specs.values.distinctBy { it.key }.forEach { spec ->
+                    if (currentStyle.getImage(spec.key) == null) {
+                        currentStyle.addImage(spec.key, pinBitmap(spec, density))
+                    }
+                }
+                source.setGeoJson(positions.toPinFeatures(specs))
+                currentStyle.getSourceAs<GeoJsonSource>(CHEVRONS_SOURCE_ID)
+                    ?.setGeoJson(positions.toChevronFeatures(specs))
 
                 val followedPosition = followedRunner?.let { name -> positions.firstOrNull { it.runnerName == name } }
                 val followSource = currentStyle.getSourceAs<GeoJsonSource>(FOLLOW_SOURCE_ID)
@@ -254,27 +290,31 @@ private fun List<RunnerPosition>.centre(): LatLng {
     return LatLng(lat, lng)
 }
 
-private fun List<RunnerPosition>.toFeatureCollection(currentUserName: String): FeatureCollection {
-    val features = map { position ->
-        val colorIndex = if (position.runnerName == currentUserName) {
-            RunnerColorPalette.CURRENT_USER_INDEX
-        } else {
-            RunnerColorPalette.indexForName(position.runnerName)
-        }
-        val point = Point.fromLngLat(position.longitude, position.latitude)
-        Feature.fromGeometry(point).apply {
-            addStringProperty(RUNNER_NAME_PROPERTY, position.runnerName)
-            if (position.heading != null) {
-                addNumberProperty(HEADING_PROPERTY, position.heading)
-                addStringProperty(ICON_PROPERTY, arrowIconId(colorIndex))
-            } else {
-                addNumberProperty(HEADING_PROPERTY, 0.0)
-                addStringProperty(ICON_PROPERTY, dotIconId(colorIndex))
+private fun List<RunnerPosition>.toPinFeatures(specs: Map<String, PinSpec>): FeatureCollection =
+    FeatureCollection.fromFeatures(
+        mapNotNull { position ->
+            val spec = specs[position.runnerName] ?: return@mapNotNull null
+            Feature.fromGeometry(Point.fromLngLat(position.longitude, position.latitude)).apply {
+                addStringProperty(RUNNER_NAME_PROPERTY, position.runnerName)
+                addStringProperty(ICON_PROPERTY, spec.key)
             }
         }
-    }
-    return FeatureCollection.fromFeatures(features)
-}
+    )
+
+/** Chevrons only for runners who are moving and reporting: iOS drops the chevron for stale and
+ *  disconnected runners, since a heading from a position that old is misleading. */
+private fun List<RunnerPosition>.toChevronFeatures(specs: Map<String, PinSpec>): FeatureCollection =
+    FeatureCollection.fromFeatures(
+        mapNotNull { position ->
+            val spec = specs[position.runnerName] ?: return@mapNotNull null
+            val heading = position.heading ?: return@mapNotNull null
+            if (spec.state != PinState.Live) return@mapNotNull null
+            Feature.fromGeometry(Point.fromLngLat(position.longitude, position.latitude)).apply {
+                addNumberProperty(HEADING_PROPERTY, heading)
+                addStringProperty(ICON_PROPERTY, chevronIconId(spec.colorIndex))
+            }
+        }
+    )
 
 private fun fitToPositions(map: MapLibreMap, positions: List<RunnerPosition>) {
     if (positions.size == 1) {
@@ -295,32 +335,4 @@ private fun fitToPositions(map: MapLibreMap, positions: List<RunnerPosition>) {
     runCatching {
         map.animateCamera(CameraUpdateFactory.newLatLngBounds(boundsBuilder.build(), 96))
     }
-}
-
-/** Simple upward-pointing triangle in [colorArgb], rotated per-feature by [iconRotate]; stands
- *  in for a designed asset until Milestone 4's own icon pass covers marker artwork too (this
- *  pass covers marker *color*, per [RunnerColorPalette]). */
-private fun arrowBitmap(colorArgb: Long): Bitmap {
-    val size = 64
-    val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
-    val canvas = Canvas(bitmap)
-    val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = colorArgb.toInt() }
-    val path = Path().apply {
-        moveTo(size / 2f, 0f)
-        lineTo(size.toFloat(), size.toFloat())
-        lineTo(size / 2f, size * 0.72f)
-        lineTo(0f, size.toFloat())
-        close()
-    }
-    canvas.drawPath(path, paint)
-    return bitmap
-}
-
-private fun dotBitmap(colorArgb: Long): Bitmap {
-    val size = 48
-    val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
-    val canvas = Canvas(bitmap)
-    val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = colorArgb.toInt() }
-    canvas.drawCircle(size / 2f, size / 2f, size / 2.5f, paint)
-    return bitmap
 }

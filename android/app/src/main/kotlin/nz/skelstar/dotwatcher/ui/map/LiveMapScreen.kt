@@ -63,6 +63,7 @@ import kotlinx.coroutines.launch
 import nz.skelstar.dotwatcher.BuildConfig
 import nz.skelstar.dotwatcher.data.DotWatcherRepository
 import nz.skelstar.dotwatcher.location.LocationTrackingService
+import nz.skelstar.dotwatcher.location.POST_INTERVAL_SECONDS
 import nz.skelstar.dotwatcher.location.TrackingState
 import nz.skelstar.dotwatcher.network.RunnerPosition
 import nz.skelstar.dotwatcher.network.SessionMembership
@@ -145,6 +146,7 @@ fun LiveMapScreen(
             followedRunner = followedRunner,
             fitAll = fitAll,
             fitAllTick = fitAllTick,
+            sendIntervalSeconds = if (isSharing) POST_INTERVAL_SECONDS else null,
             onRunnerTapped = { name ->
                 // Tapping the runner you're following lets go again.
                 followedRunner = if (name == followedRunner) null else name

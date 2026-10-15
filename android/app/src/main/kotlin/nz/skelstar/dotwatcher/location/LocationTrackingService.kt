@@ -34,7 +34,7 @@ import java.time.Instant
 /** Normal post cadence, matching iOS's `normalInterval`
  *  (ios/DotWatcher/DotWatcher/LocationManager.swift:201). Android has no satellite-tier
  *  connectivity signal yet, so unlike iOS there is no slower fallback cadence for now. */
-private const val POST_INTERVAL_SECONDS = 15L
+const val POST_INTERVAL_SECONDS = 15L
 
 /** Options offered for how long a share session runs before it auto-stops, ascending — mirrors
  *  `LocationManager.trackingDurationOptions` (ios/DotWatcher/DotWatcher/LocationManager.swift:212).

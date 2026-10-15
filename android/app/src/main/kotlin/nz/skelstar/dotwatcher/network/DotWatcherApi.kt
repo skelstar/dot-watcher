@@ -95,6 +95,9 @@ data class RunnerPosition(
     val longitude: Double,
     val heading: Double? = null,
     val timestamp: String,
+    /** Self-reported by the runner's device; drives the satellite badge on their marker. Absent
+     *  from older servers/clients, hence the default. */
+    val isUltraConstrained: Boolean = false,
 )
 
 @Serializable
