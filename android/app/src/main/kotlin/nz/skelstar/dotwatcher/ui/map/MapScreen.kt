@@ -11,7 +11,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.rememberUpdatedState
-import kotlinx.coroutines.delay
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -116,13 +115,7 @@ fun MapScreen(
     val density = context.resources.displayMetrics.density
 
     // 1 Hz clock: drives stale/disconnected transitions and the send-countdown ring.
-    var now by remember { mutableStateOf(Instant.now()) }
-    LaunchedEffect(Unit) {
-        while (true) {
-            now = Instant.now()
-            delay(1_000L)
-        }
-    }
+    val now by rememberSecondClock()
     val currentOnRunnerTapped by rememberUpdatedState(onRunnerTapped)
     val currentOnUserMoved by rememberUpdatedState(onUserMovedCamera)
 

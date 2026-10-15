@@ -52,20 +52,20 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
-import kotlinx.coroutines.launch
 import nz.skelstar.dotwatcher.BuildConfig
 import nz.skelstar.dotwatcher.data.DotWatcherRepository
 import nz.skelstar.dotwatcher.location.LocationTrackingService
@@ -98,7 +98,6 @@ fun LiveMapScreen(
     onLeaveSession: () -> Unit,
 ) {
     val context = LocalContext.current
-    val coroutineScope = rememberCoroutineScope()
     var positions by remember { mutableStateOf<List<RunnerPosition>>(emptyList()) }
     var showLeaveConfirm by remember { mutableStateOf(false) }
     var showInviteCode by remember { mutableStateOf(false) }
@@ -111,8 +110,13 @@ fun LiveMapScreen(
     val trackingState by LocationTrackingService.state.collectAsState()
 
     // Polls everyone's latest positions, including this device's own once the server has it.
-    DisposableEffect(membership.sessionId) {
-        val job = coroutineScope.launch {
+    // Only while the app is visible (STARTED): with the screen locked or the app backgrounded
+    // nobody is looking at the map, so the radio and CPU are left alone — the foreground service
+    // keeps sending this device's own position regardless. Resuming restarts the loop, which
+    // fetches immediately.
+    val lifecycleOwner = LocalLifecycleOwner.current
+    LaunchedEffect(membership.sessionId, lifecycleOwner) {
+        lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
             while (isActive) {
                 runCatching { repository.getLatestPositions(membership.sessionId) }
                     .onSuccess { response ->
@@ -123,7 +127,6 @@ fun LiveMapScreen(
                 delay(POLL_INTERVAL_MS)
             }
         }
-        onDispose { job.cancel() }
     }
 
     if (showLeaveConfirm) {
@@ -290,13 +293,7 @@ private fun Wordmark(initials: String) {
 @Composable
 private fun AutoStopTimer(tracking: TrackingState.Tracking, onClick: () -> Unit) {
     val expiresAt = tracking.expiresAt
-    var now by remember { mutableStateOf(Instant.now()) }
-    LaunchedEffect(expiresAt) {
-        while (true) {
-            now = Instant.now()
-            delay(1_000L)
-        }
-    }
+    val now by rememberSecondClock()
     val total = tracking.totalDuration.coerceAtLeast(Duration.ofSeconds(1))
     val remaining = Duration.between(now, expiresAt).coerceAtLeast(Duration.ZERO)
     val fraction = (remaining.seconds.toFloat() / total.seconds.toFloat()).coerceIn(0f, 1f)
@@ -358,13 +355,7 @@ private fun ExtendSessionSheet(
     onStopNow: () -> Unit,
     onDismiss: () -> Unit,
 ) {
-    var now by remember { mutableStateOf(Instant.now()) }
-    LaunchedEffect(Unit) {
-        while (true) {
-            now = Instant.now()
-            delay(1_000L)
-        }
-    }
+    val now by rememberSecondClock()
     val remaining = Duration.between(now, expiresAt).coerceAtLeast(Duration.ZERO)
     val label = if (remaining.toHours() >= 1) {
         "Auto-stops in ${remaining.toHours()} hr ${remaining.toMinutesPart()} min"
@@ -405,13 +396,7 @@ private val ENDING_SOON = Duration.ofMinutes(30)
  *  the flashing countdown, so the amber circle has words behind it. */
 @Composable
 private fun EndingSoonPill(expiresAt: Instant) {
-    var now by remember { mutableStateOf(Instant.now()) }
-    LaunchedEffect(expiresAt) {
-        while (true) {
-            now = Instant.now()
-            delay(1_000L)
-        }
-    }
+    val now by rememberSecondClock()
     val remaining = Duration.between(now, expiresAt)
     if (remaining > ENDING_SOON || remaining.isNegative || remaining.isZero) return
 
