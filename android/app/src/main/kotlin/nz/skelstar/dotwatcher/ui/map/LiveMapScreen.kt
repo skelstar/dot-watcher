@@ -158,17 +158,23 @@ fun LiveMapScreen(
             },
         )
 
-        // Top-left: wordmark, then the auto-stop countdown while this device is sharing.
-        Row(
+        // Top-left: wordmark, then the auto-stop countdown while this device is sharing; in the
+        // last 30 minutes a pill underneath spells out the time left.
+        Column(
             modifier = Modifier
                 .align(Alignment.TopStart)
                 .statusBarsPadding()
                 .padding(start = 14.dp, top = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            Wordmark(initials = membership.displayName.initials())
-            (trackingState as? TrackingState.Tracking)?.let { AutoStopTimer(it.expiresAt) }
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Wordmark(initials = membership.displayName.initials())
+                (trackingState as? TrackingState.Tracking)?.let { AutoStopTimer(it.expiresAt) }
+            }
+            (trackingState as? TrackingState.Tracking)?.let { EndingSoonPill(it.expiresAt) }
         }
 
         // Right rail: share, fit all, web map, invite code, and an overflow menu holding Leave.
@@ -277,7 +283,7 @@ private fun AutoStopTimer(expiresAt: Instant) {
     val total = remember(expiresAt) { Duration.between(Instant.now(), expiresAt).coerceAtLeast(Duration.ofSeconds(1)) }
     val remaining = Duration.between(now, expiresAt).coerceAtLeast(Duration.ZERO)
     val fraction = (remaining.seconds.toFloat() / total.seconds.toFloat()).coerceIn(0f, 1f)
-    val low = remaining <= Duration.ofMinutes(30)
+    val low = remaining <= ENDING_SOON
     val arcColor = if (low) Color(0xFFE08A00) else Color(0xFF30A14E)
 
     val flash by rememberInfiniteTransition(label = "flash").animateFloat(
@@ -315,6 +321,38 @@ private enum class RailIcon(val paths: List<String>) {
     Globe(listOf("M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18M3 12h18M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18")),
     Hash(listOf("M5 9h14M5 15h14M10 4L8 20M16 4l-2 16")),
     More(listOf("M5 12h.01M12 12h.01M19 12h.01")),
+}
+
+/** How long before the auto-stop the countdown starts flashing and [EndingSoonPill] appears. */
+private val ENDING_SOON = Duration.ofMinutes(30)
+
+/** "Auto-stops in 8 min" — shown only inside the last [ENDING_SOON] of a sharing session, next to
+ *  the flashing countdown, so the amber circle has words behind it. */
+@Composable
+private fun EndingSoonPill(expiresAt: Instant) {
+    var now by remember { mutableStateOf(Instant.now()) }
+    LaunchedEffect(expiresAt) {
+        while (true) {
+            now = Instant.now()
+            delay(1_000L)
+        }
+    }
+    val remaining = Duration.between(now, expiresAt)
+    if (remaining > ENDING_SOON || remaining.isNegative || remaining.isZero) return
+
+    val minutes = (remaining.seconds + 59) / 60 // round up: "1 min" until it actually stops
+    Box(
+        modifier = Modifier.height(36.dp).clip(CircleShape).background(Color(0xF0FFF4D6))
+            .padding(horizontal = 13.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = "Auto-stops in $minutes min",
+            color = Color(0xFF7A4D00),
+            fontSize = 12.5.sp,
+            fontWeight = FontWeight.SemiBold,
+        )
+    }
 }
 
 @Composable

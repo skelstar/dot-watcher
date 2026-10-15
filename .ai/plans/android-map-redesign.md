@@ -20,7 +20,7 @@ ports it to Android. Branch: `android-milestone-4-design`.
 | 10 | Tap countdown → extend sheet (+30 min / +1 hr / +2 hr, + "Stop now") | Not started, blocked on service API |
 | 11 | Satellite banner (title, send/refresh interval, last sent), map locked + dimmed | Not started, blocked on state |
 | 12 | Battery-paused card (Send now / Auto / Stop), own dot grey, no ring | Not started, blocked on state |
-| 13 | Ending-soon pill ("Auto-stops in N min") | Not started |
+| 13 | Ending-soon pill ("Auto-stops in N min") | Done |
 | 14 | Replace text-glyph icons with vector icons | Done (design SVG paths drawn on Canvas) |
 | 15 | Globe button (open web map) on the rail — in the design, missed earlier | Done |
 
