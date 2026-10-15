@@ -18,8 +18,8 @@ ports it to Android. Branch: `android-milestone-4-design`.
 | 8 | Own-dot ring that empties toward the next position send | Done (15 s cadence, 1 step/s; the white border of the dot is the countdown) |
 | 9 | Marker badges: satellite, warning + faded pin (stale), pause (own dot) | Satellite + stale/disconnected done; pause badge blocked on battery-pause state |
 | 10 | Tap countdown → extend sheet (+30 min / +1 hr / +2 hr, + "Stop now") | Done (service `extend()`; `totalDuration` now in `TrackingState`; durations are placeholders) |
-| 11 | Satellite banner (title, send/refresh interval, last sent), map locked + dimmed | Not started, blocked on state |
-| 12 | Battery-paused card (Send now / Auto / Stop), own dot grey, no ring | Not started, blocked on state |
+| 11 | Satellite banner (title, send/refresh interval, last sent), map locked + dimmed | Not started — see "Groundwork for 11 and 12" |
+| 12 | Battery-paused card (Send now / Auto / Stop), own dot grey, no ring | Not started — see "Groundwork for 11 and 12" |
 | 13 | Ending-soon pill ("Auto-stops in N min") | Done |
 | 14 | Replace text-glyph icons with vector icons | Done (design SVG paths drawn on Canvas) |
 | 15 | Globe button (open web map) on the rail — in the design, missed earlier | Done |
@@ -46,3 +46,65 @@ ports it to Android. Branch: `android-milestone-4-design`.
 - Zoom must never release follow (it changes the span, not the centre).
 - Satellite mode: positions keep refreshing at the slow interval, map locked, follow off, taps on dots do nothing.
 - Extend durations (+30 min / +1 hr / +2 hr) are placeholders in the design — confirm before building.
+
+## Groundwork for 11 and 12 (planned 2026-10-16, not started)
+
+Both banners need Android to *know* a state first. Neither is UI-first work. Suggested order: 12
+(battery) before 11 (satellite), because battery needs no new platform capability and is verifiable
+on the emulator.
+
+### 12 — Battery-paused card
+
+iOS behaviour (see `critical-battery-pause.md`): at `batteryLevel <= 10` **and** not charging **and**
+not already overridden this session, stop location updates and skip the post; show a persistent card
+with **Send now** (one-shot, does *not* resume), **Auto** (explicit override, sticky until next
+`start`) and Stop. Auto-resumes when charging. No server change.
+
+Android work:
+1. **Read battery.** Sticky `ACTION_BATTERY_CHANGED` broadcast gives level, scale and plugged/charging
+   state with no permission. Add `BatteryReader` in `location/`.
+2. **Report it.** `LocationUpdate` has no `batteryLevel`; server already accepts it
+   (`battery-level-reporting.md`). Add the field to `LocationUpdate`/`QueuedCapture` (bump the
+   persisted queue schema carefully: default null keeps old entries readable).
+3. **Pause in the service.** New `TrackingState.Tracking.pausedForBattery`, plus
+   `batteryOverride` flag reset in `startTracking`. At the top of each loop pass: if critical, not
+   charging, not overridden → `locationTracker.stopHeadingUpdates()`-style stop of location updates,
+   set paused, skip capture. Resume when charging or on override.
+4. **Actions.** `LocationTrackingService.sendNow(context)` (one capture + post, stays paused) and
+   `resumeAutomatic(context)` (sets override), same intent pattern as `extend()`.
+5. **UI.** Card over the bottom edge with its own Stop (the mock's rule); own dot grey with pause
+   badge and **no** countdown ring (pin spec: new `PinState`/flag; the ring already keys off
+   `ringStep`, so pass null while paused). Hide the countdown-ring while paused.
+
+Open questions: threshold 10 is copied from iOS and the web client — keep in sync. Does Android's
+fused location provider need `removeLocationUpdates` or is `captureOnce` already one-shot? (It is
+one-shot per call; the heading listener is the only continuous work, so the saving on Android is
+smaller than on iOS. Worth measuring before promising a battery benefit.)
+
+### 11 — Satellite banner
+
+iOS behaviour: `NWPath.isUltraConstrained` → slower cadence (`ultraConstrainedInterval`), banner,
+alert notification (`satellite-alerts.md`, PR #175 unverified), non-essential traffic suppressed.
+
+Android work — **the platform capability is the unknown**:
+1. **Detect.** Android 15 (API 35) added satellite as a network transport and a
+   "not bandwidth constrained" capability on `NetworkCapabilities`. Our `targetSdk` is 36, so the
+   constants exist. Needs verifying against the AOSP docs and, ideally, a carrier/device that
+   exposes it (emulator cannot). Register a `ConnectivityManager` default-network callback and
+   expose `isUltraConstrained: StateFlow<Boolean>`.
+2. **Treat as unverified until a real device shows it.** If detection can't be tested, ship the
+   plumbing behind the same flag the server already persists and don't claim satellite support in
+   release notes.
+3. **Cadence.** Mirror iOS: slower post interval while constrained (the service already has a single
+   `POST_INTERVAL_SECONDS`; make it a function of state). Ring and countdown must follow it.
+4. **Report it.** Add `isUltraConstrained` to `LocationUpdate` (server field exists), so other
+   runners see the badge we already render.
+5. **UI.** Full-width amber banner at top, map dimmed and locked, three lines: title, send/refresh
+   interval, last sent. Follow off, dot taps ignored, fit-all held on (mock). Needs a "last
+   successful post" timestamp in `TrackingState`.
+
+### Shared prerequisites
+
+- `TrackingState.Tracking` grows `lastSentAt`, `pausedForBattery`, `isUltraConstrained`.
+- A debug override (like iOS's `debugForceUltraConstrained`) so both states can be exercised on the
+  emulator and TestFlight-equivalent builds.
