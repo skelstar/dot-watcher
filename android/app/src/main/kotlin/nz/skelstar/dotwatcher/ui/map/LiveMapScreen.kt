@@ -260,9 +260,7 @@ private val GlassColor = Color.White.copy(alpha = 0.82f)
 private val StopRed = Color(0xFFFF3B30)
 private val AccentBlue = Color(0xFF0A84FF)
 
-/** The display name is the runner's own 2-letter initials (see the auth/name-entry screens), so it
- *  is shown as entered; only a blank name falls back to "?". */
-private fun String.initials(): String = trim().ifEmpty { "?" }
+private fun String.initials(): String = initialsFor(this)
 
 /** The dot-watchr wordmark with the runner's initials as the "o", drawn straight on the map. */
 @Composable

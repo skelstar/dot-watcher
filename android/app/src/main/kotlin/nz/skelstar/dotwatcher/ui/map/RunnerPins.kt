@@ -45,6 +45,19 @@ data class PinSpec(
     val key: String get() = "pin|$label|$colorIndex|${state.ordinal}|$satellite|${ringStep ?: -1}"
 }
 
+/** The 1–2 letter tag drawn on a dot. Accounts are meant to carry 2-letter initials, but older
+ *  accounts hold whatever was typed into a free-text field (e.g. an email handle), so reduce it the
+ *  same way the web client's `initialsFor` and the server do: one word → its first two letters;
+ *  several words → first and last word initials. Blank → "?". */
+fun initialsFor(name: String): String {
+    val words = name.trim().split(Regex("\\s+")).filter { it.isNotEmpty() }
+    return when {
+        words.isEmpty() -> "?"
+        words.size == 1 -> words[0].take(2).uppercase()
+        else -> "${words.first()[0]}${words.last()[0]}".uppercase()
+    }
+}
+
 /** Builds the marker spec for [position]. The local user's own pin is never stale or
  *  disconnected (it is this device's own data), mirroring iOS. */
 fun pinSpecFor(position: RunnerPosition, currentUserName: String, now: Instant, ringStep: Int?): PinSpec {
@@ -59,7 +72,7 @@ fun pinSpecFor(position: RunnerPosition, currentUserName: String, now: Instant, 
         else -> PinState.Live
     }
     return PinSpec(
-        label = position.runnerName.trim().ifEmpty { "?" },
+        label = initialsFor(position.runnerName),
         colorIndex = if (isMe) RunnerColorPalette.CURRENT_USER_INDEX else RunnerColorPalette.indexForName(position.runnerName),
         state = state,
         satellite = position.isUltraConstrained,

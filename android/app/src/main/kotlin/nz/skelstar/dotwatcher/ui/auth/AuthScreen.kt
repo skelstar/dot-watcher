@@ -26,6 +26,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import nz.skelstar.dotwatcher.AuthUiState
+import nz.skelstar.dotwatcher.ui.CodeBoxField
 import nz.skelstar.dotwatcher.ui.GroupDivider
 import nz.skelstar.dotwatcher.ui.GroupedCard
 
@@ -107,11 +108,20 @@ fun AuthScreen(
 
             if (isRegisterMode) {
                 GroupDivider()
-                BorderlessField(
-                    value = displayName,
-                    onValueChange = { displayName = it },
-                    placeholder = "Display name",
-                )
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text(
+                        text = "Your initials",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    CodeBoxField(
+                        value = displayName,
+                        onValueChange = { displayName = it },
+                        length = 2,
+                        lettersOnly = true,
+                    )
+                }
             }
         }
 
@@ -131,7 +141,7 @@ fun AuthScreen(
             CardActionRow(
                 text = if (isRegisterMode) "Create Account" else "Sign In",
                 enabled = state !is AuthUiState.Loading && username.isNotBlank() && password.isNotBlank() &&
-                    (!isRegisterMode || displayName.isNotBlank()),
+                    (!isRegisterMode || displayName.length == 2),
                 onClick = {
                     if (isRegisterMode) {
                         onRegister(username, password, displayName)
