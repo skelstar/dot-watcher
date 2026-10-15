@@ -21,6 +21,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import nz.skelstar.dotwatcher.BuildConfig
@@ -48,6 +49,10 @@ sealed interface TrackingState {
         val sessionId: String,
         val expiresAt: Instant,
         val lastError: String? = null,
+        /** How long this session was set to run for in total — the original choice plus any
+         *  extensions. Lets the UI draw the countdown arc against the real span rather than
+         *  whatever happened to be left when it first looked. */
+        val totalDuration: Duration = Duration.ZERO,
     ) : TrackingState
 }
 
@@ -82,6 +87,28 @@ class LocationTrackingService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (intent?.action == ACTION_EXTEND) {
+            val extraSeconds = intent.getLongExtra(EXTRA_DURATION_SECONDS, -1)
+            val extension = Duration.ofSeconds(extraSeconds)
+            var extended = false
+            if (extraSeconds > 0) {
+                _state.update { current ->
+                    if (current is TrackingState.Tracking) {
+                        extended = true
+                        current.copy(
+                            expiresAt = current.expiresAt.plus(extension),
+                            totalDuration = current.totalDuration.plus(extension),
+                        )
+                    } else {
+                        current
+                    }
+                }
+            }
+            // Nothing was running (this intent just created the service): don't leave it idle.
+            if (!extended && _state.value !is TrackingState.Tracking) stopSelf()
+            return START_NOT_STICKY
+        }
+
         val sessionId = intent?.getStringExtra(EXTRA_SESSION_ID)
         val durationSeconds = intent?.getLongExtra(EXTRA_DURATION_SECONDS, -1) ?: -1
 
@@ -103,12 +130,14 @@ class LocationTrackingService : Service() {
         trackingJob?.cancel()
         locationTracker.startHeadingUpdates()
 
-        val expiresAt = Instant.now().plus(duration)
-        _state.value = TrackingState.Tracking(sessionId, expiresAt)
+        val initialExpiry = Instant.now().plus(duration)
+        _state.value = TrackingState.Tracking(sessionId, initialExpiry, totalDuration = duration)
 
         trackingJob = serviceScope.launch {
             while (isActive) {
                 val now = Instant.now()
+                // Re-read each pass: the runner can extend the session while this loop sleeps.
+                val expiresAt = (_state.value as? TrackingState.Tracking)?.expiresAt ?: initialExpiry
                 if (now >= expiresAt) {
                     stopTracking()
                     stopSelf()
@@ -209,16 +238,14 @@ class LocationTrackingService : Service() {
         )
 
     private fun recordSuccess() {
-        val current = _state.value
-        if (current is TrackingState.Tracking && current.lastError != null) {
-            _state.value = current.copy(lastError = null)
+        _state.update { current ->
+            if (current is TrackingState.Tracking && current.lastError != null) current.copy(lastError = null) else current
         }
     }
 
     private fun recordError(message: String?) {
-        val current = _state.value
-        if (current is TrackingState.Tracking) {
-            _state.value = current.copy(lastError = message)
+        _state.update { current ->
+            if (current is TrackingState.Tracking) current.copy(lastError = message) else current
         }
     }
 
@@ -273,6 +300,7 @@ class LocationTrackingService : Service() {
         private const val NOTIFICATION_ID = 1
         private const val EXTRA_SESSION_ID = "session_id"
         private const val EXTRA_DURATION_SECONDS = "duration_seconds"
+        private const val ACTION_EXTEND = "nz.skelstar.dotwatcher.action.EXTEND_TRACKING"
 
         private val _state = MutableStateFlow<TrackingState>(TrackingState.Stopped)
         val state: StateFlow<TrackingState> = _state.asStateFlow()
@@ -282,6 +310,15 @@ class LocationTrackingService : Service() {
                 .putExtra(EXTRA_SESSION_ID, sessionId)
                 .putExtra(EXTRA_DURATION_SECONDS, duration.seconds)
             context.startForegroundService(intent)
+        }
+
+        /** Adds [extension] to the running session's auto-stop time. A no-op if nothing is being
+         *  shared. The service is already in the foreground, so a plain `startService` suffices. */
+        fun extend(context: Context, extension: Duration) {
+            val intent = Intent(context, LocationTrackingService::class.java)
+                .setAction(ACTION_EXTEND)
+                .putExtra(EXTRA_DURATION_SECONDS, extension.seconds)
+            context.startService(intent)
         }
 
         fun stop(context: Context) {

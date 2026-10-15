@@ -27,6 +27,12 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.width
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.draw.clip
@@ -97,6 +103,7 @@ fun LiveMapScreen(
     var showLeaveConfirm by remember { mutableStateOf(false) }
     var showInviteCode by remember { mutableStateOf(false) }
     var showMenu by remember { mutableStateOf(false) }
+    var showExtendSheet by remember { mutableStateOf(false) }
     // Fit-all is lit by default; following a runner or panning away turns it off.
     var fitAll by remember { mutableStateOf(true) }
     var followedRunner by remember { mutableStateOf<String?>(null) }
@@ -127,6 +134,18 @@ fun LiveMapScreen(
                 onLeaveSession()
             },
             onDismiss = { showLeaveConfirm = false },
+        )
+    }
+
+    (trackingState as? TrackingState.Tracking)?.takeIf { showExtendSheet }?.let { tracking ->
+        ExtendSessionSheet(
+            expiresAt = tracking.expiresAt,
+            onExtend = { LocationTrackingService.extend(context, it) },
+            onStopNow = {
+                showExtendSheet = false
+                onStopSharing()
+            },
+            onDismiss = { showExtendSheet = false },
         )
     }
 
@@ -172,7 +191,7 @@ fun LiveMapScreen(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 Wordmark(initials = membership.displayName.initials())
-                (trackingState as? TrackingState.Tracking)?.let { AutoStopTimer(it.expiresAt) }
+                (trackingState as? TrackingState.Tracking)?.let { AutoStopTimer(it) { showExtendSheet = true } }
             }
             (trackingState as? TrackingState.Tracking)?.let { EndingSoonPill(it.expiresAt) }
         }
@@ -268,11 +287,11 @@ private fun Wordmark(initials: String) {
     }
 }
 
-/** Circular countdown to the sharing cap. Arc is remaining ÷ the remaining time when first
- *  shown (the service doesn't expose the originally chosen duration); turns amber and flashes in
- *  the last 30 minutes. Tapping to extend is not implemented yet — needs a service change. */
+/** Circular countdown to the sharing cap: arc is remaining ÷ the session's total (original
+ *  choice plus extensions); turns amber and flashes in the last 30 minutes. Tap to extend. */
 @Composable
-private fun AutoStopTimer(expiresAt: Instant) {
+private fun AutoStopTimer(tracking: TrackingState.Tracking, onClick: () -> Unit) {
+    val expiresAt = tracking.expiresAt
     var now by remember { mutableStateOf(Instant.now()) }
     LaunchedEffect(expiresAt) {
         while (true) {
@@ -280,7 +299,7 @@ private fun AutoStopTimer(expiresAt: Instant) {
             delay(1_000L)
         }
     }
-    val total = remember(expiresAt) { Duration.between(Instant.now(), expiresAt).coerceAtLeast(Duration.ofSeconds(1)) }
+    val total = tracking.totalDuration.coerceAtLeast(Duration.ofSeconds(1))
     val remaining = Duration.between(now, expiresAt).coerceAtLeast(Duration.ZERO)
     val fraction = (remaining.seconds.toFloat() / total.seconds.toFloat()).coerceIn(0f, 1f)
     val low = remaining <= ENDING_SOON
@@ -296,6 +315,7 @@ private fun AutoStopTimer(expiresAt: Instant) {
 
     Box(
         modifier = Modifier.size(46.dp).clip(CircleShape).background(background)
+            .clickable(onClick = onClick)
             .semantics { contentDescription = "Auto-stops in ${remaining.toMinutes()} minutes" },
         contentAlignment = Alignment.Center,
     ) {
@@ -321,6 +341,63 @@ private enum class RailIcon(val paths: List<String>) {
     Globe(listOf("M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18M3 12h18M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18")),
     Hash(listOf("M5 9h14M5 15h14M10 4L8 20M16 4l-2 16")),
     More(listOf("M5 12h.01M12 12h.01M19 12h.01")),
+}
+
+/** Placeholder durations from the redesign mock — to be confirmed. */
+private val EXTEND_OPTIONS = listOf(
+    "+30 min" to Duration.ofMinutes(30),
+    "+1 hr" to Duration.ofHours(1),
+    "+2 hr" to Duration.ofHours(2),
+)
+
+/** Opened by tapping the countdown: add time to the current auto-stop (the sheet stays open and
+ *  its "Auto-stops in" line updates), or stop now. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ExtendSessionSheet(
+    expiresAt: Instant,
+    onExtend: (Duration) -> Unit,
+    onStopNow: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var now by remember { mutableStateOf(Instant.now()) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            now = Instant.now()
+            delay(1_000L)
+        }
+    }
+    val remaining = Duration.between(now, expiresAt).coerceAtLeast(Duration.ZERO)
+    val label = if (remaining.toHours() >= 1) {
+        "Auto-stops in ${remaining.toHours()} hr ${remaining.toMinutesPart()} min"
+    } else {
+        "Auto-stops in ${(remaining.seconds + 59) / 60} min"
+    }
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(
+            modifier = Modifier.padding(start = 18.dp, end = 18.dp, bottom = 28.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text(label, style = MaterialTheme.typography.labelLarge)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                EXTEND_OPTIONS.forEach { (text, duration) ->
+                    OutlinedButton(onClick = { onExtend(duration) }, modifier = Modifier.weight(1f)) {
+                        Text(text)
+                    }
+                }
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth().height(44.dp).clip(RoundedCornerShape(22.dp))
+                    .background(StopRed).clickable(onClick = onStopNow),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center,
+            ) {
+                Box(Modifier.size(10.dp).clip(RoundedCornerShape(3.dp)).background(Color.White))
+                Spacer(Modifier.width(8.dp))
+                Text("Stop now", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+            }
+        }
+    }
 }
 
 /** How long before the auto-stop the countdown starts flashing and [EndingSoonPill] appears. */
