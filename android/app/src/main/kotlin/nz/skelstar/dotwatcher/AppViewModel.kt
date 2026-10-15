@@ -9,6 +9,7 @@ import kotlinx.coroutines.launch
 import nz.skelstar.dotwatcher.data.AuthTokenStore
 import nz.skelstar.dotwatcher.data.DotWatcherRepository
 import nz.skelstar.dotwatcher.location.LocationTrackingService
+import nz.skelstar.dotwatcher.location.TrackingState
 import nz.skelstar.dotwatcher.network.DotWatcherApiClient
 import nz.skelstar.dotwatcher.network.SessionMembership
 import nz.skelstar.dotwatcher.network.errorMessageOrStatus
@@ -18,6 +19,9 @@ import java.time.Duration
 /** Where the nav graph should route to based on sign-in/session state. */
 sealed interface Destination {
     data object Auth : Destination
+    /** Signed in, checking the server for a session still active from before the app was
+     *  relaunched — shown briefly so the create/join screen doesn't flash first. */
+    data object Restoring : Destination
     data object Session : Destination
     /** Shown only for role "runner" — asks whether/how-long to share this device's own position
      *  before starting the background tracking service. A "viewer" skips straight to Map, same
@@ -51,7 +55,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     val repository = DotWatcherRepository(api, tokenStore)
 
     private val _destination = MutableStateFlow<Destination>(
-        if (tokenStore.isSignedIn) Destination.Session else Destination.Auth
+        if (tokenStore.isSignedIn) Destination.Restoring else Destination.Auth
     )
     val destination: StateFlow<Destination> = _destination
 
@@ -68,7 +72,42 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     val recentSessions: StateFlow<List<SessionMembership>> = _recentSessions
 
     init {
-        if (tokenStore.isSignedIn) loadRecentSessions()
+        if (tokenStore.isSignedIn) {
+            loadRecentSessions()
+            restoreActiveSession()
+        }
+    }
+
+    /**
+     * [_destination] is in-memory only, so a relaunch (Back out of the app, or the OS killing the
+     * process) would otherwise land a runner on create/join while still a member server-side — and,
+     * if sharing was running in the foreground service, with no Stop button. Mirrors iOS's
+     * `loadSessions()` picking the first active membership. A failed load falls back to the
+     * create/join screen.
+     */
+    private fun restoreActiveSession() {
+        viewModelScope.launch {
+            val memberships = runCatching { repository.getMySessions() }
+                .getOrNull()
+                ?.takeIf { it.isSuccessful }
+                ?.body()
+                .orEmpty()
+
+            // Don't clobber a navigation the user made while this was in flight.
+            if (_destination.value != Destination.Restoring) return@launch
+
+            val tracking = LocationTrackingService.state.value as? TrackingState.Tracking
+            val membership = memberships.firstOrNull { it.sessionId == tracking?.sessionId }
+                ?: memberships.firstOrNull()
+
+            _destination.value = when {
+                membership == null -> Destination.Session
+                tracking?.sessionId == membership.sessionId ->
+                    Destination.Map(membership, isSharing = true)
+                membership.role == "runner" -> Destination.Consent(membership)
+                else -> Destination.Map(membership, isSharing = false)
+            }
+        }
     }
 
     fun register(username: String, password: String, displayName: String) {

@@ -44,7 +44,11 @@ val TRACKING_DURATION_OPTIONS: List<Duration> = listOf(2L, 4L, 8L, 24L).map { Du
 
 sealed interface TrackingState {
     data object Stopped : TrackingState
-    data class Tracking(val expiresAt: Instant, val lastError: String? = null) : TrackingState
+    data class Tracking(
+        val sessionId: String,
+        val expiresAt: Instant,
+        val lastError: String? = null,
+    ) : TrackingState
 }
 
 /**
@@ -100,7 +104,7 @@ class LocationTrackingService : Service() {
         locationTracker.startHeadingUpdates()
 
         val expiresAt = Instant.now().plus(duration)
-        _state.value = TrackingState.Tracking(expiresAt)
+        _state.value = TrackingState.Tracking(sessionId, expiresAt)
 
         trackingJob = serviceScope.launch {
             while (isActive) {

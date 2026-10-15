@@ -87,6 +87,12 @@ class DotWatcherRepository(
         return api.getLatestPositions(sessionId, bearer(token))
     }
 
+    /** The caller's active (not left) memberships — used to restore the session on relaunch. */
+    suspend fun getMySessions(): Response<List<SessionMembership>> {
+        val token = requireToken()
+        return api.getMySessions(bearer(token))
+    }
+
     suspend fun getRecentSessions(): Response<List<SessionMembership>> {
         val token = requireToken()
         return api.getRecentSessions(bearer(token))
