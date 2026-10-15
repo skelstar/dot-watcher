@@ -1,5 +1,9 @@
 package nz.skelstar.dotwatcher.network
 
+import android.annotation.SuppressLint
+import android.content.Context
+import android.os.Build
+import android.provider.Settings
 import com.jakewharton.retrofit2.converter.kotlinx.serialization.asConverterFactory
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.decodeFromString
@@ -218,12 +222,41 @@ private class UpdateRequiredInterceptor : okhttp3.Interceptor {
     }
 }
 
+/** Adds the device-identification headers iOS sends on every request (`X-Device-Name`,
+ *  `X-Device-Id`, `X-Client-Id`), which the server's request log turns into `DeviceName` /
+ *  `DeviceId` / `ClientId` so Android traffic is as traceable as iOS's. */
+private class DeviceHeadersInterceptor(context: Context) : okhttp3.Interceptor {
+    private val deviceName: String = run {
+        val resolver = context.contentResolver
+        // The user-set device name (like an iPhone's name); falls back to the hardware model.
+        runCatching { Settings.Global.getString(resolver, Settings.Global.DEVICE_NAME) }.getOrNull()
+            ?.takeIf { it.isNotBlank() }
+            ?: Build.MODEL
+    }
+
+    // Stable per device + app signing key and, like iOS's Keychain id, survives reinstall.
+    @SuppressLint("HardwareIds")
+    private val deviceId: String = runCatching {
+        Settings.Secure.getString(context.contentResolver, Settings.Secure.ANDROID_ID)
+    }.getOrNull().orEmpty()
+
+    override fun intercept(chain: okhttp3.Interceptor.Chain): okhttp3.Response {
+        val request = chain.request().newBuilder()
+            .header("X-Device-Name", deviceName)
+            .header("X-Client-Id", "android")
+            .apply { if (deviceId.isNotEmpty()) header("X-Device-Id", deviceId) }
+            .build()
+        return chain.proceed(request)
+    }
+}
+
 object DotWatcherApiClient {
-    fun create(baseUrl: String): DotWatcherApi {
+    fun create(baseUrl: String, context: Context): DotWatcherApi {
         val logging = HttpLoggingInterceptor().apply {
             level = HttpLoggingInterceptor.Level.BASIC
         }
         val okHttpClient = OkHttpClient.Builder()
+            .addInterceptor(DeviceHeadersInterceptor(context.applicationContext))
             .addInterceptor(UpdateRequiredInterceptor())
             .addInterceptor(logging)
             .build()

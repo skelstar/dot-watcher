@@ -51,7 +51,7 @@ sealed interface SessionUiState {
  */
 class AppViewModel(application: Application) : AndroidViewModel(application) {
     private val tokenStore = AuthTokenStore(application)
-    private val api = DotWatcherApiClient.create(BuildConfig.API_BASE_URL)
+    private val api = DotWatcherApiClient.create(BuildConfig.API_BASE_URL, application)
     val repository = DotWatcherRepository(api, tokenStore)
 
     private val _destination = MutableStateFlow<Destination>(

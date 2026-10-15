@@ -81,7 +81,7 @@ class LocationTrackingService : Service() {
         super.onCreate()
         locationTracker = LocationTracker(applicationContext)
         val tokenStore = AuthTokenStore(applicationContext)
-        val api = DotWatcherApiClient.create(BuildConfig.API_BASE_URL)
+        val api = DotWatcherApiClient.create(BuildConfig.API_BASE_URL, applicationContext)
         repository = DotWatcherRepository(api, tokenStore)
         updateQueue = LocationUpdateQueue(applicationContext)
     }
