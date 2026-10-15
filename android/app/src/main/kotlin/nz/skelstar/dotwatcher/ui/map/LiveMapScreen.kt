@@ -32,6 +32,10 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.drawscope.scale
+import androidx.compose.ui.graphics.vector.PathParser
+import androidx.core.net.toUri
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.lerp
@@ -92,6 +96,10 @@ fun LiveMapScreen(
     var showLeaveConfirm by remember { mutableStateOf(false) }
     var showInviteCode by remember { mutableStateOf(false) }
     var showMenu by remember { mutableStateOf(false) }
+    // Fit-all is lit by default; following a runner or panning away turns it off.
+    var fitAll by remember { mutableStateOf(true) }
+    var followedRunner by remember { mutableStateOf<String?>(null) }
+    var fitAllTick by remember { mutableStateOf(0) }
     val trackingState by LocationTrackingService.state.collectAsState()
 
     // Polls everyone's latest positions, including this device's own once the server has it.
@@ -134,6 +142,18 @@ fun LiveMapScreen(
             positions = positions,
             linzApiKey = BuildConfig.LINZ_API_KEY,
             currentUserName = membership.displayName,
+            followedRunner = followedRunner,
+            fitAll = fitAll,
+            fitAllTick = fitAllTick,
+            onRunnerTapped = { name ->
+                // Tapping the runner you're following lets go again.
+                followedRunner = if (name == followedRunner) null else name
+                fitAll = false
+            },
+            onUserMovedCamera = {
+                followedRunner = null
+                fitAll = false
+            },
         )
 
         // Top-left: wordmark, then the auto-stop countdown while this device is sharing.
@@ -149,7 +169,7 @@ fun LiveMapScreen(
             (trackingState as? TrackingState.Tracking)?.let { AutoStopTimer(it.expiresAt) }
         }
 
-        // Right rail: share, invite code, and an overflow menu holding Leave.
+        // Right rail: share, fit all, web map, invite code, and an overflow menu holding Leave.
         Column(
             modifier = Modifier
                 .align(Alignment.TopEnd)
@@ -157,10 +177,16 @@ fun LiveMapScreen(
                 .padding(end = 14.dp, top = 8.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            RailButton("↗", "Share invite link") { context.shareInviteLink(membership) }
-            RailButton("#", "Invite code") { showInviteCode = true }
+            RailButton(RailIcon.Share, "Share invite link") { context.shareInviteLink(membership) }
+            RailButton(RailIcon.Fit, "Fit all runners", active = fitAll) {
+                followedRunner = null
+                fitAll = true
+                fitAllTick++
+            }
+            RailButton(RailIcon.Globe, "Open web map") { context.openWebMap(membership) }
+            RailButton(RailIcon.Hash, "Invite code") { showInviteCode = true }
             Box {
-                RailButton("⋯", "More") { showMenu = true }
+                RailButton(RailIcon.More, "More") { showMenu = true }
                 DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
                     DropdownMenuItem(
                         text = { Text("Leave session") },
@@ -280,15 +306,34 @@ private fun AutoStopTimer(expiresAt: Instant) {
     }
 }
 
+/** Rail glyphs: the 24×24 stroke paths from the redesign mock, so they match it exactly. */
+private enum class RailIcon(val paths: List<String>) {
+    Share(listOf("M12 15V3M8 7l4-4 4 4M6 11H5a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-8a1 1 0 0 0-1-1h-1")),
+    Fit(listOf("M4 9V5a1 1 0 0 1 1-1h4M15 4h4a1 1 0 0 1 1 1v4M20 15v4a1 1 0 0 1-1 1h-4M9 20H5a1 1 0 0 1-1-1v-4")),
+    Globe(listOf("M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18M3 12h18M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18")),
+    Hash(listOf("M5 9h14M5 15h14M10 4L8 20M16 4l-2 16")),
+    More(listOf("M5 12h.01M12 12h.01M19 12h.01")),
+}
+
 @Composable
-private fun RailButton(glyph: String, description: String, onClick: () -> Unit) {
+private fun RailButton(icon: RailIcon, description: String, active: Boolean = false, onClick: () -> Unit) {
+    val tint = if (active) Color.White else Color(0xFF14181F)
+    val paths = remember(icon) { icon.paths.map { PathParser().parsePathString(it).toPath() } }
     Box(
-        modifier = Modifier.size(44.dp).clip(CircleShape).background(GlassColor)
+        modifier = Modifier.size(44.dp).clip(CircleShape).background(if (active) AccentBlue else GlassColor)
             .clickable(onClick = onClick)
             .semantics { contentDescription = description },
         contentAlignment = Alignment.Center,
     ) {
-        Text(glyph, fontSize = 20.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF14181F))
+        Canvas(Modifier.size(22.dp)) {
+            scale(size.width / 24f, pivot = androidx.compose.ui.geometry.Offset.Zero) {
+                // "More" is three dots: a zero-length round-capped segment draws as a dot, wider stroke.
+                val width = if (icon == RailIcon.More) 3.2f else 2f
+                paths.forEach {
+                    drawPath(it, tint, style = Stroke(width = width, cap = StrokeCap.Round, join = StrokeJoin.Round))
+                }
+            }
+        }
     }
 }
 
@@ -347,6 +392,12 @@ private fun LeaveSessionDialog(
             }
         },
     )
+}
+
+/** Opens the session's web viewer (`/code/{inviteCode}`) in the browser. */
+private fun Context.openWebMap(membership: SessionMembership) {
+    val url = "${BuildConfig.WEB_BASE_URL}/code/${membership.inviteCode}"
+    startActivity(Intent(Intent.ACTION_VIEW, url.toUri()))
 }
 
 /** Opens the system share sheet with the session's invite link — matches iOS's header

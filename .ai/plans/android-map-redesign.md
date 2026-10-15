@@ -11,17 +11,18 @@ ports it to Android. Branch: `android-milestone-4-design`.
 | 1 | Full-screen map, floating controls (no TopAppBar / FAB) | Done, uncommitted, not compiled |
 | 2 | Wordmark with initials as the "o", top-left | Done |
 | 3 | Auto-stop countdown circle (green → amber + flashing in last 30 min) | Done |
-| 4 | Right rail: Share, Invite code dialog, ⋯ menu with Leave | Done (text-glyph icons) |
+| 4 | Right rail: Share, Invite code dialog, ⋯ menu with Leave | Done |
 | 5 | Round Stop pill, bottom-right, while sharing | Done |
-| 6 | Fit-all button on the rail | Not started |
-| 7 | Tap a dot to follow; drag > 10% of visible width releases follow / fit-all | Not started |
+| 6 | Fit-all button on the rail | Done, uncommitted, untested |
+| 7 | Tap a dot to follow; drag > 10% of visible width releases follow / fit-all | Done, uncommitted, untested |
 | 8 | Own-dot ring that empties toward the next position send | Not started |
 | 9 | Marker badges: satellite, warning + faded pin (stale), pause (own dot) | Not started |
 | 10 | Tap countdown → extend sheet (+30 min / +1 hr / +2 hr, + "Stop now") | Not started, blocked on service API |
 | 11 | Satellite banner (title, send/refresh interval, last sent), map locked + dimmed | Not started, blocked on state |
 | 12 | Battery-paused card (Send now / Auto / Stop), own dot grey, no ring | Not started, blocked on state |
 | 13 | Ending-soon pill ("Auto-stops in N min") | Not started |
-| 14 | Replace text-glyph icons with vector icons | Not started |
+| 14 | Replace text-glyph icons with vector icons | Done, uncommitted, untested (design SVG paths drawn on Canvas) |
+| 15 | Globe button (open web map) on the rail — in the design, missed earlier | Done, uncommitted, untested |
 
 ## Next steps
 
