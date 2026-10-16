@@ -1,33 +1,35 @@
 # Android app — build plan
 
-## Current status (as of 2026-09-28)
+## Current status (as of 2026-10-16)
 
-Milestones 0-3 are **done and merged** into `staging`. Milestone 4 is
-**in progress**: several items done (see checkmarks below), rest open.
+Milestones 0-3 are **done and merged** into `staging`. Milestone 4 is **in progress** on the
+`android-milestone-4-design` branch, open as
+[PR #131](https://github.com/skelstar/dot-watcher/pull/131) (CI green is not guaranteed after the
+latest commits — check before merging). One branch per milestone chunk is the repo's pattern; if #131
+has merged, branch fresh from `staging`.
 
-**Open PR:** [#131](https://github.com/skelstar/dot-watcher/pull/131) —
-`android-milestone-4-design` branch — theme/color pass, per-runner marker
-colors, consent-screen icon badge, real app icon. CI green, not yet
-merged/reviewed by the user as of this writing. If continuing this work in
-a new session, check whether #131 merged first (`gh pr view 131`); if not,
-either continue on that branch or wait for it to land before branching
-again, per this repo's one-branch-per-milestone-chunk pattern used
-throughout (see git history: `android-milestone-0` through
-`android-milestone-4-design`).
+**Done in Milestone 4 (all on #131):** Material3 theme from the app icon's brand colours,
+per-runner marker colours, consent-screen badge, adaptive app icon, iOS-matching Auth/Session
+screens, Play Store listing assets, release signing, delete-account page, support contact, and the
+**in-session map redesign** (full-screen map with floating controls, extend-session sheet,
+follow / fit-all, initials markers with a countdown border and badges, ending-soon pill, critical
+battery pause). Detail and per-item status: `.ai/plans/android-map-redesign.md`.
 
-**User feedback on the design pass (2026-09-28):** the map screen "doesn't
-look much different" after the theme change — accurate, since the map is
-mostly basemap tiles the theme doesn't touch; the visible changes there
-are just the top-bar button text color (now brand blue) and the current
-user's marker color (now blue instead of flat yellow). Auth/session/
-consent screens show the theme change more clearly (bold headlines,
-brand-colored buttons, backgrounds). User's verdict: "I think they were
-better. Functional." — i.e. acceptable as a modest improvement, not a
-full redesign, and they chose to **not** pursue a deeper per-screen layout
-pass right now (see the question/answer preserved in conversation history
-around 2026-09-28 for the exact framing, if it matters later). Treat the
-visual design pass as reasonably closed unless a specific screen is later
-flagged as still looking wrong.
+**Distribution:** 0.2.0 (versionCode 3) is on Play **internal testing**. It predates the battery
+pause. Bump `versionCode` in `android/app/build.gradle.kts` for every upload; Play rejects reuse.
+
+**Still open in Milestone 4:**
+- **Satellite banner** (redesign item 11) — blocked on whether Android can detect satellite at all
+  (API 35+ constants unverified, not testable on the emulator). Approach in
+  `android-map-redesign.md`.
+- Blocked users management, GPX route import/display, in-app help content.
+- Push notifications — undecided; only "satellite alerts" (`.ai/plans/satellite-alerts.md`) exists
+  on iOS.
+- Confirm `/privacy` and `/terms` are linked from the Play listing.
+- OEM-specific background restrictions (Samsung/Xiaomi) still need a long real-run test.
+
+**Design pass closed (2026-09-28):** the user chose not to pursue a deeper per-screen layout pass
+beyond the theme; the map redesign above is separate, mock-driven work.
 
 **Toolchain note:** this machine now has a working local JDK 21 + Android
 SDK + Gradle (installed while setting up real-device testing partway
