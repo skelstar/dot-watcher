@@ -280,7 +280,27 @@ Lower-priority items, roughly mapped to remaining iOS files:
   underscores the server's `NormalizeSessionName` also accepts), a
   deliberate bug-for-bug iOS-parity choice rather than an oversight.
 - Blocked users management (`BlockedUsersView.swift` equivalent).
-- GPX route import/display (`GpxRouteParser.swift`, `.ai/plans/ios-route-upload.md` if that's landed by then).
+- **GPX route display + upload** (planned 2026-10-16, not started; design in
+  `.ai/plans/ios-route-upload.md`, server already complete — no server work). Android has no route
+  code today.
+  1. *Display:* add `GET /session-invites/{code}/route` (no auth; 404 = no route) to
+     `DotWatcherApi`, parse GPX track points (mirror `client/src/gpx.ts` / `GpxRouteParser.swift`),
+     draw a line layer in `MapScreen` (below the pins). Load when the active session changes and on
+     app resume (`repeatOnLifecycle(STARTED)`, same gate as the position poll — no extra background
+     work).
+  2. *Upload:* `POST /sessions/{id}/route-upload-token`, then open
+     `{webBase}/route-upload/{sessionId}#token={token}` in a Custom Tab (the web page already has
+     the file picker/preview). Refetch the route when the tab closes / app resumes. Needs a web
+     base URL in `BuildConfig` (iOS deliberately does not route this by TestFlight — see the
+     comment at `LocationManager.swift` `configuredBaseURL`; mirror that: production web, not
+     staging).
+  3. *Menu:* "Add route" / "Replace route" and "Remove route" (confirm: "removes the route for
+     everyone") in the redesigned map's ⋯ menu, any session member.
+  4. *Propagation gap (all clients):* routes are fetched only on join/session-change/launch, so a
+     route uploaded mid-session does not appear on other phones until they relaunch or rejoin.
+     Consider a cheap fix shared by iOS/Android/web: refetch on foreground, and/or return a route
+     version (e.g. `routeUpdatedAt`) in the existing positions/session-info response so clients
+     refetch only on change.
 - In-app help content (`HelpView.swift`/`Help.md` equivalent).
 - Push notifications (if/when relevant — check whether iOS has any first;
   not obviously present in the current iOS file list).
