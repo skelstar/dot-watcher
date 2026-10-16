@@ -1,6 +1,13 @@
 package nz.skelstar.dotwatcher.ui.auth
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -20,15 +27,20 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import nz.skelstar.dotwatcher.AuthUiState
 import nz.skelstar.dotwatcher.ui.CodeBoxField
 import nz.skelstar.dotwatcher.ui.GroupDivider
 import nz.skelstar.dotwatcher.ui.GroupedCard
+import nz.skelstar.dotwatcher.ui.map.RunnerColorPalette
 
 /**
  * Sign-in/sign-up screen: [POST /auth/register] and [POST /auth/login]
@@ -115,11 +127,21 @@ fun AuthScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     Spacer(modifier = Modifier.height(8.dp))
-                    CodeBoxField(
-                        value = displayName,
-                        onValueChange = { displayName = it },
-                        length = 2,
-                        lettersOnly = true,
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        CodeBoxField(
+                            value = displayName,
+                            onValueChange = { displayName = it },
+                            length = 2,
+                            lettersOnly = true,
+                        )
+                        Spacer(modifier = Modifier.width(16.dp))
+                        InitialsDotPreview(initials = displayName)
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "Other people see these initials on your dot on the map.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             }
@@ -196,6 +218,28 @@ private fun CardActionRow(text: String, enabled: Boolean, onClick: () -> Unit) {
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(vertical = 4.dp),
+        )
+    }
+}
+
+/** A live preview of how the runner's dot will look on the map: "??" until they type, then the
+ *  initials fill in letter by letter. Uses the local user's own dot colour and white border. */
+@Composable
+private fun InitialsDotPreview(initials: String) {
+    val padded = initials.take(2).uppercase().padEnd(2, '?')
+    Box(
+        modifier = Modifier
+            .size(44.dp)
+            .clip(CircleShape)
+            .background(Color(RunnerColorPalette.colorAt(RunnerColorPalette.CURRENT_USER_INDEX)))
+            .border(2.5.dp, Color.White, CircleShape),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = padded,
+            color = Color.White,
+            fontSize = 15.sp,
+            fontWeight = FontWeight.Bold,
         )
     }
 }
