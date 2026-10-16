@@ -87,11 +87,19 @@ iOS behaviour: `NWPath.isUltraConstrained` → slower cadence (`ultraConstrained
 alert notification (`satellite-alerts.md`, PR #175 unverified), non-essential traffic suppressed.
 
 Android work — **the platform capability is the unknown**:
-1. **Detect.** Android 15 (API 35) added satellite as a network transport and a
-   "not bandwidth constrained" capability on `NetworkCapabilities`. Our `targetSdk` is 36, so the
-   constants exist. Needs verifying against the AOSP docs and, ideally, a carrier/device that
-   exposes it (emulator cannot). Register a `ConnectivityManager` default-network callback and
-   expose `isUltraConstrained: StateFlow<Boolean>`.
+1. **Detect.** *Spike result (2026-10-16, read from the installed SDK jars with `javap`):*
+   - `NetworkCapabilities.TRANSPORT_SATELLITE` (= 10) exists from **API 35** (present in
+     `android-35` and `android-36`).
+   - `NetworkCapabilities.NET_CAPABILITY_NOT_BANDWIDTH_CONSTRAINED` (= 37) exists only from
+     **API 36** (absent from `android-35`) — the analogue of iOS's `isUltraConstrained`: the
+     *absence* of this capability means a bandwidth-constrained path.
+   - `SatelliteManager` exists too, but is about the radio's own satellite state, not the data path.
+   Plan: register `ConnectivityManager.registerDefaultNetworkCallback` and compute
+   `constrained = hasTransport(TRANSPORT_SATELLITE) || !hasCapability(NOT_BANDWIDTH_CONSTRAINED)`,
+   each guarded by `Build.VERSION.SDK_INT` (minSdk is 26, so below 35 it is always `false`). Beware
+   that "no NOT_BANDWIDTH_CONSTRAINED" must only count on API 36+, otherwise every older device would
+   read as constrained. Expose as `isUltraConstrained: StateFlow<Boolean>`. **Still unverified on a
+   real satellite connection** (emulator can't), so keep a debug override.
 2. **Treat as unverified until a real device shows it.** If detection can't be tested, ship the
    plumbing behind the same flag the server already persists and don't claim satellite support in
    release notes.
