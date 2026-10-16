@@ -70,6 +70,7 @@ class DotWatcherRepository(
         longitude: Double,
         heading: Double?,
         timestamp: String,
+        batteryLevel: Int? = null,
     ): Response<LocationPostResponse> {
         val token = requireToken()
         val update = LocationUpdate(
@@ -78,6 +79,7 @@ class DotWatcherRepository(
             longitude = longitude,
             heading = heading,
             timestamp = timestamp,
+            batteryLevel = batteryLevel,
         )
         return api.postLocation(bearer(token), update)
     }

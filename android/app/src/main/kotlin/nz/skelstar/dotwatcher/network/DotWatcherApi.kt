@@ -90,6 +90,8 @@ data class LocationUpdate(
     val longitude: Double,
     val heading: Double? = null,
     val timestamp: String,
+    /** 0-100 battery percentage at capture time; null when unknown. Server persists it. */
+    val batteryLevel: Int? = null,
 )
 
 @Serializable

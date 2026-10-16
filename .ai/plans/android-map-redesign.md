@@ -19,7 +19,7 @@ ports it to Android. Branch: `android-milestone-4-design`.
 | 9 | Marker badges: satellite, warning + faded pin (stale), pause (own dot) | Satellite + stale/disconnected done; pause badge blocked on battery-pause state |
 | 10 | Tap countdown → extend sheet (+30 min / +1 hr / +2 hr, + "Stop now") | Done (service `extend()`; `totalDuration` now in `TrackingState`; durations are placeholders) |
 | 11 | Satellite banner (title, send/refresh interval, last sent), map locked + dimmed | Not started — see "Groundwork for 11 and 12" |
-| 12 | Battery-paused card (Send now / Auto / Stop), own dot grey, no ring | Not started — see "Groundwork for 11 and 12" |
+| 12 | Battery-paused card (Send now / Auto / Stop), own dot grey with low-battery badge, no ring | Done. Android now also reports `batteryLevel` on every post. Test: emulator ⋯ → Battery → level ≤10, "Not charging" |
 | 13 | Ending-soon pill ("Auto-stops in N min") | Done |
 | 14 | Replace text-glyph icons with vector icons | Done (design SVG paths drawn on Canvas) |
 | 15 | Globe button (open web map) on the rail — in the design, missed earlier | Done |

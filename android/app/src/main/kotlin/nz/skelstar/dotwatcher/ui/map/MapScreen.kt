@@ -88,7 +88,8 @@ private fun chevronIconId(colorIndex: Int) = "runner-chevron-$colorIndex"
  *
  * Markers are initials circles (see RunnerPins.kt) with a heading chevron orbiting them. While
  * [sendIntervalSeconds] is set (this device is sharing), the local user's pin wears a ring that
- * empties toward the next clock-aligned position send.
+ * empties toward the next clock-aligned position send — unless [ownPaused] (critical battery), when
+ * it goes grey with a pause badge and no ring or chevron, since no send is coming.
  */
 @Composable
 fun MapScreen(
@@ -101,6 +102,7 @@ fun MapScreen(
     onRunnerTapped: (String) -> Unit = {},
     onUserMovedCamera: () -> Unit = {},
     sendIntervalSeconds: Long? = null,
+    ownPaused: Boolean = false,
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -238,7 +240,7 @@ fun MapScreen(
                     val remainingMs = Duration.between(now, nextPostAt(now, interval)).toMillis()
                     ceil(RING_STEPS * remainingMs / (interval * 1000.0)).toInt().coerceIn(0, RING_STEPS)
                 }
-                val specs = positions.associate { it.runnerName to pinSpecFor(it, currentUserName, now, ringStep) }
+                val specs = positions.associate { it.runnerName to pinSpecFor(it, currentUserName, now, ringStep, ownPaused) }
                 specs.values.distinctBy { it.key }.forEach { spec ->
                     if (currentStyle.getImage(spec.key) == null) {
                         currentStyle.addImage(spec.key, pinBitmap(spec, density))
@@ -301,7 +303,7 @@ private fun List<RunnerPosition>.toChevronFeatures(specs: Map<String, PinSpec>):
         mapNotNull { position ->
             val spec = specs[position.runnerName] ?: return@mapNotNull null
             val heading = position.heading ?: return@mapNotNull null
-            if (spec.state != PinState.Live) return@mapNotNull null
+            if (spec.state != PinState.Live || spec.paused) return@mapNotNull null
             Feature.fromGeometry(Point.fromLngLat(position.longitude, position.latitude)).apply {
                 addNumberProperty(HEADING_PROPERTY, heading)
                 addStringProperty(ICON_PROPERTY, chevronIconId(spec.colorIndex))
