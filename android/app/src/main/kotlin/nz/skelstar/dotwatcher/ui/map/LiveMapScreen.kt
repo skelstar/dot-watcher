@@ -329,7 +329,7 @@ private fun AutoStopTimer(tracking: TrackingState.Tracking, onClick: () -> Unit)
             drawArc(arcColor, -90f, 360f * fraction, false, style = stroke)
         }
         Text(
-            text = "%d:%02d".format(remaining.toHours(), remaining.toMinutesPart()),
+            text = "%d:%02d".format(remaining.toHours(), remaining.toMinutes() % 60),
             fontSize = 11.sp,
             fontWeight = FontWeight.Bold,
             fontFamily = FontFamily.Monospace,
@@ -368,7 +368,7 @@ private fun ExtendSessionSheet(
     val now by rememberSecondClock()
     val remaining = Duration.between(now, expiresAt).coerceAtLeast(Duration.ZERO)
     val label = if (remaining.toHours() >= 1) {
-        "Auto-stops in ${remaining.toHours()} hr ${remaining.toMinutesPart()} min"
+        "Auto-stops in ${remaining.toHours()} hr ${remaining.toMinutes() % 60} min"
     } else {
         "Auto-stops in ${(remaining.seconds + 59) / 60} min"
     }
