@@ -180,15 +180,6 @@ interface DotWatcherApi {
         @Header("X-Api-Version") apiVersion: String = API_VERSION,
     ): Response<List<SessionMembership>>
 
-    /** Sessions the caller has left, most recently left first — used for the "Recent Sessions"
-     *  tap-to-rejoin list (matches iOS's ContentView.swift `noSessionView`/`recentSessionsCard`,
-     *  shown when the caller has no active session). */
-    @GET("me/sessions/recent")
-    suspend fun getRecentSessions(
-        @Header("Authorization") bearerToken: String,
-        @Header("X-Api-Version") apiVersion: String = API_VERSION,
-    ): Response<List<SessionMembership>>
-
     /** Removes the caller's own membership from a session — matches iOS's
      *  LocationManager.swift `leaveSession(sessionId:)`. */
     @DELETE("me/sessions/{sessionId}/membership")

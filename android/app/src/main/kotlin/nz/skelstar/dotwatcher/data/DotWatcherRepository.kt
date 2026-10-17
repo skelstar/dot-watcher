@@ -95,11 +95,6 @@ class DotWatcherRepository(
         return api.getMySessions(bearer(token))
     }
 
-    suspend fun getRecentSessions(): Response<List<SessionMembership>> {
-        val token = requireToken()
-        return api.getRecentSessions(bearer(token))
-    }
-
     suspend fun leaveSession(sessionId: String): Response<Unit> {
         val token = requireToken()
         return api.leaveSession(sessionId, bearer(token))

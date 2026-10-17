@@ -1,7 +1,6 @@
 package nz.skelstar.dotwatcher.ui.session
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -20,7 +19,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.HelpOutline
 import androidx.compose.material.icons.filled.AccountCircle
-import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Button
@@ -39,13 +37,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
-import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import nz.skelstar.dotwatcher.BuildConfig
 import nz.skelstar.dotwatcher.SessionUiState
-import nz.skelstar.dotwatcher.network.SessionMembership
 import nz.skelstar.dotwatcher.ui.CodeBoxField
 import nz.skelstar.dotwatcher.ui.GroupDivider
 import nz.skelstar.dotwatcher.ui.GroupedCard
@@ -53,16 +49,14 @@ import nz.skelstar.dotwatcher.ui.GroupedCard
 /**
  * Lets a signed-in runner either start a new session ([POST /sessions]) or join an existing one
  * by invite code ([POST /session-invites/{inviteCode}/join] with role "runner" — repo root
- * README.md, "Auth model"), or tap to rejoin a session they've previously left
- * ([recentSessions], [GET /me/sessions/recent]) — matches iOS's `noSessionView`'s
- * `recentSessionsCard` (ContentView.swift). iOS shows this screen only when there's no active
- * session; Android's single linear flow reaches it the same way (via [leaveSession][
+ * README.md, "Auth model"). Rejoining a session is only by typing its invite code again: iOS
+ * removed its "Recent Sessions" card, and so has Android. iOS shows this screen only when there's
+ * no active session; Android's single linear flow reaches it the same way (via [leaveSession][
  * nz.skelstar.dotwatcher.AppViewModel.leaveSession] or first sign-in).
  *
  * Laid out to match the real iOS screen (media-files/Simulator Screenshot ... 16.19.49 / 16.23.23
  * / 16.20.27.png): an app header, a signed-in status row, a single "Join a Session" card (session
- * creation lives behind a "Create one" link that opens a dialog, not a second inline card), then
- * "Recent Sessions" below.
+ * creation lives behind a "Create one" link that opens a dialog, not a second inline card).
  *
  * No display-name field here or in the create dialog: iOS doesn't ask per-session either — it
  * auto-fills from the account's own registered display name on every login
@@ -76,10 +70,8 @@ import nz.skelstar.dotwatcher.ui.GroupedCard
 @Composable
 fun SessionScreen(
     state: SessionUiState,
-    recentSessions: List<SessionMembership>,
     onCreateSession: (sessionName: String?) -> Unit,
     onJoinSession: (inviteCode: String) -> Unit,
-    onRejoinSession: (inviteCode: String) -> Unit,
     onRefresh: () -> Unit,
     onSignOut: () -> Unit,
 ) {
@@ -152,16 +144,6 @@ fun SessionScreen(
                 color = MaterialTheme.colorScheme.error,
             )
             SessionUiState.Idle -> Unit
-        }
-
-        if (recentSessions.isNotEmpty()) {
-            Spacer(modifier = Modifier.height(24.dp))
-            SectionLabel("Recent Sessions")
-            RecentSessionsCard(
-                sessions = recentSessions,
-                enabled = state !is SessionUiState.Loading,
-                onRejoin = onRejoinSession,
-            )
         }
 
         Spacer(modifier = Modifier.height(24.dp))
@@ -241,7 +223,7 @@ private fun AppHeader(onAccountClick: () -> Unit) {
 /** Colored dot + "Signed in" + refresh button, matching iOS's status row (media-files/
  *  Simulator Screenshot ... 16.19.49.png) — this screen is only ever reached signed-in, so unlike
  *  iOS (which also shows "Idle" for its separate tracking/connection status), there's no other
- *  state this row needs to reflect yet. [onRefresh] re-fetches the recent-sessions list. */
+ *  state this row needs to reflect yet. [onRefresh] re-checks for an active session. */
 @Composable
 private fun StatusRow(onRefresh: () -> Unit) {
     Row(
@@ -265,7 +247,7 @@ private fun StatusRow(onRefresh: () -> Unit) {
 }
 
 /** Small caps-style section header above a [GroupedCard], matching the iOS screenshots'
- *  "Join a Session" / "Recent Sessions" labels. */
+ *  "Join a Session" label. */
 @Composable
 private fun SectionLabel(text: String) {
     Text(
@@ -291,44 +273,6 @@ private fun CardActionRow(text: String, enabled: Boolean, onClick: () -> Unit) {
                 .fillMaxWidth()
                 .padding(vertical = 4.dp),
         )
-    }
-}
-
-@Composable
-private fun RecentSessionsCard(
-    sessions: List<SessionMembership>,
-    enabled: Boolean,
-    onRejoin: (inviteCode: String) -> Unit,
-) {
-    val clipboard = LocalClipboardManager.current
-    GroupedCard(modifier = Modifier.fillMaxWidth()) {
-        sessions.forEachIndexed { index, membership ->
-            if (index > 0) GroupDivider()
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable(enabled = enabled) { onRejoin(membership.inviteCode) }
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Column {
-                    Text(text = membership.sessionName, style = MaterialTheme.typography.bodyLarge)
-                    Text(
-                        text = "Invite ${membership.inviteCode}",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                IconButton(onClick = { clipboard.setText(AnnotatedString(membership.inviteCode)) }) {
-                    Icon(
-                        imageVector = Icons.Default.ContentCopy,
-                        contentDescription = "Copy invite code",
-                        tint = MaterialTheme.colorScheme.primary,
-                    )
-                }
-            }
-        }
     }
 }
 
