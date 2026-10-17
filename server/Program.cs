@@ -170,7 +170,8 @@ app.Use(async (ctx, next) =>
 
 
         var userAuth = ctx.RequestServices.GetRequiredService<UserTokenAuth>();
-        if (userAuth.TryAuthenticate(ctx.Request, out var user))
+        var isSignedIn = userAuth.TryAuthenticate(ctx.Request, out var user);
+        if (isSignedIn)
         {
             log = log.ForContext("UserId", user.UserId);
             log = log.ForContext("Username", user.Username);
@@ -186,6 +187,18 @@ app.Use(async (ctx, next) =>
         if (path != "/log") // skip noisy debug-panel polling
         {
             var hasRunner = ctx.Items.TryGetValue("Log:Runner", out var logRunner);
+
+            // Requests that don't name a runner themselves (GET /locations/..., GET /me/sessions,
+            // leaving a session, logout...) still say who made them, for the native apps: fall back
+            // to the signed-in account's display name, which is its initials. Web and admin traffic
+            // is left as it was.
+            var isNativeClient = clientId.ToString() is "ios" or "android";
+            if (!hasRunner && isNativeClient && isSignedIn)
+            {
+                logRunner = user.DisplayName;
+                hasRunner = true;
+                log = log.ForContext("Runner", logRunner);
+            }
             var hasCode = ctx.Items.TryGetValue("Log:Code", out var logCode);
             var message = hasRunner
                 ? hasCode ? $"{method} {path} - {logRunner} - {logCode}" : $"{method} {path} - {logRunner}"
