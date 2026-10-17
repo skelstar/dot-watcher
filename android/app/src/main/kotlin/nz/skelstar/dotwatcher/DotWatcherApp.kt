@@ -78,6 +78,8 @@ fun DotWatcherApp(hasBackgroundLocationPermission: Boolean) {
                     onJoinSession = viewModel::joinSession,
                     onRefresh = viewModel::refresh,
                     onSignOut = viewModel::signOut,
+                    account = viewModel.account,
+                    onDeleteAccount = viewModel::deleteAccount,
                 )
 
                 is Destination.Consent -> if (hasBackgroundLocationPermission) {

@@ -40,6 +40,7 @@ import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
+import nz.skelstar.dotwatcher.AccountInfo
 import nz.skelstar.dotwatcher.BuildConfig
 import nz.skelstar.dotwatcher.SessionUiState
 import nz.skelstar.dotwatcher.ui.CodeBoxField
@@ -74,9 +75,12 @@ fun SessionScreen(
     onJoinSession: (inviteCode: String) -> Unit,
     onRefresh: () -> Unit,
     onSignOut: () -> Unit,
+    account: AccountInfo,
+    onDeleteAccount: (onError: (String) -> Unit) -> Unit,
 ) {
     var inviteCode by remember { mutableStateOf("") }
     var showCreateDialog by remember { mutableStateOf(false) }
+    var showAccount by remember { mutableStateOf(false) }
     val clipboard = LocalClipboardManager.current
 
     Column(
@@ -85,7 +89,7 @@ fun SessionScreen(
             .verticalScroll(rememberScrollState())
             .padding(24.dp),
     ) {
-        AppHeader(onAccountClick = onSignOut)
+        AppHeader(onAccountClick = { showAccount = true })
         Spacer(modifier = Modifier.height(24.dp))
 
         StatusRow(onRefresh = onRefresh)
@@ -159,6 +163,18 @@ fun SessionScreen(
                 Text("Sign out")
             }
         }
+    }
+
+    if (showAccount) {
+        AccountSheet(
+            account = account,
+            onSignOut = {
+                showAccount = false
+                onSignOut()
+            },
+            onDeleteAccount = onDeleteAccount,
+            onDismiss = { showAccount = false },
+        )
     }
 
     if (showCreateDialog) {

@@ -207,6 +207,28 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    /** Who is signed in, for the account sheet. [username] is null for a sign-in that predates it
+     *  being stored. */
+    val account: AccountInfo
+        get() = AccountInfo(repository.username, repository.displayName.orEmpty())
+
+    /** Deletes the account for good (after the UI has confirmed). On success this signs out and
+     *  lands on the auth screen; on failure the runner stays signed in and [onError] says why. */
+    fun deleteAccount(onError: (String) -> Unit) {
+        viewModelScope.launch {
+            val result = runCatching { repository.deleteAccount() }
+            val response = result.getOrNull()
+            when {
+                response != null && response.isSuccessful -> {
+                    LocationTrackingService.stop(getApplication())
+                    _destination.value = Destination.Auth
+                }
+                response != null -> onError(response.errorMessageOrStatus())
+                else -> onError(result.exceptionOrNull()?.message ?: "Network error.")
+            }
+        }
+    }
+
     fun signOut() {
         LocationTrackingService.stop(getApplication())
         viewModelScope.launch {
@@ -215,3 +237,6 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 }
+
+/** The signed-in account as shown in the account sheet. */
+data class AccountInfo(val username: String?, val displayName: String)
