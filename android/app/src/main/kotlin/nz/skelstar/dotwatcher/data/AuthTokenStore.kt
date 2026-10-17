@@ -42,6 +42,11 @@ class AuthTokenStore(context: Context) {
         get() = prefs.getString(KEY_DISPLAY_NAME, null)
         set(value) = prefs.edit().putString(KEY_DISPLAY_NAME, value).apply()
 
+    /** Null for a sign-in made before the username was stored; refreshed on the next login. */
+    var username: String?
+        get() = prefs.getString(KEY_USERNAME, null)
+        set(value) = prefs.edit().putString(KEY_USERNAME, value).apply()
+
     val isSignedIn: Boolean
         get() = accessToken != null
 
@@ -53,5 +58,6 @@ class AuthTokenStore(context: Context) {
         const val KEY_ACCESS_TOKEN = "access_token"
         const val KEY_USER_ID = "user_id"
         const val KEY_DISPLAY_NAME = "display_name"
+        const val KEY_USERNAME = "username"
     }
 }

@@ -181,6 +181,14 @@ interface DotWatcherApi {
         @Header("X-Api-Version") apiVersion: String = API_VERSION,
     ): Response<List<SessionMembership>>
 
+    /** Permanently deletes the caller's account and the sessions they own — matches iOS's
+     *  delete-account action in AuthSheet.swift. */
+    @DELETE("me")
+    suspend fun deleteAccount(
+        @Header("Authorization") bearerToken: String,
+        @Header("X-Api-Version") apiVersion: String = API_VERSION,
+    ): Response<Unit>
+
     /** Removes the caller's own membership from a session — matches iOS's
      *  LocationManager.swift `leaveSession(sessionId:)`. */
     @DELETE("me/sessions/{sessionId}/membership")
