@@ -107,6 +107,19 @@ data class RunnerPosition(
     val isUltraConstrained: Boolean = false,
 )
 
+/** A crash saved by [nz.skelstar.dotwatcher.crash.CrashReporter] and uploaded on the next launch.
+ *  Matches the server's `ClientErrorReport`. */
+@Serializable
+data class ClientErrorReport(
+    val stackTrace: String,
+    val threadName: String? = null,
+    val occurredAt: String? = null,
+    val occurrences: Int? = null,
+    val appVersion: String? = null,
+    val osVersion: String? = null,
+    val deviceModel: String? = null,
+)
+
 @Serializable
 data class LocationPostResponse(
     val participants: List<String> = emptyList(),
@@ -153,6 +166,13 @@ interface DotWatcherApi {
         @Body request: LoginRequest,
         @Header("X-Api-Version") apiVersion: String = API_VERSION,
     ): Response<AuthResponse>
+
+    /** Unauthenticated: a crash can happen before anyone has signed in. */
+    @POST("client-errors")
+    suspend fun postClientError(
+        @Body report: ClientErrorReport,
+        @Header("X-Api-Version") apiVersion: String = API_VERSION,
+    ): Response<Unit>
 
     @POST("auth/logout")
     suspend fun logout(
@@ -244,14 +264,21 @@ private class DeviceHeadersInterceptor(context: Context) : okhttp3.Interceptor {
 
     override fun intercept(chain: okhttp3.Interceptor.Chain): okhttp3.Response {
         val request = chain.request().newBuilder()
-            .header("X-Device-Name", deviceName)
+            .header("X-Device-Name", asciiHeaderValue(deviceName))
             .header("X-Client-Id", "android")
+            .header("X-OS-Version", "Android ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})")
             .header("X-App-Version", "${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})")
             .apply { if (deviceId.isNotEmpty()) header("X-Device-Id", deviceId) }
             .build()
         return chain.proceed(request)
     }
 }
+
+/** HTTP header values must be plain ASCII: OkHttp throws on anything else, and a phone named
+ *  "Sarah’s Galaxy" (curly apostrophe) would otherwise fail every request. Replaces what can't be
+ *  sent with "?" and drops control characters. */
+private fun asciiHeaderValue(value: String): String =
+    value.map { if (it in ' '..'~') it else '?' }.joinToString("").trim()
 
 object DotWatcherApiClient {
     fun create(baseUrl: String, context: Context): DotWatcherApi {
