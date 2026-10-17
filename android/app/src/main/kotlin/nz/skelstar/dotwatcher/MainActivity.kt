@@ -73,6 +73,15 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onResume() {
+        super.onResume()
+        // The runner may have just changed location to "Allow all the time" in system settings
+        // (the only place that option can be chosen) — pick it up so the consent screen replaces
+        // the "allow all the time" explainer without a relaunch.
+        hasBackgroundLocationPermission =
+            isForegroundLocationGranted() && isBackgroundLocationGranted()
+    }
+
     private fun requestBackgroundLocationIfNeeded() {
         if (isBackgroundLocationGranted()) {
             hasBackgroundLocationPermission = true

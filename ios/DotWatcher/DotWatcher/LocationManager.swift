@@ -542,6 +542,7 @@ final class LocationManager {
         request.setValue(Self.deviceId, forHTTPHeaderField: "X-Device-Id")
         request.setValue(String(apiVersion), forHTTPHeaderField: "X-Api-Version")
         request.setValue("ios", forHTTPHeaderField: "X-Client-Id")
+        request.setValue(Self.appVersion, forHTTPHeaderField: "X-App-Version")
 
         guard let (data, response) = try? await URLSession.shared.data(for: request),
               let statusCode = (response as? HTTPURLResponse)?.statusCode
@@ -1038,6 +1039,7 @@ final class LocationManager {
         request.setValue(Self.deviceId, forHTTPHeaderField: "X-Device-Id")
         request.setValue(String(apiVersion), forHTTPHeaderField: "X-Api-Version")
         request.setValue("ios", forHTTPHeaderField: "X-Client-Id")
+        request.setValue(Self.appVersion, forHTTPHeaderField: "X-App-Version")
         if authorized {
             guard let accessToken else { throw DotWatcherAPIError.missingToken }
             request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
@@ -1075,6 +1077,7 @@ final class LocationManager {
         request.setValue(Self.deviceId, forHTTPHeaderField: "X-Device-Id")
         request.setValue(String(apiVersion), forHTTPHeaderField: "X-Api-Version")
         request.setValue("ios", forHTTPHeaderField: "X-Client-Id")
+        request.setValue(Self.appVersion, forHTTPHeaderField: "X-App-Version")
         _ = try? await URLSession.shared.data(for: request)
     }
 
@@ -1091,6 +1094,7 @@ final class LocationManager {
         request.setValue(Self.deviceId, forHTTPHeaderField: "X-Device-Id")
         request.setValue(String(apiVersion), forHTTPHeaderField: "X-Api-Version")
         request.setValue("ios", forHTTPHeaderField: "X-Client-Id")
+        request.setValue(Self.appVersion, forHTTPHeaderField: "X-App-Version")
 
         do {
             let (_, response) = try await URLSession.shared.data(for: request)
@@ -1141,6 +1145,15 @@ final class LocationManager {
         ]
         SecItemAdd(item as CFDictionary, nil)
     }
+
+    /// This app's own version and build for the server's request log, e.g. "1.2 (437)" (sent as
+    /// `X-App-Version`). Distinct from `apiVersion`, the compatibility integer the server gates on.
+    private static let appVersion: String = {
+        let info = Bundle.main.infoDictionary
+        let version = info?["CFBundleShortVersionString"] as? String ?? "?"
+        let build = info?["CFBundleVersion"] as? String ?? "?"
+        return "\(version) (\(build))"
+    }()
 
     /// Identifies this app install for log correlation. Stored in Keychain (not UserDefaults) so it
     /// survives app deletion/reinstall on the same device, letting us tell "same device, reinstalled"
