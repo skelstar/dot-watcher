@@ -8,6 +8,7 @@ import com.jakewharton.retrofit2.converter.kotlinx.serialization.asConverterFact
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
+import nz.skelstar.dotwatcher.BuildConfig
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
@@ -237,6 +238,7 @@ private class DeviceHeadersInterceptor(context: Context) : okhttp3.Interceptor {
         val request = chain.request().newBuilder()
             .header("X-Device-Name", deviceName)
             .header("X-Client-Id", "android")
+            .header("X-App-Version", "${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})")
             .apply { if (deviceId.isNotEmpty()) header("X-Device-Id", deviceId) }
             .build()
         return chain.proceed(request)
