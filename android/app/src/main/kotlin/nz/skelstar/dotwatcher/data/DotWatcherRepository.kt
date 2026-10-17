@@ -22,12 +22,17 @@ class DotWatcherRepository(
     private val api: DotWatcherApi,
     private val tokenStore: AuthTokenStore,
 ) {
+    /** Who is signed in, for the account sheet. */
+    val username: String? get() = tokenStore.username
+    val displayName: String? get() = tokenStore.displayName
+
     suspend fun register(username: String, password: String, displayName: String): Response<Unit> {
         val response = api.register(RegisterRequest(username, password, displayName))
         response.body()?.let { auth ->
             tokenStore.accessToken = auth.accessToken
             tokenStore.userId = auth.user.userId
             tokenStore.displayName = auth.user.displayName
+            tokenStore.username = auth.user.username
         }
         return stripBody(response)
     }
@@ -38,6 +43,7 @@ class DotWatcherRepository(
             tokenStore.accessToken = auth.accessToken
             tokenStore.userId = auth.user.userId
             tokenStore.displayName = auth.user.displayName
+            tokenStore.username = auth.user.username
         }
         return stripBody(response)
     }
@@ -48,6 +54,15 @@ class DotWatcherRepository(
             runCatching { api.logout(bearer(token)) }
         }
         tokenStore.clear()
+    }
+
+    /** Permanently deletes the caller's account (`DELETE /me`, which cascades to the sessions they
+     *  own). Clears the stored token only on success, so a failed delete leaves them signed in. */
+    suspend fun deleteAccount(): Response<Unit> {
+        val token = requireToken()
+        val response = api.deleteAccount(bearer(token))
+        if (response.isSuccessful) tokenStore.clear()
+        return response
     }
 
     suspend fun createSession(sessionName: String?, displayName: String?): Response<SessionMembership> {
@@ -70,6 +85,7 @@ class DotWatcherRepository(
         longitude: Double,
         heading: Double?,
         timestamp: String,
+        batteryLevel: Int? = null,
     ): Response<LocationPostResponse> {
         val token = requireToken()
         val update = LocationUpdate(
@@ -78,6 +94,7 @@ class DotWatcherRepository(
             longitude = longitude,
             heading = heading,
             timestamp = timestamp,
+            batteryLevel = batteryLevel,
         )
         return api.postLocation(bearer(token), update)
     }
@@ -91,11 +108,6 @@ class DotWatcherRepository(
     suspend fun getMySessions(): Response<List<SessionMembership>> {
         val token = requireToken()
         return api.getMySessions(bearer(token))
-    }
-
-    suspend fun getRecentSessions(): Response<List<SessionMembership>> {
-        val token = requireToken()
-        return api.getRecentSessions(bearer(token))
     }
 
     suspend fun leaveSession(sessionId: String): Response<Unit> {

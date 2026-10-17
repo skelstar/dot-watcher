@@ -4,13 +4,12 @@ Native Kotlin/Jetpack Compose client for Dot Watcher, targeting the same server 
 `ios/` and `client/`. See `.ai/plans/android-app.md` for the full milestone plan this
 app is being built against.
 
-**Status:** Milestone 3 (parity features) — sign in/register, create/join/rejoin a session,
-consent to share for a bounded duration (2h/4h/8h/24h, matching iOS), keep sending position
-updates via a foreground service through screen lock/backgrounding, share the invite link via
-the system share sheet, leave a session (with confirmation), a blocking screen if the server
-ever rejects this build's API version, and a persisted offline queue for failed position
-posts. Confirmed working on a real device. Not yet done: the Milestone 4 visual design pass
-(current screens use bare Material3 defaults, not iOS's styling) and OEM-specific background
+**Status:** Milestone 4 in progress (polish) — all of Milestones 1-3 (session management,
+background tracking, offline queue, 426 handling) plus a real Material3 theme built from the
+app icon's actual brand colors, boxed per-character invite-code entry, and per-runner marker
+coloring on the map. Confirmed working on a real device. Not yet done: full per-screen layout
+parity with iOS beyond color/typography, blocked users, GPX routes, help content, app icon/Play
+Store assets, and Play Console distribution. Also still open: OEM-specific background
 restriction settings (Samsung/Xiaomi/etc.), which the in-app battery-optimization exemption
 prompt can't reach — worth a longer real-run test to confirm those don't interfere in practice.
 

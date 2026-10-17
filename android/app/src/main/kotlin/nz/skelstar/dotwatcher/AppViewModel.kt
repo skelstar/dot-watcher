@@ -51,7 +51,7 @@ sealed interface SessionUiState {
  */
 class AppViewModel(application: Application) : AndroidViewModel(application) {
     private val tokenStore = AuthTokenStore(application)
-    private val api = DotWatcherApiClient.create(BuildConfig.API_BASE_URL)
+    private val api = DotWatcherApiClient.create(BuildConfig.API_BASE_URL, application)
     val repository = DotWatcherRepository(api, tokenStore)
 
     private val _destination = MutableStateFlow<Destination>(
@@ -65,15 +65,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     private val _sessionState = MutableStateFlow<SessionUiState>(SessionUiState.Idle)
     val sessionState: StateFlow<SessionUiState> = _sessionState
 
-    /** Sessions the caller has left, most recently left first — populated whenever
-     *  [Destination.Session] is (re)shown, matching iOS's recentSessionsCard which loads on
-     *  appear and on pull-to-refresh (ContentView.swift's `noSessionView`). */
-    private val _recentSessions = MutableStateFlow<List<SessionMembership>>(emptyList())
-    val recentSessions: StateFlow<List<SessionMembership>> = _recentSessions
-
     init {
         if (tokenStore.isSignedIn) {
-            loadRecentSessions()
             restoreActiveSession()
         }
     }
@@ -132,25 +125,17 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         }
         return if (response.isSuccessful) {
             _destination.value = Destination.Session
-            loadRecentSessions()
             AuthUiState.Idle
         } else {
             AuthUiState.Error(response.errorMessageOrStatus())
         }
     }
 
-    /** Best-effort: a failed load just leaves the list empty/stale rather than surfacing an
-     *  error, matching iOS's treatment of this as a background convenience list, not a screen
-     *  the runner can get stuck on. */
-    fun loadRecentSessions() {
-        viewModelScope.launch {
-            runCatching { repository.getRecentSessions() }
-                .onSuccess { response -> response.body()?.let { _recentSessions.value = it } }
-        }
-    }
-
-    fun rejoinSession(inviteCode: String) {
-        joinSession(inviteCode)
+    /** The create/join screen's refresh button: re-checks for an active membership (e.g. one made
+     *  from another device) and moves into it, otherwise lands back on create/join. */
+    fun refresh() {
+        _destination.value = Destination.Restoring
+        restoreActiveSession()
     }
 
     /** No displayName param: matches iOS's common path, which auto-fills the per-session
@@ -219,7 +204,28 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             runCatching { repository.leaveSession(membership.sessionId) }
             _sessionState.value = SessionUiState.Idle
             _destination.value = Destination.Session
-            loadRecentSessions()
+        }
+    }
+
+    /** Who is signed in, for the account sheet. [username] is null for a sign-in that predates it
+     *  being stored. */
+    val account: AccountInfo
+        get() = AccountInfo(repository.username, repository.displayName.orEmpty())
+
+    /** Deletes the account for good (after the UI has confirmed). On success this signs out and
+     *  lands on the auth screen; on failure the runner stays signed in and [onError] says why. */
+    fun deleteAccount(onError: (String) -> Unit) {
+        viewModelScope.launch {
+            val result = runCatching { repository.deleteAccount() }
+            val response = result.getOrNull()
+            when {
+                response != null && response.isSuccessful -> {
+                    LocationTrackingService.stop(getApplication())
+                    _destination.value = Destination.Auth
+                }
+                response != null -> onError(response.errorMessageOrStatus())
+                else -> onError(result.exceptionOrNull()?.message ?: "Network error.")
+            }
         }
     }
 
@@ -231,3 +237,6 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 }
+
+/** The signed-in account as shown in the account sheet. */
+data class AccountInfo(val username: String?, val displayName: String)
