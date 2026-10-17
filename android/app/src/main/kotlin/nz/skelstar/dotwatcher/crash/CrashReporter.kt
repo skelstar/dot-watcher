@@ -61,8 +61,8 @@ object CrashReporter {
 
     /**
      * Sends the saved report, if there is one. The file is deleted once the server has it (any 2xx),
-     * or when it can never be accepted (a 4xx other than 429) or has gone stale; a network failure,
-     * 429 or 5xx leaves it for the next launch.
+     * or when the server will never accept it (400, 413, 422) or it has gone stale; a network failure,
+     * a 404 (server not updated yet), 429 or 5xx leaves it for the next launch.
      */
     suspend fun uploadPending(context: Context, api: DotWatcherApi) {
         val file = pendingFile(context)
@@ -78,8 +78,10 @@ object CrashReporter {
         }
 
         val response = runCatching { api.postClientError(report) }.getOrNull() ?: return
-        val permanent = response.code() in 400..499 && response.code() != 429
-        if (response.isSuccessful || permanent) file.delete()
+        // Only a report the server will never accept is dropped. A 404 (a server that hasn't been
+        // updated to have this endpoint yet), 429 and 5xx are all "try again next launch".
+        val rejected = response.code() in setOf(400, 413, 422)
+        if (response.isSuccessful || rejected) file.delete()
     }
 
     fun osVersion(): String = "Android ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})"
