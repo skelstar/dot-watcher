@@ -149,6 +149,7 @@ Three Xcode configurations: Debug (simulator → localhost), Device (physical de
 | App user   | `POST /auth/register`, `POST /auth/login`, `POST /auth/logout`, `DELETE /me` | Username/password, returns revocable user access token |
 | Runner     | `POST /location`               | User access token plus `runner` session membership |
 | Viewer     | `GET /locations/{sessionCode}` | User access token plus session membership |
+| App (crash report) | `POST /client-errors` | None, since a crash can precede sign-in. Size-capped and rate-limited (10/hour per `X-Device-Id`, 200/hour overall); logged to Seq at error level |
 | Admin panel (`/admin`) and ops scripts | `/admin/*`, `GET /sessions`, `GET`/`DELETE /log`, recording upload/delete/merge | Admin bearer token in `Authorization` header |
 
 Session codes are identifiers, not credentials. Membership is granted via:
