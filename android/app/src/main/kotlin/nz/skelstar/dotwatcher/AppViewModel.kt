@@ -1,6 +1,10 @@
 package nz.skelstar.dotwatcher
 
+import android.Manifest
 import android.app.Application
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -8,6 +12,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import nz.skelstar.dotwatcher.data.AuthTokenStore
 import nz.skelstar.dotwatcher.data.DotWatcherRepository
+import nz.skelstar.dotwatcher.data.ShareChoiceStore
 import nz.skelstar.dotwatcher.location.LocationTrackingService
 import nz.skelstar.dotwatcher.location.TrackingState
 import nz.skelstar.dotwatcher.network.DotWatcherApiClient
@@ -15,6 +20,7 @@ import nz.skelstar.dotwatcher.network.SessionMembership
 import nz.skelstar.dotwatcher.network.errorMessageOrStatus
 import retrofit2.Response
 import java.time.Duration
+import java.time.Instant
 
 /** Where the nav graph should route to based on sign-in/session state. */
 sealed interface Destination {
@@ -51,6 +57,7 @@ sealed interface SessionUiState {
  */
 class AppViewModel(application: Application) : AndroidViewModel(application) {
     private val tokenStore = AuthTokenStore(application)
+    private val shareChoices = ShareChoiceStore(application)
     private val api = DotWatcherApiClient.create(BuildConfig.API_BASE_URL, application)
     val repository = DotWatcherRepository(api, tokenStore)
 
@@ -78,6 +85,19 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
      * `loadSessions()` picking the first active membership. A failed load falls back to the
      * create/join screen.
      */
+    /** Sharing in the background needs foreground *and* background location; without them the
+     *  consent screen (which explains how to grant it) is the right place to land. */
+    private fun hasLocationPermissionsForSharing(): Boolean {
+        val app = getApplication<Application>()
+        fun granted(permission: String) =
+            ContextCompat.checkSelfPermission(app, permission) == PackageManager.PERMISSION_GRANTED
+        val foreground = granted(Manifest.permission.ACCESS_FINE_LOCATION) ||
+            granted(Manifest.permission.ACCESS_COARSE_LOCATION)
+        val background = Build.VERSION.SDK_INT < Build.VERSION_CODES.Q ||
+            granted(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
+        return foreground && background
+    }
+
     private fun restoreActiveSession() {
         viewModelScope.launch {
             val memberships = runCatching { repository.getMySessions() }
@@ -89,16 +109,27 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             // Don't clobber a navigation the user made while this was in flight.
             if (_destination.value != Destination.Restoring) return@launch
 
-            val tracking = LocationTrackingService.state.value as? TrackingState.Tracking
-            val membership = memberships.firstOrNull { it.sessionId == tracking?.sessionId }
-                ?: memberships.firstOrNull()
-
-            _destination.value = when {
-                membership == null -> Destination.Session
-                tracking?.sessionId == membership.sessionId ->
-                    Destination.Map(membership, isSharing = true)
-                membership.role == "runner" -> Destination.Consent(membership)
-                else -> Destination.Map(membership, isSharing = false)
+            val decision = decideRestore(
+                memberships = memberships,
+                tracking = LocationTrackingService.state.value as? TrackingState.Tracking,
+                choice = shareChoices.read(),
+                now = Instant.now(),
+                canResumeSharing = hasLocationPermissionsForSharing(),
+            )
+            _destination.value = when (decision) {
+                RestoreDecision.CreateOrJoin -> Destination.Session
+                is RestoreDecision.Map -> Destination.Map(decision.membership, decision.isSharing)
+                is RestoreDecision.Consent -> Destination.Consent(decision.membership)
+                is RestoreDecision.ResumeSharing -> {
+                    // They already chose how long to share and it hasn't run out: carry on, don't ask.
+                    LocationTrackingService.start(
+                        getApplication(),
+                        decision.membership.sessionId,
+                        decision.remaining,
+                        decision.total,
+                    )
+                    Destination.Map(decision.membership, isSharing = true)
+                }
             }
         }
     }
@@ -182,6 +213,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun declineSharing(membership: SessionMembership) {
+        shareChoices.recordViewOnly(membership.sessionId)
         _destination.value = Destination.Map(membership, isSharing = false)
     }
 
@@ -190,6 +222,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
      *  sharing again by leaving and rejoining, or via a future dedicated "share again" action. */
     fun stopSharing(membership: SessionMembership) {
         LocationTrackingService.stop(getApplication())
+        shareChoices.recordViewOnly(membership.sessionId)
         _destination.value = Destination.Map(membership, isSharing = false)
     }
 
@@ -200,6 +233,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
      *  first — this performs the leave unconditionally once called. */
     fun leaveSession(membership: SessionMembership) {
         LocationTrackingService.stop(getApplication())
+        shareChoices.clear()
         viewModelScope.launch {
             runCatching { repository.leaveSession(membership.sessionId) }
             _sessionState.value = SessionUiState.Idle
@@ -221,6 +255,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             when {
                 response != null && response.isSuccessful -> {
                     LocationTrackingService.stop(getApplication())
+                    shareChoices.clear()
                     _destination.value = Destination.Auth
                 }
                 response != null -> onError(response.errorMessageOrStatus())
@@ -231,6 +266,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     fun signOut() {
         LocationTrackingService.stop(getApplication())
+        shareChoices.clear()
         viewModelScope.launch {
             repository.logout()
             _destination.value = Destination.Auth

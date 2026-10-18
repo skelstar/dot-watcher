@@ -28,6 +28,7 @@ import nz.skelstar.dotwatcher.BuildConfig
 import nz.skelstar.dotwatcher.MainActivity
 import nz.skelstar.dotwatcher.data.AuthTokenStore
 import nz.skelstar.dotwatcher.data.DotWatcherRepository
+import nz.skelstar.dotwatcher.data.ShareChoiceStore
 import nz.skelstar.dotwatcher.network.DotWatcherApiClient
 import java.time.Duration
 import java.time.Instant
@@ -86,6 +87,7 @@ class LocationTrackingService : Service() {
     private lateinit var locationTracker: LocationTracker
     private lateinit var repository: DotWatcherRepository
     private lateinit var updateQueue: LocationUpdateQueue
+    private lateinit var shareChoices: ShareChoiceStore
 
     override fun onCreate() {
         super.onCreate()
@@ -94,6 +96,7 @@ class LocationTrackingService : Service() {
         val api = DotWatcherApiClient.create(BuildConfig.API_BASE_URL, applicationContext)
         repository = DotWatcherRepository(api, tokenStore)
         updateQueue = LocationUpdateQueue(applicationContext)
+        shareChoices = ShareChoiceStore(applicationContext)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -118,6 +121,9 @@ class LocationTrackingService : Service() {
                     }
                 }
             }
+            (_state.value as? TrackingState.Tracking)?.takeIf { extended }?.let {
+                shareChoices.recordSharing(it.sessionId, it.expiresAt, it.totalDuration)
+            }
             // Nothing was running (this intent just created the service): don't leave it idle.
             if (!extended && _state.value !is TrackingState.Tracking) stopSelf()
             return START_NOT_STICKY
@@ -125,6 +131,7 @@ class LocationTrackingService : Service() {
 
         val sessionId = intent?.getStringExtra(EXTRA_SESSION_ID)
         val durationSeconds = intent?.getLongExtra(EXTRA_DURATION_SECONDS, -1) ?: -1
+        val totalSeconds = intent?.getLongExtra(EXTRA_TOTAL_SECONDS, -1)?.takeIf { it > 0 } ?: durationSeconds
 
         if (sessionId == null || durationSeconds <= 0) {
             stopSelf()
@@ -132,7 +139,7 @@ class LocationTrackingService : Service() {
         }
 
         startForegroundWithNotification()
-        startTracking(sessionId, Duration.ofSeconds(durationSeconds))
+        startTracking(sessionId, Duration.ofSeconds(durationSeconds), Duration.ofSeconds(totalSeconds))
 
         // Not START_STICKY: if the OS kills this process, tracking should stay stopped rather
         // than silently restart without the runner's knowledge — matches the explicit-start,
@@ -196,13 +203,14 @@ class LocationTrackingService : Service() {
         if (shouldPause) locationTracker.stopHeadingUpdates() else locationTracker.startHeadingUpdates()
     }
 
-    private fun startTracking(sessionId: String, duration: Duration) {
+    private fun startTracking(sessionId: String, duration: Duration, total: Duration) {
         trackingJob?.cancel()
         batteryOverride = false
         locationTracker.startHeadingUpdates()
 
         val initialExpiry = Instant.now().plus(duration)
-        _state.value = TrackingState.Tracking(sessionId, initialExpiry, totalDuration = duration)
+        _state.value = TrackingState.Tracking(sessionId, initialExpiry, totalDuration = total)
+        shareChoices.recordSharing(sessionId, initialExpiry, total)
 
         trackingJob = serviceScope.launch {
             while (isActive) {
@@ -334,6 +342,7 @@ class LocationTrackingService : Service() {
         trackingJob?.cancel()
         trackingJob = null
         locationTracker.stopHeadingUpdates()
+        shareChoices.clearSharing()
         _state.value = TrackingState.Stopped
     }
 
@@ -381,6 +390,7 @@ class LocationTrackingService : Service() {
         private const val NOTIFICATION_ID = 1
         private const val EXTRA_SESSION_ID = "session_id"
         private const val EXTRA_DURATION_SECONDS = "duration_seconds"
+        private const val EXTRA_TOTAL_SECONDS = "total_seconds"
         private const val ACTION_EXTEND = "nz.skelstar.dotwatcher.action.EXTEND_TRACKING"
         private const val ACTION_SEND_NOW = "nz.skelstar.dotwatcher.action.SEND_NOW"
         private const val ACTION_RESUME_AUTO = "nz.skelstar.dotwatcher.action.RESUME_AUTO"
@@ -388,10 +398,13 @@ class LocationTrackingService : Service() {
         private val _state = MutableStateFlow<TrackingState>(TrackingState.Stopped)
         val state: StateFlow<TrackingState> = _state.asStateFlow()
 
-        fun start(context: Context, sessionId: String, duration: Duration) {
+        /** [totalDuration] is only for resuming a share the runner already chose: [duration] is then
+         *  what is left, and the total keeps the countdown arc measured against the real span. */
+        fun start(context: Context, sessionId: String, duration: Duration, totalDuration: Duration = duration) {
             val intent = Intent(context, LocationTrackingService::class.java)
                 .putExtra(EXTRA_SESSION_ID, sessionId)
                 .putExtra(EXTRA_DURATION_SECONDS, duration.seconds)
+                .putExtra(EXTRA_TOTAL_SECONDS, totalDuration.seconds)
             context.startForegroundService(intent)
         }
 
