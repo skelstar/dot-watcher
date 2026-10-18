@@ -96,6 +96,9 @@ public class AuthController(
         attemptLimiter.RecordSuccess(attemptKey);
         HttpContext.Items["Log:LoginResult"] = "success";
         HttpContext.Items["Log:LoginUserId"] = account.Id;
+        // No bearer token yet on this request, so the summary logger can't tell who this is;
+        // name the runner here, as registration does.
+        HttpContext.Items["Log:Runner"] = account.DisplayName;
         return Ok(ToResponse(account));
     }
 
