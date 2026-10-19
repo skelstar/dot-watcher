@@ -163,7 +163,7 @@ class LocationTrackingService : Service() {
                     latitude = capture.latitude,
                     longitude = capture.longitude,
                     heading = capture.heading,
-                    timestamp = Instant.now().toString(),
+                    timestamp = capture.fixedAt.toString(),
                     batteryLevel = BatteryReader.read(applicationContext).level,
                 )
             }.fold(
@@ -232,13 +232,12 @@ class LocationTrackingService : Service() {
                 if (!pause) {
                     runCatching {
                         val capture = locationTracker.captureOnce()
-                        val postedAt = Instant.now()
                         QueuedCapture(
                             sessionId = sessionId,
                             latitude = capture.latitude,
                             longitude = capture.longitude,
                             heading = capture.heading,
-                            timestamp = postedAt.toString(),
+                            timestamp = capture.fixedAt.toString(),
                             batteryLevel = battery.level,
                         )
                     }.fold(
