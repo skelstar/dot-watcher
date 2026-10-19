@@ -37,8 +37,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import nz.skelstar.dotwatcher.AccountInfo
 import nz.skelstar.dotwatcher.BuildConfig
@@ -55,9 +57,10 @@ import nz.skelstar.dotwatcher.ui.GroupedCard
  * no active session; Android's single linear flow reaches it the same way (via [leaveSession][
  * nz.skelstar.dotwatcher.AppViewModel.leaveSession] or first sign-in).
  *
- * Laid out to match the real iOS screen (media-files/Simulator Screenshot ... 16.19.49 / 16.23.23
- * / 16.20.27.png): an app header, a signed-in status row, a single "Join a Session" card (session
- * creation lives behind a "Create one" link that opens a dialog, not a second inline card).
+ * Laid out to the main-screen design (the "Dot-watchr Main Screen Prototype" artifact): an app
+ * header, a signed-in status row, a "Join" card, then a "Start a new one" list of four cards. Only
+ * "Group" is how sessions work today and opens the create dialog; Private, Crew + invites and Race
+ * are shown as coming soon (StartOptions.kt).
  *
  * No display-name field here or in the create dialog: iOS doesn't ask per-session either — it
  * auto-fills from the account's own registered display name on every login
@@ -95,7 +98,7 @@ fun SessionScreen(
         StatusRow(onRefresh = onRefresh)
         Spacer(modifier = Modifier.height(24.dp))
 
-        SectionLabel("Join a Session")
+        SectionLabel("Join")
         GroupedCard(modifier = Modifier.fillMaxWidth()) {
             Column(modifier = Modifier.padding(16.dp)) {
                 Row(
@@ -151,18 +154,8 @@ fun SessionScreen(
         }
 
         Spacer(modifier = Modifier.height(24.dp))
-        Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-            TextButton(onClick = { showCreateDialog = true }) {
-                Text("Session doesn't exist yet? Create one")
-            }
-        }
-
-        Spacer(modifier = Modifier.height(24.dp))
-        Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-            TextButton(onClick = onSignOut) {
-                Text("Sign out")
-            }
-        }
+        SectionLabel("Start a new one")
+        StartOptions(onGroup = { showCreateDialog = true })
     }
 
     if (showAccount) {
@@ -268,9 +261,11 @@ private fun StatusRow(onRefresh: () -> Unit) {
 private fun SectionLabel(text: String) {
     Text(
         text = text,
-        style = MaterialTheme.typography.titleSmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = Modifier.padding(start = 4.dp, bottom = 8.dp),
+        // The design's section titles are large and heavy, not small grey captions.
+        fontSize = 19.sp,
+        fontWeight = FontWeight.ExtraBold,
+        letterSpacing = (-0.3).sp,
+        modifier = Modifier.padding(start = 2.dp, bottom = 8.dp),
     )
 }
 
@@ -318,13 +313,13 @@ private fun CreateSessionDialog(
                 .padding(24.dp),
         ) {
             Text(
-                text = "Create a New Session",
+                text = "Create a New Group",
                 textAlign = TextAlign.Center,
                 style = MaterialTheme.typography.titleLarge,
             )
             Spacer(modifier = Modifier.height(12.dp))
             Text(
-                text = "Give your session a name. You'll get an invite code to share with others.",
+                text = "Give your group a name. You'll get an invite code to share with others.",
                 textAlign = TextAlign.Center,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -341,7 +336,7 @@ private fun CreateSessionDialog(
                 enabled = enabled && (sessionName.isEmpty() || sessionName.length >= 4),
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                Text("Create Session")
+                Text("Create group")
             }
             Spacer(modifier = Modifier.height(4.dp))
             TextButton(onClick = onCancel, modifier = Modifier.fillMaxWidth()) {
