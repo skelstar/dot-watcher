@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Crew on the main screen</title>
+<title>Crew Main Screen</title>
 <style>
 /* A single self-contained file: open it in a browser. The phone is a mock-up, nothing here talks to a server. */
 :root{
@@ -36,7 +36,7 @@ p{margin:0;max-width:64ch}
 .phone{flex:0 0 auto;width:340px;height:700px;background:var(--ph-bg);color:var(--ph-text);border:8px solid var(--ph-frame);border-radius:40px;position:relative;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,system-ui,sans-serif;font-size:14px;line-height:1.3}
 .status{position:absolute;top:10px;left:24px;right:24px;display:flex;justify-content:space-between;font-size:12px;font-weight:600;z-index:3}
 .screen{position:absolute;inset:0;padding:40px 16px 0;display:flex;flex-direction:column;gap:14px;overflow:hidden}
-.scroll{flex:1;min-height:0;overflow-y:auto;margin-inline:-16px;padding:0 16px 22px;display:flex;flex-direction:column;gap:12px;scrollbar-width:thin}
+.scroll{flex:1;min-height:0;overflow-y:auto;margin-inline:-16px;padding:12px 16px 22px;margin-top:-6px;display:flex;flex-direction:column;gap:12px;scrollbar-width:thin}
 .scroll>*{flex:none}
 .hit{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer;text-align:inherit}
 .head{display:flex;justify-content:space-between;align-items:flex-start}
@@ -74,6 +74,12 @@ p{margin:0;max-width:64ch}
 .crewrow .txt{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
 .crewrow .n{font-weight:700;font-size:14px}
 .crewrow .m{font-size:11.5px;color:var(--ph-muted);line-height:1.35}
+.crewrow.slim{padding:8px 12px;gap:10px}
+.crewrow.slim .person{width:30px;height:30px;font-size:10px}
+.mini{display:flex;flex:none;padding-left:2px}
+.mini .person{margin-left:-9px;box-shadow:0 0 0 2px var(--ph-card2),0 0 0 3.5px var(--ring)}
+.mini .person:first-child{margin-left:0}
+.more{align-self:center;margin-left:6px;font-size:11px;font-weight:700;color:var(--ph-muted)}
 .chev{color:var(--ph-muted);font-size:22px}
 .empty{background:var(--ph-card2);border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:10px}
 .empty .t{font-size:12.5px;color:#3a3a3c;line-height:1.4}
@@ -109,7 +115,32 @@ p{margin:0;max-width:64ch}
 .reqbtns{display:flex;gap:6px}
 .lead{font-size:12px;color:#3a3a3c;line-height:1.4;padding:0 2px}
 
+/* simulated keyboard: raises the sheet and hides the explainer so the field and button stay visible */
+.kbd{display:none;position:absolute;left:0;right:0;bottom:0;height:250px;background:#d1d3d9;z-index:8;padding:10px 4px;flex-direction:column;gap:9px;align-items:center;font-size:17px}
+.kbd .r{display:flex;gap:5px}
+.kbd .k{min-width:27px;height:38px;border-radius:6px;background:#fff;display:grid;place-items:center;box-shadow:0 1px 0 rgba(0,0,0,.3);color:#000}
+.kbd .k.w{min-width:46px;background:#aeb3bd}
+.kbd .k.sp{min-width:150px}
+.kbd .k.go{min-width:70px;background:var(--ph-blue);color:#fff;font-size:14px;font-weight:600;cursor:pointer}
+.kbd .tag{font-size:10px;color:#5a6270}
+.phone.kb .kbd{display:flex}
+.phone.kb .sheet{bottom:250px;padding-bottom:12px;animation:none}
+.phone.kb .steps{display:none}
+.dots{display:flex;flex-wrap:wrap;gap:6px 4px}
+.dotbtn{display:flex;flex-direction:column;align-items:center;gap:5px;width:58px;padding:6px 0;border-radius:12px}
+.dotbtn .person{width:38px;height:38px}
+.dotbtn .dn{font-size:10.5px;max-width:56px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ph-muted)}
+.dotbtn.on{background:var(--ph-card2)}
+.dotbtn.on .dn{color:#000;font-weight:600}
+.dotbtn:focus-visible{outline:3px solid var(--ph-blue)}
 /* sheet */
+.grab{width:36px;height:5px;border-radius:3px;background:#c7c7cc;align-self:center;margin:-8px 0 2px}
+.sheet.tall{top:64px;padding-bottom:0}
+.sheet .nav{justify-content:space-between}
+.sheet .nav .grow{flex:1}
+.sheet .nav .back{padding-bottom:3px}
+.done{color:var(--ph-blue);font-weight:600;font-size:15px}
+.sheetscroll{margin-inline:-16px;padding:2px 16px 22px;margin-top:0}
 .scrim{position:absolute;inset:0;background:rgba(0,0,0,.32);z-index:5}
 .sheet{position:absolute;left:0;right:0;bottom:0;background:var(--ph-bg);border-radius:20px 20px 0 0;padding:18px 16px 24px;box-shadow:0 -6px 24px rgba(0,0,0,.25);display:flex;flex-direction:column;gap:11px;z-index:6;animation:up .22s ease-out}
 @keyframes up{from{transform:translateY(40px);opacity:.4}}
@@ -128,7 +159,7 @@ p{margin:0;max-width:64ch}
 <main class="page">
   <header class="group">
     <h1>Crew on the main screen</h1>
-    <p>A crew is the people you have chosen: you add each other by hand, and from then on you always see each other by name. This mock-up tries to make that clear without a manual. Tap through the phone, and use the buttons to jump to a state.</p>
+    <p>A crew is the people you have chosen: you add each other by hand, and from then on you can join and view each other's sessions without an invite code (exact rules still to be defined). This mock-up tries to make that clear without a manual. Tap through the phone, and use the buttons to jump to a state.</p>
   </header>
 
   <div class="layout">
@@ -149,9 +180,9 @@ p{margin:0;max-width:64ch}
       <div class="group">
         <h2>What it is trying to say</h2>
         <ul class="list">
-          <li><b>Crew is a list you keep</b>, so it gets a row on the main screen, not only a line inside a card.</li>
+          <li><b>Crew is a list you keep</b>, so it gets a slim row at the top of the main screen. The Join and Start sections stay together below it.</li>
           <li><b>The ring means crew.</b> A circle with a dark ring is someone in your crew, everywhere: the row, the card pictures, later the map.</li>
-          <li><b>Adding is a handshake.</b> You send a request, they accept, then you see each other by name. Until then they show as “Pending”.</li>
+          <li><b>Adding is a handshake.</b> You send a request, they accept, then you are crew. Until then they show as “Pending”.</li>
           <li><b>“Crew” and “invite” mean different things.</b> Crew is every time; an invite is one session.</li>
         </ul>
       </div>
@@ -173,8 +204,7 @@ p{margin:0;max-width:64ch}
 (function () {
   var COLORS = ['#e8590c', '#2f9e44', '#8e44ad', '#0891b2', '#d97706', '#db2777'];
   var S = {
-    screen: 'main',      // main | crew
-    sheet: null,         // add
+    sheet: null,         // crew | add (a sheet over the main screen)
     crew: [],            // { n, init, since, color }
     requests: [],        // incoming { n, init, color }
     pending: [],         // outgoing { n, init }
@@ -187,14 +217,16 @@ p{margin:0;max-width:64ch}
   function person(p, cls) { return '<span class="person ' + (cls || '') + '" style="' + (p.color ? 'background:' + p.color : '') + '" title="' + esc(p.n) + '">' + esc(p.init) + '</span>'; }
 
   function seed(kind) {
-    S.screen = 'main'; S.sheet = null; S.toast = '';
+    S.sheet = null; S.sel = null; S.toast = '';
     S.crew = []; S.requests = []; S.pending = [];
     if (kind === 'crew' || kind === 'request') {
       S.crew = [
         { n: 'priya', init: 'PR', since: 'since March', color: COLORS[0] },
         { n: 'tom', init: 'TM', since: 'since March', color: COLORS[1] },
         { n: 'jess', init: 'JK', since: 'since June', color: COLORS[2] },
-        { n: 'sam', init: 'SB', since: 'since August', color: COLORS[3] }
+        { n: 'sam', init: 'SB', since: 'since August', color: COLORS[3] },
+        { n: 'marlon', init: 'MA', since: 'since September', color: COLORS[4] },
+        { n: 'hana', init: 'HA', since: 'since September', color: COLORS[5] }
       ];
     }
     if (kind === 'request') S.requests = [{ n: 'alex', init: 'AL', color: COLORS[4] }];
@@ -224,21 +256,22 @@ p{margin:0;max-width:64ch}
 
   /* ---- main screen ---- */
   function crewSection() {
-    var n = S.crew.length, req = S.requests.length;
-    var title = '<div class="sec">Your crew' + (req ? ' <span class="pill">' + req + ' request' + (req > 1 ? 's' : '') + '</span>' : '') + '</div>';
-    if (!n && !req && !S.pending.length) {
-      return title + '<div class="empty new"><span class="badge">NEW</span>' +
-        '<div class="stack"><span class="person add" aria-hidden="true">+</span><span class="person add" aria-hidden="true">+</span><span class="person add" aria-hidden="true">+</span></div>' +
-        '<div class="t"><b>Your crew are people you choose.</b> Add a friend, they say yes, and from then on you always see each other by name. Everyone else sees only a grey dot.</div>' +
-        '<button class="btn blue" data-act="add">Add someone to your crew</button></div>';
+    // One compact row, no heading and no paragraph: the explaining happens on the crew screen and in the add sheet.
+    var n = S.crew.length, req = S.requests.length, wait = S.pending.length;
+    var faces, label, meta, right = '';
+    if (!n && !req && !wait) {
+      faces = '<span class="person add" aria-hidden="true">+</span>';
+      label = 'Your crew'; meta = 'Add people that you know';
+    } else {
+      var more = n > 4 ? '<span class="more">+' + (n - 4) + '</span>' : '';
+      faces = '<span class="mini">' + S.crew.slice(0, 4).map(function (p) { return person(p, 'crew'); }).join('') + more + '</span>';
+      label = 'Your crew';
+      meta = n ? n + ' ' + (n === 1 ? 'person' : 'people') : 'No one yet';
+      if (wait) meta += ' · ' + wait + ' waiting';
     }
-    var shown = S.crew.slice(0, 5).map(function (p) { return person(p, 'crew'); }).join('') +
-      S.pending.map(function (p) { return person(p, 'pending'); }).join('') +
-      '<span class="person add" aria-hidden="true">+</span>';
-    var line = n ? n + ' ' + (n === 1 ? 'person' : 'people') + ' who always see you by name' : 'No one yet';
-    if (S.pending.length) line += ' · ' + S.pending.length + ' waiting to say yes';
-    return title + '<button class="crewrow new" data-act="crew" aria-label="Open your crew"><span class="badge">NEW</span>' +
-      '<span class="txt"><span class="stack" style="padding-left:6px">' + shown + '</span><span class="m">' + line + '</span></span><span class="chev" aria-hidden="true">›</span></button>';
+    if (req) right = '<span class="pill">' + req + ' request' + (req > 1 ? 's' : '') + '</span>';
+    return '<button class="crewrow slim new" data-act="crew" aria-label="Open your crew"><span class="badge">NEW</span>' + faces +
+      '<span class="txt"><span class="n">' + label + '</span><span class="m">' + meta + '</span></span>' + right + '<span class="chev" aria-hidden="true">›</span></button>';
   }
 
   function mainScreen() {
@@ -247,15 +280,15 @@ p{margin:0;max-width:64ch}
       '<div class="icons"><span aria-hidden="true">◉</span><span aria-hidden="true">?</span></div></div>' +
       '<div class="statusrow"><span class="dot"></span><span class="grow">Signed in</span><span aria-hidden="true">↻</span></div>' +
       '<div class="scroll">' +
+      crewSection() +
       '<div class="sec">Join</div>' +
       '<div class="card"><div class="pad"><div class="sub"><span>Enter your invite code</span><b>Paste</b></div><div class="boxes">' +
       '<span class="box"></span><span class="box"></span><span class="box"></span><span class="box"></span><span class="box"></span><span class="box"></span></div></div><hr><div class="action">Join Session</div></div>' +
-      crewSection() +
       '<div class="sec" style="margin-top:4px">Start a new one</div>' +
       opt('priv', 'Private', 'Only people you have invited can see you, and only them.') +
-      opt('crew', 'Crew + invites', 'Your crew see you by name. Anyone you invite for this one does too. Everyone else sees a grey dot.', { cls: 'new', badge: 'REWORDED' }) +
+      opt('crew', 'Crew + invites', 'Your crew can join without an invite code. Anyone you invite for this one can too.', { cls: 'new', badge: 'REWORDED' }) +
       '<div class="optcard" data-live="1" style="opacity:1"><span class="ill">' + ILL.group + '</span><span class="otext"><span class="ttl"><span class="n">Group</span></span><span class="m">All app users see you. Anyone with an invite code can see you. Good for clubs.</span></span><span class="chev">›</span></div>' +
-      opt('race', 'Race', 'The organiser sees everyone. Racers see their crew by name; everyone else is a grey dot.', { badge: '' }).replace('<span class="badge"></span>', '') +
+      opt('race', 'Race', 'The organiser sees everyone. Racers can see their crew.', { badge: '' }).replace('<span class="badge"></span>', '') +
       '<div class="foot">You can make this stricter later, never looser.</div>' +
       '</div></div>';
   }
@@ -266,62 +299,95 @@ p{margin:0;max-width:64ch}
       return '<div class="row">' + person(r, '') + '<div class="who"><div class="n">' + esc(r.n) + '</div><div class="m">wants to be in your crew</div></div>' +
         '<div class="reqbtns"><button class="btn blue sm" data-accept="' + i + '">Accept</button><button class="btn grey sm" data-decline="' + i + '">Not now</button></div></div>';
     }).join('');
-    var members = S.crew.map(function (p, i) {
-      return '<div class="row">' + person(p, 'crew') + '<div class="who"><div class="n">' + esc(p.n) + '</div><div class="m">Crew ' + esc(p.since) + '</div></div><button class="hit x" data-remove="' + i + '">Remove</button></div>';
-    }).join('');
-    var pend = S.pending.map(function (p, i) {
-      return '<div class="row">' + person(p, 'pending') + '<div class="who"><div class="n">' + esc(p.n) + '</div><div class="m">Waiting for them to say yes</div></div><button class="hit x" data-cancel="' + i + '">Cancel</button></div>';
-    }).join('');
+    // accepted crew and pending invites are dots; tapping one opens its preview below
+    function dot(p, kind, i) {
+      var on = S.sel && S.sel.kind === kind && S.sel.i === i;
+      return '<button class="hit dotbtn' + (on ? ' on' : '') + '" data-sel="' + kind + ':' + i + '" aria-pressed="' + on + '" aria-label="' + esc(p.n) + '">' +
+        person(p, kind === 'crew' ? 'crew' : 'pending') + '<span class="dn">' + esc(p.n) + '</span></button>';
+    }
+    var dots = S.crew.map(function (p, i) { return dot(p, 'crew', i); }).join('') + S.pending.map(function (p, i) { return dot(p, 'pend', i); }).join('');
+    var preview = '';
+    if (S.sel) {
+      var sp = S.sel.kind === 'crew' ? S.crew[S.sel.i] : S.pending[S.sel.i];
+      if (sp) {
+        preview = '<div class="card preview"><div class="row">' + person(sp, S.sel.kind === 'crew' ? 'crew' : 'pending') +
+          '<div class="who"><div class="n">' + esc(sp.n) + '</div><div class="m">' + (S.sel.kind === 'crew' ? 'Crew ' + esc(sp.since) : 'Waiting for them to say yes') + '</div></div>' +
+          '<button class="hit x" data-' + (S.sel.kind === 'crew' ? 'remove' : 'cancel') + '="' + S.sel.i + '">' + (S.sel.kind === 'crew' ? 'Remove' : 'Cancel') + '</button></div></div>';
+      }
+    }
     var body = '';
     if (req) body += '<div class="sec" style="font-size:15px">Requests</div><div class="card">' + req + '</div>';
     body += '<div class="sec" style="font-size:15px">In your crew · ' + S.crew.length + '</div>' +
-      (members || pend ? '<div class="card">' + members + pend + '</div>' : '<div class="lead">No one yet. Add someone and ask them to accept.</div>');
-    return '<div class="screen"><div class="nav"><button class="hit back" data-act="back" aria-label="Back">‹</button>Your crew</div>' +
-      '<div class="lead">People you have chosen. They always see you by name, and you see them. Everyone else sees only a grey dot. Removing someone takes effect straight away.</div>' +
-      '<div class="scroll">' + body +
+      (dots ? '<div class="dots">' + dots + '</div>' + (preview || '<div class="lead">Tap someone to see their details.</div>') : '<div class="lead">No one yet. Add someone and ask them to accept.</div>');
+    return '<div class="scrim" data-act="close"></div><div class="sheet tall"><div class="grab" aria-hidden="true"></div>' +
+      '<div class="nav"><span class="grow">Your crew</span><button class="hit done" data-act="close">Done</button></div>' +
+      '<div class="lead">People you have chosen. Crew can join and view without an invite code. Removing someone takes effect straight away.</div>' +
+      '<div class="scroll sheetscroll">' + body +
       '<button class="btn blue" data-act="add">Add someone</button></div></div>';
   }
 
+  function keyboard() {
+    function row(keys) { return '<div class="r">' + keys.split('').map(function (k) { return '<span class="k">' + k + '</span>'; }).join('') + '</div>'; }
+    return '<div class="kbd" aria-hidden="true"><div class="tag">Simulated keyboard (type on your real one)</div>' +
+      row('qwertyuiop') + row('asdfghjkl') + row('zxcvbnm') +
+      '<div class="r"><span class="k w">123</span><span class="k sp"></span><span class="k go" data-act="send">Send</span></div></div>';
+  }
+
   function addSheet() {
-    return '<div class="scrim" data-act="close"></div><div class="sheet">' +
-      '<div class="title2">Add to your crew</div>' +
-      '<div class="steps"><div class="s"><b>1. You ask</b>Type their username.</div><div class="s"><b>2. They accept</b>They get a request.</div><div class="s"><b>3. Seen by name</b>Both of you, always.</div></div>' +
+    return '<div class="scrim" data-act="close"></div><div class="sheet"><div class="grab" aria-hidden="true"></div>' +
+      '<div class="nav"><button class="hit back" data-act="back" aria-label="Back to your crew">‹</button><span class="grow">Add to your crew</span></div>' +
+      '<div class="steps"><div class="s"><b>1. You ask</b>Type their username.</div><div class="s"><b>2. They accept</b>They get a request.</div><div class="s"><b>3. You’re crew</b>Join without a code.</div></div>' +
       '<input class="input" id="uname" placeholder="Their username" autocapitalize="off" autocomplete="off" aria-label="Their username">' +
       '<div class="secondary">Exact username only, so strangers can’t search for people.</div>' +
       '<button class="btn blue" data-act="send">Send request</button>' +
-      '<button class="hit centered secondary" data-act="close">Cancel</button></div>';
+      '<button class="hit centered secondary" data-act="back">Cancel</button></div>' + keyboard();
   }
 
   function render() {
-    var inner = S.screen === 'main' ? mainScreen() : crewScreen();
+    var inner = mainScreen();
+    if (S.sheet === 'crew') inner += crewScreen();
     if (S.sheet === 'add') inner += addSheet();
     if (S.toast) inner += '<div class="toast" role="status">' + esc(S.toast) + '</div>';
+    phone.classList.remove('kb');
     phone.innerHTML = '<div class="status"><span>10:06</span><span>●●●● ▮</span></div>' + inner;
   }
   function toast(t) { S.toast = t; render(); setTimeout(function () { S.toast = ''; render(); }, 2200); }
 
+  // On a touch device the real keyboard appears, so the simulated one is skipped.
+  var touch = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
+  phone.addEventListener('focusin', function (e) { if (e.target.id === 'uname' && !touch) phone.classList.add('kb'); });
+  phone.addEventListener('focusout', function (e) { if (e.target.id === 'uname') phone.classList.remove('kb'); });
+  // taps on buttons or the keyboard keep the field focused, as on a phone, so the layout does not jump before the tap lands
+  phone.addEventListener('mousedown', function (e) { if (phone.classList.contains('kb') && e.target.closest('[data-act="send"],[data-act="back"],.kbd')) e.preventDefault(); });
+  phone.addEventListener('keydown', function (e) { if (e.key === 'Enter' && e.target.id === 'uname') { e.preventDefault(); e.target.blur(); phone.querySelector('[data-act="send"]') && sendRequest(); } });
+
   phone.addEventListener('click', function (e) {
     var t;
+    if ((t = e.target.closest('[data-sel]'))) {
+      var sv = t.getAttribute('data-sel').split(':'), same = S.sel && S.sel.kind === sv[0] && S.sel.i === +sv[1];
+      S.sel = same ? null : { kind: sv[0], i: +sv[1] }; render(); return;
+    }
     if ((t = e.target.closest('[data-accept]'))) {
       var r = S.requests.splice(+t.getAttribute('data-accept'), 1)[0];
-      S.crew.unshift({ n: r.n, init: r.init, since: 'just now', color: r.color }); render(); toast(r.n + ' is in your crew'); return;
+      S.sel = null; S.crew.unshift({ n: r.n, init: r.init, since: 'just now', color: r.color }); render(); toast(r.n + ' is in your crew'); return;
     }
     if ((t = e.target.closest('[data-decline]'))) { S.requests.splice(+t.getAttribute('data-decline'), 1); render(); return; }
-    if ((t = e.target.closest('[data-remove]'))) { S.crew.splice(+t.getAttribute('data-remove'), 1); render(); return; }
-    if ((t = e.target.closest('[data-cancel]'))) { S.pending.splice(+t.getAttribute('data-cancel'), 1); render(); return; }
+    if ((t = e.target.closest('[data-remove]'))) { S.crew.splice(+t.getAttribute('data-remove'), 1); S.sel = null; render(); return; }
+    if ((t = e.target.closest('[data-cancel]'))) { S.pending.splice(+t.getAttribute('data-cancel'), 1); S.sel = null; render(); return; }
     t = e.target.closest('[data-act]');
     if (!t) return;
     var a = t.getAttribute('data-act');
-    if (a === 'crew') { S.screen = 'crew'; render(); }
-    else if (a === 'back') { S.screen = 'main'; render(); }
+    if (a === 'crew') { S.sheet = 'crew'; render(); }
+    else if (a === 'back') { S.sheet = 'crew'; render(); }
     else if (a === 'add') { S.sheet = 'add'; render(); }
     else if (a === 'close') { S.sheet = null; render(); }
-    else if (a === 'send') {
-      var v = (document.getElementById('uname').value || '').trim().toLowerCase().replace(/[^a-z0-9._-]/g, '');
-      if (!v) { document.getElementById('uname').focus(); return; }
-      S.pending.push({ n: v, init: initials(v) }); S.sheet = null; render(); toast('Request sent to ' + v);
-    }
+    else if (a === 'send') sendRequest();
   });
+  function sendRequest() {
+    var v = (document.getElementById('uname').value || '').trim().toLowerCase().replace(/[^a-z0-9._-]/g, '');
+    if (!v) { document.getElementById('uname').focus(); return; }
+    S.pending.push({ n: v, init: initials(v) }); S.sheet = 'crew'; render(); toast('Request sent to ' + v);
+  }
 
   var jumps = document.getElementById('jumps');
   function mark(k) { Array.prototype.forEach.call(jumps.children, function (b) { b.setAttribute('aria-pressed', b.getAttribute('data-jump') === k); }); }
@@ -331,7 +397,7 @@ p{margin:0;max-width:64ch}
     var k = b.getAttribute('data-jump'); seed(k); mark(k); render();
   });
 
-  seed('empty'); mark('empty'); render();
+  seed('crew'); mark('crew'); render();
 })();
 </script>
 </body>
