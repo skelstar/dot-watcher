@@ -82,7 +82,6 @@ public class AdminController(SessionStore store, BearerTokenAuth auth) : Control
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    [ProducesResponseType(StatusCodes.Status409Conflict)]
     public IActionResult CreateSessionForOwner([FromBody] AdminCreateSessionRequest? request)
     {
         if (!auth.IsAuthorized(Request))
@@ -103,9 +102,7 @@ public class AdminController(SessionStore store, BearerTokenAuth auth) : Control
             return BadRequest(new { error = "Display name must be 1-80 characters." });
 
         var membership = store.CreateSessionForUser(owner.Id, displayName, request.SessionName);
-        return membership is null
-            ? Conflict(new { error = "A session with that name already exists. Try entering the invite code." })
-            : Ok(membership);
+        return Ok(membership);
     }
 
     /// <summary>Admin/ops: gets per-member position counts and last-seen timestamps for a session.</summary>
