@@ -225,12 +225,23 @@ private fun AppHeader(onAccountClick: () -> Unit) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        Row {
-            IconButton(onClick = onAccountClick) {
-                Icon(imageVector = Icons.Default.AccountCircle, contentDescription = "Account")
+        // iOS draws these as ~28pt (.title) primary-colored glyphs with no extra button padding.
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            IconButton(onClick = onAccountClick, modifier = Modifier.size(36.dp)) {
+                Icon(
+                    imageVector = Icons.Default.AccountCircle,
+                    contentDescription = "Account",
+                    modifier = Modifier.size(28.dp),
+                    tint = MaterialTheme.colorScheme.onSurface,
+                )
             }
-            IconButton(onClick = {}) {
-                Icon(imageVector = Icons.AutoMirrored.Filled.HelpOutline, contentDescription = "Help")
+            IconButton(onClick = {}, modifier = Modifier.size(36.dp)) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.HelpOutline,
+                    contentDescription = "Help",
+                    modifier = Modifier.size(28.dp),
+                    tint = MaterialTheme.colorScheme.onSurface,
+                )
             }
         }
     }

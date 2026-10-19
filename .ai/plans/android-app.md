@@ -298,11 +298,37 @@ Lower-priority items, roughly mapped to remaining iOS files:
      staging).
   3. *Menu:* "Add route" / "Replace route" and "Remove route" (confirm: "removes the route for
      everyone") in the redesigned map's ⋯ menu, any session member.
-  4. *Propagation gap (all clients):* routes are fetched only on join/session-change/launch, so a
-     route uploaded mid-session does not appear on other phones until they relaunch or rejoin.
-     Consider a cheap fix shared by iOS/Android/web: refetch on foreground, and/or return a route
-     version (e.g. `routeUpdatedAt`) in the existing positions/session-info response so clients
-     refetch only on change.
+  4. *Propagation (all clients, all paths)* — decided 2026-10-16. Routes are fetched only on
+     join/session-change/launch, so a route uploaded or removed mid-session never reaches phones
+     already tracking. Fix: a **route version stamp** piggybacked on responses clients already
+     receive; clients refetch the route only when it changes. A stamp, not a "fetch now" command:
+     it survives dropped responses, offline-queued/retried posts and late joiners, and removal
+     is just another change. No new requests, no polling, no push.
+     - *Server:* `SessionStore.SaveRoute` / `DeleteRoute` set a per-session `routeUpdatedAt`
+       (persist with the route; unset for sessions that never had one). Return it as a response
+       header `X-Route-Updated-At` (ISO-8601 UTC; absent = never had a route) on **every**
+       positions path: `POST /location` and `GET /locations/{sessionId}`
+       (`LocationsController.cs`). A header, not a body field, because `GET /locations/{id}` returns
+       a bare JSON array — adding a field there would need an envelope and break every client.
+       Also set it on `GET /session-invites/{code}/route` so a client records exactly the version
+       it fetched. Additive: old clients ignore it, no `X-Api-Version` bump. Add to
+       `ContractTests` and document in the root README ("Position payload").
+     - *Client rule (all of iOS / Android / web):* remember the last stamp seen per session.
+       On a response whose stamp differs, refetch `GET /session-invites/{code}/route`
+       (404 = route removed → clear). Ignore a missing header (don't clear on its absence).
+     - *Backgrounded phones:* do not fetch from the background (nobody can see it). Mark the route
+       stale and fetch on the next foreground / when the map is visible — tied to the same
+       `STARTED` gate as the position poll on Android, `scenePhase == .active` on iOS.
+     - *Android:* read the header in the repository layer for both the poll and the service's
+       `POST /location`; the service forwards the stamp to the UI via `TrackingState`/a shared
+       flow so the map screen refetches. *iOS:* `LocationManager` post/poll paths →
+       `loadRoute()` on change (replace the join-only trigger at `ContentView.swift:165`).
+       *Web:* the positions poll in `client/` (confirm which endpoint it uses; add the header to
+       whichever it polls) → re-run `loadRoute` in `App.tsx`.
+     - *Latency:* ≤ one post interval (15 s; 90 s ultra-constrained). Uploader still refetches
+       immediately on page dismiss.
+     - *Tests:* server — header present after upload, changes on replace/delete, absent for a
+       session with no route, present on both endpoints.
 - In-app help content (`HelpView.swift`/`Help.md` equivalent).
 - Push notifications (if/when relevant — check whether iOS has any first;
   not obviously present in the current iOS file list).
