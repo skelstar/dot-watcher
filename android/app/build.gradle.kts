@@ -42,8 +42,8 @@ android {
         applicationId = "nz.skelstar.dotwatcher"
         minSdk = 26
         targetSdk = 36
-        versionCode = 3
-        versionName = "0.2.0"
+        versionCode = 9
+        versionName = "0.2.6"
 
         buildConfigField("String", "LINZ_API_KEY", "\"$linzApiKey\"")
         // Used only to build the "join my session" share link (WEB_BASE_URL + "/code/" +
@@ -127,6 +127,7 @@ dependencies {
     implementation(libs.androidx.ui.graphics)
     implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.androidx.material3)
+    testImplementation(libs.junit)
     implementation(libs.androidx.material.icons.extended)
     debugImplementation(libs.androidx.ui.tooling)
 

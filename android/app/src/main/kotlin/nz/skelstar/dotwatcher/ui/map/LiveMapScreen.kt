@@ -26,6 +26,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ModalBottomSheet
@@ -108,6 +109,7 @@ fun LiveMapScreen(
     var followedRunner by remember { mutableStateOf<String?>(null) }
     var fitAllTick by remember { mutableStateOf(0) }
     val trackingState by LocationTrackingService.state.collectAsState()
+    val pausedForBattery = isSharing && (trackingState as? TrackingState.Tracking)?.pausedForBattery == true
 
     // Polls everyone's latest positions, including this device's own once the server has it.
     // Only while the app is visible (STARTED): with the screen locked or the app backgrounded
@@ -169,6 +171,7 @@ fun LiveMapScreen(
             fitAll = fitAll,
             fitAllTick = fitAllTick,
             sendIntervalSeconds = if (isSharing) POST_INTERVAL_SECONDS else null,
+            ownPaused = pausedForBattery,
             onRunnerTapped = { name ->
                 // Tapping the runner you're following lets go again.
                 followedRunner = if (name == followedRunner) null else name
@@ -229,7 +232,8 @@ fun LiveMapScreen(
             }
         }
 
-        if (isSharing) {
+        // While paused for battery, the card below carries its own Stop and takes the bottom edge.
+        if (isSharing && !pausedForBattery) {
             StopPill(
                 onClick = onStopSharing,
                 modifier = Modifier
@@ -239,16 +243,21 @@ fun LiveMapScreen(
             )
         }
 
-        val errorMessage = if (!isSharing) {
-            null
-        } else {
-            (trackingState as? TrackingState.Tracking)?.lastError?.let {
-                "Couldn't send your position: $it"
-            }
-        }
-        if (errorMessage != null) {
+        val lastError = (trackingState as? TrackingState.Tracking)?.lastError
+        if (pausedForBattery) {
+            BatteryPausedCard(
+                lastError = lastError,
+                onSendNow = { LocationTrackingService.sendNow(context) },
+                onAuto = { LocationTrackingService.resumeAutomatic(context) },
+                onStop = onStopSharing,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .navigationBarsPadding()
+                    .padding(start = 12.dp, end = 12.dp, bottom = 16.dp),
+            )
+        } else if (isSharing && lastError != null) {
             Text(
-                text = errorMessage,
+                text = "Couldn't send your position: $lastError",
                 color = MaterialTheme.colorScheme.error,
                 modifier = Modifier
                     .align(Alignment.BottomStart)
@@ -320,7 +329,7 @@ private fun AutoStopTimer(tracking: TrackingState.Tracking, onClick: () -> Unit)
             drawArc(arcColor, -90f, 360f * fraction, false, style = stroke)
         }
         Text(
-            text = "%d:%02d".format(remaining.toHours(), remaining.toMinutesPart()),
+            text = "%d:%02d".format(remaining.toHours(), remaining.toMinutes() % 60),
             fontSize = 11.sp,
             fontWeight = FontWeight.Bold,
             fontFamily = FontFamily.Monospace,
@@ -336,6 +345,7 @@ private enum class RailIcon(val paths: List<String>) {
     Globe(listOf("M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18M3 12h18M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18")),
     Hash(listOf("M5 9h14M5 15h14M10 4L8 20M16 4l-2 16")),
     More(listOf("M5 12h.01M12 12h.01M19 12h.01")),
+    Battery(listOf("M4 7h13a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2zM22 11v2M6 10v4")),
 }
 
 /** Placeholder durations from the redesign mock — to be confirmed. */
@@ -358,7 +368,7 @@ private fun ExtendSessionSheet(
     val now by rememberSecondClock()
     val remaining = Duration.between(now, expiresAt).coerceAtLeast(Duration.ZERO)
     val label = if (remaining.toHours() >= 1) {
-        "Auto-stops in ${remaining.toHours()} hr ${remaining.toMinutesPart()} min"
+        "Auto-stops in ${remaining.toHours()} hr ${remaining.toMinutes() % 60} min"
     } else {
         "Auto-stops in ${(remaining.seconds + 59) / 60} min"
     }
@@ -415,24 +425,80 @@ private fun EndingSoonPill(expiresAt: Instant) {
     }
 }
 
+/** [icon] drawn as strokes in [tint] on a 24-unit grid, at [size]. */
+@Composable
+private fun PathIcon(icon: RailIcon, tint: Color, size: androidx.compose.ui.unit.Dp) {
+    val paths = remember(icon) { icon.paths.map { PathParser().parsePathString(it).toPath() } }
+    Canvas(Modifier.size(size)) {
+        scale(this.size.width / 24f, pivot = androidx.compose.ui.geometry.Offset.Zero) {
+            // "More" is three dots: a zero-length round-capped segment draws as a dot, wider stroke.
+            val width = if (icon == RailIcon.More) 3.2f else 2f
+            paths.forEach {
+                drawPath(it, tint, style = Stroke(width = width, cap = StrokeCap.Round, join = StrokeJoin.Round))
+            }
+        }
+    }
+}
+
 @Composable
 private fun RailButton(icon: RailIcon, description: String, active: Boolean = false, onClick: () -> Unit) {
-    val tint = if (active) Color.White else Color(0xFF14181F)
-    val paths = remember(icon) { icon.paths.map { PathParser().parsePathString(it).toPath() } }
     Box(
         modifier = Modifier.size(44.dp).clip(CircleShape).background(if (active) AccentBlue else GlassColor)
             .clickable(onClick = onClick)
             .semantics { contentDescription = description },
         contentAlignment = Alignment.Center,
     ) {
-        Canvas(Modifier.size(22.dp)) {
-            scale(size.width / 24f, pivot = androidx.compose.ui.geometry.Offset.Zero) {
-                // "More" is three dots: a zero-length round-capped segment draws as a dot, wider stroke.
-                val width = if (icon == RailIcon.More) 3.2f else 2f
-                paths.forEach {
-                    drawPath(it, tint, style = Stroke(width = width, cap = StrokeCap.Round, join = StrokeJoin.Round))
-                }
-            }
+        PathIcon(icon, if (active) Color.White else Color(0xFF14181F), 22.dp)
+    }
+}
+
+/** Shown while automatic tracking is paused for a critical battery. Needs a decision, so it takes
+ *  the bottom edge with its own Stop (the redesign's rule for anything covering the Stop pill).
+ *  "Send now" posts one position without resuming; "Auto" overrides the pause. */
+@Composable
+private fun BatteryPausedCard(
+    lastError: String?,
+    onSendNow: () -> Unit,
+    onAuto: () -> Unit,
+    onStop: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val danger = Color(0xFFC4271D)
+    Column(
+        modifier = modifier.fillMaxWidth().clip(RoundedCornerShape(22.dp)).background(Color(0xF5FFF0EE))
+            .padding(14.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+            PathIcon(RailIcon.Battery, danger, 18.dp)
+            Text(
+                "Battery critical, updates paused",
+                color = danger,
+                fontSize = 13.5.sp,
+                fontWeight = FontWeight.Bold,
+            )
+        }
+        Text(
+            "Others can't see you move until you send manually, plug in, or turn automatic updates back on.",
+            color = Color(0xFF5D6675),
+            fontSize = 11.5.sp,
+        )
+        if (lastError != null) {
+            Text("Couldn't send: $lastError", color = danger, fontSize = 11.5.sp)
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Button(onClick = onSendNow, modifier = Modifier.weight(1f)) { Text("Send now") }
+            OutlinedButton(onClick = onAuto, modifier = Modifier.weight(1f)) { Text("Auto") }
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth().height(40.dp).clip(RoundedCornerShape(20.dp))
+                .background(StopRed).clickable(onClick = onStop),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center,
+        ) {
+            Box(Modifier.size(10.dp).clip(RoundedCornerShape(3.dp)).background(Color.White))
+            Spacer(Modifier.width(8.dp))
+            Text("Stop", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
         }
     }
 }

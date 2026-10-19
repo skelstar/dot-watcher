@@ -41,8 +41,11 @@ data class PinSpec(
     val state: PinState,
     val satellite: Boolean,
     val ringStep: Int?,
+    /** Own dot only: automatic tracking is paused for a critical battery. Drawn grey with a low-battery
+     *  badge and no countdown ring, since no send is coming. */
+    val paused: Boolean = false,
 ) {
-    val key: String get() = "pin|$label|$colorIndex|${state.ordinal}|$satellite|${ringStep ?: -1}"
+    val key: String get() = "pin|$label|$colorIndex|${state.ordinal}|$satellite|${ringStep ?: -1}|$paused"
 }
 
 /** The 1–2 letter tag drawn on a dot. Accounts are meant to carry 2-letter initials, but older
@@ -60,7 +63,13 @@ fun initialsFor(name: String): String {
 
 /** Builds the marker spec for [position]. The local user's own pin is never stale or
  *  disconnected (it is this device's own data), mirroring iOS. */
-fun pinSpecFor(position: RunnerPosition, currentUserName: String, now: Instant, ringStep: Int?): PinSpec {
+fun pinSpecFor(
+    position: RunnerPosition,
+    currentUserName: String,
+    now: Instant,
+    ringStep: Int?,
+    ownPaused: Boolean = false,
+): PinSpec {
     val isMe = position.runnerName == currentUserName
     val age = if (isMe) null else runCatching {
         Duration.between(OffsetDateTime.parse(position.timestamp).toInstant(), now)
@@ -76,7 +85,8 @@ fun pinSpecFor(position: RunnerPosition, currentUserName: String, now: Instant, 
         colorIndex = if (isMe) RunnerColorPalette.CURRENT_USER_INDEX else RunnerColorPalette.indexForName(position.runnerName),
         state = state,
         satellite = position.isUltraConstrained,
-        ringStep = if (isMe) ringStep else null,
+        ringStep = if (isMe && !ownPaused) ringStep else null,
+        paused = isMe && ownPaused,
     )
 }
 
@@ -93,7 +103,7 @@ fun pinBitmap(spec: PinSpec, density: Float): Bitmap {
     val cx = size / 2f
     val cy = size / 2f
     val r = dp(17.5f)
-    val color = RunnerColorPalette.colorAt(spec.colorIndex).toInt()
+    val color = if (spec.paused) 0xFF7D8794.toInt() else RunnerColorPalette.colorAt(spec.colorIndex).toInt()
 
     val textColor: Int
     when (spec.state) {
@@ -159,6 +169,26 @@ fun pinBitmap(spec: PinSpec, density: Float): Bitmap {
     val badgeR = dp(8.5f)
     val bx = cx + r * 0.78f
     var by = cy - r * 0.78f
+    if (spec.paused) {
+        // Red badge with a nearly-empty battery: says *why* the dot stopped updating. A little
+        // larger than the other badges so the glyph stays legible.
+        val pr = dp(10.5f)
+        canvas.drawCircle(bx, by, pr, Paint(Paint.ANTI_ALIAS_FLAG).apply { this.color = 0xFFFF3B30.toInt() })
+        val bw = dp(11f)
+        val bh = dp(6.5f)
+        val body = RectF(bx - bw / 2 - dp(0.8f), by - bh / 2, bx + bw / 2 - dp(0.8f), by + bh / 2)
+        val white = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            this.color = 0xFFFFFFFF.toInt()
+            style = Paint.Style.STROKE
+            strokeWidth = dp(1.2f)
+        }
+        canvas.drawRoundRect(body, dp(1.4f), dp(1.4f), white)
+        white.style = Paint.Style.FILL
+        // terminal nub, and a sliver of charge on the left
+        canvas.drawRect(body.right + dp(0.6f), by - dp(1.3f), body.right + dp(1.8f), by + dp(1.3f), white)
+        canvas.drawRect(body.left + dp(1.8f), body.top + dp(1.8f), body.left + dp(3.8f), body.bottom - dp(1.8f), white)
+        by += pr + badgeR + dp(1f)
+    }
     if (spec.satellite) {
         canvas.drawCircle(bx, by, badgeR, Paint(Paint.ANTI_ALIAS_FLAG).apply { this.color = 0xFFFFCC00.toInt() })
         val glyph = PathParser.createPathFromPathData(SATELLITE_PATH)

@@ -1,6 +1,13 @@
 package nz.skelstar.dotwatcher.ui.auth
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -20,15 +27,21 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import nz.skelstar.dotwatcher.AuthUiState
 import nz.skelstar.dotwatcher.ui.CodeBoxField
 import nz.skelstar.dotwatcher.ui.GroupDivider
 import nz.skelstar.dotwatcher.ui.GroupedCard
+import nz.skelstar.dotwatcher.ui.InitialsDot
+import nz.skelstar.dotwatcher.ui.map.RunnerColorPalette
 
 /**
  * Sign-in/sign-up screen: [POST /auth/register] and [POST /auth/login]
@@ -115,11 +128,21 @@ fun AuthScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     Spacer(modifier = Modifier.height(8.dp))
-                    CodeBoxField(
-                        value = displayName,
-                        onValueChange = { displayName = it },
-                        length = 2,
-                        lettersOnly = true,
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        CodeBoxField(
+                            value = displayName,
+                            onValueChange = { displayName = it },
+                            length = 2,
+                            lettersOnly = true,
+                        )
+                        Spacer(modifier = Modifier.width(16.dp))
+                        InitialsDot(initials = displayName)
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "Other people see these initials on your dot on the map.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             }

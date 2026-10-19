@@ -163,6 +163,11 @@ app.Use(async (ctx, next) =>
         if (ctx.Request.Headers.TryGetValue("X-Client-Id", out var clientId) && !string.IsNullOrWhiteSpace(clientId))
             log = log.ForContext("ClientId", clientId.ToString());
 
+        // The client app's own version and build, e.g. "0.2.2 (5)". Not the same as "Version" (the
+        // server's own, from APP_VERSION) or ApiVersion (the compatibility integer).
+        if (ctx.Request.Headers.TryGetValue("X-App-Version", out var appVersion) && !string.IsNullOrWhiteSpace(appVersion))
+            log = log.ForContext("AppVersion", appVersion.ToString());
+
 
         var userAuth = ctx.RequestServices.GetRequiredService<UserTokenAuth>();
         if (userAuth.TryAuthenticate(ctx.Request, out var user))
