@@ -52,7 +52,6 @@ public class SessionsController(
     [ProducesResponseType(typeof(SessionMembership), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-    [ProducesResponseType(StatusCodes.Status409Conflict)]
     public IActionResult CreateSession([FromBody] CreateSessionRequest? request)
     {
         if (!userAuth.TryAuthenticate(Request, out var user))
@@ -74,9 +73,7 @@ public class SessionsController(
             return BadRequest(new { error = "Max length must be between 1 and 240 hours." });
 
         var membership = store.CreateSessionForUser(user.UserId, displayName, request.SessionName, request.MaxLengthHours);
-        return membership is null
-            ? Conflict(new { error = "A session with that name already exists. Try entering the invite code." })
-            : Ok(membership);
+        return Ok(membership);
     }
 
     /// <summary>
