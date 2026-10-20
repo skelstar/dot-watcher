@@ -79,10 +79,10 @@ Defaults to `http://localhost:8080` and the local dev admin token
 
 ### Notes
 
-- Session names must be unique per server — if you've already imported a
-  given name once, re-running will fail at the "create session" step with
-  a 409 rather than silently duplicating it. Use the admin panel (or the
-  admin API) to delete the old session first if you want a clean re-import.
+- Session names are not unique — re-running an import with the same name
+  creates another session (with its own invite code) rather than failing.
+  Use the admin panel (or the admin API) to delete the old session first if
+  you want a clean re-import.
 - The recording/route uploads must be sent with an explicit non-form
   `Content-Type` (`application/x-ndjson` / `application/gpx+xml`) — a plain
   `curl --data-binary` defaults to `application/x-www-form-urlencoded`,

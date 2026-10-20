@@ -127,7 +127,7 @@ PASSWORD="Passw0rd!$(date +%s)"
 
 echo "==> Registering throwaway owner account ($USERNAME) ..."
 # Plain -s (not -f): a transport failure (can't connect at all) must be told apart from an HTTP
-# error response (e.g. 409 for a duplicate session name) — curl only exits non-zero for the
+# error response (e.g. 409 for a duplicate username) — curl only exits non-zero for the
 # former, and -f would also swallow the latter's body, hiding the actual reason below.
 if ! REGISTER_RESPONSE=$(curl -s -X POST "$SERVER_URL/auth/register" \
   -H "Content-Type: application/json" \

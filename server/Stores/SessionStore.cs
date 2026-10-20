@@ -412,7 +412,7 @@ public class SessionStore(string connectionString) : IDisposable
         return deletedUsers > 0;
     }
 
-    public SessionMembership? CreateSessionForUser(
+    public SessionMembership CreateSessionForUser(
         string userId, string displayName, string? requestedName = null, int? maxLengthHours = null)
     {
         var sessionName = NormalizeSessionName(requestedName) ?? requestedName?.Trim() ?? "Session";
@@ -421,12 +421,6 @@ public class SessionStore(string connectionString) : IDisposable
         var now = DateTimeOffset.UtcNow.ToString("O");
 
         using var conn = Connect();
-
-        using var dupCheck = conn.CreateCommand();
-        dupCheck.CommandText = "SELECT 1 FROM app_sessions WHERE session_name = @name";
-        dupCheck.Parameters.AddWithValue("@name", sessionName);
-        if (dupCheck.ExecuteScalar() is not null)
-            return null;
 
         using var sessionCmd = conn.CreateCommand();
         sessionCmd.CommandText = """
@@ -443,7 +437,7 @@ public class SessionStore(string connectionString) : IDisposable
 
         UpsertMembership(conn, sessionId, userId, "runner", displayName, now);
 
-        return new SessionMembership(sessionId, sessionName, inviteCode, "runner", displayName, displayName);
+        return new SessionMembership(sessionId, sessionName, inviteCode, "runner", displayName, displayName, now);
     }
 
     public (SessionMembership? Membership, bool Archived, bool Blocked) JoinSessionByInvite(string inviteCode, string userId, string displayName, string role = "viewer")
@@ -528,7 +522,7 @@ public class SessionStore(string connectionString) : IDisposable
         using var conn = Connect();
         using var cmd = conn.CreateCommand();
         cmd.CommandText = """
-            SELECT s.id, s.session_name, s.invite_code, m.role, m.display_name, owner.display_name
+            SELECT s.id, s.session_name, s.invite_code, m.role, m.display_name, owner.display_name, s.created_at
             FROM session_members m
             JOIN app_sessions s ON s.id = m.session_id
             JOIN session_members owner ON owner.session_id = s.id AND owner.user_id = s.owner_user_id
@@ -546,7 +540,7 @@ public class SessionStore(string connectionString) : IDisposable
         using var conn = Connect();
         using var cmd = conn.CreateCommand();
         cmd.CommandText = """
-            SELECT s.id, s.session_name, s.invite_code, m.role, m.display_name, owner.display_name
+            SELECT s.id, s.session_name, s.invite_code, m.role, m.display_name, owner.display_name, s.created_at
             FROM session_members m
             JOIN app_sessions s ON s.id = m.session_id
             JOIN session_members owner ON owner.session_id = s.id AND owner.user_id = s.owner_user_id
@@ -575,7 +569,8 @@ public class SessionStore(string connectionString) : IDisposable
                 reader.GetString(2),
                 reader.GetString(3),
                 reader.GetString(4),
-                reader.GetString(5)));
+                reader.GetString(5),
+                reader.GetString(6)));
 
         return sessions;
     }
@@ -594,7 +589,7 @@ public class SessionStore(string connectionString) : IDisposable
     {
         using var cmd = conn.CreateCommand();
         cmd.CommandText = """
-            SELECT s.id, s.session_name, s.invite_code, m.role, m.display_name, owner.display_name
+            SELECT s.id, s.session_name, s.invite_code, m.role, m.display_name, owner.display_name, s.created_at
             FROM session_members m
             JOIN app_sessions s ON s.id = m.session_id
             JOIN session_members owner ON owner.session_id = s.id AND owner.user_id = s.owner_user_id
@@ -604,7 +599,7 @@ public class SessionStore(string connectionString) : IDisposable
         cmd.Parameters.AddWithValue("@userId", userId);
         using var reader = cmd.ExecuteReader();
         return reader.Read()
-            ? new SessionMembership(reader.GetString(0), reader.GetString(1), inviteCode ?? reader.GetString(2), reader.GetString(3), reader.GetString(4), reader.GetString(5))
+            ? new SessionMembership(reader.GetString(0), reader.GetString(1), inviteCode ?? reader.GetString(2), reader.GetString(3), reader.GetString(4), reader.GetString(5), reader.GetString(6))
             : null;
     }
 

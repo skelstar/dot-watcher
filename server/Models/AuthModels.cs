@@ -67,7 +67,10 @@ public record SessionMembership(
     string InviteCode,
     string Role,
     string DisplayName,
-    string OwnerDisplayName
+    string OwnerDisplayName,
+    // ISO-8601 UTC creation time of the session (not the membership), so clients can tell
+    // same-named sessions apart ("3 days ago"). Additive; older clients ignore it.
+    string? CreatedAt = null
 );
 
 public record BlockedUser(

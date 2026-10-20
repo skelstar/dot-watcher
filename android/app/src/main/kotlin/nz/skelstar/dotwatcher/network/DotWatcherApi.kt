@@ -76,6 +76,8 @@ data class SessionMembership(
     val role: String,
     val displayName: String,
     val ownerDisplayName: String? = null,
+    /** ISO-8601 UTC time the session was created; null from older servers. */
+    val createdAt: String? = null,
 )
 
 @Serializable
