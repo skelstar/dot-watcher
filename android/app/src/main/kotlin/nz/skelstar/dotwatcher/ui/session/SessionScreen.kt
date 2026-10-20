@@ -189,6 +189,9 @@ fun SessionScreen(
     }
 }
 
+private val HeaderIconSize = 34.dp
+private val HeaderButtonSize = 44.dp
+
 /** App wordmark + badge + build info, with account/help icon buttons — matches the iOS header
  *  shown atop every no-session-screen state (media-files/Simulator Screenshot ... 16.19.49.png).
  *  No git-commit short-SHA (iOS's "1105bf8"): that needs a dedicated build-time step this app
@@ -225,21 +228,22 @@ private fun AppHeader(onAccountClick: () -> Unit) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        // iOS draws these as ~28pt (.title) primary-colored glyphs with no extra button padding.
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            IconButton(onClick = onAccountClick, modifier = Modifier.size(36.dp)) {
+        // iOS draws these as ~28pt (.title) primary-colored glyphs. Material's circle glyphs only fill
+        // about 20/24 of their box, so the box must be ~34dp for the visible circle to be ~28dp.
+        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            IconButton(onClick = onAccountClick, modifier = Modifier.size(HeaderButtonSize)) {
                 Icon(
                     imageVector = Icons.Default.AccountCircle,
                     contentDescription = "Account",
-                    modifier = Modifier.size(28.dp),
+                    modifier = Modifier.size(HeaderIconSize),
                     tint = MaterialTheme.colorScheme.onSurface,
                 )
             }
-            IconButton(onClick = {}, modifier = Modifier.size(36.dp)) {
+            IconButton(onClick = {}, modifier = Modifier.size(HeaderButtonSize)) {
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.HelpOutline,
                     contentDescription = "Help",
-                    modifier = Modifier.size(28.dp),
+                    modifier = Modifier.size(HeaderIconSize),
                     tint = MaterialTheme.colorScheme.onSurface,
                 )
             }
