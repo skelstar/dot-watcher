@@ -17,6 +17,8 @@ data class QueuedCapture(
     val longitude: Double,
     val heading: Double?,
     val timestamp: String,
+    /** Added after the queue shipped: entries persisted by older builds decode with null. */
+    val batteryLevel: Int? = null,
 )
 
 /**

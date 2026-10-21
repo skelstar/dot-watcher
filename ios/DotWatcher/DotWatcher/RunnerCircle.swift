@@ -17,6 +17,17 @@ struct RunnerCircle: View {
 
     private static let highlightColor = Color.accentColor
 
+    /// The tag drawn on a dot. Accounts should hold 2-letter initials, but ones registered through
+    /// a free-text field can hold a whole name or handle, so reduce it like the web client's
+    /// `initialsFor` and the server do: one word → first two letters; several → first and last
+    /// word initials; blank → "?".
+    static func initials(for name: String) -> String {
+        let words = name.split(whereSeparator: { $0.isWhitespace })
+        guard let first = words.first, let last = words.last else { return "?" }
+        if words.count == 1 { return String(first.prefix(2)).uppercased() }
+        return "\(first.prefix(1))\(last.prefix(1))".uppercased()
+    }
+
     var body: some View {
         let color = fillColor ?? (isHighlighted ? Self.highlightColor : Color(.systemGray4))
         ZStack {
@@ -30,7 +41,7 @@ struct RunnerCircle: View {
                     .fill(color)
                     .frame(width: size, height: size)
             }
-            Text(name.trimmingCharacters(in: .whitespaces).isEmpty ? "?" : name)
+            Text(RunnerCircle.initials(for: name))
                 .font(.system(size: fontSize ?? size * 0.3, weight: .bold))
                 .foregroundStyle(isDisconnected ? color : (fillColor != nil || isHighlighted ? .white : .primary))
         }

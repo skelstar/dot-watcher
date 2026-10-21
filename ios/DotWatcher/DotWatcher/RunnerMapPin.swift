@@ -71,7 +71,7 @@ private struct SleepPin: View {
             .frame(width: size, height: size)
             .shadow(color: .black.opacity(0.45), radius: 2, y: 1)
             .overlay {
-                Text(name.trimmingCharacters(in: .whitespaces).isEmpty ? "?" : name)
+                Text(RunnerCircle.initials(for: name))
                     .font(.system(size: size * 0.3, weight: .bold))
                     .foregroundStyle(color)
             }

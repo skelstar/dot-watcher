@@ -1,9 +1,14 @@
 package nz.skelstar.dotwatcher.network
 
+import android.annotation.SuppressLint
+import android.content.Context
+import android.os.Build
+import android.provider.Settings
 import com.jakewharton.retrofit2.converter.kotlinx.serialization.asConverterFactory
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
+import nz.skelstar.dotwatcher.BuildConfig
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
@@ -88,6 +93,8 @@ data class LocationUpdate(
     val longitude: Double,
     val heading: Double? = null,
     val timestamp: String,
+    /** 0-100 battery percentage at capture time; null when unknown. Server persists it. */
+    val batteryLevel: Int? = null,
 )
 
 @Serializable
@@ -97,6 +104,22 @@ data class RunnerPosition(
     val longitude: Double,
     val heading: Double? = null,
     val timestamp: String,
+    /** Self-reported by the runner's device; drives the satellite badge on their marker. Absent
+     *  from older servers/clients, hence the default. */
+    val isUltraConstrained: Boolean = false,
+)
+
+/** A crash saved by [nz.skelstar.dotwatcher.crash.CrashReporter] and uploaded on the next launch.
+ *  Matches the server's `ClientErrorReport`. */
+@Serializable
+data class ClientErrorReport(
+    val stackTrace: String,
+    val threadName: String? = null,
+    val occurredAt: String? = null,
+    val occurrences: Int? = null,
+    val appVersion: String? = null,
+    val osVersion: String? = null,
+    val deviceModel: String? = null,
 )
 
 @Serializable
@@ -146,6 +169,13 @@ interface DotWatcherApi {
         @Header("X-Api-Version") apiVersion: String = API_VERSION,
     ): Response<AuthResponse>
 
+    /** Unauthenticated: a crash can happen before anyone has signed in. */
+    @POST("client-errors")
+    suspend fun postClientError(
+        @Body report: ClientErrorReport,
+        @Header("X-Api-Version") apiVersion: String = API_VERSION,
+    ): Response<Unit>
+
     @POST("auth/logout")
     suspend fun logout(
         @Header("Authorization") bearerToken: String,
@@ -173,14 +203,13 @@ interface DotWatcherApi {
         @Header("X-Api-Version") apiVersion: String = API_VERSION,
     ): Response<List<SessionMembership>>
 
-    /** Sessions the caller has left, most recently left first — used for the "Recent Sessions"
-     *  tap-to-rejoin list (matches iOS's ContentView.swift `noSessionView`/`recentSessionsCard`,
-     *  shown when the caller has no active session). */
-    @GET("me/sessions/recent")
-    suspend fun getRecentSessions(
+    /** Permanently deletes the caller's account and the sessions they own — matches iOS's
+     *  delete-account action in AuthSheet.swift. */
+    @DELETE("me")
+    suspend fun deleteAccount(
         @Header("Authorization") bearerToken: String,
         @Header("X-Api-Version") apiVersion: String = API_VERSION,
-    ): Response<List<SessionMembership>>
+    ): Response<Unit>
 
     /** Removes the caller's own membership from a session — matches iOS's
      *  LocationManager.swift `leaveSession(sessionId:)`. */
@@ -217,12 +246,49 @@ private class UpdateRequiredInterceptor : okhttp3.Interceptor {
     }
 }
 
+/** Adds the device-identification headers iOS sends on every request (`X-Device-Name`,
+ *  `X-Device-Id`, `X-Client-Id`), which the server's request log turns into `DeviceName` /
+ *  `DeviceId` / `ClientId` so Android traffic is as traceable as iOS's. */
+private class DeviceHeadersInterceptor(context: Context) : okhttp3.Interceptor {
+    private val deviceName: String = run {
+        val resolver = context.contentResolver
+        // The user-set device name (like an iPhone's name); falls back to the hardware model.
+        runCatching { Settings.Global.getString(resolver, Settings.Global.DEVICE_NAME) }.getOrNull()
+            ?.takeIf { it.isNotBlank() }
+            ?: Build.MODEL
+    }
+
+    // Stable per device + app signing key and, like iOS's Keychain id, survives reinstall.
+    @SuppressLint("HardwareIds")
+    private val deviceId: String = runCatching {
+        Settings.Secure.getString(context.contentResolver, Settings.Secure.ANDROID_ID)
+    }.getOrNull().orEmpty()
+
+    override fun intercept(chain: okhttp3.Interceptor.Chain): okhttp3.Response {
+        val request = chain.request().newBuilder()
+            .header("X-Device-Name", asciiHeaderValue(deviceName))
+            .header("X-Client-Id", "android")
+            .header("X-OS-Version", "Android ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})")
+            .header("X-App-Version", "${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})")
+            .apply { if (deviceId.isNotEmpty()) header("X-Device-Id", deviceId) }
+            .build()
+        return chain.proceed(request)
+    }
+}
+
+/** HTTP header values must be plain ASCII: OkHttp throws on anything else, and a phone named
+ *  "Sarah’s Galaxy" (curly apostrophe) would otherwise fail every request. Replaces what can't be
+ *  sent with "?" and drops control characters. */
+private fun asciiHeaderValue(value: String): String =
+    value.map { if (it in ' '..'~') it else '?' }.joinToString("").trim()
+
 object DotWatcherApiClient {
-    fun create(baseUrl: String): DotWatcherApi {
+    fun create(baseUrl: String, context: Context): DotWatcherApi {
         val logging = HttpLoggingInterceptor().apply {
             level = HttpLoggingInterceptor.Level.BASIC
         }
         val okHttpClient = OkHttpClient.Builder()
+            .addInterceptor(DeviceHeadersInterceptor(context.applicationContext))
             .addInterceptor(UpdateRequiredInterceptor())
             .addInterceptor(logging)
             .build()

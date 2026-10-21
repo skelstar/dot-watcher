@@ -16,8 +16,12 @@
     <!-- For the "exempt this app from battery optimization" prompt — see MainActivity. -->
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
+    <!-- allowBackup is off on purpose: the sign-in token lives in a file encrypted with a Keystore
+         key that never leaves the device, so a restored copy can never be read (it used to crash the
+         app on every launch with AEADBadTagException). See data/AuthTokenStore.kt. -->
     <application
-        android:allowBackup="true"
+        android:name=".DotWatcherApplication"
+        android:allowBackup="false"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:theme="@style/Theme.DotWatcher">
