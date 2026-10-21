@@ -186,9 +186,8 @@ class LocationTrackingService : Service() {
         return START_NOT_STICKY
     }
 
-    /** Moves into/out of the paused state, stopping or restarting the heading sensor with it (GPS
-     *  is already one-shot per [LocationTracker.captureOnce], so skipping captures is what stops
-     *  location use). No-op if already in the requested state. */
+    /** Moves into/out of the paused state, stopping or restarting the heading sensor and the
+     *  streamed location updates with it. No-op if already in the requested state. */
     private fun applyBatteryPause(shouldPause: Boolean) {
         var changed = false
         _state.update { current ->
@@ -200,13 +199,20 @@ class LocationTrackingService : Service() {
             }
         }
         if (!changed) return
-        if (shouldPause) locationTracker.stopHeadingUpdates() else locationTracker.startHeadingUpdates()
+        if (shouldPause) {
+            locationTracker.stopHeadingUpdates()
+            locationTracker.stopLocationUpdates()
+        } else {
+            locationTracker.startHeadingUpdates()
+            locationTracker.startLocationUpdates()
+        }
     }
 
     private fun startTracking(sessionId: String, duration: Duration, total: Duration) {
         trackingJob?.cancel()
         batteryOverride = false
         locationTracker.startHeadingUpdates()
+        locationTracker.startLocationUpdates()
 
         val initialExpiry = Instant.now().plus(duration)
         _state.value = TrackingState.Tracking(sessionId, initialExpiry, totalDuration = total)
@@ -341,6 +347,7 @@ class LocationTrackingService : Service() {
         trackingJob?.cancel()
         trackingJob = null
         locationTracker.stopHeadingUpdates()
+        locationTracker.stopLocationUpdates()
         shareChoices.clearSharing()
         _state.value = TrackingState.Stopped
     }

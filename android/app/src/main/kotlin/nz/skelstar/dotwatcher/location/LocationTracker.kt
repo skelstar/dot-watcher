@@ -8,10 +8,15 @@ import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
+import android.location.Location
+import android.os.Looper
 import android.os.SystemClock
 import androidx.core.content.ContextCompat
 import com.google.android.gms.location.CurrentLocationRequest
 import com.google.android.gms.location.Granularity
+import com.google.android.gms.location.LocationCallback
+import com.google.android.gms.location.LocationRequest
+import com.google.android.gms.location.LocationResult
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
 import kotlinx.coroutines.tasks.await
@@ -21,8 +26,14 @@ import java.time.Instant
 private const val FIX_TIMEOUT_MS = 10_000L
 
 /** Oldest a fix may be and still count as "now". Anything older is a cached location being
- *  handed back, which would otherwise be posted as if the runner were still standing there. */
-private const val MAX_FIX_AGE_MS = 10_000L
+ *  handed back, which would otherwise be posted as if the runner were still standing there.
+ *  Must exceed [UPDATE_INTERVAL_MS] so the latest streamed fix is still usable at the next tick. */
+private const val MAX_FIX_AGE_MS = 15_000L
+
+/** How often the fused provider streams fixes while tracking. Kept running between ticks so the
+ *  GPS stays warm — a cold one-shot request each tick often missed its window under tree cover. */
+private const val UPDATE_INTERVAL_MS = 10_000L
+private const val MIN_UPDATE_INTERVAL_MS = 5_000L
 
 /** Worst horizontal accuracy (metres, 68% confidence radius) we'll post. Cell/Wi-Fi-derived fixes
  *  are typically hundreds of metres to kilometres; a real GPS fix on a walk is well under this. */
@@ -83,6 +94,42 @@ class LocationTracker(context: Context) {
         sensorManager.unregisterListener(headingListener)
     }
 
+    /** Most recent fix streamed by [startLocationUpdates]; read by [captureOnce]. */
+    @Volatile private var latestLocation: Location? = null
+    private val locationCallback = object : LocationCallback() {
+        override fun onLocationResult(result: LocationResult) {
+            result.lastLocation?.let { latestLocation = it }
+        }
+    }
+    private var updatesActive = false
+
+    /** Starts streaming fixes so the GPS stays warm between ticks. Idempotent; no-op without
+     *  precise location (captureOnce reports that error itself). */
+    @SuppressLint("MissingPermission") // Guarded by hasPreciseLocation().
+    fun startLocationUpdates() {
+        if (updatesActive || !hasPreciseLocation()) return
+        val request = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, UPDATE_INTERVAL_MS)
+            .setMinUpdateIntervalMillis(MIN_UPDATE_INTERVAL_MS)
+            .setGranularity(Granularity.GRANULARITY_FINE)
+            .build()
+        fusedLocationClient.requestLocationUpdates(request, locationCallback, Looper.getMainLooper())
+        updatesActive = true
+    }
+
+    fun stopLocationUpdates() {
+        if (!updatesActive) return
+        fusedLocationClient.removeLocationUpdates(locationCallback)
+        updatesActive = false
+        latestLocation = null
+    }
+
+    /** The streamed fix if it is recent enough, else null. */
+    private fun freshStreamedLocation(): Location? =
+        latestLocation?.takeIf { ageMillis(it) <= MAX_FIX_AGE_MS }
+
+    private fun ageMillis(location: Location): Long =
+        (SystemClock.elapsedRealtimeNanos() - location.elapsedRealtimeNanos) / 1_000_000
+
     /** True when the runner granted precise (fine) location, not just "approximate". */
     fun hasPreciseLocation(): Boolean =
         ContextCompat.checkSelfPermission(appContext, Manifest.permission.ACCESS_FINE_LOCATION) ==
@@ -105,16 +152,19 @@ class LocationTracker(context: Context) {
             error("Precise location is off — turn on \"Use precise location\" for Dot Watcher in Settings.")
         }
 
-        val request = CurrentLocationRequest.Builder()
-            .setPriority(Priority.PRIORITY_HIGH_ACCURACY)
-            .setGranularity(Granularity.GRANULARITY_FINE)
-            .setMaxUpdateAgeMillis(0)
-            .setDurationMillis(FIX_TIMEOUT_MS)
-            .build()
-        val location = fusedLocationClient.getCurrentLocation(request, null).await()
-            ?: error("No GPS fix yet — will retry.")
+        // Prefer the streamed fix; fall back to a one-shot request when updates aren't running
+        // (e.g. a battery-paused manual "Send now") or nothing recent has arrived.
+        val location = freshStreamedLocation() ?: run {
+            val request = CurrentLocationRequest.Builder()
+                .setPriority(Priority.PRIORITY_HIGH_ACCURACY)
+                .setGranularity(Granularity.GRANULARITY_FINE)
+                .setMaxUpdateAgeMillis(0)
+                .setDurationMillis(FIX_TIMEOUT_MS)
+                .build()
+            fusedLocationClient.getCurrentLocation(request, null).await()
+        } ?: error("No GPS fix yet — will retry.")
 
-        val ageMs = (SystemClock.elapsedRealtimeNanos() - location.elapsedRealtimeNanos) / 1_000_000
+        val ageMs = ageMillis(location)
         if (ageMs > MAX_FIX_AGE_MS) {
             error("Only an old location (${ageMs / 1000}s) was available — will retry.")
         }
