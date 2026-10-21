@@ -75,7 +75,7 @@ const privacyPage = {
       heading: 'Retention and Deletion',
       paragraphs: [
         'Live in-memory location state may be cleared when the server restarts or when an admin clears a session.',
-        'You can delete your account from account settings. Account deletion removes your account, memberships, sessions you own, and stored location rows linked to your authenticated account. Other active tokens for the deleted account stop working after deletion.',
+        'You can delete your account from account settings in the app, or at https://dot-watcher.skelstar.io/delete-account. Account deletion removes your account, memberships, sessions you own, and stored location rows linked to your authenticated account. Other active tokens for the deleted account stop working after deletion.',
         `Historical records without account attribution, admin-uploaded recordings, or operational logs may not be linked to your account. For deletion help with those records, contact ${contactEmail} with enough detail to identify the account or session.`,
       ],
     },

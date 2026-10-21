@@ -21,12 +21,14 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import nz.skelstar.dotwatcher.BuildConfig
 import nz.skelstar.dotwatcher.MainActivity
 import nz.skelstar.dotwatcher.data.AuthTokenStore
 import nz.skelstar.dotwatcher.data.DotWatcherRepository
+import nz.skelstar.dotwatcher.data.ShareChoiceStore
 import nz.skelstar.dotwatcher.network.DotWatcherApiClient
 import java.time.Duration
 import java.time.Instant
@@ -34,7 +36,7 @@ import java.time.Instant
 /** Normal post cadence, matching iOS's `normalInterval`
  *  (ios/DotWatcher/DotWatcher/LocationManager.swift:201). Android has no satellite-tier
  *  connectivity signal yet, so unlike iOS there is no slower fallback cadence for now. */
-private const val POST_INTERVAL_SECONDS = 15L
+const val POST_INTERVAL_SECONDS = 15L
 
 /** Options offered for how long a share session runs before it auto-stops, ascending — mirrors
  *  `LocationManager.trackingDurationOptions` (ios/DotWatcher/DotWatcher/LocationManager.swift:212).
@@ -48,6 +50,15 @@ sealed interface TrackingState {
         val sessionId: String,
         val expiresAt: Instant,
         val lastError: String? = null,
+        /** How long this session was set to run for in total — the original choice plus any
+         *  extensions. Lets the UI draw the countdown arc against the real span rather than
+         *  whatever happened to be left when it first looked. */
+        val totalDuration: Duration = Duration.ZERO,
+        /** True while automatic tracking is paused for a critical battery (see
+         *  [BatteryReader.CRITICAL_THRESHOLD]): no GPS fixes, no automatic posts, until the
+         *  runner overrides, sends manually, or plugs in. Mirrors iOS's `pausedForBattery`;
+         *  design in .ai/plans/critical-battery-pause.md. */
+        val pausedForBattery: Boolean = false,
     ) : TrackingState
 }
 
@@ -68,22 +79,59 @@ class LocationTrackingService : Service() {
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private var trackingJob: Job? = null
 
+    /** Set when the runner explicitly chose "Auto" while battery was critical: stays set for the
+     *  rest of this tracking session (an explicit choice shouldn't need repeating every tick),
+     *  and is reset by [startTracking]. Written from the main thread, read by the loop. */
+    @Volatile private var batteryOverride = false
+
     private lateinit var locationTracker: LocationTracker
     private lateinit var repository: DotWatcherRepository
     private lateinit var updateQueue: LocationUpdateQueue
+    private lateinit var shareChoices: ShareChoiceStore
 
     override fun onCreate() {
         super.onCreate()
         locationTracker = LocationTracker(applicationContext)
         val tokenStore = AuthTokenStore(applicationContext)
-        val api = DotWatcherApiClient.create(BuildConfig.API_BASE_URL)
+        val api = DotWatcherApiClient.create(BuildConfig.API_BASE_URL, applicationContext)
         repository = DotWatcherRepository(api, tokenStore)
         updateQueue = LocationUpdateQueue(applicationContext)
+        shareChoices = ShareChoiceStore(applicationContext)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        when (intent?.action) {
+            ACTION_SEND_NOW -> return handleSendNow()
+            ACTION_RESUME_AUTO -> return handleResumeAuto()
+        }
+        if (intent?.action == ACTION_EXTEND) {
+            val extraSeconds = intent.getLongExtra(EXTRA_DURATION_SECONDS, -1)
+            val extension = Duration.ofSeconds(extraSeconds)
+            var extended = false
+            if (extraSeconds > 0) {
+                _state.update { current ->
+                    if (current is TrackingState.Tracking) {
+                        extended = true
+                        current.copy(
+                            expiresAt = current.expiresAt.plus(extension),
+                            totalDuration = current.totalDuration.plus(extension),
+                        )
+                    } else {
+                        current
+                    }
+                }
+            }
+            (_state.value as? TrackingState.Tracking)?.takeIf { extended }?.let {
+                shareChoices.recordSharing(it.sessionId, it.expiresAt, it.totalDuration)
+            }
+            // Nothing was running (this intent just created the service): don't leave it idle.
+            if (!extended && _state.value !is TrackingState.Tracking) stopSelf()
+            return START_NOT_STICKY
+        }
+
         val sessionId = intent?.getStringExtra(EXTRA_SESSION_ID)
         val durationSeconds = intent?.getLongExtra(EXTRA_DURATION_SECONDS, -1) ?: -1
+        val totalSeconds = intent?.getLongExtra(EXTRA_TOTAL_SECONDS, -1)?.takeIf { it > 0 } ?: durationSeconds
 
         if (sessionId == null || durationSeconds <= 0) {
             stopSelf()
@@ -91,7 +139,7 @@ class LocationTrackingService : Service() {
         }
 
         startForegroundWithNotification()
-        startTracking(sessionId, Duration.ofSeconds(durationSeconds))
+        startTracking(sessionId, Duration.ofSeconds(durationSeconds), Duration.ofSeconds(totalSeconds))
 
         // Not START_STICKY: if the OS kills this process, tracking should stay stopped rather
         // than silently restart without the runner's knowledge — matches the explicit-start,
@@ -99,36 +147,110 @@ class LocationTrackingService : Service() {
         return START_NOT_STICKY
     }
 
-    private fun startTracking(sessionId: String, duration: Duration) {
-        trackingJob?.cancel()
-        locationTracker.startHeadingUpdates()
+    /** One manual capture + post, for the battery card's "Send now". Does *not* resume automatic
+     *  tracking — one position, not a mode change (see critical-battery-pause.md). */
+    private fun handleSendNow(): Int {
+        val tracking = _state.value as? TrackingState.Tracking
+        if (tracking == null) {
+            stopSelf()
+            return START_NOT_STICKY
+        }
+        serviceScope.launch {
+            runCatching {
+                val capture = locationTracker.captureOnce()
+                QueuedCapture(
+                    sessionId = tracking.sessionId,
+                    latitude = capture.latitude,
+                    longitude = capture.longitude,
+                    heading = capture.heading,
+                    timestamp = capture.fixedAt.toString(),
+                    batteryLevel = BatteryReader.read(applicationContext).level,
+                )
+            }.fold(
+                onSuccess = { captured -> postOrEnqueue(captured) },
+                onFailure = { error -> recordError(error.message) },
+            )
+        }
+        return START_NOT_STICKY
+    }
 
-        val expiresAt = Instant.now().plus(duration)
-        _state.value = TrackingState.Tracking(sessionId, expiresAt)
+    /** "Auto": explicit override back to full automatic tracking despite a critical battery. */
+    private fun handleResumeAuto(): Int {
+        if (_state.value !is TrackingState.Tracking) {
+            stopSelf()
+            return START_NOT_STICKY
+        }
+        batteryOverride = true
+        // Resume at once rather than waiting out the loop's sleep for its next pass.
+        applyBatteryPause(shouldPause = false)
+        return START_NOT_STICKY
+    }
+
+    /** Moves into/out of the paused state, stopping or restarting the heading sensor and the
+     *  streamed location updates with it. No-op if already in the requested state. */
+    private fun applyBatteryPause(shouldPause: Boolean) {
+        var changed = false
+        _state.update { current ->
+            if (current is TrackingState.Tracking && current.pausedForBattery != shouldPause) {
+                changed = true
+                current.copy(pausedForBattery = shouldPause)
+            } else {
+                current
+            }
+        }
+        if (!changed) return
+        if (shouldPause) {
+            locationTracker.stopHeadingUpdates()
+            locationTracker.stopLocationUpdates()
+        } else {
+            locationTracker.startHeadingUpdates()
+            locationTracker.startLocationUpdates()
+        }
+    }
+
+    private fun startTracking(sessionId: String, duration: Duration, total: Duration) {
+        trackingJob?.cancel()
+        batteryOverride = false
+        locationTracker.startHeadingUpdates()
+        locationTracker.startLocationUpdates()
+
+        val initialExpiry = Instant.now().plus(duration)
+        _state.value = TrackingState.Tracking(sessionId, initialExpiry, totalDuration = total)
+        shareChoices.recordSharing(sessionId, initialExpiry, total)
 
         trackingJob = serviceScope.launch {
             while (isActive) {
                 val now = Instant.now()
+                // Re-read each pass: the runner can extend the session while this loop sleeps.
+                val expiresAt = (_state.value as? TrackingState.Tracking)?.expiresAt ?: initialExpiry
                 if (now >= expiresAt) {
                     stopTracking()
                     stopSelf()
                     break
                 }
 
-                runCatching {
-                    val capture = locationTracker.captureOnce()
-                    val postedAt = Instant.now()
-                    QueuedCapture(
-                        sessionId = sessionId,
-                        latitude = capture.latitude,
-                        longitude = capture.longitude,
-                        heading = capture.heading,
-                        timestamp = postedAt.toString(),
+                // Critical battery pauses automatic tracking: skip the capture entirely (that is
+                // what actually saves power). Charging, or the runner's explicit override, lifts it.
+                val battery = BatteryReader.read(applicationContext)
+                val pause = !batteryOverride && BatteryReader.isCritical(battery)
+                applyBatteryPause(pause)
+
+                if (!pause) {
+                    runCatching {
+                        val capture = locationTracker.captureOnce()
+                        QueuedCapture(
+                            sessionId = sessionId,
+                            latitude = capture.latitude,
+                            longitude = capture.longitude,
+                            heading = capture.heading,
+                            timestamp = capture.fixedAt.toString(),
+                            batteryLevel = battery.level,
+                        )
+                    }.fold(
+                        onSuccess = { captured -> postOrEnqueue(captured) },
+                        onFailure = { error -> recordError(error.message) },
                     )
-                }.fold(
-                    onSuccess = { captured -> postOrEnqueue(captured) },
-                    onFailure = { error -> recordError(error.message) },
-                )
+                }
 
                 val beforeDelay = Instant.now()
                 val delayMillis = Duration.between(beforeDelay, nextPostAt(beforeDelay, POST_INTERVAL_SECONDS))
@@ -206,19 +328,18 @@ class LocationTrackingService : Service() {
             longitude = captured.longitude,
             heading = captured.heading,
             timestamp = captured.timestamp,
+            batteryLevel = captured.batteryLevel,
         )
 
     private fun recordSuccess() {
-        val current = _state.value
-        if (current is TrackingState.Tracking && current.lastError != null) {
-            _state.value = current.copy(lastError = null)
+        _state.update { current ->
+            if (current is TrackingState.Tracking && current.lastError != null) current.copy(lastError = null) else current
         }
     }
 
     private fun recordError(message: String?) {
-        val current = _state.value
-        if (current is TrackingState.Tracking) {
-            _state.value = current.copy(lastError = message)
+        _state.update { current ->
+            if (current is TrackingState.Tracking) current.copy(lastError = message) else current
         }
     }
 
@@ -226,6 +347,8 @@ class LocationTrackingService : Service() {
         trackingJob?.cancel()
         trackingJob = null
         locationTracker.stopHeadingUpdates()
+        locationTracker.stopLocationUpdates()
+        shareChoices.clearSharing()
         _state.value = TrackingState.Stopped
     }
 
@@ -273,15 +396,45 @@ class LocationTrackingService : Service() {
         private const val NOTIFICATION_ID = 1
         private const val EXTRA_SESSION_ID = "session_id"
         private const val EXTRA_DURATION_SECONDS = "duration_seconds"
+        private const val EXTRA_TOTAL_SECONDS = "total_seconds"
+        private const val ACTION_EXTEND = "nz.skelstar.dotwatcher.action.EXTEND_TRACKING"
+        private const val ACTION_SEND_NOW = "nz.skelstar.dotwatcher.action.SEND_NOW"
+        private const val ACTION_RESUME_AUTO = "nz.skelstar.dotwatcher.action.RESUME_AUTO"
 
         private val _state = MutableStateFlow<TrackingState>(TrackingState.Stopped)
         val state: StateFlow<TrackingState> = _state.asStateFlow()
 
-        fun start(context: Context, sessionId: String, duration: Duration) {
+        /** [totalDuration] is only for resuming a share the runner already chose: [duration] is then
+         *  what is left, and the total keeps the countdown arc measured against the real span. */
+        fun start(context: Context, sessionId: String, duration: Duration, totalDuration: Duration = duration) {
             val intent = Intent(context, LocationTrackingService::class.java)
                 .putExtra(EXTRA_SESSION_ID, sessionId)
                 .putExtra(EXTRA_DURATION_SECONDS, duration.seconds)
+                .putExtra(EXTRA_TOTAL_SECONDS, totalDuration.seconds)
             context.startForegroundService(intent)
+        }
+
+        /** Adds [extension] to the running session's auto-stop time. A no-op if nothing is being
+         *  shared. The service is already in the foreground, so a plain `startService` suffices. */
+        fun extend(context: Context, extension: Duration) {
+            val intent = Intent(context, LocationTrackingService::class.java)
+                .setAction(ACTION_EXTEND)
+                .putExtra(EXTRA_DURATION_SECONDS, extension.seconds)
+            context.startService(intent)
+        }
+
+        /** Battery card's "Send now": one manual position, tracking stays paused. */
+        fun sendNow(context: Context) {
+            context.startService(
+                Intent(context, LocationTrackingService::class.java).setAction(ACTION_SEND_NOW)
+            )
+        }
+
+        /** Battery card's "Auto": override the critical-battery pause for the rest of this session. */
+        fun resumeAutomatic(context: Context) {
+            context.startService(
+                Intent(context, LocationTrackingService::class.java).setAction(ACTION_RESUME_AUTO)
+            )
         }
 
         fun stop(context: Context) {

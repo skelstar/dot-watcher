@@ -55,7 +55,6 @@ fun DotWatcherApp(hasBackgroundLocationPermission: Boolean) {
     val destination by viewModel.destination.collectAsState()
     val authState by viewModel.authState.collectAsState()
     val sessionState by viewModel.sessionState.collectAsState()
-    val recentSessions by viewModel.recentSessions.collectAsState()
 
     DotWatcherTheme {
         Surface(modifier = Modifier.fillMaxSize()) {
@@ -75,11 +74,12 @@ fun DotWatcherApp(hasBackgroundLocationPermission: Boolean) {
 
                 Destination.Session -> SessionScreen(
                     state = sessionState,
-                    recentSessions = recentSessions,
                     onCreateSession = viewModel::createSession,
                     onJoinSession = viewModel::joinSession,
-                    onRejoinSession = viewModel::rejoinSession,
+                    onRefresh = viewModel::refresh,
                     onSignOut = viewModel::signOut,
+                    account = viewModel.account,
+                    onDeleteAccount = viewModel::deleteAccount,
                 )
 
                 is Destination.Consent -> if (hasBackgroundLocationPermission) {
