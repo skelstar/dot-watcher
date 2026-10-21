@@ -545,7 +545,7 @@ struct ContentView: View {
                 Spacer()
                 if location.activeMembership != nil {
                     Button { showLeaveConfirm = true } label: {
-                        Text(location.isTracking ? "Stop" : "Leave")
+                        Text("Leave")
                             .font(.system(size: 16, weight: .semibold))
                             .foregroundStyle(.white)
                             .frame(height: 48)
