@@ -11,6 +11,7 @@ import android.hardware.SensorManager
 import android.location.Location
 import android.os.Looper
 import android.os.SystemClock
+import android.util.Log
 import androidx.core.content.ContextCompat
 import com.google.android.gms.location.CurrentLocationRequest
 import com.google.android.gms.location.Granularity
@@ -21,6 +22,8 @@ import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
 import kotlinx.coroutines.tasks.await
 import java.time.Instant
+
+private const val TAG = "LocationTracker"
 
 /** Longest we wait for the fused provider to produce a fix before giving up on this tick. */
 private const val FIX_TIMEOUT_MS = 10_000L
@@ -102,6 +105,14 @@ class LocationTracker(context: Context) {
         }
     }
     private var updatesActive = false
+    private val plausibility = FixPlausibilityFilter()
+
+    /** Logs why a tick is being skipped (visible in logcat) and aborts the capture with the same
+     *  message, which the service surfaces as the session's last error. */
+    private fun skip(reason: String): Nothing {
+        Log.w(TAG, "skipped tick: $reason")
+        error(reason)
+    }
 
     /** Starts streaming fixes so the GPS stays warm between ticks. Idempotent; no-op without
      *  precise location (captureOnce reports that error itself). */
@@ -121,6 +132,7 @@ class LocationTracker(context: Context) {
         fusedLocationClient.removeLocationUpdates(locationCallback)
         updatesActive = false
         latestLocation = null
+        synchronized(plausibility) { plausibility.reset() }
     }
 
     /** The streamed fix if it is recent enough, else null. */
@@ -141,20 +153,23 @@ class LocationTracker(context: Context) {
      * location stream, which is the simplest correct behavior while tracking is foreground-only.
      *
      * Throws (rather than returning a poor position) when precise location isn't granted, no fix
-     * arrives within [FIX_TIMEOUT_MS], or the fix is older than [MAX_FIX_AGE_MS] or less accurate
-     * than [MAX_ACCURACY_METRES] — a skipped tick is better than a dot in the wrong place.
+     * arrives within [FIX_TIMEOUT_MS], the fix is older than [MAX_FIX_AGE_MS] or less accurate
+     * than [MAX_ACCURACY_METRES], or it implies an impossible jump from the last accepted fix
+     * ([FixPlausibilityFilter]) — a skipped tick is better than a dot in the wrong place.
      */
     @SuppressLint("MissingPermission") // Caller is required to have checked permissions first.
     suspend fun captureOnce(): Capture {
         // With only approximate location the fused provider returns blurred, slowly-updating
         // positions (often kilometres off and repeating), so refuse rather than post them.
         if (!hasPreciseLocation()) {
-            error("Precise location is off — turn on \"Use precise location\" for Dot Watcher in Settings.")
+            skip("Precise location is off — turn on \"Use precise location\" for Dot Watcher in Settings.")
         }
 
         // Prefer the streamed fix; fall back to a one-shot request when updates aren't running
         // (e.g. a battery-paused manual "Send now") or nothing recent has arrived.
-        val location = freshStreamedLocation() ?: run {
+        val streamed = freshStreamedLocation()
+        val source = if (streamed != null) "stream" else "one-shot"
+        val location = streamed ?: run {
             val request = CurrentLocationRequest.Builder()
                 .setPriority(Priority.PRIORITY_HIGH_ACCURACY)
                 .setGranularity(Granularity.GRANULARITY_FINE)
@@ -162,16 +177,32 @@ class LocationTracker(context: Context) {
                 .setDurationMillis(FIX_TIMEOUT_MS)
                 .build()
             fusedLocationClient.getCurrentLocation(request, null).await()
-        } ?: error("No GPS fix yet — will retry.")
+        } ?: skip("No GPS fix yet — will retry.")
 
         val ageMs = ageMillis(location)
         if (ageMs > MAX_FIX_AGE_MS) {
-            error("Only an old location (${ageMs / 1000}s) was available — will retry.")
+            skip("Only an old location (${ageMs / 1000}s) was available — will retry.")
         }
         if (!location.hasAccuracy() || location.accuracy > MAX_ACCURACY_METRES) {
             val detail = if (location.hasAccuracy()) "${location.accuracy.toInt()} m" else "unknown"
-            error("GPS accuracy too low ($detail) — will retry.")
+            skip("GPS accuracy too low ($detail) — will retry.")
         }
+
+        val verdict = synchronized(plausibility) {
+            plausibility.check(
+                FixPoint(
+                    latitude = location.latitude,
+                    longitude = location.longitude,
+                    accuracyMetres = location.accuracy,
+                    elapsedSeconds = location.elapsedRealtimeNanos / 1_000_000_000.0,
+                )
+            )
+        }
+        if (verdict is Plausibility.Rejected) {
+            skip("Position jumped ${verdict.distanceMetres.toInt()} m (limit ${verdict.allowedMetres.toInt()} m) — will retry.")
+        }
+
+        Log.d(TAG, "posted fix: source=$source accuracy=${location.accuracy.toInt()}m age=${ageMs / 1000}s")
 
         return Capture(
             latitude = location.latitude,
