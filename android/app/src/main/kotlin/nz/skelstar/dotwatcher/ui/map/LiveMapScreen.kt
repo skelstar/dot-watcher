@@ -27,14 +27,12 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
-import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.width
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -86,8 +84,8 @@ private const val POLL_INTERVAL_MS = 10_000L
 /**
  * Hosts the live map for [membership]'s session, laid out per the "In-Session Map Redesign v2"
  * artifact: the map fills the screen with floating controls over it — wordmark and auto-stop
- * countdown top-left, a right rail (share, invite code, overflow with Leave) and a round Stop pill
- * bottom-right while [isSharing]. Polls everyone's latest positions to feed [MapScreen] and
+ * countdown top-left, a right rail (share, invite code) and a round Leave pill
+ * bottom-right, which confirms then stops sharing (if [isSharing]) and leaves the session. Polls everyone's latest positions to feed [MapScreen] and
  * surfaces [LocationTrackingService]'s state without owning the tracking loop itself.
  */
 @Composable
@@ -95,14 +93,12 @@ fun LiveMapScreen(
     membership: SessionMembership,
     repository: DotWatcherRepository,
     isSharing: Boolean,
-    onStopSharing: () -> Unit,
     onLeaveSession: () -> Unit,
 ) {
     val context = LocalContext.current
     var positions by remember { mutableStateOf<List<RunnerPosition>>(emptyList()) }
     var showLeaveConfirm by remember { mutableStateOf(false) }
     var showInviteCode by remember { mutableStateOf(false) }
-    var showMenu by remember { mutableStateOf(false) }
     var showExtendSheet by remember { mutableStateOf(false) }
     // Fit-all is lit by default; following a runner or panning away turns it off.
     var fitAll by remember { mutableStateOf(true) }
@@ -148,7 +144,7 @@ fun LiveMapScreen(
             onExtend = { LocationTrackingService.extend(context, it) },
             onStopNow = {
                 showExtendSheet = false
-                onStopSharing()
+                showLeaveConfirm = true
             },
             onDismiss = { showExtendSheet = false },
         )
@@ -218,24 +214,12 @@ fun LiveMapScreen(
             }
             RailButton(RailIcon.Globe, "Open web map") { context.openWebMap(membership) }
             RailButton(RailIcon.Hash, "Invite code") { showInviteCode = true }
-            Box {
-                RailButton(RailIcon.More, "More") { showMenu = true }
-                DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
-                    DropdownMenuItem(
-                        text = { Text("Leave session") },
-                        onClick = {
-                            showMenu = false
-                            showLeaveConfirm = true
-                        },
-                    )
-                }
-            }
         }
 
-        // While paused for battery, the card below carries its own Stop and takes the bottom edge.
-        if (isSharing && !pausedForBattery) {
+        // While paused for battery, the card below carries its own Leave and takes the bottom edge.
+        if (!pausedForBattery) {
             StopPill(
-                onClick = onStopSharing,
+                onClick = { showLeaveConfirm = true },
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
                     .navigationBarsPadding()
@@ -249,7 +233,7 @@ fun LiveMapScreen(
                 lastError = lastError,
                 onSendNow = { LocationTrackingService.sendNow(context) },
                 onAuto = { LocationTrackingService.resumeAutomatic(context) },
-                onStop = onStopSharing,
+                onStop = { showLeaveConfirm = true },
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .navigationBarsPadding()
@@ -498,7 +482,7 @@ private fun BatteryPausedCard(
         ) {
             Box(Modifier.size(10.dp).clip(RoundedCornerShape(3.dp)).background(Color.White))
             Spacer(Modifier.width(8.dp))
-            Text("Stop", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+            Text("Leave", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
         }
     }
 }
@@ -512,7 +496,7 @@ private fun StopPill(onClick: () -> Unit, modifier: Modifier = Modifier) {
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Box(Modifier.size(11.dp).clip(RoundedCornerShape(3.dp)).background(Color.White))
-        Text("Stop", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+        Text("Leave", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold)
     }
 }
 

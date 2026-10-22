@@ -217,15 +217,6 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         _destination.value = Destination.Map(membership, isSharing = false)
     }
 
-    /** Stops sharing this device's own position while staying in the session and on the map —
-     *  distinct from [leaveSession], which leaves the session entirely. The runner can start
-     *  sharing again by leaving and rejoining, or via a future dedicated "share again" action. */
-    fun stopSharing(membership: SessionMembership) {
-        LocationTrackingService.stop(getApplication())
-        shareChoices.recordViewOnly(membership.sessionId)
-        _destination.value = Destination.Map(membership, isSharing = false)
-    }
-
     /** Leaves [membership]'s session for real ([DELETE /me/sessions/{sessionId}/membership] —
      *  matches iOS's `leaveSession(sessionId:)`) and returns to the create/join screen. Stops
      *  tracking first if active, mirroring iOS's `leaveOrDeleteSession` calling `location.stop()`
