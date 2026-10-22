@@ -165,3 +165,29 @@ clManager.showsBackgroundLocationIndicator = true     // blue bar — required b
 The `NSAppTransportSecurity` exception allows plain HTTP to `jakkuu.local` for Device builds. The `LSApplicationQueriesSchemes` entry allows `UIApplication.canOpenURL` to check whether WhatsApp is installed before showing the WhatsApp share button.
 
 The app requests "Always" authorisation so location continues when the screen locks mid-run.
+
+## Crew
+
+A crew is the people you have chosen: mutual, and tied to your account. The only way to add someone is a one-time
+**crew code** they send you (see `.ai/plans/crew-management.md` and `server/README.md`, "Crew").
+
+- `CrewStore.swift` holds the state and calls (through `LocationManager.send`, so the same headers, token and 426 gate);
+  `CrewViews.swift` holds the row, the sheet, the add and "your code" screens and the confirmation;
+  `CrewLink.swift` parses codes and links and builds the share message; `CrewFormat.swift` has the wording.
+- The "Your crew" row sits on the no-session start screen only and draws nothing until `GET /me/crew` succeeds, so a
+  build pointed at a server without crew looks as before. The sheet is presented once at the top of `ContentView`
+  (`CrewHost`), so a crew link can open it from any screen.
+- Codes are shared through `ShareLink`, like invite codes: a message holding `WEB_BASE_URL/crew/{CODE}` and the plain
+  code. The QR on the "your code" screen encodes the same link (CoreImage, no dependency). **There is no in-app
+  scanner and no camera permission**: people scan with the camera app, which opens the link.
+- `.onOpenURL` handles `/crew/{CODE}` (a link opened while signed out is kept until sign-in). **The link only reaches the
+  app once `/crew/*` is added to `client/public/.well-known/apple-app-site-association`, which is deliberately held until
+  a build with this code is live in the App Store** (otherwise already-installed apps would open on a crew link and do
+  nothing). No entitlement change is needed: the associated domains are the same. Until then the web fallback page shows
+  the code to copy, and typed or pasted codes work regardless.
+- A link, a pasted code and a typed code all end at one "Add X to your crew? They'll see you too." confirmation. Nobody is
+  added until Add is tapped.
+- Crew members are shown by an optional nickname (Settings > Crew, or when first showing your code), falling back to
+  their initials. The server never sends usernames.
+- No unit tests yet: the Xcode project has no test target (same as `InviteLink`). The Kotlin twins of `CrewLink` and
+  `CrewFormat` are tested in `android/app/src/test/.../crew/`.

@@ -231,20 +231,20 @@ text shown to other people, so the existing Block feature is the abuse control (
 
 `apiVersion` stays `1` (**H5**).
 
-- [ ] **I1** Models + API calls (in `LocationManager.swift` alongside the existing session/block calls, or a small extension); `crew` state exposed to views.
-- [ ] **I2** Load crew with `loadSessions()` and on foreground; pull-to-refresh reloads it.
-- [ ] **I3** Reusable crew-ring avatar (extend `RunnerCircle.swift` or add a sibling) + deterministic colour from `userId` via `RunnerColorPalette`.
-- [ ] **I4** `CrewRow` on the start screen (`noSessionView`, above the join card; **not** in `sessionView`, D7): empty state ("Your crew / Add people that you know"), populated state (≤4 overlapping ringed faces, "+N", "N people"). Keep it a self-contained view with its own state so it moves unchanged when iOS adopts Android's main-screen layout.
-- [ ] **I5** **Unavailable handling (H3):** `/me/crew` 404/non-2xx (except 401/426) ⇒ hide the row, no banner. 426 keeps using the Update Required flow.
-- [ ] **I6** `CrewSheet` (tall sheet): "In your crew · N" dot grid, dot detail with Remove, "Add someone" button.
-- [ ] **I7** `AddCrewSheet`: "Enter a code" (`CodeBoxField` with length 8 + Paste) · "Show my code". A hint explains "To scan someone's QR code, just open your camera." No in-app scanner.
-- [ ] **I8** `MyCrewCodeSheet`: QR + code in large type + expiry ("expires in 23 h") + **Share** (`ShareLink`, message via a new `CrewLink.shareMessage`, mirroring `InviteLink.shareMessage`) + "Make a new code". Copy states plainly: "Send this to one person. It works once." QR generated on-device with CoreImage `CIQRCodeGenerator` (no dependency).
-- [ ] **I9** `CrewLink` (new, beside `InviteLink.swift`): parse `/crew/{CODE}`, build share URL/message. Handle it in `.onOpenURL` → preview → confirm sheet. Keep the pending code across sign-in, same as invite links.
-- [ ] **I10** Nickname: a "Name your crew sees" field (`GET`/`PUT /me/profile`) in the account area, and a skippable prompt the first time "Show my code" is tapped. Show `nickname ?? displayName` everywhere a crew member is named.
-- [ ] **I11** Confirm screen: "Add *Priya* to your crew? They'll see you too." with Add / Cancel; "This code has already been used or has expired" on the uniform 404; success toast; Remove confirmation (takes effect immediately). A camera scan of a QR in the system Camera app arrives here via the universal link (I9).
-- [ ] **I12** Accessibility: labels for every avatar/dot (the ring is never the only signal), the QR has a text alternative (the code), Dynamic Type check on the row.
-- [ ] **I13** `Help.md`: "What is a crew?" and how to add someone.
-- [ ] **I14** No entitlement change needed (same associated domains). Ship the build; gate the AASA change on it (R4).
+- [x] **I1** Models + API calls (in `LocationManager.swift` alongside the existing session/block calls, or a small extension); `crew` state exposed to views.
+- [x] **I2** Load crew with `loadSessions()` and on foreground; pull-to-refresh reloads it.
+- [x] **I3** Reusable crew-ring avatar (extend `RunnerCircle.swift` or add a sibling) + deterministic colour from `userId` via `RunnerColorPalette`.
+- [x] **I4** `CrewRow` on the start screen (`noSessionView`, above the join card; **not** in `sessionView`, D7): empty state ("Your crew / Add people that you know"), populated state (≤4 overlapping ringed faces, "+N", "N people"). Keep it a self-contained view with its own state so it moves unchanged when iOS adopts Android's main-screen layout.
+- [x] **I5** **Unavailable handling (H3):** `/me/crew` 404/non-2xx (except 401/426) ⇒ hide the row, no banner. 426 keeps using the Update Required flow.
+- [x] **I6** `CrewSheet` (tall sheet): "In your crew · N" dot grid, dot detail with Remove, "Add someone" button.
+- [x] **I7** `AddCrewSheet`: "Enter a code" (`CodeBoxField` with length 8 + Paste) · "Show my code". A hint explains "To scan someone's QR code, just open your camera." No in-app scanner.
+- [x] **I8** `MyCrewCodeSheet`: QR + code in large type + expiry ("expires in 23 h") + **Share** (`ShareLink`, message via a new `CrewLink.shareMessage`, mirroring `InviteLink.shareMessage`) + "Make a new code". Copy states plainly: "Send this to one person. It works once." QR generated on-device with CoreImage `CIQRCodeGenerator` (no dependency).
+- [x] **I9** `CrewLink` (new, beside `InviteLink.swift`): parse `/crew/{CODE}`, build share URL/message. Handle it in `.onOpenURL` → preview → confirm sheet. Keep the pending code across sign-in, same as invite links.
+- [x] **I10** Nickname: a "Name your crew sees" field (`GET`/`PUT /me/profile`) in the account area, and a skippable prompt the first time "Show my code" is tapped. Show `nickname ?? displayName` everywhere a crew member is named.
+- [x] **I11** Confirm screen: "Add *Priya* to your crew? They'll see you too." with Add / Cancel; "This code has already been used or has expired" on the uniform 404; success toast; Remove confirmation (takes effect immediately). A camera scan of a QR in the system Camera app arrives here via the universal link (I9).
+- [x] **I12** Accessibility: labels for every avatar/dot (the ring is never the only signal), the QR has a text alternative (the code), Dynamic Type check on the row.
+- [x] **I13** `Help.md`: "What is a crew?" and how to add someone.
+- [x] **I14** No entitlement change needed (same associated domains). Ship the build; gate the AASA change on it (R4).
 
 ## Phase 6 — Android (`android/`)
 
@@ -354,3 +354,23 @@ content descriptions only; it needs a manual pass on a device.
   hides itself on a 404, so an early release would show nothing, but it would still be dead weight.
 - Behaviour change to check on a device: with `singleTask`, pressing Back after opening a crew link, and relaunching from
   the launcher while the app is already running, should be tried.
+
+### iOS status (2026-10-23)
+
+Branch `crew-ios-app` (Phase 5): written, **never compiled**. There is no iOS CI (workflows cover the server, client and
+Android only) and this was written without Xcode, so the first build in Xcode is the first check. Expect to fix a few
+Swift errors; nothing was run in a simulator.
+
+- Files: `CrewStore.swift` (state, calls), `CrewViews.swift` (row, sheet, add, "your code", QR, confirmation),
+  `CrewLink.swift`, `CrewFormat.swift`. Edits: `LocationManager.swift` (`send` is now internal and
+  `sendAuthorizedEmpty` added, so crew reuses its headers/token/426 gate), `CodeBoxField.swift` (paste-extractor hook),
+  `ContentView.swift` (store, `CrewHost`, row above the join card on the no-session screen, `.onOpenURL`), `AuthSheet.swift`
+  ("Crew" section for the nickname), `Help.md`, `ios/README.md`.
+- Design call: the "Add X to your crew?" confirmation is an overlay inside the crew sheet, not an `.alert`/second sheet,
+  because SwiftUI can't present from a view that is already presenting and a link can arrive while the sheet is open.
+  A link arriving while an unrelated sheet (Help, create session, share consent) is up can't present until that closes.
+- I12: labels done for avatars, dots and the QR; a Dynamic Type pass on the row is still to do on a device.
+- Not done on purpose (R4): the `/crew/*` entry in `apple-app-site-association`. Until a build with this code is in the
+  App Store and the AASA is updated, tapped links open the web fallback page; typed/pasted codes work regardless.
+- No unit tests (the project has no test target); `CrewLink`/`CrewFormat` mirror the tested Kotlin versions.
+- Version numbers untouched (`MARKETING_VERSION` 1.1, build number is bumped by the release process).

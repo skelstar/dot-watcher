@@ -4,6 +4,8 @@ import UIKit
 struct ContentView: View {
     @Environment(\.scenePhase) private var scenePhase
     @State private var location = LocationManager()
+    /// Crew (the people you have chosen). Self-contained: see `CrewStore` and `CrewViews.swift`.
+    @State private var crew = CrewStore()
     @State private var batteryLevel: Float = UIDevice.current.batteryLevel
     @State private var showNameEntry: Bool = false
     @State private var nameInput: String = ""
@@ -50,6 +52,7 @@ struct ContentView: View {
     /// reasonable time").
     private var bodyWithSheets: some View {
         mainContent
+            .modifier(CrewHost(crew: crew, location: location))
             .preferredColorScheme(location.appearanceMode.colorScheme)
             .onAppear {
                 UIDevice.current.isBatteryMonitoringEnabled = true
@@ -102,7 +105,7 @@ struct ContentView: View {
                 .preferredColorScheme(location.appearanceMode.colorScheme)
             }
             .fullScreenCover(isPresented: $showAuth) {
-                AuthSheet(location: location)
+                AuthSheet(location: location, crew: crew)
                     .preferredColorScheme(location.appearanceMode.colorScheme)
             }
             .onChange(of: location.isAuthenticated) { _, isAuthenticated in
@@ -119,6 +122,13 @@ struct ContentView: View {
     var body: some View {
         bodyWithSheets
             .onOpenURL { url in
+                // A crew link (https://…/crew/{CODE}): from a tap, or the camera app scanning a crew QR
+                // code. Only leads to the "Add X to your crew?" confirmation; never adds anyone itself.
+                if let crewCode = CrewLink.code(from: url) {
+                    crew.attach(location)
+                    crew.onLink(crewCode, signedIn: location.isAuthenticated)
+                    return
+                }
                 guard let code = InviteLink.code(from: url) else { return }
                 pendingLinkCode = code
                 resolvePendingLink()
@@ -252,6 +262,7 @@ struct ContentView: View {
                 VStack(spacing: 16) {
                     headerSection
                     runnerRow
+                    CrewRow(crew: crew)
                     noSessionJoinCard
                     noSessionCreateLink
                     if let formError {
@@ -268,6 +279,7 @@ struct ContentView: View {
             }
             .refreshable {
                 await location.loadSessions()
+                await crew.refresh()
             }
         }
     }

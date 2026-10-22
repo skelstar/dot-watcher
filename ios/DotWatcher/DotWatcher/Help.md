@@ -33,3 +33,13 @@ Do not use DotWatcher for emergency response, rescue, medical, safety-critical t
 ## Battery
 
 Keep an eye on the battery indicator — continuous GPS use drains the battery faster than normal. 15 seconds is a good trade-off. For longer events, this interval will be extended.
+
+## Crew
+
+Your crew is the people you have chosen. It is mutual: when you add someone you are in their crew too, and either of you can remove the other at any time.
+
+**Add someone** — ask them to send you their crew code, then open **Your crew**, tap **Add someone** and enter it. If they show you a QR code, just open your phone's camera and point it at the code. Either way you are asked to confirm before anyone is added.
+
+**Send your code** — in **Your crew**, tap **Add someone**, then **Show my code**. A code works once and lasts 24 hours, so send it to the one person you want to add. **Make a new code** stops the old one working.
+
+**Your name** — people in your crew see the name you choose in **Settings > Crew**, or your initials if you leave it blank.
