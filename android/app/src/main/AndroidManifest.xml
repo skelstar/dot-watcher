@@ -28,10 +28,27 @@
         <activity
             android:name=".MainActivity"
             android:exported="true"
+            android:launchMode="singleTask"
             android:theme="@style/Theme.DotWatcher">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+
+            <!-- Crew links: a tap on https://<web host>/crew/{CODE}, or the camera app scanning a crew
+                 QR code (which holds the same link), opens the app on the "Add X to your crew?"
+                 confirmation. autoVerify needs https://<host>/.well-known/assetlinks.json to list this
+                 app's signing certificate; until it does (or if it is wrong) the links just open in
+                 the browser, which shows the web fallback page with the code. Only /crew/ is claimed:
+                 /join/ and /code/ links are deliberately not. -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" />
+                <data android:host="dot-watcher.skelstar.io" />
+                <data android:host="dot-watcher-staging.skelstar.io" />
+                <data android:pathPrefix="/crew/" />
             </intent-filter>
         </activity>
 

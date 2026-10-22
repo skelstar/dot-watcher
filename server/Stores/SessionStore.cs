@@ -143,6 +143,39 @@ public class SessionStore(string connectionString) : IDisposable
                 ADD COLUMN IF NOT EXISTS max_length_hours SMALLINT;
             """;
         addMaxLengthColumn.ExecuteNonQuery();
+
+        // Crew (see .ai/plans/crew-management.md). Every foreign key cascades on purpose: Staging
+        // and Production share this database, and a Production build that predates crew still does
+        // a plain DELETE FROM users when someone deletes their account. With a non-cascading FK that
+        // delete would fail for any user who has crew data. Everything here is additive: the
+        // nickname column is nullable and old code names its columns explicitly, so it never sees it.
+        using var addCrew = conn.CreateCommand();
+        addCrew.CommandText = """
+            ALTER TABLE users ADD COLUMN IF NOT EXISTS nickname TEXT;
+
+            -- One row per mutual pair. user_low_id/user_high_id are stored in ordinal (C#) order by
+            -- the application, so no ordering CHECK here: Postgres compares text by the database
+            -- collation, which would not agree with string.CompareOrdinal.
+            CREATE TABLE IF NOT EXISTS crew_links (
+                user_low_id  TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                user_high_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                created_at   TEXT NOT NULL,
+                PRIMARY KEY (user_low_id, user_high_id),
+                CHECK (user_low_id <> user_high_id)
+            );
+            CREATE INDEX IF NOT EXISTS idx_crew_links_high ON crew_links(user_high_id);
+
+            CREATE TABLE IF NOT EXISTS crew_codes (
+                code                TEXT PRIMARY KEY,
+                owner_user_id       TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                created_at          TEXT NOT NULL,
+                expires_at          TEXT NOT NULL,
+                redeemed_by_user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+                redeemed_at         TEXT
+            );
+            CREATE INDEX IF NOT EXISTS idx_crew_codes_owner ON crew_codes(owner_user_id);
+            """;
+        addCrew.ExecuteNonQuery();
     }
 
     // Idempotent - safe to call on every startup. Resolves (creating if missing) the permanent
@@ -658,6 +691,17 @@ public class SessionStore(string connectionString) : IDisposable
             cmd.ExecuteNonQuery();
         }
 
+        // A block also ends any crew link between the two (crew is mutual, so either direction).
+        var (low, high) = OrderedPair(blockerUserId, blockedUserId);
+        using (var cmd = conn.CreateCommand())
+        {
+            cmd.Transaction = tx;
+            cmd.CommandText = "DELETE FROM crew_links WHERE user_low_id = @low AND user_high_id = @high";
+            cmd.Parameters.AddWithValue("@low", low);
+            cmd.Parameters.AddWithValue("@high", high);
+            cmd.ExecuteNonQuery();
+        }
+
         List<string> sharedSessionIds;
         using (var cmd = conn.CreateCommand())
         {
@@ -730,6 +774,343 @@ public class SessionStore(string connectionString) : IDisposable
         while (reader.Read())
             blocked.Add(new BlockedUser(reader.GetString(0), reader.GetString(1), reader.GetString(2)));
         return blocked;
+    }
+
+    // ---- Crew ----------------------------------------------------------------------------------
+    // A crew is mutual and belongs to an account. People are added only by redeeming a code the
+    // other person created and sent them: single use, 24 hours, first valid redeemer wins. Methods
+    // take `now` from the caller (the controller's TimeProvider) so expiry is testable.
+
+    public const int MaxCrewSize = 50;
+    public const int MaxActiveCrewCodes = 3;
+    public const int CrewCodeLength = 8;
+    public static readonly TimeSpan CrewCodeLifetime = TimeSpan.FromHours(24);
+    private static readonly TimeSpan CrewCodeRetention = TimeSpan.FromDays(7);
+
+    // No 0/O/1/I/L, so a code read aloud or typed from a screenshot isn't ambiguous. 31 symbols
+    // over 8 characters is about 40 bits, against 24 for a session invite code, because a crew
+    // code names a person rather than a session.
+    private const string CrewCodeAlphabet = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+
+    public static string? NormalizeCrewCode(string? value)
+    {
+        var code = value?.Replace("-", "").Replace(" ", "").Trim().ToUpperInvariant();
+        if (code is null || code.Length != CrewCodeLength)
+            return null;
+
+        return code.All(c => CrewCodeAlphabet.Contains(c)) ? code : null;
+    }
+
+    private static string GenerateCrewCode() =>
+        string.Create(CrewCodeLength, CrewCodeAlphabet, static (span, alphabet) =>
+        {
+            for (var i = 0; i < span.Length; i++)
+                span[i] = alphabet[RandomNumberGenerator.GetInt32(alphabet.Length)];
+        });
+
+    private static string ToIso(DateTimeOffset value) => value.ToUniversalTime().ToString("O");
+
+    // Stored in ordinal order so a pair has exactly one row whichever of the two acted.
+    private static (string Low, string High) OrderedPair(string a, string b) =>
+        string.CompareOrdinal(a, b) < 0 ? (a, b) : (b, a);
+
+    public string? GetNickname(string userId)
+    {
+        using var conn = Connect();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT nickname FROM users WHERE id = @userId";
+        cmd.Parameters.AddWithValue("@userId", userId);
+        return cmd.ExecuteScalar() as string;
+    }
+
+    public bool SetNickname(string userId, string? nickname)
+    {
+        using var conn = Connect();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "UPDATE users SET nickname = @nickname WHERE id = @userId";
+        cmd.Parameters.Add(new NpgsqlParameter("nickname", NpgsqlDbType.Text)
+        {
+            Value = (object?)nickname ?? DBNull.Value
+        });
+        cmd.Parameters.AddWithValue("@userId", userId);
+        return cmd.ExecuteNonQuery() > 0;
+    }
+
+    // Pairs where either person has blocked the other are filtered out here as well as removed by
+    // BlockUser: a Production build that predates crew blocks without removing the link, and
+    // Staging and Production share this database.
+    public CrewOverview GetCrewOverview(string userId)
+    {
+        using var conn = Connect();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = """
+            SELECT u.id, u.nickname, u.display_name, l.created_at
+            FROM crew_links l
+            JOIN users u ON u.id = CASE WHEN l.user_low_id = @userId THEN l.user_high_id ELSE l.user_low_id END
+            WHERE (l.user_low_id = @userId OR l.user_high_id = @userId)
+              AND NOT EXISTS (
+                  SELECT 1 FROM blocked_users b
+                  WHERE (b.blocker_user_id = @userId AND b.blocked_user_id = u.id)
+                     OR (b.blocker_user_id = u.id AND b.blocked_user_id = @userId)
+              )
+            ORDER BY l.created_at DESC
+            """;
+        cmd.Parameters.AddWithValue("@userId", userId);
+        using var reader = cmd.ExecuteReader();
+        var crew = new List<CrewMember>();
+        while (reader.Read())
+            crew.Add(new CrewMember(
+                reader.GetString(0),
+                reader.IsDBNull(1) ? null : reader.GetString(1),
+                reader.GetString(2),
+                reader.GetString(3)));
+        return new CrewOverview(crew);
+    }
+
+    public bool RemoveCrewMember(string userId, string otherUserId)
+    {
+        var (low, high) = OrderedPair(userId, otherUserId);
+        using var conn = Connect();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "DELETE FROM crew_links WHERE user_low_id = @low AND user_high_id = @high";
+        cmd.Parameters.AddWithValue("@low", low);
+        cmd.Parameters.AddWithValue("@high", high);
+        return cmd.ExecuteNonQuery() > 0;
+    }
+
+    // Creating a code while three are live retires the oldest, so "make a new code" never fails.
+    public CrewCode CreateCrewCode(string userId, DateTimeOffset now)
+    {
+        var nowText = ToIso(now);
+        var expiresAt = ToIso(now + CrewCodeLifetime);
+
+        using var conn = Connect();
+        using var tx = conn.BeginTransaction();
+
+        using (var cleanup = conn.CreateCommand())
+        {
+            cleanup.Transaction = tx;
+            cleanup.CommandText = "DELETE FROM crew_codes WHERE expires_at <= @cutoff";
+            cleanup.Parameters.AddWithValue("@cutoff", ToIso(now - CrewCodeRetention));
+            cleanup.ExecuteNonQuery();
+        }
+
+        using (var retire = conn.CreateCommand())
+        {
+            retire.Transaction = tx;
+            retire.CommandText = """
+                DELETE FROM crew_codes
+                WHERE code IN (
+                    SELECT code FROM crew_codes
+                    WHERE owner_user_id = @owner AND redeemed_at IS NULL AND expires_at > @now
+                    ORDER BY created_at DESC
+                    OFFSET @keep
+                )
+                """;
+            retire.Parameters.AddWithValue("@owner", userId);
+            retire.Parameters.AddWithValue("@now", nowText);
+            retire.Parameters.AddWithValue("@keep", MaxActiveCrewCodes - 1);
+            retire.ExecuteNonQuery();
+        }
+
+        // A collision on a 40-bit code is vanishingly unlikely, but ON CONFLICT DO NOTHING (rather
+        // than catching the unique violation) keeps the transaction usable if it ever happens.
+        for (var attempt = 0; attempt < 5; attempt++)
+        {
+            var code = GenerateCrewCode();
+            using var insert = conn.CreateCommand();
+            insert.Transaction = tx;
+            insert.CommandText = """
+                INSERT INTO crew_codes (code, owner_user_id, created_at, expires_at)
+                VALUES (@code, @owner, @createdAt, @expiresAt)
+                ON CONFLICT (code) DO NOTHING
+                """;
+            insert.Parameters.AddWithValue("@code", code);
+            insert.Parameters.AddWithValue("@owner", userId);
+            insert.Parameters.AddWithValue("@createdAt", nowText);
+            insert.Parameters.AddWithValue("@expiresAt", expiresAt);
+            if (insert.ExecuteNonQuery() == 1)
+            {
+                tx.Commit();
+                return new CrewCode(code, expiresAt);
+            }
+        }
+
+        throw new InvalidOperationException("Could not generate a unique crew code.");
+    }
+
+    public IReadOnlyList<CrewCode> GetActiveCrewCodes(string userId, DateTimeOffset now)
+    {
+        using var conn = Connect();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = """
+            SELECT code, expires_at
+            FROM crew_codes
+            WHERE owner_user_id = @owner AND redeemed_at IS NULL AND expires_at > @now
+            ORDER BY created_at DESC
+            """;
+        cmd.Parameters.AddWithValue("@owner", userId);
+        cmd.Parameters.AddWithValue("@now", ToIso(now));
+        using var reader = cmd.ExecuteReader();
+        var codes = new List<CrewCode>();
+        while (reader.Read())
+            codes.Add(new CrewCode(reader.GetString(0), reader.GetString(1)));
+        return codes;
+    }
+
+    public bool RevokeCrewCode(string userId, string? rawCode)
+    {
+        var code = NormalizeCrewCode(rawCode);
+        if (code is null)
+            return false;
+
+        using var conn = Connect();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = """
+            DELETE FROM crew_codes
+            WHERE code = @code AND owner_user_id = @owner AND redeemed_at IS NULL
+            """;
+        cmd.Parameters.AddWithValue("@code", code);
+        cmd.Parameters.AddWithValue("@owner", userId);
+        return cmd.ExecuteNonQuery() > 0;
+    }
+
+    public (CrewCodeOutcome Outcome, CrewCodePreview? Owner) PreviewCrewCode(
+        string requesterUserId, string? rawCode, DateTimeOffset now)
+    {
+        var code = NormalizeCrewCode(rawCode);
+        if (code is null)
+            return (CrewCodeOutcome.Invalid, null);
+
+        using var conn = Connect();
+        var ownerId = FindLiveCrewCodeOwner(conn, code, ToIso(now));
+        if (ownerId is null || AreBlocked(conn, ownerId, requesterUserId))
+            return (CrewCodeOutcome.Invalid, null);
+        if (ownerId == requesterUserId)
+            return (CrewCodeOutcome.OwnCode, null);
+
+        var owner = LoadCrewIdentity(conn, ownerId);
+        if (owner is null)
+            return (CrewCodeOutcome.Invalid, null);
+
+        return (CrewCodeOutcome.Ok, new CrewCodePreview(
+            ownerId, owner.Value.Nickname, owner.Value.DisplayName, IsCrew(conn, ownerId, requesterUserId)));
+    }
+
+    // Redeeming makes the two people crew immediately (the owner consented by sending the code).
+    // The claim is a single conditional UPDATE, so if several people hold the same code exactly one
+    // wins and the rest see the same answer as for an unknown code. Redeeming a code for someone
+    // who is already crew succeeds without using the code up.
+    public (CrewCodeOutcome Outcome, CrewMember? Owner) RedeemCrewCode(
+        string redeemerUserId, string? rawCode, DateTimeOffset now)
+    {
+        var code = NormalizeCrewCode(rawCode);
+        if (code is null)
+            return (CrewCodeOutcome.Invalid, null);
+
+        var nowText = ToIso(now);
+        using var conn = Connect();
+
+        var ownerId = FindLiveCrewCodeOwner(conn, code, nowText);
+        if (ownerId is null || AreBlocked(conn, ownerId, redeemerUserId))
+            return (CrewCodeOutcome.Invalid, null);
+        if (ownerId == redeemerUserId)
+            return (CrewCodeOutcome.OwnCode, null);
+
+        var owner = LoadCrewIdentity(conn, ownerId);
+        if (owner is null)
+            return (CrewCodeOutcome.Invalid, null);
+
+        var (low, high) = OrderedPair(ownerId, redeemerUserId);
+        if (IsCrew(conn, ownerId, redeemerUserId))
+        {
+            return (CrewCodeOutcome.Ok, new CrewMember(
+                ownerId, owner.Value.Nickname, owner.Value.DisplayName, GetCrewSince(conn, low, high) ?? nowText));
+        }
+
+        if (CountCrew(conn, redeemerUserId) >= MaxCrewSize || CountCrew(conn, ownerId) >= MaxCrewSize)
+            return (CrewCodeOutcome.CrewFull, null);
+
+        using var tx = conn.BeginTransaction();
+
+        using (var claim = conn.CreateCommand())
+        {
+            claim.Transaction = tx;
+            claim.CommandText = """
+                UPDATE crew_codes
+                SET redeemed_by_user_id = @redeemer, redeemed_at = @now
+                WHERE code = @code AND redeemed_at IS NULL AND expires_at > @now
+                """;
+            claim.Parameters.AddWithValue("@redeemer", redeemerUserId);
+            claim.Parameters.AddWithValue("@now", nowText);
+            claim.Parameters.AddWithValue("@code", code);
+            if (claim.ExecuteNonQuery() != 1)
+                return (CrewCodeOutcome.Invalid, null); // someone else got there first; tx rolls back on dispose
+        }
+
+        using (var link = conn.CreateCommand())
+        {
+            link.Transaction = tx;
+            link.CommandText = """
+                INSERT INTO crew_links (user_low_id, user_high_id, created_at)
+                VALUES (@low, @high, @createdAt)
+                ON CONFLICT DO NOTHING
+                """;
+            link.Parameters.AddWithValue("@low", low);
+            link.Parameters.AddWithValue("@high", high);
+            link.Parameters.AddWithValue("@createdAt", nowText);
+            link.ExecuteNonQuery();
+        }
+
+        tx.Commit();
+        return (CrewCodeOutcome.Ok, new CrewMember(ownerId, owner.Value.Nickname, owner.Value.DisplayName, nowText));
+    }
+
+    private static string? FindLiveCrewCodeOwner(NpgsqlConnection conn, string code, string nowText)
+    {
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = """
+            SELECT owner_user_id
+            FROM crew_codes
+            WHERE code = @code AND redeemed_at IS NULL AND expires_at > @now
+            """;
+        cmd.Parameters.AddWithValue("@code", code);
+        cmd.Parameters.AddWithValue("@now", nowText);
+        return cmd.ExecuteScalar() as string;
+    }
+
+    private static (string? Nickname, string DisplayName)? LoadCrewIdentity(NpgsqlConnection conn, string userId)
+    {
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT nickname, display_name FROM users WHERE id = @userId";
+        cmd.Parameters.AddWithValue("@userId", userId);
+        using var reader = cmd.ExecuteReader();
+        return reader.Read()
+            ? (reader.IsDBNull(0) ? null : reader.GetString(0), reader.GetString(1))
+            : null;
+    }
+
+    private static bool IsCrew(NpgsqlConnection conn, string userId1, string userId2)
+    {
+        var (low, high) = OrderedPair(userId1, userId2);
+        return GetCrewSince(conn, low, high) is not null;
+    }
+
+    private static string? GetCrewSince(NpgsqlConnection conn, string low, string high)
+    {
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT created_at FROM crew_links WHERE user_low_id = @low AND user_high_id = @high";
+        cmd.Parameters.AddWithValue("@low", low);
+        cmd.Parameters.AddWithValue("@high", high);
+        return cmd.ExecuteScalar() as string;
+    }
+
+    private static long CountCrew(NpgsqlConnection conn, string userId)
+    {
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT COUNT(1) FROM crew_links WHERE user_low_id = @userId OR user_high_id = @userId";
+        cmd.Parameters.AddWithValue("@userId", userId);
+        return (long)(cmd.ExecuteScalar() ?? 0L);
     }
 
     public IReadOnlyList<SessionRunner> GetSessionRunners(string sessionId, string? callerUserId = null)

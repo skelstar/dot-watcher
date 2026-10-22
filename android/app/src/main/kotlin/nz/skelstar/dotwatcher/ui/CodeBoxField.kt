@@ -54,6 +54,10 @@ fun CodeBoxField(
     onValueChange: (String) -> Unit,
     length: Int = 6,
     lettersOnly: Boolean = false,
+    /** Pulls the real code out of pasted text before the generic "first word of the right length"
+     *  guess below. The crew-code field passes one, because a shared message holds plenty of 8-letter
+     *  words that are not the code. Return null to fall back to the default handling. */
+    extractCode: ((String) -> String?)? = null,
     modifier: Modifier = Modifier,
 ) {
     var isFocused by remember { mutableStateOf(false) }
@@ -67,7 +71,10 @@ fun CodeBoxField(
 
         BasicTextField(
             value = value,
-            onValueChange = { new -> onValueChange(sanitizeCode(new, length, lettersOnly)) },
+            onValueChange = { new ->
+                val extracted = if (new.length > length) extractCode?.invoke(new) else null
+                onValueChange(extracted ?: sanitizeCode(new, length, lettersOnly))
+            },
             modifier = Modifier.onFocusChanged { isFocused = it.isFocused },
             textStyle = TextStyle(color = Color.Transparent),
             keyboardOptions = KeyboardOptions(

@@ -19,6 +19,7 @@ import retrofit2.http.DELETE
 import retrofit2.http.GET
 import retrofit2.http.Header
 import retrofit2.http.POST
+import retrofit2.http.PUT
 import retrofit2.http.Path
 
 /**
@@ -84,6 +85,43 @@ data class SessionMembership(
     /** ISO-8601 UTC time the session was created; null from older servers. */
     val createdAt: String? = null,
 )
+
+// --- Crew (server: Controllers/CrewController.cs) -----------------------------------
+// A crew is mutual and tied to the account. Members are added only by redeeming a one-time code the
+// other person sent. The server never returns usernames here: people are shown by nickname, falling
+// back to their account initials (displayName).
+
+@Serializable
+data class CrewMember(
+    val userId: String,
+    val nickname: String? = null,
+    val displayName: String,
+    /** ISO-8601 UTC time the two became crew. */
+    val since: String,
+)
+
+@Serializable
+data class CrewOverview(val crew: List<CrewMember> = emptyList())
+
+/** A one-time code for the caller to send to one person; usable once, for 24 hours. */
+@Serializable
+data class CrewCode(val code: String, val expiresAt: String)
+
+/** Whose code this is, for the confirm screen. Previewing adds no one. */
+@Serializable
+data class CrewCodePreview(
+    val userId: String,
+    val nickname: String? = null,
+    val displayName: String,
+    val alreadyCrew: Boolean = false,
+)
+
+@Serializable
+data class ProfileResponse(val nickname: String? = null)
+
+/** A null (or blank) nickname clears it. */
+@Serializable
+data class UpdateProfileRequest(val nickname: String?)
 
 @Serializable
 data class LocationUpdate(
@@ -233,6 +271,65 @@ interface DotWatcherApi {
         @Header("Authorization") bearerToken: String,
         @Header("X-Api-Version") apiVersion: String = API_VERSION,
     ): Response<List<List<RunnerPosition>>>
+
+    @GET("me/crew")
+    suspend fun getCrew(
+        @Header("Authorization") bearerToken: String,
+        @Header("X-Api-Version") apiVersion: String = API_VERSION,
+    ): Response<CrewOverview>
+
+    @DELETE("me/crew/{userId}")
+    suspend fun removeCrewMember(
+        @Path("userId") userId: String,
+        @Header("Authorization") bearerToken: String,
+        @Header("X-Api-Version") apiVersion: String = API_VERSION,
+    ): Response<Unit>
+
+    @POST("me/crew/codes")
+    suspend fun createCrewCode(
+        @Header("Authorization") bearerToken: String,
+        @Header("X-Api-Version") apiVersion: String = API_VERSION,
+    ): Response<CrewCode>
+
+    @GET("me/crew/codes")
+    suspend fun getCrewCodes(
+        @Header("Authorization") bearerToken: String,
+        @Header("X-Api-Version") apiVersion: String = API_VERSION,
+    ): Response<List<CrewCode>>
+
+    @DELETE("me/crew/codes/{code}")
+    suspend fun revokeCrewCode(
+        @Path("code") code: String,
+        @Header("Authorization") bearerToken: String,
+        @Header("X-Api-Version") apiVersion: String = API_VERSION,
+    ): Response<Unit>
+
+    @GET("me/crew/codes/{code}")
+    suspend fun previewCrewCode(
+        @Path("code") code: String,
+        @Header("Authorization") bearerToken: String,
+        @Header("X-Api-Version") apiVersion: String = API_VERSION,
+    ): Response<CrewCodePreview>
+
+    @POST("me/crew/codes/{code}/redeem")
+    suspend fun redeemCrewCode(
+        @Path("code") code: String,
+        @Header("Authorization") bearerToken: String,
+        @Header("X-Api-Version") apiVersion: String = API_VERSION,
+    ): Response<CrewMember>
+
+    @GET("me/profile")
+    suspend fun getProfile(
+        @Header("Authorization") bearerToken: String,
+        @Header("X-Api-Version") apiVersion: String = API_VERSION,
+    ): Response<ProfileResponse>
+
+    @PUT("me/profile")
+    suspend fun updateProfile(
+        @Header("Authorization") bearerToken: String,
+        @Body request: UpdateProfileRequest,
+        @Header("X-Api-Version") apiVersion: String = API_VERSION,
+    ): Response<ProfileResponse>
 }
 
 /** Flags [UpdateRequiredState] on any `426 Upgrade Required` response, regardless of which

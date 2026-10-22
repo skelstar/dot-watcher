@@ -78,6 +78,7 @@
     .method-get    { background: #dbeafe; color: #1d4ed8; }
     .method-post   { background: #dcfce7; color: #166534; }
     .method-delete { background: #fee2e2; color: #991b1b; }
+    .method-put    { background: #fef3c7; color: #92400e; }
 
     .path {
       font-family: ui-monospace, 'SF Mono', monospace;
@@ -241,6 +242,7 @@
       <ul>
         <li><a href="#auth" class="toc-auth">Authentication</a></li>
         <li><a href="#sessions" class="toc-sessions">Sessions</a></li>
+        <li><a href="#crew" class="toc-sessions">Crew</a></li>
         <li><a href="#location" class="toc-location">Location Tracking</a></li>
       </ul>
     </div>
@@ -456,6 +458,162 @@
       </div>
     </div>
 
+
+
+    <!-- ═══════════════════════════════════════════════ CREW -->
+    <p class="section-title" id="crew">Crew</p>
+
+    <div class="card">
+      <div class="endpoint-header">
+        <span class="method method-get">GET</span>
+        <span class="path">/me/crew</span>
+        <span class="auth-badge auth-required">Bearer token</span>
+      </div>
+      <p class="purpose">The caller's crew: people they have added (or who added them) by redeeming a crew code. Mutual and tied to the account, not to a device or session. Pairs where either person has blocked the other are never listed. Usernames are deliberately not included.</p>
+      <div class="details">
+        <div class="detail-block">
+          <h4>Request Body</h4>
+          <p class="none-label">None</p>
+        </div>
+        <div class="detail-block">
+          <h4>Response</h4>
+          <pre>{
+  "crew": [{
+    "userId": "string",
+    "nickname": "string" | null,   // falls back to displayName (initials) when null
+    "displayName": "string",
+    "since": "ISO 8601 UTC"
+  }]
+}</pre>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="endpoint-header">
+        <span class="method method-delete">DELETE</span>
+        <span class="path">/me/crew/<span class="param">{userId}</span></span>
+        <span class="auth-badge auth-required">Bearer token</span>
+      </div>
+      <p class="purpose">Removes someone from the caller's crew, for both people, immediately. The other person is not notified. 404 if they weren't in the crew.</p>
+      <div class="details">
+        <div class="detail-block"><h4>Request Body</h4><p class="none-label">None</p></div>
+        <div class="detail-block"><h4>Response</h4><p class="none-label">Empty (204)</p></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="endpoint-header">
+        <span class="method method-post">POST</span>
+        <span class="path">/me/crew/codes</span>
+        <span class="auth-badge auth-required">Bearer token</span>
+      </div>
+      <p class="purpose">Creates a one-time crew code for the caller to send to one person. 8 characters (no 0/O/1/I/L), valid 24 hours, works once. A user can hold three live codes; creating a fourth retires the oldest. Clients build the share link (<code>https://&lt;web host&gt;/crew/{code}</code>) themselves.</p>
+      <div class="details">
+        <div class="detail-block"><h4>Request Body</h4><p class="none-label">None</p></div>
+        <div class="detail-block">
+          <h4>Response</h4>
+          <pre>{ "code": "string", "expiresAt": "ISO 8601 UTC" }</pre>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="endpoint-header">
+        <span class="method method-get">GET</span>
+        <span class="path">/me/crew/codes</span>
+        <span class="auth-badge auth-required">Bearer token</span>
+      </div>
+      <p class="purpose">The caller's unused, unexpired crew codes, newest first, so "Show my code" can keep showing the same one.</p>
+      <div class="details">
+        <div class="detail-block"><h4>Request Body</h4><p class="none-label">None</p></div>
+        <div class="detail-block">
+          <h4>Response</h4>
+          <pre>[{ "code": "string", "expiresAt": "ISO 8601 UTC" }]</pre>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="endpoint-header">
+        <span class="method method-delete">DELETE</span>
+        <span class="path">/me/crew/codes/<span class="param">{code}</span></span>
+        <span class="auth-badge auth-required">Bearer token</span>
+      </div>
+      <p class="purpose">Revokes one of the caller's unused crew codes. 404 if it isn't theirs or is already used.</p>
+      <div class="details">
+        <div class="detail-block"><h4>Request Body</h4><p class="none-label">None</p></div>
+        <div class="detail-block"><h4>Response</h4><p class="none-label">Empty (204)</p></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="endpoint-header">
+        <span class="method method-get">GET</span>
+        <span class="path">/me/crew/codes/<span class="param">{code}</span></span>
+        <span class="auth-badge auth-required">Bearer token</span>
+      </div>
+      <p class="purpose">Says whose code this is, for the "Add Priya to your crew? They'll see you too." confirmation. Adds no one. Rate-limited (20 previews and redemptions per user per hour; 429). An unknown, expired, used, malformed or blocked code all return the same 404; the caller's own code returns 400.</p>
+      <div class="details">
+        <div class="detail-block"><h4>Request Body</h4><p class="none-label">None</p></div>
+        <div class="detail-block">
+          <h4>Response</h4>
+          <pre>{
+  "userId": "string",
+  "nickname": "string" | null,
+  "displayName": "string",
+  "alreadyCrew": true | false
+}</pre>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="endpoint-header">
+        <span class="method method-post">POST</span>
+        <span class="path">/me/crew/codes/<span class="param">{code}</span>/redeem</span>
+        <span class="auth-badge auth-required">Bearer token</span>
+      </div>
+      <p class="purpose">Redeems a crew code: the caller and the code's owner become crew immediately. The first valid redeemer wins (the claim is one conditional update); everyone else gets the same 404 as for an unknown code. Redeeming for someone who is already crew succeeds without using the code up. 409 if either person's crew is full (50). Same rate limit and errors as the preview.</p>
+      <div class="details">
+        <div class="detail-block"><h4>Request Body</h4><p class="none-label">None</p></div>
+        <div class="detail-block">
+          <h4>Response — the code owner as a crew member</h4>
+          <pre>{
+  "userId": "string",
+  "nickname": "string" | null,
+  "displayName": "string",
+  "since": "ISO 8601 UTC"
+}</pre>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="endpoint-header">
+        <span class="method method-get">GET</span>
+        <span class="path">/me/profile</span>
+        <span class="auth-badge auth-required">Bearer token</span>
+      </div>
+      <p class="purpose">The nickname the caller's crew sees for them (null when unset).</p>
+      <div class="details">
+        <div class="detail-block"><h4>Request Body</h4><p class="none-label">None</p></div>
+        <div class="detail-block"><h4>Response</h4><pre>{ "nickname": "string" | null }</pre></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="endpoint-header">
+        <span class="method method-put">PUT</span>
+        <span class="path">/me/profile</span>
+        <span class="auth-badge auth-required">Bearer token</span>
+      </div>
+      <p class="purpose">Sets the nickname, or clears it when null or blank. Trimmed, at most 30 characters, no control characters (400 otherwise).</p>
+      <div class="details">
+        <div class="detail-block"><h4>Request Body</h4><pre>{ "nickname": "string" | null }</pre></div>
+        <div class="detail-block"><h4>Response</h4><pre>{ "nickname": "string" | null }</pre></div>
+      </div>
+    </div>
 
 
     <!-- ═══════════════════════════════════════════════ LOCATION -->

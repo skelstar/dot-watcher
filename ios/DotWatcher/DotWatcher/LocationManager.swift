@@ -1022,7 +1022,9 @@ final class LocationManager {
         return URLSession(configuration: config)
     }()
 
-    private func send<T: Decodable>(
+    /// Internal (not private) so features that live in their own files, like crew (`CrewStore`), can make
+    /// authorised calls through the same headers, version gate and error handling.
+    func send<T: Decodable>(
         path: String,
         method: String = "GET",
         body: [String: Any]? = nil,
@@ -1079,6 +1081,12 @@ final class LocationManager {
         request.setValue("ios", forHTTPHeaderField: "X-Client-Id")
         request.setValue(Self.appVersion, forHTTPHeaderField: "X-App-Version")
         _ = try? await URLSession.shared.data(for: request)
+    }
+
+    /// A call with no response body, using the signed-in account's token (`DELETE` and the like).
+    func sendAuthorizedEmpty(path: String, method: String) async throws {
+        guard let token = accessToken else { throw DotWatcherAPIError.missingToken }
+        try await sendEmpty(path: path, method: method, token: token)
     }
 
     private func sendEmpty(path: String, method: String, token: String) async throws {

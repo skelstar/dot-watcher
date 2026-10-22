@@ -10,6 +10,7 @@ import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import nz.skelstar.dotwatcher.crew.CrewModel
 import nz.skelstar.dotwatcher.data.AuthTokenStore
 import nz.skelstar.dotwatcher.data.DotWatcherRepository
 import nz.skelstar.dotwatcher.data.ShareChoiceStore
@@ -60,6 +61,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     private val shareChoices = ShareChoiceStore(application)
     private val api = DotWatcherApiClient.create(BuildConfig.API_BASE_URL, application)
     val repository = DotWatcherRepository(api, tokenStore)
+
+    /** The signed-in account's crew. Shares this ViewModel's repository and scope rather than being a
+     *  second ViewModel, so there is one network stack (see the class note above). */
+    val crew = CrewModel(repository, viewModelScope)
 
     private val _destination = MutableStateFlow<Destination>(
         if (tokenStore.isSignedIn) Destination.Restoring else Destination.Auth
@@ -156,6 +161,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         }
         return if (response.isSuccessful) {
             _destination.value = Destination.Session
+            // A crew link opened before sign-in is handled now, as session invite links are.
+            crew.consumePendingLink()
             AuthUiState.Idle
         } else {
             AuthUiState.Error(response.errorMessageOrStatus())
@@ -167,7 +174,12 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     fun refresh() {
         _destination.value = Destination.Restoring
         restoreActiveSession()
+        crew.refresh()
     }
+
+    /** A crew link (https://…/crew/{CODE}) was opened: from a tap, or from the camera app scanning a
+     *  QR code. Never adds anyone by itself; it only leads to the "Add X to your crew?" confirmation. */
+    fun onCrewLink(code: String) = crew.onLink(code, signedIn = tokenStore.isSignedIn)
 
     /** No displayName param: matches iOS's common path, which auto-fills the per-session
      *  display name from the account's own registered display name rather than asking again
@@ -217,15 +229,6 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         _destination.value = Destination.Map(membership, isSharing = false)
     }
 
-    /** Stops sharing this device's own position while staying in the session and on the map —
-     *  distinct from [leaveSession], which leaves the session entirely. The runner can start
-     *  sharing again by leaving and rejoining, or via a future dedicated "share again" action. */
-    fun stopSharing(membership: SessionMembership) {
-        LocationTrackingService.stop(getApplication())
-        shareChoices.recordViewOnly(membership.sessionId)
-        _destination.value = Destination.Map(membership, isSharing = false)
-    }
-
     /** Leaves [membership]'s session for real ([DELETE /me/sessions/{sessionId}/membership] —
      *  matches iOS's `leaveSession(sessionId:)`) and returns to the create/join screen. Stops
      *  tracking first if active, mirroring iOS's `leaveOrDeleteSession` calling `location.stop()`
@@ -256,6 +259,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 response != null && response.isSuccessful -> {
                     LocationTrackingService.stop(getApplication())
                     shareChoices.clear()
+                    crew.clear()
                     _destination.value = Destination.Auth
                 }
                 response != null -> onError(response.errorMessageOrStatus())
@@ -267,6 +271,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     fun signOut() {
         LocationTrackingService.stop(getApplication())
         shareChoices.clear()
+        crew.clear()
         viewModelScope.launch {
             repository.logout()
             _destination.value = Destination.Auth

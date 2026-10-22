@@ -7,7 +7,10 @@ private let termsURL = URL(string: "https://dot-watcher.skelstar.io/terms")!
 
 struct AuthSheet: View {
     @Bindable var location: LocationManager
+    var crew: CrewStore
 
+    @State private var nicknameDraft = ""
+    @State private var isSavingNickname = false
     @State private var mode: AuthMode = .signIn
     @State private var username: String = ""
     @State private var password: String = ""
@@ -45,6 +48,7 @@ struct AuthSheet: View {
                         }
                         .disabled(isBusy)
                     }
+                    crewSection
                     Section("Appearance") {
                         Picker("Appearance", selection: $location.appearanceMode) {
                             ForEach(AppearanceMode.allCases) { mode in
@@ -130,6 +134,40 @@ struct AuthSheet: View {
             } message: {
                 Text("This removes your account, memberships, owned sessions, and stored location rows linked to your account. This cannot be undone.")
             }
+        }
+    }
+
+    /// The name the person's crew sees. Only offered once the server has crew.
+    @ViewBuilder
+    private var crewSection: some View {
+        if crew.isAvailable {
+            Section {
+                TextField("Name your crew sees", text: $nicknameDraft)
+                    .textInputAutocapitalization(.words)
+                    .onChange(of: nicknameDraft) { _, new in
+                        crew.nicknameError = nil
+                        if new.count > CrewFormat.maxNicknameLength {
+                            nicknameDraft = String(new.prefix(CrewFormat.maxNicknameLength))
+                        }
+                    }
+                Button("Save name") {
+                    Task {
+                        isSavingNickname = true
+                        await crew.setNickname(nicknameDraft)
+                        isSavingNickname = false
+                    }
+                }
+                .disabled(isSavingNickname || nicknameDraft.trimmingCharacters(in: .whitespaces) == (crew.nickname ?? ""))
+                if let error = crew.nicknameError {
+                    Text(error).foregroundStyle(.red)
+                }
+            } header: {
+                Text("Crew")
+            } footer: {
+                Text("Shown to people in your crew. Leave blank to show your initials.")
+            }
+            .onAppear { nicknameDraft = crew.nickname ?? "" }
+            .onChange(of: crew.nickname) { _, new in nicknameDraft = new ?? "" }
         }
     }
 

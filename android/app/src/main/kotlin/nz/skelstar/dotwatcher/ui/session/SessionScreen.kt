@@ -29,6 +29,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -40,12 +41,18 @@ import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import nz.skelstar.dotwatcher.AccountInfo
 import nz.skelstar.dotwatcher.BuildConfig
 import nz.skelstar.dotwatcher.SessionUiState
+import nz.skelstar.dotwatcher.crew.CrewModel
 import nz.skelstar.dotwatcher.ui.CodeBoxField
 import nz.skelstar.dotwatcher.ui.GroupDivider
 import nz.skelstar.dotwatcher.ui.GroupedCard
+import nz.skelstar.dotwatcher.ui.crew.AddCrewSheet
+import nz.skelstar.dotwatcher.ui.crew.CrewRow
+import nz.skelstar.dotwatcher.ui.crew.CrewSheet
+import nz.skelstar.dotwatcher.ui.crew.MyCrewCodeSheet
 
 /**
  * Lets a signed-in runner either start a new session ([POST /sessions]) or join an existing one
@@ -77,11 +84,21 @@ fun SessionScreen(
     onSignOut: () -> Unit,
     account: AccountInfo,
     onDeleteAccount: (onError: (String) -> Unit) -> Unit,
+    crew: CrewModel,
 ) {
     var inviteCode by remember { mutableStateOf("") }
     var showCreateDialog by remember { mutableStateOf(false) }
     var showAccount by remember { mutableStateOf(false) }
+    var crewStage by remember { mutableStateOf(CrewStage.None) }
+    val crewState by crew.state.collectAsState()
     val clipboard = LocalClipboardManager.current
+
+    // Crew changes on other people's phones (a code redeemed, a removal), and there are no push
+    // notifications, so pick it up whenever this screen comes back to the front.
+    LifecycleResumeEffect(Unit) {
+        crew.refresh()
+        onPauseOrDispose { }
+    }
 
     Column(
         modifier = Modifier
@@ -94,6 +111,12 @@ fun SessionScreen(
 
         StatusRow(onRefresh = onRefresh)
         Spacer(modifier = Modifier.height(24.dp))
+
+        // Hidden entirely until the server says it has crew (see CrewRow).
+        if (crewState.isAvailable) {
+            CrewRow(state = crewState, onClick = { crewStage = CrewStage.List })
+            Spacer(modifier = Modifier.height(24.dp))
+        }
 
         SectionLabel("Join a Session")
         GroupedCard(modifier = Modifier.fillMaxWidth()) {
@@ -174,6 +197,32 @@ fun SessionScreen(
             },
             onDeleteAccount = onDeleteAccount,
             onDismiss = { showAccount = false },
+            showNickname = crewState.isAvailable,
+            nickname = crewState.nickname,
+            nicknameError = crewState.nicknameError,
+            onSaveNickname = { crew.setNickname(it) },
+            onEditNickname = crew::clearNicknameError,
+        )
+    }
+
+    when (crewStage) {
+        CrewStage.None -> Unit
+        CrewStage.List -> CrewSheet(
+            crew = crew,
+            state = crewState,
+            onAdd = { crewStage = CrewStage.Add },
+            onDismiss = { crewStage = CrewStage.None },
+        )
+        CrewStage.Add -> AddCrewSheet(
+            crew = crew,
+            state = crewState,
+            onShowMyCode = { crewStage = CrewStage.MyCode },
+            onDismiss = { crewStage = CrewStage.List },
+        )
+        CrewStage.MyCode -> MyCrewCodeSheet(
+            crew = crew,
+            state = crewState,
+            onDismiss = { crewStage = CrewStage.List },
         )
     }
 
@@ -188,6 +237,10 @@ fun SessionScreen(
         )
     }
 }
+
+/** Which crew sheet is open over the start screen. They stack as a flow: the crew, then adding
+ *  someone, then (from there) showing your own code; dismissing steps back one. */
+private enum class CrewStage { None, List, Add, MyCode }
 
 private val HeaderIconSize = 34.dp
 private val HeaderButtonSize = 44.dp

@@ -5,6 +5,10 @@ struct CodeBoxField: View {
     var length: Int = 6
     var lettersOnly: Bool = false
     var autoFocus: Bool = false
+    /// Pulls the real code out of pasted text before the generic "first word of the right length"
+    /// guess in `sanitize`. The crew-code field passes one, because a shared message holds plenty of
+    /// 8-letter words that aren't the code. Return nil to fall back to the default handling.
+    var extractCode: ((String) -> String?)? = nil
     @FocusState private var isFocused: Bool
 
     var body: some View {
@@ -35,6 +39,10 @@ struct CodeBoxField: View {
                 .textInputAutocapitalization(.characters)
                 .autocorrectionDisabled()
                 .onChange(of: text) { _, new in
+                    if new.count > length, let extracted = extractCode?(new) {
+                        if extracted != new { text = extracted }
+                        return
+                    }
                     let filtered = Self.sanitize(new, length: length, lettersOnly: lettersOnly)
                     if filtered != new { text = filtered }
                 }
