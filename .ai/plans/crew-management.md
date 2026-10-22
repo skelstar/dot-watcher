@@ -266,7 +266,7 @@ follow-up. Without App Links, a camera scan or tapped link on Android would only
 
 ## Phase 7 — Mock-up
 
-- [ ] **M1** Update `crew-main-screen.html`: remove the username field and Requests/pending/"Not now" UI; add "Show my code" (QR + Share + nickname prompt), "Enter a code" (no scanner), and the confirm screen, and drop the "N waiting" and request-pill states, so the build matches an agreed design.
+- [x] **M1** Update `crew-main-screen.html`: remove the username field and Requests/pending/"Not now" UI; add "Show my code" (QR + Share + nickname prompt), "Enter a code" (no scanner), and the confirm screen, and drop the "N waiting" and request-pill states, so the build matches an agreed design.
 
 ## Phase 8 — Rollout order (protects existing apps)
 
@@ -387,3 +387,11 @@ After the web client deploys, check (staging, then prod): `curl -i https://<host
 nz.skelstar.dotwatcher` should show the host as `verified` (Android can take a few minutes after install, or run
 `adb shell pm verify-app-links --re-verify nz.skelstar.dotwatcher`). Note: the staging host is in the manifest filter, but
 a Play-signed build only matters for hosts whose file lists its key, which both hosts serve (same image).
+
+### Mock-up (2026-10-23)
+
+`crew-main-screen.html` now matches what was built: the row (no longer marked as proposed), the crew sheet, the add screen
+(code field, Paste), "Your crew code" (QR illustration, Share, Make a new code), the first-time name prompt, and the
+"Add X to your crew?" confirmation, with jump buttons for each state (also reachable as `#code`, `#name`, `#link`, `#used`,
+`#empty`, `#crew`). The username/requests/keyboard parts are gone. Only the "Crew + invites" start card is still marked as
+not built. The QR is an illustration, not scannable.
