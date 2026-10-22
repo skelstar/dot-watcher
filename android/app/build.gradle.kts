@@ -42,8 +42,8 @@ android {
         applicationId = "nz.skelstar.dotwatcher"
         minSdk = 26
         targetSdk = 36
-        versionCode = 12
-        versionName = "0.2.9"
+        versionCode = 13
+        versionName = "0.3.0"
 
         buildConfigField("String", "LINZ_API_KEY", "\"$linzApiKey\"")
         // Used only to build the "join my session" share link (WEB_BASE_URL + "/code/" +
@@ -141,4 +141,7 @@ dependencies {
 
     implementation(libs.play.services.location)
     implementation(libs.maplibre.android.sdk)
+
+    // Draws the crew-code QR code (generation only; people scan it with their camera app).
+    implementation(libs.zxing.core)
 }

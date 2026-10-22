@@ -10,11 +10,13 @@ import android.os.PowerManager
 import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.viewModels
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.core.content.ContextCompat
+import nz.skelstar.dotwatcher.crew.CrewLink
 
 /**
  * Android's location background-tracking permissions come in a strict sequence a single request
@@ -25,6 +27,9 @@ import androidx.core.content.ContextCompat
  */
 class MainActivity : ComponentActivity() {
     private var hasBackgroundLocationPermission by mutableStateOf(false)
+
+    // Activity-scoped, so this is the same instance the Compose tree gets from viewModel().
+    private val appViewModel: AppViewModel by viewModels()
 
     private val requestForegroundLocation = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -68,9 +73,28 @@ class MainActivity : ComponentActivity() {
             )
         }
 
+        // On a rotation or other recreation the original intent is still attached, and replaying
+        // it would pop the same "Add X to your crew?" confirmation again.
+        if (savedInstanceState == null) handleCrewLink(intent)
+
         setContent {
             DotWatcherApp(hasBackgroundLocationPermission = hasBackgroundLocationPermission)
         }
+    }
+
+    // The activity is singleTask, so a crew link opened while the app is already running arrives
+    // here instead of starting a second copy of the app.
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleCrewLink(intent)
+    }
+
+    /** An Android App Link: https://<web host>/crew/{CODE}, from a tap in a message or from the
+     *  phone's camera app scanning a crew QR code. Only leads to the confirmation, never adds. */
+    private fun handleCrewLink(intent: Intent?) {
+        if (intent?.action != Intent.ACTION_VIEW) return
+        CrewLink.codeFromUrl(intent.dataString)?.let { appViewModel.onCrewLink(it) }
     }
 
     override fun onResume() {

@@ -71,6 +71,7 @@ release builds to testers without a cable, not required to just see the app runn
 ```
 android/
   app/                    Single application module
+    .../crew/             Crew state (CrewModel), code/link parsing (CrewLink), wording (CrewFormat)
     .../data/             Token storage + repository wrapping the API
     .../location/         Foreground GPS + compass heading capture
     .../network/          Retrofit API surface and wire models
@@ -101,3 +102,26 @@ only if/when the codebase size justifies it.
 - A failed position post is queued (persisted to disk, capped, flush-oldest-first) rather
   than dropped — see `.ai/plans/offline-location-queue.md` and
   `location/LocationUpdateQueue.kt`. Not yet built on iOS; this is the first platform to have it.
+
+## Crew
+
+A crew is the people you have chosen: mutual, and tied to your account. The only way to add someone is a
+one-time **crew code** they send you (see `.ai/plans/crew-management.md` and `server/README.md`, "Crew").
+
+- The "Your crew" row, crew sheet, add sheet and "Your crew code" sheet are in `ui/crew/`; they open from the start
+  screen (`SessionScreen`). The row shows nothing until `GET /me/crew` succeeds, so a build pointed at a server
+  without crew looks exactly as before.
+- Crew codes are shared through the system share sheet, like invite codes: a message holding a link
+  (`WEB_BASE_URL/crew/{CODE}`) and the plain code. The QR code on the code sheet encodes the same link
+  (generated with ZXing core, `ui/crew/QrCode.kt`). **There is no in-app scanner**: people scan with their phone's
+  camera app, which opens the link.
+- Crew links are Android App Links (an `autoVerify` intent filter for `/crew/` on `MainActivity`, which is
+  `singleTask` so a link opens the running app). Verification needs `/.well-known/assetlinks.json` on the web host to
+  list the app's signing certificate (the Play App Signing key for store builds). Until it does, links open the
+  browser, whose `/crew/{CODE}` page shows the code to copy. Check with
+  `adb shell pm get-app-links nz.skelstar.dotwatcher`.
+- A link, a pasted code and a typed code all end at one "Add *X* to your crew? They'll see you too." confirmation
+  (`CrewConfirmDialog`, shown at app level because a link can arrive on any screen). Nobody is added until Add is
+  tapped. A link opened while signed out is kept and handled after sign-in.
+- Crew members are shown by an optional nickname (set in the account sheet, or when first showing your code), falling
+  back to their account initials. The server never sends usernames.
