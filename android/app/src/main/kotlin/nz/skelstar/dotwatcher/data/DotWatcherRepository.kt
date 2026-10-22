@@ -1,14 +1,20 @@
 package nz.skelstar.dotwatcher.data
 
 import nz.skelstar.dotwatcher.network.CreateSessionRequest
+import nz.skelstar.dotwatcher.network.CrewCode
+import nz.skelstar.dotwatcher.network.CrewCodePreview
+import nz.skelstar.dotwatcher.network.CrewMember
+import nz.skelstar.dotwatcher.network.CrewOverview
 import nz.skelstar.dotwatcher.network.DotWatcherApi
 import nz.skelstar.dotwatcher.network.JoinSessionRequest
 import nz.skelstar.dotwatcher.network.LocationPostResponse
 import nz.skelstar.dotwatcher.network.LocationUpdate
 import nz.skelstar.dotwatcher.network.LoginRequest
+import nz.skelstar.dotwatcher.network.ProfileResponse
 import nz.skelstar.dotwatcher.network.RegisterRequest
 import nz.skelstar.dotwatcher.network.RunnerPosition
 import nz.skelstar.dotwatcher.network.SessionMembership
+import nz.skelstar.dotwatcher.network.UpdateProfileRequest
 import nz.skelstar.dotwatcher.network.bearer
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.ResponseBody.Companion.toResponseBody
@@ -114,6 +120,31 @@ class DotWatcherRepository(
         val token = requireToken()
         return api.leaveSession(sessionId, bearer(token))
     }
+
+    // --- Crew --------------------------------------------------------------------------
+
+    suspend fun getCrew(): Response<CrewOverview> = api.getCrew(bearer(requireToken()))
+
+    suspend fun removeCrewMember(userId: String): Response<Unit> =
+        api.removeCrewMember(userId, bearer(requireToken()))
+
+    suspend fun createCrewCode(): Response<CrewCode> = api.createCrewCode(bearer(requireToken()))
+
+    suspend fun getCrewCodes(): Response<List<CrewCode>> = api.getCrewCodes(bearer(requireToken()))
+
+    suspend fun revokeCrewCode(code: String): Response<Unit> =
+        api.revokeCrewCode(code, bearer(requireToken()))
+
+    suspend fun previewCrewCode(code: String): Response<CrewCodePreview> =
+        api.previewCrewCode(code, bearer(requireToken()))
+
+    suspend fun redeemCrewCode(code: String): Response<CrewMember> =
+        api.redeemCrewCode(code, bearer(requireToken()))
+
+    suspend fun getProfile(): Response<ProfileResponse> = api.getProfile(bearer(requireToken()))
+
+    suspend fun updateNickname(nickname: String?): Response<ProfileResponse> =
+        api.updateProfile(bearer(requireToken()), UpdateProfileRequest(nickname))
 
     private fun requireToken(): String =
         tokenStore.accessToken ?: error("No access token — caller must be signed in.")

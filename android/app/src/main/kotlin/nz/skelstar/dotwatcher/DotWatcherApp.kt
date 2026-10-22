@@ -16,6 +16,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.viewmodel.compose.viewModel
 import nz.skelstar.dotwatcher.network.SessionMembership
 import nz.skelstar.dotwatcher.network.UpdateRequiredState
+import nz.skelstar.dotwatcher.ui.crew.CrewConfirmDialog
 import nz.skelstar.dotwatcher.ui.UpdateRequiredScreen
 import nz.skelstar.dotwatcher.ui.auth.AuthScreen
 import nz.skelstar.dotwatcher.ui.map.BackgroundLocationRequiredScreen
@@ -55,6 +56,7 @@ fun DotWatcherApp(hasBackgroundLocationPermission: Boolean) {
     val destination by viewModel.destination.collectAsState()
     val authState by viewModel.authState.collectAsState()
     val sessionState by viewModel.sessionState.collectAsState()
+    val crewState by viewModel.crew.state.collectAsState()
 
     DotWatcherTheme {
         Surface(modifier = Modifier.fillMaxSize()) {
@@ -80,6 +82,7 @@ fun DotWatcherApp(hasBackgroundLocationPermission: Boolean) {
                     onSignOut = viewModel::signOut,
                     account = viewModel.account,
                     onDeleteAccount = viewModel::deleteAccount,
+                    crew = viewModel.crew,
                 )
 
                 is Destination.Consent -> if (hasBackgroundLocationPermission) {
@@ -108,6 +111,12 @@ fun DotWatcherApp(hasBackgroundLocationPermission: Boolean) {
                 }
 
                 is Destination.Map -> MapDestinationScreen(current.membership, current.isSharing, viewModel)
+            }
+
+            // "Add X to your crew?" can come from a crew link on any screen once signed in, so it
+            // lives here rather than on the start screen. Nobody is added until they tap Add.
+            crewState.confirm?.let { confirm ->
+                if (destination != Destination.Auth) CrewConfirmDialog(confirm, viewModel.crew)
             }
         }
     }

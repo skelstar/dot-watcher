@@ -13,6 +13,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -24,6 +25,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import nz.skelstar.dotwatcher.AccountInfo
+import nz.skelstar.dotwatcher.crew.MAX_NICKNAME_LENGTH
 import nz.skelstar.dotwatcher.ui.InitialsDot
 
 /**
@@ -41,7 +43,14 @@ fun AccountSheet(
     onSignOut: () -> Unit,
     onDeleteAccount: (onError: (String) -> Unit) -> Unit,
     onDismiss: () -> Unit,
+    /** Crew: the name the person's crew sees. Only offered once the server has crew. */
+    showNickname: Boolean = false,
+    nickname: String? = null,
+    nicknameError: String? = null,
+    onSaveNickname: (String) -> Unit = {},
+    onEditNickname: () -> Unit = {},
 ) {
+    var nicknameDraft by remember(nickname) { mutableStateOf(nickname.orEmpty()) }
     var confirmDelete by remember { mutableStateOf(false) }
     var deleting by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -67,6 +76,30 @@ fun AccountSheet(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
+            }
+
+            if (showNickname) {
+                OutlinedTextField(
+                    value = nicknameDraft,
+                    onValueChange = {
+                        if (it.length <= MAX_NICKNAME_LENGTH) {
+                            nicknameDraft = it.replace("\n", "")
+                            onEditNickname()
+                        }
+                    },
+                    label = { Text("Name your crew sees") },
+                    singleLine = true,
+                    isError = nicknameError != null,
+                    supportingText = {
+                        Text(nicknameError ?: "Shown to people in your crew. Leave blank to show your initials.")
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                OutlinedButton(
+                    onClick = { onSaveNickname(nicknameDraft) },
+                    enabled = !deleting && nicknameDraft.trim() != nickname.orEmpty(),
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text("Save name") }
             }
 
             OutlinedButton(

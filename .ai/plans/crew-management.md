@@ -252,17 +252,17 @@ text shown to other people, so the existing Block feature is the abuse control (
 `ios-universal-invite-links.md`), so this plan adds them for `/crew/*` only; `/join/*` on Android stays a separate
 follow-up. Without App Links, a camera scan or tapped link on Android would only open the web fallback page.
 
-- [ ] **A1** Retrofit endpoints + DTOs in `DotWatcherApi.kt`; repository in `DotWatcherRepository.kt`; crew state + actions in `AppViewModel.kt`.
-- [ ] **A2** Refresh crew with the existing session refresh and on resume.
-- [ ] **A3** Ring treatment: `isCrew` option on `ui/InitialsDot.kt`; colour from `RunnerColorPalette.kt`.
-- [ ] **A4** `CrewRow` composable at the top of `SessionScreen`, same states as iOS.
-- [ ] **A5** **Unavailable handling (H3):** hide the row on 404/non-2xx, no error UI; existing `UpdateRequiredState` for 426 untouched.
-- [ ] **A6** Android App Links (**H8**): in `AndroidManifest.xml` add to `MainActivity` an `<intent-filter android:autoVerify="true">` (VIEW / DEFAULT / BROWSABLE, `https`, hosts `dot-watcher.skelstar.io` and `dot-watcher-staging.skelstar.io`, `pathPrefix="/crew/"`); parse the code in `MainActivity` and hand it to the ViewModel for preview → confirm; keep a pending code across sign-in (as iOS does for invites); must also work when the activity is already running (`onNewIntent`). Publish `assetlinks.json` via W4. QR **generation** only: add ZXing **core** (`com.google.zxing:core`) to `gradle/libs.versions.toml`; check `proguard-rules.pro`. No scanner dependency, no CAMERA permission.
-- [ ] **A7** Crew sheet, add sheet (enter/paste/show-my-code) and My-code sheet (QR + code + expiry + "Send this to one person. It works once." + Share via `Intent.ACTION_SEND` chooser, like `shareInviteLink` in `LiveMapScreen.kt`) as Compose `ModalBottomSheet`s; IME-aware layout.
-- [ ] **A8** Confirm screen with the mutual wording and the "already used / expired" state; Remove confirmation; nickname field in `AccountSheet.kt` plus the skippable first-time prompt; show `nickname ?? displayName` for crew members.
-- [ ] **A9** Content descriptions for dots/avatars/QR; TalkBack pass.
-- [ ] **A10** Unit tests: crew-code parsing (App Link URL → code, rejects bad input) and the row's state logic, in the style of `RestoreDestinationTest.kt`.
-- [ ] **A11** Bump `versionName`/`versionCode` per the Android release convention.
+- [x] **A1** Retrofit endpoints + DTOs in `DotWatcherApi.kt`; repository in `DotWatcherRepository.kt`; crew state + actions in `AppViewModel.kt`.
+- [x] **A2** Refresh crew with the existing session refresh and on resume.
+- [x] **A3** Ring treatment: `isCrew` option on `ui/InitialsDot.kt`; colour from `RunnerColorPalette.kt`.
+- [x] **A4** `CrewRow` composable at the top of `SessionScreen`, same states as iOS.
+- [x] **A5** **Unavailable handling (H3):** hide the row on 404/non-2xx, no error UI; existing `UpdateRequiredState` for 426 untouched.
+- [x] **A6** Android App Links (**H8**): in `AndroidManifest.xml` add to `MainActivity` an `<intent-filter android:autoVerify="true">` (VIEW / DEFAULT / BROWSABLE, `https`, hosts `dot-watcher.skelstar.io` and `dot-watcher-staging.skelstar.io`, `pathPrefix="/crew/"`); parse the code in `MainActivity` and hand it to the ViewModel for preview → confirm; keep a pending code across sign-in (as iOS does for invites); must also work when the activity is already running (`onNewIntent`). Publish `assetlinks.json` via W4. QR **generation** only: add ZXing **core** (`com.google.zxing:core`) to `gradle/libs.versions.toml`; check `proguard-rules.pro`. No scanner dependency, no CAMERA permission.
+- [x] **A7** Crew sheet, add sheet (enter/paste/show-my-code) and My-code sheet (QR + code + expiry + "Send this to one person. It works once." + Share via `Intent.ACTION_SEND` chooser, like `shareInviteLink` in `LiveMapScreen.kt`) as Compose `ModalBottomSheet`s; IME-aware layout.
+- [x] **A8** Confirm screen with the mutual wording and the "already used / expired" state; Remove confirmation; nickname field in `AccountSheet.kt` plus the skippable first-time prompt; show `nickname ?? displayName` for crew members.
+- [x] **A9** Content descriptions for dots/avatars/QR; TalkBack pass.
+- [x] **A10** Unit tests: crew-code parsing (App Link URL → code, rejects bad input) and the row's state logic, in the style of `RestoreDestinationTest.kt`.
+- [x] **A11** Bump `versionName`/`versionCode` per the Android release convention.
 
 ## Phase 7 — Mock-up
 
@@ -335,3 +335,22 @@ Store badge (there is no Play Store listing yet, so no Android badge); a code th
 alphabet gets a "doesn't look like a crew code" message. Shared card styles moved to `cardPageStyles.ts` and
 `JoinPage` now uses them (no visual change). Not built or run locally. Still open: `assetlinks.json` (needs the Play
 App Signing fingerprint) and the held AASA entry (W3).
+
+### Android status (2026-10-23)
+
+Branch `crew-android-app` (Phase 6): written, **not built or run** (CI is the check). A9 (TalkBack pass) is ticked for
+content descriptions only; it needs a manual pass on a device.
+
+- Start-screen row, crew sheet, add sheet, "your code" sheet (QR, share, new code, first-time nickname prompt), app-level
+  confirm dialog, nickname field in the account sheet.
+- Android App Links for `/crew/` (`MainActivity` is now `singleTask`; `onNewIntent` handles a link while running).
+  `assetlinks.json` is still not published (needs the Play App Signing fingerprint), so links open the web fallback page
+  until it is.
+- Version bumped to 0.3.0 (versionCode 13).
+- Pasting a whole shared message into the code field works by finding the `/crew/{CODE}` link or the "Crew code:" line
+  (`CrewLink.extractFromPaste`), not "any 8-letter word" as the invite-code field does, because the message contains
+  8-letter words like "skelstar".
+- Ordering reminder: do not release this build to the public Play track until the server is on Production (H3); the row
+  hides itself on a 404, so an early release would show nothing, but it would still be dead weight.
+- Behaviour change to check on a device: with `singleTask`, pressing Back after opening a crew link, and relaunching from
+  the launcher while the app is already running, should be tried.
