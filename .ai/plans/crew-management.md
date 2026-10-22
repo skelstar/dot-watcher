@@ -216,10 +216,10 @@ text shown to other people, so the existing Block feature is the abuse control (
 
 ## Phase 3 — Web fallback (`client/`)
 
-- [ ] **W1** `parseUrl()` in `client/src/App.tsx` recognises `/crew/{CODE}`; new `CrewLinkPage.tsx` modelled on `JoinPage.tsx`: shows the code (with copy), "Open DotWatcher and paste this code in Your crew → Add", App Store / Play links (`appStore.ts`). Additive; existing routes untouched.
-- [ ] **W2** Update the route comment above `parseUrl()` and `client/README.md`.
-- [ ] **W3** **Do NOT yet add `/crew/*` to `client/public/.well-known/apple-app-site-association`** — gated by R4 (**H7**). Prepare the change but hold it.
-- [ ] **W4** Add `client/public/.well-known/assetlinks.json` for Android App Links: package `nz.skelstar.dotwatcher`, the SHA-256 fingerprint(s) of the **release / Play App Signing** certificate (get it from the Play Console; a debug fingerprint will not verify a store build). Serve as `application/json` with no redirect — extend `client/nginx.conf` the way the AASA file is handled. Safe to publish any time (only apps carrying the intent filter ever read it).
+- [x] **W1** `parseUrl()` in `client/src/App.tsx` recognises `/crew/{CODE}`; new `CrewLinkPage.tsx` modelled on `JoinPage.tsx`: shows the code (with copy), "Open DotWatcher and paste this code in Your crew → Add", App Store / Play links (`appStore.ts`). Additive; existing routes untouched.
+- [x] **W2** Update the route comment above `parseUrl()` and `client/README.md`.
+- [ ] **W3** (held on purpose) **Do NOT yet add `/crew/*` to `client/public/.well-known/apple-app-site-association`** — gated by R4 (**H7**). Prepare the change but hold it.
+- [ ] **W4** Add `client/public/.well-known/assetlinks.json` for Android App Links: package `nz.skelstar.dotwatcher`, the SHA-256 fingerprint(s) of the **release / Play App Signing** certificate (get it from the Play Console; a debug fingerprint will not verify a store build). Serve as `application/json` with no redirect: nginx already serves `.json` as `application/json`, so unlike the extensionless AASA file no `client/nginx.conf` change is needed. **Blocked on the fingerprint (not yet published; do not commit a placeholder).** Safe to publish any time (only apps carrying the intent filter ever read it).
 
 ## Phase 4 — Docs
 
@@ -327,3 +327,11 @@ Not covered by a test yet (left unticked on purpose):
   block (the old-Production case, **H2**) is not, because the API can't create that state.
 - **T7** `ApiVersionGateTests` unchanged; to be confirmed green in CI.
 - **S9** `DeleteUserAccount` untouched; proven only once T4 passes in CI.
+
+### Web fallback status (2026-10-23)
+
+Branch `crew-web-fallback`: `/crew/{CODE}` page (`CrewLinkPage.tsx`) shows the code with a copy button and the App
+Store badge (there is no Play Store listing yet, so no Android badge); a code that isn't 8 characters from the crew
+alphabet gets a "doesn't look like a crew code" message. Shared card styles moved to `cardPageStyles.ts` and
+`JoinPage` now uses them (no visual change). Not built or run locally. Still open: `assetlinks.json` (needs the Play
+App Signing fingerprint) and the held AASA entry (W3).
