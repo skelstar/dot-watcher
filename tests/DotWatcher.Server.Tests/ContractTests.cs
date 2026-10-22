@@ -141,6 +141,67 @@ public class ContractTests
         Assert.Equal(JsonValueKind.String, root.GetProperty("displayName").ValueKind);
     }
 
+    [Fact]
+    public async Task Crew_ResponseContracts_HaveExpectedJsonFields_AndNeverExposeUsernames()
+    {
+        using var factory = new DotWatcherApiFactory();
+        using var client = factory.CreateClient();
+        var ownerToken = await AuthTestHelpers.RegisterAsync(client, "alice-login", "AL");
+        var joinerToken = await AuthTestHelpers.RegisterAsync(client, "bob-login", "BO");
+
+        using var setNickname = AuthTestHelpers.WithUserToken(HttpMethod.Put, "/me/profile", ownerToken);
+        setNickname.Content = JsonContent.Create(new { nickname = "Priya" });
+        var profile = await ParseAsync(await client.SendAsync(setNickname));
+        Assert.Equal("Priya", profile.GetProperty("nickname").GetString());
+
+        using var createCode = AuthTestHelpers.WithUserToken(HttpMethod.Post, "/me/crew/codes", ownerToken);
+        var code = await ParseAsync(await client.SendAsync(createCode));
+        Assert.Equal(JsonValueKind.String, code.GetProperty("code").ValueKind);
+        Assert.Equal(JsonValueKind.String, code.GetProperty("expiresAt").ValueKind);
+        var codeText = code.GetProperty("code").GetString();
+
+        using var listCodes = AuthTestHelpers.WithUserToken(HttpMethod.Get, "/me/crew/codes", ownerToken);
+        var codes = await ParseAsync(await client.SendAsync(listCodes));
+        Assert.Equal(JsonValueKind.Array, codes.ValueKind);
+        Assert.Equal(JsonValueKind.String, codes[0].GetProperty("code").ValueKind);
+        Assert.Equal(JsonValueKind.String, codes[0].GetProperty("expiresAt").ValueKind);
+
+        using var preview = AuthTestHelpers.WithUserToken(HttpMethod.Get, $"/me/crew/codes/{codeText}", joinerToken);
+        var previewJson = await ParseAsync(await client.SendAsync(preview));
+        Assert.Equal(JsonValueKind.String, previewJson.GetProperty("userId").ValueKind);
+        Assert.Equal("Priya", previewJson.GetProperty("nickname").GetString());
+        Assert.Equal("AL", previewJson.GetProperty("displayName").GetString());
+        Assert.Equal(JsonValueKind.False, previewJson.GetProperty("alreadyCrew").ValueKind);
+        AssertNoUsername(previewJson);
+
+        using var redeem = AuthTestHelpers.WithUserToken(HttpMethod.Post, $"/me/crew/codes/{codeText}/redeem", joinerToken);
+        var redeemed = await ParseAsync(await client.SendAsync(redeem));
+        Assert.Equal(JsonValueKind.String, redeemed.GetProperty("userId").ValueKind);
+        Assert.Equal(JsonValueKind.String, redeemed.GetProperty("since").ValueKind);
+        AssertNoUsername(redeemed);
+
+        using var crew = AuthTestHelpers.WithUserToken(HttpMethod.Get, "/me/crew", joinerToken);
+        var crewJson = await ParseAsync(await client.SendAsync(crew));
+        var member = crewJson.GetProperty("crew")[0];
+        Assert.Equal(JsonValueKind.String, member.GetProperty("userId").ValueKind);
+        Assert.Equal("Priya", member.GetProperty("nickname").GetString());
+        Assert.Equal("AL", member.GetProperty("displayName").GetString());
+        Assert.Equal(JsonValueKind.String, member.GetProperty("since").ValueKind);
+        AssertNoUsername(member);
+
+        // The login identifier must not appear anywhere in a crew payload, so that moving usernames
+        // to email addresses later can't leak them to the people in a crew.
+        var raw = crewJson.GetRawText() + previewJson.GetRawText() + redeemed.GetRawText();
+        Assert.DoesNotContain("alice-login", raw);
+        Assert.DoesNotContain("bob-login", raw);
+    }
+
+    private static void AssertNoUsername(JsonElement element)
+    {
+        Assert.False(element.TryGetProperty("username", out _));
+        Assert.False(element.TryGetProperty("email", out _));
+    }
+
     private static async Task<JsonElement> ParseAsync(HttpResponseMessage response)
     {
         using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());

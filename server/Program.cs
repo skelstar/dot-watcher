@@ -33,6 +33,7 @@ builder.Services.AddSingleton<RouteUploadTokenAuth>();
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<AuthAttemptLimiter>();
 builder.Services.AddSingleton<ClientErrorLimiter>();
+builder.Services.AddSingleton<CrewCodeLimiter>();
 builder.Services.AddSingleton(sp =>
 {
     var connectionString = sp.GetRequiredService<IConfiguration>()["ConnectionString"]
@@ -108,7 +109,10 @@ app.Use(async (ctx, next) =>
     var requestUrl = $"{ctx.Request.Scheme}://{ctx.Request.Host}{ctx.Request.PathBase}{ctx.Request.Path}{ctx.Request.QueryString}";
     var environment = ResolveEnvironment(ctx.Request.Host.Host);
 
-    var captureBody = !path.StartsWith("/auth") && !path.EndsWith("/recording");
+    // /me/crew/codes responses carry live crew codes (single-use credentials), so like /auth they
+    // are not copied into the logs. (The code in the request path of preview/redeem/revoke is
+    // logged, as session invite codes are; it is dead once used or after 24 hours.)
+    var captureBody = !path.StartsWith("/auth") && !path.EndsWith("/recording") && !path.StartsWith("/me/crew/codes");
     var originalBody = ctx.Response.Body;
     MemoryStream? capture = null;
     if (captureBody)
