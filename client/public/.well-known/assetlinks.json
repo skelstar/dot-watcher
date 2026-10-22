@@ -1,0 +1,14 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "nz.skelstar.dotwatcher",
+      "sha256_cert_fingerprints": [
+        "B0:02:CB:53:54:91:5C:23:3E:7D:7F:4C:85:83:3E:C8:06:38:95:84:1A:4E:7B:FF:1A:5A:E7:61:BD:AC:2B:83",
+        "8F:CF:3B:5C:D1:A6:A0:14:CC:C2:CC:F1:03:DE:59:E0:27:76:89:A8:91:90:7F:43:4B:F7:B1:12:BA:75:5A:C1",
+        "B7:A4:CB:94:3E:56:00:5C:4E:96:64:27:D4:6F:69:79:EF:78:91:D0:C7:5D:78:70:EF:37:0C:75:FE:5A:70:BE"
+      ]
+    }
+  }
+]

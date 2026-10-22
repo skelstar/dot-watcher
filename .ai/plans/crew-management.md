@@ -219,7 +219,7 @@ text shown to other people, so the existing Block feature is the abuse control (
 - [x] **W1** `parseUrl()` in `client/src/App.tsx` recognises `/crew/{CODE}`; new `CrewLinkPage.tsx` modelled on `JoinPage.tsx`: shows the code (with copy), "Open DotWatcher and paste this code in Your crew → Add", App Store / Play links (`appStore.ts`). Additive; existing routes untouched.
 - [x] **W2** Update the route comment above `parseUrl()` and `client/README.md`.
 - [ ] **W3** (held on purpose) **Do NOT yet add `/crew/*` to `client/public/.well-known/apple-app-site-association`** — gated by R4 (**H7**). Prepare the change but hold it.
-- [ ] **W4** Add `client/public/.well-known/assetlinks.json` for Android App Links: package `nz.skelstar.dotwatcher`, the SHA-256 fingerprint(s) of the **release / Play App Signing** certificate (get it from the Play Console; a debug fingerprint will not verify a store build). Serve as `application/json` with no redirect: nginx already serves `.json` as `application/json`, so unlike the extensionless AASA file no `client/nginx.conf` change is needed. **Blocked on the fingerprint (not yet published; do not commit a placeholder).** Safe to publish any time (only apps carrying the intent filter ever read it).
+- [x] **W4** Add `client/public/.well-known/assetlinks.json` for Android App Links: package `nz.skelstar.dotwatcher`, the SHA-256 fingerprint(s) of the **release / Play App Signing** certificate (get it from the Play Console; a debug fingerprint will not verify a store build). Serve as `application/json` with no redirect: nginx already serves `.json` as `application/json`, so unlike the extensionless AASA file no `client/nginx.conf` change is needed. **Done: lists the Play app signing key, the previous app signing key and the upload key (all from Play Console → Protected with Play → App signing).** Safe to publish any time (only apps carrying the intent filter ever read it).
 
 ## Phase 4 — Docs
 
@@ -374,3 +374,16 @@ Swift errors; nothing was run in a simulator.
   App Store and the AASA is updated, tapped links open the web fallback page; typed/pasted codes work regardless.
 - No unit tests (the project has no test target); `CrewLink`/`CrewFormat` mirror the tested Kotlin versions.
 - Version numbers untouched (`MARKETING_VERSION` 1.1, build number is bumped by the release process).
+
+### assetlinks.json (2026-10-23)
+
+Branch `crew-assetlinks`: `client/public/.well-known/assetlinks.json` for `nz.skelstar.dotwatcher` with three SHA-256
+fingerprints: the current Play app signing key, the previous app signing key (so builds signed with it still verify)
+and the upload key (sideloaded release builds). Served as `application/json` by nginx's default `.json` type, no config
+change. Only apps carrying the `/crew/` intent filter read it, so installed apps are unaffected.
+
+After the web client deploys, check (staging, then prod): `curl -i https://<host>/.well-known/assetlinks.json` returns
+200, `application/json`, no redirect; then on a phone with the 0.3.0 build, `adb shell pm get-app-links
+nz.skelstar.dotwatcher` should show the host as `verified` (Android can take a few minutes after install, or run
+`adb shell pm verify-app-links --re-verify nz.skelstar.dotwatcher`). Note: the staging host is in the manifest filter, but
+a Play-signed build only matters for hosts whose file lists its key, which both hosts serve (same image).
