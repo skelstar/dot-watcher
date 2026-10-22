@@ -79,6 +79,53 @@ public record BlockedUser(
     string BlockedAt
 );
 
+/// <summary>A person in the caller's crew. Deliberately has no username: usernames are login
+/// identifiers (and may become email addresses), so crew members only ever see a nickname the
+/// person chose, falling back to the account's initials (<see cref="DisplayName"/>).</summary>
+public record CrewMember(
+    string UserId,
+    string? Nickname,
+    string DisplayName,
+    // ISO-8601 UTC time the two became crew.
+    string Since
+);
+
+public record CrewOverview(
+    IReadOnlyList<CrewMember> Crew
+);
+
+/// <summary>A single-use, expiring code that lets one person add the caller to their crew.</summary>
+public record CrewCode(
+    string Code,
+    string ExpiresAt
+);
+
+/// <summary>Who a crew code belongs to, shown on the confirm screen before it is redeemed.</summary>
+public record CrewCodePreview(
+    string UserId,
+    string? Nickname,
+    string DisplayName,
+    bool AlreadyCrew
+);
+
+public record UpdateProfileRequest(
+    string? Nickname = null
+);
+
+public record ProfileResponse(
+    string? Nickname
+);
+
+public enum CrewCodeOutcome
+{
+    Ok,
+    // Unknown, expired, already used, malformed, or the two people have blocked each other. These
+    // are deliberately indistinguishable to the caller.
+    Invalid,
+    OwnCode,
+    CrewFull,
+}
+
 public record SessionRunner(
     string UserId,
     string DisplayName

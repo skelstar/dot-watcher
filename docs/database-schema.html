@@ -357,6 +357,12 @@
             <td class="col-constraints"><span class="tag tag-nn">NOT NULL</span></td>
             <td class="col-notes">ISO 8601, set at insert, never updated</td>
           </tr>
+          <tr>
+            <td class="col-name">nickname</td>
+            <td class="col-type">TEXT</td>
+            <td class="col-constraints"></td>
+            <td class="col-notes">Optional name the user's crew sees (1–30 chars). NULL = show <code>display_name</code>. Added for crew; nullable so older server builds sharing the database ignore it</td>
+          </tr>
         </tbody>
       </table>
       <div class="indexes">
@@ -637,6 +643,110 @@
     </div>
 
 
+    <!-- crew_links -->
+    <div class="table-card">
+      <div class="table-header">
+        <span class="table-name">crew_links</span>
+        <span class="storage-badge badge-sqlite">Postgres</span>
+      </div>
+      <p class="table-desc">One row per mutual crew pair. The two user ids are stored in ordinal (C# <code>string.CompareOrdinal</code>) order by the application, so a pair has exactly one row whichever person acted. There is no ordering CHECK because Postgres compares text by database collation, which would not match.</p>
+      <table class="cols">
+        <thead>
+          <tr><th>Column</th><th>Type</th><th>Constraints</th><th>Notes</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="col-name">user_low_id</td>
+            <td class="col-type">TEXT</td>
+            <td class="col-constraints"><span class="tag tag-pk">PK</span><span class="tag tag-nn">NOT NULL</span></td>
+            <td class="col-notes">FK → users.id <strong>ON DELETE CASCADE</strong></td>
+          </tr>
+          <tr>
+            <td class="col-name">user_high_id</td>
+            <td class="col-type">TEXT</td>
+            <td class="col-constraints"><span class="tag tag-pk">PK</span><span class="tag tag-nn">NOT NULL</span></td>
+            <td class="col-notes">FK → users.id <strong>ON DELETE CASCADE</strong>; CHECK user_low_id &lt;&gt; user_high_id</td>
+          </tr>
+          <tr>
+            <td class="col-name">created_at</td>
+            <td class="col-type">TEXT</td>
+            <td class="col-constraints"><span class="tag tag-nn">NOT NULL</span></td>
+            <td class="col-notes">ISO 8601 UTC; the "since" shown to both people</td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="indexes">
+        <h4>Indexes</h4>
+        <div class="idx-list">
+          <span class="idx-pill">idx_crew_links_high ON (user_high_id)</span>
+        </div>
+      </div>
+      <div class="callout">
+        These foreign keys cascade on purpose, unlike the other tables. Staging and Production share this database,
+        and a server build that predates crew does a plain <code>DELETE FROM users</code> on account deletion; with
+        non-cascading keys that would fail for anyone who has crew data.
+      </div>
+    </div>
+
+    <!-- crew_codes -->
+    <div class="table-card">
+      <div class="table-header">
+        <span class="table-name">crew_codes</span>
+        <span class="storage-badge badge-sqlite">Postgres</span>
+      </div>
+      <p class="table-desc">One-time codes a user hands to one person so that person can join their crew. Valid 24 hours; the first valid redeemer wins. Rows expired for more than 7 days are pruned when a new code is created.</p>
+      <table class="cols">
+        <thead>
+          <tr><th>Column</th><th>Type</th><th>Constraints</th><th>Notes</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="col-name">code</td>
+            <td class="col-type">TEXT</td>
+            <td class="col-constraints"><span class="tag tag-pk">PK</span><span class="tag tag-nn">NOT NULL</span></td>
+            <td class="col-notes">8 characters from <code>ABCDEFGHJKMNPQRSTUVWXYZ23456789</code></td>
+          </tr>
+          <tr>
+            <td class="col-name">owner_user_id</td>
+            <td class="col-type">TEXT</td>
+            <td class="col-constraints"><span class="tag tag-nn">NOT NULL</span></td>
+            <td class="col-notes">FK → users.id <strong>ON DELETE CASCADE</strong></td>
+          </tr>
+          <tr>
+            <td class="col-name">created_at</td>
+            <td class="col-type">TEXT</td>
+            <td class="col-constraints"><span class="tag tag-nn">NOT NULL</span></td>
+            <td class="col-notes">ISO 8601 UTC</td>
+          </tr>
+          <tr>
+            <td class="col-name">expires_at</td>
+            <td class="col-type">TEXT</td>
+            <td class="col-constraints"><span class="tag tag-nn">NOT NULL</span></td>
+            <td class="col-notes">created_at + 24 h</td>
+          </tr>
+          <tr>
+            <td class="col-name">redeemed_by_user_id</td>
+            <td class="col-type">TEXT</td>
+            <td class="col-constraints"></td>
+            <td class="col-notes">FK → users.id <strong>ON DELETE SET NULL</strong>; set by the single conditional UPDATE that claims the code</td>
+          </tr>
+          <tr>
+            <td class="col-name">redeemed_at</td>
+            <td class="col-type">TEXT</td>
+            <td class="col-constraints"></td>
+            <td class="col-notes">NULL = still usable</td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="indexes">
+        <h4>Indexes</h4>
+        <div class="idx-list">
+          <span class="idx-pill">idx_crew_codes_owner ON (owner_user_id)</span>
+        </div>
+      </div>
+    </div>
+
+
     <!-- ══════════════════════════ IN-MEMORY STRUCTURE -->
     <p class="section-title">In-memory cache (live tracking only)</p>
 
@@ -738,6 +848,7 @@
               For each <em>owned</em> session: <code>location_updates</code>, <code>session_members</code>, <code>app_sessions</code><br>
               <code>session_members</code> WHERE user_id (non-owned memberships)<br>
               <code>users</code> WHERE id<br>
+              <code>crew_links</code> and <code>crew_codes</code> (as owner) removed by <strong>ON DELETE CASCADE</strong>; <code>crew_codes.redeemed_by_user_id</code> set to NULL<br>
               In-memory cache evicted for owned sessions; user entry removed from shared sessions
             </td>
           </tr>

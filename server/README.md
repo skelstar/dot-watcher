@@ -18,6 +18,7 @@
   - [`GET /sessions/{sessionCode}/recording`](#get-sessionssessioncoderecording)
   - [`DELETE /sessions/{sessionCode}`](#delete-sessionssessioncode)
   - [`DELETE /me`](#delete-me)
+  - [Crew (`/me/crew`, `/me/profile`)](#crew-mecrew-meprofile)
 - [Deployment](#deployment-tatooine--home-k3s-cluster)
 - [Notes](#notes)
 
@@ -399,6 +400,41 @@ Returns the authenticated user's session memberships.
 **Auth:** User access token required.
 
 Clients should call this after sign-in and after create/join actions, then navigate to live or replay views only for sessions returned by this endpoint. A raw session code in the URL is an identifier; it is not proof of access.
+
+---
+
+### Crew (`/me/crew`, `/me/profile`)
+
+A crew is the people you have chosen: mutual, and tied to your account (not a device or a session). The only way
+to add someone is a **crew code** that person created and sent to you. Design: `.ai/plans/crew-management.md`.
+Full request/response shapes are in `docs/api-reference.html`.
+
+| Method | Path | Purpose |
+|---|---|---|
+| `GET` | `/me/crew` | Your crew (`userId`, `nickname`, `displayName`, `since`). Never includes usernames |
+| `DELETE` | `/me/crew/{userId}` | Remove someone, for both of you, immediately |
+| `POST` | `/me/crew/codes` | Create a one-time code (`code`, `expiresAt`) |
+| `GET` | `/me/crew/codes` | Your unused, unexpired codes |
+| `DELETE` | `/me/crew/codes/{code}` | Revoke one |
+| `GET` | `/me/crew/codes/{code}` | Whose code is this? (for the confirm screen; adds no one) |
+| `POST` | `/me/crew/codes/{code}/redeem` | Redeem: you and the owner become crew immediately |
+| `GET` / `PUT` | `/me/profile` | The nickname your crew sees (1-30 characters, optional) |
+
+**Auth:** User access token for all of them.
+
+**Code rules.** 8 characters from `ABCDEFGHJKMNPQRSTUVWXYZ23456789` (no `0/O/1/I/L`), valid 24 hours, usable once.
+If several people hold the same code the first to redeem wins; the claim is a single conditional `UPDATE`, so
+simultaneous redemptions still produce exactly one winner. Everyone else gets the same `404` as for an unknown,
+expired, used, malformed or blocked code. Redeeming your own code is a `400`; redeeming for someone who is already
+crew succeeds without using the code up. A user holds at most three live codes (a fourth retires the oldest).
+Previews and redemptions are limited to 20 per user per hour (`429`). Crew is capped at 50 people (`409`).
+
+**Blocking** removes the crew link, and `GET /me/crew` also hides blocked pairs at read time.
+
+**Deploy note.** The crew tables' foreign keys cascade on purpose. Staging and Production share one database, and a
+build that predates crew still does a plain `DELETE FROM users` when someone deletes their account; non-cascading
+keys would make that fail for any user with crew data. Deploy this server to Production before shipping app builds
+that use it.
 
 ---
 
