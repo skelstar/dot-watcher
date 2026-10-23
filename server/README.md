@@ -422,6 +422,15 @@ Full request/response shapes are in `docs/api-reference.html`.
 
 **Auth:** User access token for all of them.
 
+**Feature flag.** Crew is switched on per account (design: `.ai/plans/crew-feature-flag.md`). An account without the
+`crew` feature gets `404` from every endpoint in this section (a signed-out caller still gets `401`). Shipped iOS builds
+treat any status other than `401`/`426` from `/me/crew` as "this server has no crew" and hide it quietly, so the gate
+must stay a `404`. An account has the feature if it was granted it (`PUT /admin/users/{userId}/features` with the admin
+bearer token and body `{ "features": ["crew"] }`, which replaces the list; `[]` revokes) or if `crew` is listed in the
+`Features:EnabledForAll` config array (env `Features__EnabledForAll__0=crew`), which turns it on for everyone. The
+user's features are returned as `features` on `AuthenticatedUser` by login, register and `GET /me`, and as `features`
+on each row of `GET /admin/users`. Revoking hides crew but keeps the data, which returns if the feature is re-granted.
+
 **Code rules.** 8 characters from `ABCDEFGHJKMNPQRSTUVWXYZ23456789` (no `0/O/1/I/L`), valid 24 hours, usable once.
 If several people hold the same code the first to redeem wins; the claim is a single conditional `UPDATE`, so
 simultaneous redemptions still produce exactly one winner. Everyone else gets the same `404` as for an unknown,

@@ -34,6 +34,7 @@ builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<AuthAttemptLimiter>();
 builder.Services.AddSingleton<ClientErrorLimiter>();
 builder.Services.AddSingleton<CrewCodeLimiter>();
+builder.Services.AddSingleton<FeatureFlags>();
 builder.Services.AddSingleton(sp =>
 {
     var connectionString = sp.GetRequiredService<IConfiguration>()["ConnectionString"]

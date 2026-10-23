@@ -12,8 +12,9 @@ import nz.skelstar.dotwatcher.network.CrewMember
 import nz.skelstar.dotwatcher.network.errorMessageOrStatus
 import retrofit2.Response
 
-/** Whether this server has crew at all. Until the server is updated `/me/crew` is a 404, and the UI
- *  then shows nothing rather than an error. */
+/** Whether this server has crew for this account. Until the server is updated, or while the account
+ *  hasn't been given the crew feature, `/me/crew` is a 404, and the UI then shows nothing rather
+ *  than an error. */
 enum class CrewAvailability { Unknown, Available, Unavailable }
 
 /** The "Add Priya to your crew?" confirmation, and what follows it. A link or a typed code leads to
@@ -63,24 +64,26 @@ class CrewModel(
     /** Loads the crew and the person's own nickname. Safe to call often (on resume, on the refresh
      *  button): a network failure keeps what is already shown. */
     fun refresh() {
-        scope.launch {
-            val crew = runCatching { repository.getCrew() }.getOrNull() ?: return@launch
-            when {
-                crew.isSuccessful -> {
-                    val members = crew.body()?.crew.orEmpty()
-                    _state.update { it.copy(availability = CrewAvailability.Available, members = members) }
-                }
-                // 401 means the session ended and 426 is handled app-wide; neither says anything
-                // about whether the server has crew. Anything else (404 from a server without it)
-                // hides the feature quietly.
-                crew.code() == 401 || crew.code() == 426 -> Unit
-                else -> _state.update { it.copy(availability = CrewAvailability.Unavailable, members = emptyList()) }
+        scope.launch { load() }
+    }
+
+    private suspend fun load() {
+        val crew = runCatching { repository.getCrew() }.getOrNull() ?: return
+        when {
+            crew.isSuccessful -> {
+                val members = crew.body()?.crew.orEmpty()
+                _state.update { it.copy(availability = CrewAvailability.Available, members = members) }
             }
-            if (crew.isSuccessful) {
-                val profile = runCatching { repository.getProfile() }.getOrNull()
-                if (profile != null && profile.isSuccessful) {
-                    _state.update { it.copy(nickname = profile.body()?.nickname) }
-                }
+            // 401 means the session ended and 426 is handled app-wide; neither says anything
+            // about whether the server has crew. Anything else (404 from a server without it, or
+            // from an account that hasn't been given the crew feature) hides the feature quietly.
+            crew.code() == 401 || crew.code() == 426 -> Unit
+            else -> _state.update { it.copy(availability = CrewAvailability.Unavailable, members = emptyList()) }
+        }
+        if (crew.isSuccessful) {
+            val profile = runCatching { repository.getProfile() }.getOrNull()
+            if (profile != null && profile.isSuccessful) {
+                _state.update { it.copy(nickname = profile.body()?.nickname) }
             }
         }
     }
@@ -184,6 +187,13 @@ class CrewModel(
         }
         _state.update { it.copy(confirm = CrewConfirm.Loading(code)) }
         scope.launch {
+            // Crew is switched on per account, and a lookup for an account without it 404s just like
+            // a dead code. A link can arrive before the first refresh has answered, so find out first.
+            if (_state.value.availability == CrewAvailability.Unknown) load()
+            if (_state.value.availability == CrewAvailability.Unavailable) {
+                _state.update { it.copy(confirm = CrewConfirm.Failed(code, CREW_NOT_AVAILABLE_MESSAGE)) }
+                return@launch
+            }
             val result = runCatching { repository.previewCrewCode(code) }
             _state.update { it.copy(confirm = previewOutcome(code, result)) }
         }

@@ -6,8 +6,21 @@ namespace DotWatcher.Server.Controllers;
 public class AuthController(
     SessionStore store,
     UserTokenAuth tokenAuth,
+    FeatureFlags features,
     AuthAttemptLimiter attemptLimiter) : ControllerBase
 {
+    /// <summary>Gets the caller's account, including the features it can use. Clients call this to pick up a newly granted feature without signing in again.</summary>
+    [HttpGet("/me")]
+    [ProducesResponseType(typeof(AuthenticatedUser), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public IActionResult GetAccount()
+    {
+        if (!tokenAuth.TryAuthenticate(Request, out var user))
+            return Unauthorized();
+
+        return Ok(user with { Features = features.ForUser(user.UserId) });
+    }
+
     /// <summary>Creates a new account and returns an access token.</summary>
     [HttpPost("/auth/register")]
     [ProducesResponseType(typeof(AuthResponse), StatusCodes.Status200OK)]
@@ -133,7 +146,7 @@ public class AuthController(
         return new AuthResponse(
             token.Value,
             token.ExpiresAt,
-            new AuthenticatedUser(account.Id, account.Username, account.DisplayName));
+            new AuthenticatedUser(account.Id, account.Username, account.DisplayName, features.ForUser(account.Id)));
     }
 
     private static string? NormalizeUsername(string? value)

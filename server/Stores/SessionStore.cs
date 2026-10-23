@@ -176,6 +176,12 @@ public class SessionStore(string connectionString) : IDisposable
             CREATE INDEX IF NOT EXISTS idx_crew_codes_owner ON crew_codes(owner_user_id);
             """;
         addCrew.ExecuteNonQuery();
+
+        // Per-account feature flags (see .ai/plans/crew-feature-flag.md): a comma-separated list.
+        // Additive with a default, so a build that predates it never sees the column.
+        using var addFeatures = conn.CreateCommand();
+        addFeatures.CommandText = "ALTER TABLE users ADD COLUMN IF NOT EXISTS features TEXT NOT NULL DEFAULT ''";
+        addFeatures.ExecuteNonQuery();
     }
 
     // Idempotent - safe to call on every startup. Resolves (creating if missing) the permanent
@@ -306,15 +312,41 @@ public class SessionStore(string connectionString) : IDisposable
         using var conn = Connect();
         using var cmd = conn.CreateCommand();
         cmd.CommandText = """
-            SELECT id, username, display_name, created_at
+            SELECT id, username, display_name, created_at, features
             FROM users
             ORDER BY created_at DESC
             """;
         using var reader = cmd.ExecuteReader();
         var users = new List<AdminUserSummary>();
         while (reader.Read())
-            users.Add(new AdminUserSummary(reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetString(3)));
+            users.Add(new AdminUserSummary(
+                reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetString(3),
+                ParseFeatures(reader.GetString(4))));
         return users;
+    }
+
+    private static IReadOnlyList<string> ParseFeatures(string stored) =>
+        FeatureFlags.Normalize(stored.Split(',', StringSplitOptions.RemoveEmptyEntries));
+
+    /// <summary>The features granted to this account itself (not counting any enabled for everyone).</summary>
+    public IReadOnlyList<string> GetUserFeatures(string userId)
+    {
+        using var conn = Connect();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT features FROM users WHERE id = @userId";
+        cmd.Parameters.AddWithValue("@userId", userId);
+        return ParseFeatures(cmd.ExecuteScalar() as string ?? "");
+    }
+
+    /// <summary>Replaces the account's granted features. False when the account doesn't exist.</summary>
+    public bool SetUserFeatures(string userId, IReadOnlyList<string> features)
+    {
+        using var conn = Connect();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "UPDATE users SET features = @features WHERE id = @userId";
+        cmd.Parameters.AddWithValue("@features", string.Join(',', features));
+        cmd.Parameters.AddWithValue("@userId", userId);
+        return cmd.ExecuteNonQuery() > 0;
     }
 
     public bool UserExists(string userId)
