@@ -55,7 +55,8 @@ Written on the current branch, not yet committed. Nothing built or run locally (
 - [x] `PUT /admin/users/{userId}/features`, body `{ "features": ["crew"] }`, admin bearer. Replaces the list; `[]`
       revokes; unknown user → `404`; missing `features` → `400`. `AdminUserSummary` (and so `GET /admin/users`)
       includes each account's `Features`.
-- [ ] Optional later: a checkbox in `client/src/AdminPanel.tsx`.
+- [x] A "Crew" checkbox per account in the Users table of `client/src/AdminPanel.tsx` (branch
+      `crew-feature-flag-web`). Ticking sends the account's full feature list with `crew` added or removed.
 
 ### S6. Tests (`tests/DotWatcher.Server.Tests`)
 - [x] `DotWatcherApiFactory` gets `EnabledForAll` (default `["crew"]`, so the existing crew tests are untouched).
