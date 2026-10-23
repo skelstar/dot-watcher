@@ -59,6 +59,10 @@ fun crewExpiryLabel(expiresAt: String, now: Instant): String {
     }
 }
 
+/** Shown instead of a code lookup when the server says this account doesn't have crew (yet). A
+ *  lookup would 404, which reads as a dead code. */
+const val CREW_NOT_AVAILABLE_MESSAGE = "Crew isn't available on your account yet."
+
 /** The server's answers to a redeem or preview, in words. 404 is deliberately vague: an unknown,
  *  expired, used or blocked code all look the same. */
 fun crewCodeFailureMessage(httpStatus: Int): String = when (httpStatus) {
