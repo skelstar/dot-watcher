@@ -83,9 +83,12 @@ Shipped builds share the server, so the server change must not alter anything th
 
 ## Clients (separate PRs, each "Crew: …")
 
-- [ ] **iOS** — store `features` from the auth response; render `CrewRow` (and the crew link handler in
-      `ContentView.swift`) only when `crew` is present. A crew link opened without the flag shows a short
-      "Crew isn't available on your account yet" message.
+- [x] **iOS** — needs no `features` plumbing: `CrewStore.refresh()` already probes `/me/crew`, hides the row,
+      nickname section and everything else on a 404 (`isAvailable`), and re-probes on sign-in and whenever the app
+      comes to the front, so a grant appears without a re-login or `GET /me`. The one gap was a crew link: a lookup
+      for an ungranted account 404s like a dead code and read "already been used or has expired". `beginAdd` now
+      waits for the first probe if it hasn't answered, and shows "Crew isn't available on your account yet." when
+      the account doesn't have crew. (Branch `crew-feature-flag-ios`.)
 - [ ] **Android** — same in `AppViewModel` / `SessionScreen` around `CrewRow`, and in the App Link handler.
 - [ ] **Web** — `CrewLinkPage.tsx` shows the same "not available yet" message; hide any crew entry points in
       `LandingPage.tsx`.

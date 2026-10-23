@@ -55,8 +55,10 @@ enum CrewConfirm {
 final class CrewStore {
     enum Availability { case unknown, available, unavailable }
 
-    /// Whether this server has crew at all. Until the server is updated `/me/crew` is a 404, and the
-    /// UI then shows nothing rather than an error.
+    /// Whether this server has crew for this account. Until the server is updated, or while the account
+    /// hasn't been given the crew feature, `/me/crew` is a 404, and the UI then shows nothing rather
+    /// than an error. Re-checked on sign-in and whenever the app comes to the front, so a newly
+    /// granted account sees crew without signing in again.
     private(set) var availability: Availability = .unknown
     private(set) var members: [CrewMember] = []
     /// The name this account's crew sees; nil until chosen (they then see the initials).
@@ -218,6 +220,13 @@ final class CrewStore {
             return
         }
         confirm = .loading
+        // Crew is switched on per account, and a lookup for an account without it 404s just like a dead
+        // code. A link can arrive before the first refresh has answered, so find out first.
+        if availability == .unknown { await refresh() }
+        if availability == .unavailable {
+            confirm = .failed(CrewFormat.notAvailableMessage)
+            return
+        }
         do {
             let owner: CrewCodePreview = try await location.send(path: "/me/crew/codes/\(code)")
             confirm = .ready(code: code, owner: owner)

@@ -64,6 +64,10 @@ enum CrewFormat {
         return "Expires in \(max(1, Int(seconds / 60))) min"
     }
 
+    /// Shown instead of a code lookup when the server says this account doesn't have crew (yet). A
+    /// lookup would 404, which reads as a dead code.
+    static let notAvailableMessage = "Crew isn't available on your account yet."
+
     /// The server's answers to a preview or redeem, in words. 404 is deliberately vague: an unknown,
     /// expired, used or blocked code all look the same.
     static func failureMessage(status: Int) -> String {
