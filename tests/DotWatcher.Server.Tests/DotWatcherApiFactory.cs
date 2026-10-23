@@ -51,17 +51,26 @@ public sealed class DotWatcherApiFactory : WebApplicationFactory<global::Program
         cmd.ExecuteNonQuery();
     }
 
+    /// <summary>
+    /// Features switched on for every account (the <c>Features:EnabledForAll</c> config). Crew is on
+    /// by default so tests of the crew endpoints need no setup; feature-flag tests set this to empty.
+    /// </summary>
+    public string[] EnabledForAll { get; init; } = [Features.Crew];
+
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.ConfigureAppConfiguration((_, config) =>
         {
-            config.AddInMemoryCollection(new Dictionary<string, string?>
+            var settings = new Dictionary<string, string?>
             {
                 ["BearerToken"] = "test-token",
                 ["JwtSigningKey"] = "test-jwt-signing-key-change-me-32-bytes",
                 ["ConnectionString"] = $"{BaseConnectionString};SearchPath={_schema}",
                 ["RecordingsPath"] = _recordingsPath,
-            });
+            };
+            for (var i = 0; i < EnabledForAll.Length; i++)
+                settings[$"Features:EnabledForAll:{i}"] = EnabledForAll[i];
+            config.AddInMemoryCollection(settings);
         });
     }
 

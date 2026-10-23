@@ -17,6 +17,27 @@ public class AdminController(SessionStore store, BearerTokenAuth auth) : Control
         return Ok(store.GetAllUsers());
     }
 
+    /// <summary>Admin/ops: replaces the features granted to an account (e.g. "crew"). An empty list revokes all.</summary>
+    [HttpPut("/admin/users/{userId}/features")]
+    [ProducesResponseType(typeof(IReadOnlyList<string>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public IActionResult SetUserFeatures(string userId, [FromBody] SetFeaturesRequest? request)
+    {
+        if (!auth.IsAuthorized(Request))
+            return Unauthorized();
+
+        if (request?.Features is null)
+            return BadRequest(new { error = "features is required." });
+
+        var features = FeatureFlags.Normalize(request.Features);
+        if (features.Any(f => f.Contains(',')))
+            return BadRequest(new { error = "Feature names can't contain commas." });
+
+        return store.SetUserFeatures(userId, features) ? Ok(features) : NotFound();
+    }
+
     /// <summary>Admin/ops: deletes a user account.</summary>
     [HttpDelete("/admin/users/{userId}")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
