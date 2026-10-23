@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SegmentedButton
@@ -32,6 +33,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
@@ -42,6 +44,8 @@ import nz.skelstar.dotwatcher.ui.GroupDivider
 import nz.skelstar.dotwatcher.ui.GroupedCard
 import nz.skelstar.dotwatcher.ui.InitialsDot
 import nz.skelstar.dotwatcher.ui.map.RunnerColorPalette
+
+private val EMAIL_PATTERN = Regex("""^[^@\s]+@[^@\s]+\.[^@\s]+$""")
 
 /**
  * Sign-in/sign-up screen: [POST /auth/register] and [POST /auth/login]
@@ -63,6 +67,7 @@ fun AuthScreen(
     var username by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var displayName by remember { mutableStateOf("") }
+    val isValidEmail = EMAIL_PATTERN.matches(username.trim())
 
     Column(
         modifier = Modifier
@@ -109,8 +114,25 @@ fun AuthScreen(
             BorderlessField(
                 value = username,
                 onValueChange = { username = it },
-                placeholder = "Username",
+                placeholder = if (isRegisterMode) "Email address" else "Username",
+                keyboardType = if (isRegisterMode) KeyboardType.Email else KeyboardType.Text,
             )
+            if (isRegisterMode) {
+                Text(
+                    text = if (username.isBlank() || isValidEmail) {
+                        "Your email address is your username. You'll use it to sign in."
+                    } else {
+                        "Enter a valid email address"
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (username.isBlank() || isValidEmail) {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    } else {
+                        MaterialTheme.colorScheme.error
+                    },
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                )
+            }
             GroupDivider()
             BorderlessField(
                 value = password,
@@ -164,7 +186,7 @@ fun AuthScreen(
             CardActionRow(
                 text = if (isRegisterMode) "Create Account" else "Sign In",
                 enabled = state !is AuthUiState.Loading && username.isNotBlank() && password.isNotBlank() &&
-                    (!isRegisterMode || displayName.length == 2),
+                    (!isRegisterMode || (displayName.length == 2 && isValidEmail)),
                 onClick = {
                     if (isRegisterMode) {
                         onRegister(username, password, displayName)
@@ -187,6 +209,7 @@ private fun BorderlessField(
     onValueChange: (String) -> Unit,
     placeholder: String,
     visualTransformation: VisualTransformation = VisualTransformation.None,
+    keyboardType: KeyboardType = KeyboardType.Text,
 ) {
     TextField(
         value = value,
@@ -194,6 +217,7 @@ private fun BorderlessField(
         placeholder = { Text(placeholder) },
         singleLine = true,
         visualTransformation = visualTransformation,
+        keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
         colors = TextFieldDefaults.colors(
             focusedContainerColor = Color.Transparent,
             unfocusedContainerColor = Color.Transparent,

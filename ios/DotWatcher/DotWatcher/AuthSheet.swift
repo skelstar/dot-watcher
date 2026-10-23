@@ -19,6 +19,11 @@ struct AuthSheet: View {
     @State private var isBusy = false
     @State private var showDeleteConfirmation = false
     @State private var notificationStatus: UNAuthorizationStatus = .notDetermined
+
+    private var isValidEmail: Bool {
+        username.trimmingCharacters(in: .whitespaces)
+            .range(of: #"^[^@\s]+@[^@\s]+\.[^@\s]+$"#, options: .regularExpression) != nil
+    }
     @Environment(\.dismiss) private var dismiss
     @Environment(\.openURL) private var openURL
     @Environment(\.scenePhase) private var scenePhase
@@ -84,11 +89,18 @@ struct AuthSheet: View {
                             }
                             .padding(.vertical, 4)
                         }
-                        TextField("Username", text: $username)
+                        TextField(mode == .register ? "Email address" : "Username", text: $username)
                             .textInputAutocapitalization(.never)
                             .autocorrectionDisabled()
-                            .textContentType(.username)
-                        if !username.isEmpty && username.count < 3 {
+                            .keyboardType(mode == .register ? .emailAddress : .default)
+                            .textContentType(mode == .register ? .emailAddress : .username)
+                        if mode == .register {
+                            Text(username.isEmpty || isValidEmail
+                                 ? "Your email address is your username. You'll use it to sign in."
+                                 : "Enter a valid email address")
+                                .font(.caption)
+                                .foregroundStyle(username.isEmpty || isValidEmail ? Color.secondary : Color.orange)
+                        } else if !username.isEmpty && username.count < 3 {
                             Text("Username must be at least 3 characters")
                                 .font(.caption)
                                 .foregroundStyle(.orange)
@@ -101,7 +113,7 @@ struct AuthSheet: View {
                         Button(mode == .signIn ? "Sign In" : "Create Account") {
                             Task { await submit() }
                         }
-                        .disabled(isBusy || username.trimmingCharacters(in: .whitespaces).isEmpty || password.count < 8 || (mode == .register && displayName.count != 2))
+                        .disabled(isBusy || username.trimmingCharacters(in: .whitespaces).isEmpty || password.count < 8 || (mode == .register && (displayName.count != 2 || !isValidEmail)))
                     }
                     legalSection
                 }

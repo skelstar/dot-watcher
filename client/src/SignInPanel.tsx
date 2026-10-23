@@ -10,6 +10,8 @@ interface Props {
 
 type Mode = 'signIn' | 'register'
 
+const EMAIL_PATTERN = /^[^@\s]+@[^@\s]+\.[^@\s]+$/
+
 // Opened from the small account icon in the map attribution. Never shown on its own: anonymous
 // viewing is unchanged, this is only for people who choose to sign in or create an account.
 export default function SignInPanel({ serverUrl, onClose }: Props) {
@@ -52,7 +54,8 @@ export default function SignInPanel({ serverUrl, onClose }: Props) {
   }
 
   const isRegister = mode === 'register'
-  const canSubmit = username.trim() !== '' && password !== '' && (!isRegister || initials.trim().length === 2)
+  const validEmail = EMAIL_PATTERN.test(username.trim())
+  const canSubmit = username.trim() !== '' && password !== '' && (!isRegister || (initials.trim().length === 2 && validEmail))
 
   return (
     <div style={overlay} onClick={onClose}>
@@ -75,18 +78,26 @@ export default function SignInPanel({ serverUrl, onClose }: Props) {
               <p style={bodyText}>An account lets you follow runners from any device.</p>
             )}
 
-            <label style={fieldLabel} htmlFor="dw-account-username">Username</label>
+            <label style={fieldLabel} htmlFor="dw-account-username">{isRegister ? 'Email address' : 'Username'}</label>
             <input
               id="dw-account-username"
               style={input}
               value={username}
               onChange={event => setUsername(event.target.value)}
-              autoComplete="username"
+              type={isRegister ? 'email' : 'text'}
+              autoComplete={isRegister ? 'email' : 'username'}
               autoCapitalize="none"
               autoCorrect="off"
               spellCheck={false}
               autoFocus
             />
+            {isRegister && (
+              <span style={username.trim() !== '' && !validEmail ? { ...hint, color: '#dc2626' } : hint}>
+                {username.trim() !== '' && !validEmail
+                  ? 'Enter a valid email address.'
+                  : "Your email address is your username. You'll use it to sign in."}
+              </span>
+            )}
 
             <label style={fieldLabel} htmlFor="dw-account-password">Password</label>
             <input
