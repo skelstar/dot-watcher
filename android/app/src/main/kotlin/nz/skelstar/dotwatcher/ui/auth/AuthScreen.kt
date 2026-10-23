@@ -114,22 +114,14 @@ fun AuthScreen(
             BorderlessField(
                 value = username,
                 onValueChange = { username = it },
-                placeholder = if (isRegisterMode) "Email address" else "Username",
+                placeholder = if (isRegisterMode) "Email address" else "Username or email",
                 keyboardType = if (isRegisterMode) KeyboardType.Email else KeyboardType.Text,
             )
-            if (isRegisterMode) {
+            if (isRegisterMode && username.isNotBlank() && !isValidEmail) {
                 Text(
-                    text = if (username.isBlank() || isValidEmail) {
-                        "Your email address is your username. You'll use it to sign in."
-                    } else {
-                        "Enter a valid email address"
-                    },
+                    text = "Enter a valid email address",
                     style = MaterialTheme.typography.bodySmall,
-                    color = if (username.isBlank() || isValidEmail) {
-                        MaterialTheme.colorScheme.onSurfaceVariant
-                    } else {
-                        MaterialTheme.colorScheme.error
-                    },
+                    color = MaterialTheme.colorScheme.error,
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                 )
             }

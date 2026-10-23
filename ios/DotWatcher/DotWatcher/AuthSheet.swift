@@ -89,17 +89,17 @@ struct AuthSheet: View {
                             }
                             .padding(.vertical, 4)
                         }
-                        TextField(mode == .register ? "Email address" : "Username", text: $username)
+                        TextField(mode == .register ? "Email address" : "Username or email", text: $username)
                             .textInputAutocapitalization(.never)
                             .autocorrectionDisabled()
                             .keyboardType(mode == .register ? .emailAddress : .default)
                             .textContentType(mode == .register ? .emailAddress : .username)
                         if mode == .register {
-                            Text(username.isEmpty || isValidEmail
-                                 ? "Your email address is your username. You'll use it to sign in."
-                                 : "Enter a valid email address")
-                                .font(.caption)
-                                .foregroundStyle(username.isEmpty || isValidEmail ? Color.secondary : Color.orange)
+                            if !username.isEmpty && !isValidEmail {
+                                Text("Enter a valid email address")
+                                    .font(.caption)
+                                    .foregroundStyle(.orange)
+                            }
                         } else if !username.isEmpty && username.count < 3 {
                             Text("Username must be at least 3 characters")
                                 .font(.caption)

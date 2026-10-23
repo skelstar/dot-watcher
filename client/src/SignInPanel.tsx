@@ -78,7 +78,7 @@ export default function SignInPanel({ serverUrl, onClose }: Props) {
               <p style={bodyText}>An account lets you follow runners from any device.</p>
             )}
 
-            <label style={fieldLabel} htmlFor="dw-account-username">{isRegister ? 'Email address' : 'Username'}</label>
+            <label style={fieldLabel} htmlFor="dw-account-username">{isRegister ? 'Email address' : 'Username or email'}</label>
             <input
               id="dw-account-username"
               style={input}
@@ -91,12 +91,8 @@ export default function SignInPanel({ serverUrl, onClose }: Props) {
               spellCheck={false}
               autoFocus
             />
-            {isRegister && (
-              <span style={username.trim() !== '' && !validEmail ? { ...hint, color: '#dc2626' } : hint}>
-                {username.trim() !== '' && !validEmail
-                  ? 'Enter a valid email address.'
-                  : "Your email address is your username. You'll use it to sign in."}
-              </span>
+            {isRegister && username.trim() !== '' && !validEmail && (
+              <span style={{ ...hint, color: '#dc2626' }}>Enter a valid email address.</span>
             )}
 
             <label style={fieldLabel} htmlFor="dw-account-password">Password</label>
