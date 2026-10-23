@@ -90,9 +90,11 @@ Shipped builds share the server, so the server change must not alter anything th
       `AppViewModel` refreshes on resume. `beginAdd` now runs the first probe if it hasn't answered and shows
       "Crew isn't available on your account yet." for an account without crew. (Branch
       `crew-feature-flag-android`.)
-- [ ] **Web** — `CrewLinkPage.tsx` shows the same "not available yet" message; hide any crew entry points in
-      `LandingPage.tsx`.
-- [ ] Refresh features whenever the user signs in or the app foregrounds, so a grant takes effect without re-login.
+- [x] **Web** — no change needed. `CrewLinkPage.tsx` never talks to the server or signs anyone in: it only shows the
+      code and tells the person to add it in the app, which is where the "not available yet" message now lives.
+      `LandingPage.tsx` has no crew entry points (its only "crew" is the word in an FAQ answer).
+- [x] Refresh on sign-in and foreground: both apps already do this through their existing crew probe, so a grant takes
+      effect without re-login. `GET /me` stays available on the server for any later client that wants the list.
 
 ## Rollout
 
