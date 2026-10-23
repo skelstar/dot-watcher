@@ -3,8 +3,14 @@ namespace DotWatcher.Server;
 public record AuthenticatedUser(
     string UserId,
     string Username,
-    string DisplayName
+    string DisplayName,
+    // What this account can use (e.g. "crew"). Filled in for login, register and GET /me; null when
+    // the user was read from a bearer token, which doesn't carry it.
+    IReadOnlyList<string>? Features = null
 );
+
+/// <summary>Admin/ops: replaces the features granted to an account.</summary>
+public record SetFeaturesRequest(IReadOnlyList<string>? Features);
 
 public record UserAccount(
     string Id,
@@ -135,7 +141,8 @@ public record AdminUserSummary(
     string Id,
     string Username,
     string DisplayName,
-    string CreatedAt
+    string CreatedAt,
+    IReadOnlyList<string> Features
 );
 
 public record AdminSessionSummary(

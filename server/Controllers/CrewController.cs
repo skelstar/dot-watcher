@@ -10,6 +10,7 @@ namespace DotWatcher.Server.Controllers;
 public class CrewController(
     SessionStore store,
     UserTokenAuth userAuth,
+    FeatureFlags features,
     CrewCodeLimiter limiter,
     TimeProvider timeProvider) : ControllerBase
 {
@@ -21,8 +22,8 @@ public class CrewController(
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     public IActionResult GetCrew()
     {
-        if (!userAuth.TryAuthenticate(Request, out var user))
-            return Unauthorized();
+        if (Gate(out var user) is { } denied)
+            return denied;
 
         return Ok(store.GetCrewOverview(user.UserId));
     }
@@ -34,8 +35,8 @@ public class CrewController(
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public IActionResult RemoveCrewMember(string userId)
     {
-        if (!userAuth.TryAuthenticate(Request, out var user))
-            return Unauthorized();
+        if (Gate(out var user) is { } denied)
+            return denied;
 
         return store.RemoveCrewMember(user.UserId, userId) ? NoContent() : NotFound();
     }
@@ -49,8 +50,8 @@ public class CrewController(
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     public IActionResult CreateCode()
     {
-        if (!userAuth.TryAuthenticate(Request, out var user))
-            return Unauthorized();
+        if (Gate(out var user) is { } denied)
+            return denied;
 
         return Ok(store.CreateCrewCode(user.UserId, timeProvider.GetUtcNow()));
     }
@@ -61,8 +62,8 @@ public class CrewController(
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     public IActionResult GetCodes()
     {
-        if (!userAuth.TryAuthenticate(Request, out var user))
-            return Unauthorized();
+        if (Gate(out var user) is { } denied)
+            return denied;
 
         return Ok(store.GetActiveCrewCodes(user.UserId, timeProvider.GetUtcNow()));
     }
@@ -74,8 +75,8 @@ public class CrewController(
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public IActionResult RevokeCode(string code)
     {
-        if (!userAuth.TryAuthenticate(Request, out var user))
-            return Unauthorized();
+        if (Gate(out var user) is { } denied)
+            return denied;
 
         return store.RevokeCrewCode(user.UserId, code) ? NoContent() : NotFound();
     }
@@ -92,8 +93,8 @@ public class CrewController(
     [ProducesResponseType(StatusCodes.Status429TooManyRequests)]
     public IActionResult PreviewCode(string code)
     {
-        if (!userAuth.TryAuthenticate(Request, out var user))
-            return Unauthorized();
+        if (Gate(out var user) is { } denied)
+            return denied;
 
         if (!limiter.TryAccept(user.UserId))
             return TooManyAttempts();
@@ -121,8 +122,8 @@ public class CrewController(
     [ProducesResponseType(StatusCodes.Status429TooManyRequests)]
     public IActionResult RedeemCode(string code)
     {
-        if (!userAuth.TryAuthenticate(Request, out var user))
-            return Unauthorized();
+        if (Gate(out var user) is { } denied)
+            return denied;
 
         if (!limiter.TryAccept(user.UserId))
             return TooManyAttempts();
@@ -143,8 +144,8 @@ public class CrewController(
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     public IActionResult GetProfile()
     {
-        if (!userAuth.TryAuthenticate(Request, out var user))
-            return Unauthorized();
+        if (Gate(out var user) is { } denied)
+            return denied;
 
         return Ok(new ProfileResponse(store.GetNickname(user.UserId)));
     }
@@ -156,8 +157,8 @@ public class CrewController(
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     public IActionResult UpdateProfile([FromBody] UpdateProfileRequest? request)
     {
-        if (!userAuth.TryAuthenticate(Request, out var user))
-            return Unauthorized();
+        if (Gate(out var user) is { } denied)
+            return denied;
 
         var raw = request?.Nickname;
         var nickname = string.IsNullOrWhiteSpace(raw) ? null : raw.Trim();
@@ -166,6 +167,17 @@ public class CrewController(
 
         store.SetNickname(user.UserId, nickname);
         return Ok(new ProfileResponse(nickname));
+    }
+
+    // 401 when not signed in. 404 (not 403) when the account doesn't have crew yet, so the endpoints
+    // look absent: shipped iOS builds treat any status except 401/426 from /me/crew as "this server
+    // has no crew" and hide it quietly, whereas a 401 would be handled as a signed-out session.
+    private IActionResult? Gate(out AuthenticatedUser user)
+    {
+        if (!userAuth.TryAuthenticate(Request, out user))
+            return Unauthorized();
+
+        return features.IsEnabled(user.UserId, Features.Crew) ? null : NotFound();
     }
 
     private ObjectResult InvalidCode() =>

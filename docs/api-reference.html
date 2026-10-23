@@ -283,7 +283,8 @@
   "user": {
     "userId": "string",
     "username": "string",
-    "displayName": "string"
+    "displayName": "string",
+    "features": ["crew"]   // what this account can use; [] when none. Older builds ignore it
   }
 }</pre>
         </div>
@@ -595,7 +596,7 @@
         <span class="path">/me/profile</span>
         <span class="auth-badge auth-required">Bearer token</span>
       </div>
-      <p class="purpose">The nickname the caller's crew sees for them (null when unset).</p>
+      <p class="purpose">The nickname the caller's crew sees for them (null when unset). Like every crew endpoint, 404 when the account doesn't have the <code>crew</code> feature.</p>
       <div class="details">
         <div class="detail-block"><h4>Request Body</h4><p class="none-label">None</p></div>
         <div class="detail-block"><h4>Response</h4><pre>{ "nickname": "string" | null }</pre></div>
