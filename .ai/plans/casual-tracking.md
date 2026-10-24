@@ -80,6 +80,32 @@ Not done: client work, replay endpoints, a config/ops check of `Features:Enabled
 
 ---
 
+## Android status
+
+Branch `android-casual` (off `staging`, which has the server). Built and run on the emulator against a local
+server; unit tests pass (`CasualWireTest`). Not yet on a real phone. Decisions from the design review
+(`Casual Go Button` mock-up) that this implements:
+
+- **Hold to go** (0.9 s ring) on the start screen, above the existing Join and Create, which are unchanged.
+- **Before you go** every time Go is held: who sees you, **Share for 2h / 4h / 8h / 24h (default 4h)**, Go, and
+  Choose who can see me. Sharing always auto-stops, as the session consent screen already does.
+- **Casual map** like the session map: wordmark, auto-stop countdown (tap to extend +30 min / +1 hr / +2 hr or stop
+  now), fit-all, an eye for Who can see me, a "N crew out · M nearby" chip, grey dots for nearby people with a padlock
+  for those in a session, and **Hold to stop**.
+- **Who can see me**: crew always; "Show me to people nearby" off by default, remembered on the phone (the server is
+  the source of truth).
+- **Hidden unless the server has it**: the start screen probes `GET /me/casual/settings`; a 404 (older server, or an
+  account without the `casual` feature) shows nothing, as crew does. Verified: an account without the feature sees
+  the unchanged start screen.
+- **Service**: tracking runs against the fixed casual session id (`CASUAL_SESSION_ID`). A 403 on a casual post calls
+  `/casual/start` and retries once (the run was closed); expiry calls `/casual/stop`; sign-out and starting a named
+  session end a casual run properly. After the app is killed, a share that hasn't run out resumes quietly.
+
+Not built: the **share a watch link** button (needs the server's watch token + web page), crew count refresh while on
+the map beyond the 10 s poll, iOS.
+
+---
+
 ## Precedent in the code: the demo session
 
 `SessionStore.EnsureDemoSession` already creates a permanent session with a placeholder system user, and

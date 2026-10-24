@@ -252,15 +252,15 @@ fun LiveMapScreen(
     }
 }
 
-private val GlassColor = Color.White.copy(alpha = 0.82f)
-private val StopRed = Color(0xFFFF3B30)
-private val AccentBlue = Color(0xFF0A84FF)
+internal val GlassColor = Color.White.copy(alpha = 0.82f)
+internal val StopRed = Color(0xFFFF3B30)
+internal val AccentBlue = Color(0xFF0A84FF)
 
-private fun String.initials(): String = initialsFor(this)
+internal fun String.initials(): String = initialsFor(this)
 
 /** The dot-watchr wordmark with the runner's initials as the "o", drawn straight on the map. */
 @Composable
-private fun Wordmark(initials: String) {
+internal fun Wordmark(initials: String) {
     val halo = Shadow(color = Color.White, blurRadius = 8f)
     val textStyle = TextStyle(
         color = Color.Black,
@@ -284,7 +284,7 @@ private fun Wordmark(initials: String) {
 /** Circular countdown to the sharing cap: arc is remaining ÷ the session's total (original
  *  choice plus extensions); turns amber and flashes in the last 30 minutes. Tap to extend. */
 @Composable
-private fun AutoStopTimer(tracking: TrackingState.Tracking, onClick: () -> Unit) {
+internal fun AutoStopTimer(tracking: TrackingState.Tracking, onClick: () -> Unit) {
     val expiresAt = tracking.expiresAt
     val now by rememberSecondClock()
     val total = tracking.totalDuration.coerceAtLeast(Duration.ofSeconds(1))
@@ -323,12 +323,13 @@ private fun AutoStopTimer(tracking: TrackingState.Tracking, onClick: () -> Unit)
 }
 
 /** Rail glyphs: the 24×24 stroke paths from the redesign mock, so they match it exactly. */
-private enum class RailIcon(val paths: List<String>) {
+internal enum class RailIcon(val paths: List<String>) {
     Share(listOf("M12 15V3M8 7l4-4 4 4M6 11H5a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-8a1 1 0 0 0-1-1h-1")),
     Fit(listOf("M4 9V5a1 1 0 0 1 1-1h4M15 4h4a1 1 0 0 1 1 1v4M20 15v4a1 1 0 0 1-1 1h-4M9 20H5a1 1 0 0 1-1-1v-4")),
     Globe(listOf("M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18M3 12h18M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18")),
     Hash(listOf("M5 9h14M5 15h14M10 4L8 20M16 4l-2 16")),
     More(listOf("M5 12h.01M12 12h.01M19 12h.01")),
+    Eye(listOf("M2 12s3.6-6.5 10-6.5S22 12 22 12s-3.6 6.5-10 6.5S2 12 2 12zM12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6")),
     Battery(listOf("M4 7h13a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2zM22 11v2M6 10v4")),
 }
 
@@ -343,7 +344,7 @@ private val EXTEND_OPTIONS = listOf(
  *  its "Auto-stops in" line updates), or stop now. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun ExtendSessionSheet(
+internal fun ExtendSessionSheet(
     expiresAt: Instant,
     onExtend: (Duration) -> Unit,
     onStopNow: () -> Unit,
@@ -389,7 +390,7 @@ private val ENDING_SOON = Duration.ofMinutes(30)
 /** "Auto-stops in 8 min" — shown only inside the last [ENDING_SOON] of a sharing session, next to
  *  the flashing countdown, so the amber circle has words behind it. */
 @Composable
-private fun EndingSoonPill(expiresAt: Instant) {
+internal fun EndingSoonPill(expiresAt: Instant) {
     val now by rememberSecondClock()
     val remaining = Duration.between(now, expiresAt)
     if (remaining > ENDING_SOON || remaining.isNegative || remaining.isZero) return
@@ -411,7 +412,7 @@ private fun EndingSoonPill(expiresAt: Instant) {
 
 /** [icon] drawn as strokes in [tint] on a 24-unit grid, at [size]. */
 @Composable
-private fun PathIcon(icon: RailIcon, tint: Color, size: androidx.compose.ui.unit.Dp) {
+internal fun PathIcon(icon: RailIcon, tint: Color, size: androidx.compose.ui.unit.Dp) {
     val paths = remember(icon) { icon.paths.map { PathParser().parsePathString(it).toPath() } }
     Canvas(Modifier.size(size)) {
         scale(this.size.width / 24f, pivot = androidx.compose.ui.geometry.Offset.Zero) {
@@ -425,7 +426,7 @@ private fun PathIcon(icon: RailIcon, tint: Color, size: androidx.compose.ui.unit
 }
 
 @Composable
-private fun RailButton(icon: RailIcon, description: String, active: Boolean = false, onClick: () -> Unit) {
+internal fun RailButton(icon: RailIcon, description: String, active: Boolean = false, onClick: () -> Unit) {
     Box(
         modifier = Modifier.size(44.dp).clip(CircleShape).background(if (active) AccentBlue else GlassColor)
             .clickable(onClick = onClick)
@@ -440,12 +441,13 @@ private fun RailButton(icon: RailIcon, description: String, active: Boolean = fa
  *  the bottom edge with its own Stop (the redesign's rule for anything covering the Stop pill).
  *  "Send now" posts one position without resuming; "Auto" overrides the pause. */
 @Composable
-private fun BatteryPausedCard(
+internal fun BatteryPausedCard(
     lastError: String?,
     onSendNow: () -> Unit,
     onAuto: () -> Unit,
     onStop: () -> Unit,
     modifier: Modifier = Modifier,
+    stopLabel: String = "Leave",
 ) {
     val danger = Color(0xFFC4271D)
     Column(
@@ -482,7 +484,7 @@ private fun BatteryPausedCard(
         ) {
             Box(Modifier.size(10.dp).clip(RoundedCornerShape(3.dp)).background(Color.White))
             Spacer(Modifier.width(8.dp))
-            Text("Leave", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+            Text(stopLabel, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
         }
     }
 }
