@@ -7,7 +7,7 @@ using NpgsqlTypes;
 
 namespace DotWatcher.Server;
 
-public class SessionStore(string connectionString) : IDisposable
+public partial class SessionStore(string connectionString) : IDisposable
 {
     private static readonly JsonSerializerOptions _jsonOptions = new()
     {
@@ -182,6 +182,29 @@ public class SessionStore(string connectionString) : IDisposable
         using var addFeatures = conn.CreateCommand();
         addFeatures.CommandText = "ALTER TABLE users ADD COLUMN IF NOT EXISTS features TEXT NOT NULL DEFAULT ''";
         addFeatures.ExecuteNonQuery();
+
+        // Casual tracking (see .ai/plans/casual-tracking.md). Same rules as crew above: everything
+        // is additive and every foreign key cascades, because Staging and Production share this
+        // database and a build that predates casual still does a plain DELETE FROM users and
+        // INSERTs into location_updates by explicit column list. The new columns are NOT NULL with
+        // a constant default (metadata-only on Postgres 11+) so old code never has to supply them.
+        using var addCasual = conn.CreateCommand();
+        addCasual.CommandText = """
+            ALTER TABLE users ADD COLUMN IF NOT EXISTS casual_visible_to_non_crew BOOLEAN NOT NULL DEFAULT FALSE;
+            ALTER TABLE location_updates ADD COLUMN IF NOT EXISTS in_session BOOLEAN NOT NULL DEFAULT FALSE;
+
+            CREATE TABLE IF NOT EXISTS casual_runs (
+                id         TEXT PRIMARY KEY,
+                user_id    TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                started_at TEXT NOT NULL,
+                ended_at   TEXT,
+                start_lat  DOUBLE PRECISION,
+                start_lon  DOUBLE PRECISION
+            );
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_casual_runs_open ON casual_runs(user_id) WHERE ended_at IS NULL;
+            CREATE INDEX IF NOT EXISTS idx_casual_runs_user ON casual_runs(user_id, started_at);
+            """;
+        addCasual.ExecuteNonQuery();
     }
 
     // Idempotent - safe to call on every startup. Resolves (creating if missing) the permanent
@@ -464,6 +487,8 @@ public class SessionStore(string connectionString) : IDisposable
         }
 
         tx.Commit();
+
+        ForgetCasualUser(userId);
 
         foreach (var sessionId in ownedSessionIds)
             _sessions.TryRemove(sessionId, out _);
@@ -1377,6 +1402,9 @@ public class SessionStore(string connectionString) : IDisposable
 
     public bool DeleteSession(string sessionId)
     {
+        if (IsCasualSession(sessionId))
+            return false;
+
         using var conn = Connect();
         using var tx = conn.BeginTransaction();
 

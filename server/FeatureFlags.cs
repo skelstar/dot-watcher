@@ -4,6 +4,7 @@ namespace DotWatcher.Server;
 public static class Features
 {
     public const string Crew = "crew";
+    public const string Casual = "casual";
 }
 
 /// <summary>
