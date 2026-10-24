@@ -59,5 +59,24 @@ public record CasualLiveEntry(
     bool InSession,
     bool VisibleToNonCrew,
     double? StartLatitude,
-    double? StartLongitude
+    double? StartLongitude,
+    // When the server received the position. "Out" is judged from this, never from the phone's
+    // own clock (Position.Timestamp), which can be wrong.
+    DateTimeOffset ReceivedAt
 );
+
+public enum CasualPostOutcome
+{
+    // No open run (never started, stopped, or closed as abandoned). The client should start again.
+    NoRun,
+    // Stored and now shown as the runner's current position.
+    Live,
+    // Stored, but older than the stale window (a queued position flushed late), so it is kept for
+    // replay and doesn't change where the runner is shown.
+    Historical,
+}
+
+public record CasualPostResult(CasualPostOutcome Outcome, CasualLiveEntry? Self = null);
+
+/// <summary>What the casual endpoints need to know about an account, read in one query.</summary>
+public record CasualAccount(bool VisibleToNonCrew, IReadOnlyList<string> GrantedFeatures);

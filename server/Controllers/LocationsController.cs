@@ -69,7 +69,8 @@ public class LocationsController(
 
         try
         {
-            if (!store.GetCasualVisibleToNonCrew(user.UserId) || !features.IsEnabled(user.UserId, Features.Casual))
+            var account = store.GetCasualAccount(user.UserId);
+            if (!account.VisibleToNonCrew || !features.ForGranted(account.GrantedFeatures).Contains(Features.Casual))
                 return;
 
             store.AddCasualPosition(
@@ -87,7 +88,9 @@ public class LocationsController(
 
     private IActionResult AddCasualLocation(LocationUpdate update, AuthenticatedUser user)
     {
-        if (!features.IsEnabled(user.UserId, Features.Casual))
+        var account = store.GetCasualAccount(user.UserId);
+        var enabled = features.ForGranted(account.GrantedFeatures);
+        if (!enabled.Contains(Features.Casual))
             return StatusCode(StatusCodes.Status403Forbidden);
 
         var storedUpdate = update with
@@ -100,8 +103,8 @@ public class LocationsController(
             return BadRequest(new { error = "Invalid location update.", details = errors });
 
         var now = timeProvider.GetUtcNow();
-        var self = store.AddCasualPosition(validatedUpdate, user.UserId, inSession: false, startRunIfNone: false, now);
-        if (self is null)
+        var result = store.AddCasualPosition(validatedUpdate, user.UserId, inSession: false, startRunIfNone: false, now);
+        if (result.Outcome == CasualPostOutcome.NoRun)
             return StatusCode(StatusCodes.Status403Forbidden, new { error = "Casual tracking isn't started." });
 
         HttpContext.Items["Log:Session"] = "casual";
@@ -110,9 +113,9 @@ public class LocationsController(
 
         return Ok(store.GetCasualLive(
             user.UserId,
-            features.IsEnabled(user.UserId, Features.Crew),
-            (validatedUpdate.Latitude, validatedUpdate.Longitude),
-            self,
+            account.VisibleToNonCrew,
+            enabled.Contains(Features.Crew),
+            result.Self,
             now));
     }
 

@@ -44,33 +44,25 @@ public class CasualController(
     }
 
     /// <summary>
-    /// Who the caller can see: themselves and their crew by name, plus anonymous dots within 5 km.
-    /// For watching without tracking. Pass lat and lon (the viewer's own position) to get nearby
-    /// dots; without them only crew come back.
+    /// Who the caller can see: themselves and their crew by name, plus, only while the caller is out
+    /// themselves, anonymous dots within 5 km of where the server last placed them. Someone not
+    /// tracking (just watching) gets their crew only; the caller cannot supply a position to look
+    /// around, so the map can't be scanned for strangers.
     /// </summary>
     [HttpGet("/casual/live")]
     [ProducesResponseType(typeof(CasualLiveResponse), StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public IActionResult GetLive([FromQuery] double? lat, [FromQuery] double? lon)
+    public IActionResult GetLive()
     {
         if (Gate(out var user) is { } denied)
             return denied;
 
-        (double Latitude, double Longitude)? viewerPosition = null;
-        if (lat is not null || lon is not null)
-        {
-            if (!IsValidCoordinate(lat, 90) || !IsValidCoordinate(lon, 180))
-                return BadRequest(new { error = "lat and lon must both be given, within range." });
-
-            viewerPosition = (lat!.Value, lon!.Value);
-        }
-
+        var account = store.GetCasualAccount(user.UserId);
         return Ok(store.GetCasualLive(
             user.UserId,
-            features.IsEnabled(user.UserId, Features.Crew),
-            viewerPosition,
+            account.VisibleToNonCrew,
+            features.ForGranted(account.GrantedFeatures).Contains(Features.Crew),
             self: null,
             timeProvider.GetUtcNow()));
     }
@@ -103,9 +95,6 @@ public class CasualController(
 
         return Ok(new CasualSettings(store.GetCasualVisibleToNonCrew(user.UserId)));
     }
-
-    private static bool IsValidCoordinate(double? value, double limit) =>
-        value is { } v && double.IsFinite(v) && Math.Abs(v) <= limit;
 
     // 401 when not signed in. 404 (not 403) when the account doesn't have casual yet, so the
     // endpoints look absent to a build that doesn't know about them - same rule as crew.

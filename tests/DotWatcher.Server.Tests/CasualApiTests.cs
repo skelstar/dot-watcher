@@ -171,10 +171,29 @@ public class CasualApiTests
         await StartAsync(client, bob.AccessToken);
         await PostCasualOkAsync(client, bob.AccessToken, HereLatitude);
 
-        var live = await GetLiveAsync(client, alice.AccessToken, HereLatitude, HereLongitude);
+        var live = await GetLiveAsync(client, alice.AccessToken);
 
         Assert.Equal(new[] { "BO" }, live.Participants);
         Assert.False(live.Positions.Single().Single().IsSelf);
+    }
+
+    [Fact]
+    public async Task Watcher_NotTracking_NeverGetsNearbyDots()
+    {
+        using var factory = CasualFactory();
+        using var client = factory.CreateClient();
+        var alice = await RegisterAsync(client, "alice", "AL");
+        var bob = await RegisterAsync(client, "bob", "BO");
+        await SetVisibleAsync(client, bob.AccessToken, true);
+        await SetVisibleAsync(client, alice.AccessToken, true);
+        await StartRunningAsync(client, bob.AccessToken);
+
+        // Alice has the toggle on but isn't out, and can't name a position to look around, so she
+        // can't use the endpoint to scan for strangers.
+        var live = await GetLiveAsync(client, alice.AccessToken);
+
+        Assert.Empty(live.Nearby);
+        Assert.Empty(live.Participants);
     }
 
     [Fact]
@@ -435,15 +454,110 @@ public class CasualApiTests
     }
 
     [Fact]
-    public async Task LiveWithOnlyOneCoordinate_IsABadRequest()
+    public async Task Restart_AfterStop_DoesNotShowThePreviousRunsLastPosition()
     {
         using var factory = CasualFactory();
         using var client = factory.CreateClient();
         var alice = await RegisterAsync(client, "alice", "AL");
+        var bob = await RegisterAsync(client, "bob", "BO");
+        await SetVisibleAsync(client, bob.AccessToken, true);
+        await SetVisibleAsync(client, alice.AccessToken, true);
+        await StartRunningAsync(client, bob.AccessToken);
+        await StopAsync(client, bob.AccessToken);
+        await StartAsync(client, alice.AccessToken);
 
-        var response = await SendAsync(client, HttpMethod.Get, "/casual/live?lat=-41.17", alice.AccessToken);
+        // Bob relaunches (start is called on every launch) but hasn't posted yet.
+        await StartAsync(client, bob.AccessToken);
 
-        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Empty((await PostCasualOkAsync(client, alice.AccessToken, HereLatitude)).Nearby);
+    }
+
+    [Fact]
+    public async Task Post_ToARunClosedOnTheOtherServer_IsRefused()
+    {
+        using var factory = CasualFactory();
+        using var other = new DotWatcherApiFactory(factory.Schema) { EnabledForAll = [Features.Crew, Features.Casual] };
+        using var client = factory.CreateClient();
+        using var otherClient = other.CreateClient();
+        var (alice, bob) = await MakeCrewAsync(client, "alice", "bob");
+        await StartRunningAsync(client, bob.AccessToken);
+
+        // Bob stops on the other server; this one still has his run cached.
+        await StopAsync(otherClient, bob.AccessToken);
+        var late = await PostCasualAsync(client, bob.AccessToken, NearLatitude);
+
+        Assert.Equal(HttpStatusCode.Forbidden, late.StatusCode);
+        Assert.Empty((await GetLiveAsync(client, alice.AccessToken)).Participants);
+    }
+
+    [Fact]
+    public async Task DelayedPosition_IsKept_ButDoesNotMoveOrRevealTheRunner()
+    {
+        using var factory = CasualFactory();
+        using var client = factory.CreateClient();
+        var (alice, bob) = await MakeCrewAsync(client, "alice", "bob");
+        await StartAsync(client, bob.AccessToken);
+
+        // A position queued while offline and flushed 20 minutes late.
+        var response = await PostCasualAsync(client, bob.AccessToken, NearLatitude, secondsAgo: 20 * 60);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Empty((await GetLiveAsync(client, alice.AccessToken)).Participants);
+
+        // A current position makes him live, at that position rather than the old one.
+        await PostCasualOkAsync(client, bob.AccessToken, FarLatitude);
+        var live = await GetLiveAsync(client, alice.AccessToken);
+        Assert.Equal(FarLatitude, live.Positions.Single().Single().Latitude);
+    }
+
+    [Fact]
+    public async Task Runner_WithAPhoneClockMinutesOff_StillAppears()
+    {
+        using var factory = CasualFactory();
+        using var client = factory.CreateClient();
+        var (alice, bob) = await MakeCrewAsync(client, "alice", "bob");
+        await StartAsync(client, bob.AccessToken);
+
+        // The phone's clock is three minutes behind; what counts is when the server heard from it.
+        await PostCasualOkAsync(client, bob.AccessToken, NearLatitude, secondsAgo: 180);
+
+        Assert.Equal(new[] { "BO" }, (await GetLiveAsync(client, alice.AccessToken)).Participants);
+    }
+
+    [Fact]
+    public async Task StoppingCasual_WhileInANamedSession_IsNotUndoneByTheNextNamedPost()
+    {
+        using var factory = CasualFactory();
+        using var client = factory.CreateClient();
+        var (alice, bob) = await MakeCrewAsync(client, "alice", "bob");
+        await SetVisibleAsync(client, alice.AccessToken, true);
+        var session = await AuthTestHelpers.CreateSessionAsync(client, alice.AccessToken);
+        await LocationsApiTests.PostLocationAsync(client, Fix(session.SessionId, HereLatitude), alice.AccessToken);
+        Assert.Single((await GetLiveAsync(client, bob.AccessToken)).Participants);
+
+        await StopAsync(client, alice.AccessToken);
+        await LocationsApiTests.PostLocationAsync(client, Fix(session.SessionId, HereLatitude), alice.AccessToken);
+
+        Assert.Empty((await GetLiveAsync(client, bob.AccessToken)).Participants);
+
+        // Pressing start again is a fresh choice to be out.
+        await StartAsync(client, alice.AccessToken);
+        await PostCasualOkAsync(client, alice.AccessToken, HereLatitude);
+        Assert.Single((await GetLiveAsync(client, bob.AccessToken)).Participants);
+    }
+
+    [Fact]
+    public async Task TheCasualOwnerAccount_CannotBeDeleted_AndIsHiddenFromAdminSessionLists()
+    {
+        using var factory = CasualFactory();
+        using var client = factory.CreateClient();
+        var store = (SessionStore)factory.Services.GetService(typeof(SessionStore))!;
+        var owner = store.GetUserByUsername("dw-casual")!;
+
+        Assert.False(store.DeleteUserAccount(owner.Id));
+        Assert.DoesNotContain(store.GetAllSessions(), s => s.SessionId == SessionStore.CasualSessionId);
+        Assert.DoesNotContain(SessionStore.CasualSessionId, store.GetRecordedSessions());
+        Assert.NotNull(store.GetInviteCodeBySessionId(SessionStore.CasualSessionId));
     }
 
     [Fact]
@@ -576,11 +690,9 @@ public class CasualApiTests
         return (await response.Content.ReadFromJsonAsync<CasualLiveResponse>())!;
     }
 
-    private static async Task<CasualLiveResponse> GetLiveAsync(
-        HttpClient client, string accessToken, double? lat = null, double? lon = null)
+    private static async Task<CasualLiveResponse> GetLiveAsync(HttpClient client, string accessToken)
     {
-        var url = lat is null ? "/casual/live" : $"/casual/live?lat={lat}&lon={lon}";
-        var response = await SendAsync(client, HttpMethod.Get, url, accessToken);
+        var response = await SendAsync(client, HttpMethod.Get, "/casual/live", accessToken);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         return (await response.Content.ReadFromJsonAsync<CasualLiveResponse>())!;
     }

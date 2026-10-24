@@ -19,25 +19,27 @@ public static class CasualVisibility
     public const double StartFuzzMeters = 300;
 
     /// <summary>
-    /// Whether a position still counts as "out". Ten minutes after the last position, extended to
-    /// two minutes past the client's own <c>nextExpectedAt</c> (so a satellite cadence doesn't drop
-    /// the dot), never beyond thirty minutes after the position.
+    /// Whether someone still counts as "out": ten minutes after the server last heard from them,
+    /// extended to the client's own posting interval (nextExpectedAt minus the position's time) plus a
+    /// grace so a slow satellite cadence doesn't drop the dot, never beyond thirty minutes. Judged
+    /// entirely on the server's clock (<see cref="CasualLiveEntry.ReceivedAt"/>): the interval is a
+    /// difference between two phone times, so a wrong phone clock cancels out.
     /// </summary>
-    public static bool IsLive(RunnerPosition position, DateTimeOffset now)
+    public static bool IsLive(CasualLiveEntry entry, DateTimeOffset now)
     {
-        var until = position.Timestamp + SessionStore.CasualStaleAfter;
-        if (position.NextExpectedAt is { } next)
+        var window = SessionStore.CasualStaleAfter;
+        var position = entry.Position;
+        if (position.NextExpectedAt is { } next && next > position.Timestamp)
         {
-            var extended = next + SessionStore.CasualNextExpectedGrace;
-            if (extended > until)
-                until = extended;
+            var extended = (next - position.Timestamp) + SessionStore.CasualNextExpectedGrace;
+            if (extended > window)
+                window = extended;
         }
 
-        var cap = position.Timestamp + SessionStore.CasualHardStaleCap;
-        if (until > cap)
-            until = cap;
+        if (window > SessionStore.CasualHardStaleCap)
+            window = SessionStore.CasualHardStaleCap;
 
-        return now <= until;
+        return now - entry.ReceivedAt <= window;
     }
 
     public static CasualLiveResponse ForViewer(
@@ -55,7 +57,7 @@ public static class CasualVisibility
 
         foreach (var entry in live)
         {
-            if (!IsLive(entry.Position, now))
+            if (!IsLive(entry, now))
                 continue;
 
             if (entry.UserId == viewerId)

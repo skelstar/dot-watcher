@@ -25,7 +25,8 @@ public class CasualVisibilityTests
             inSession,
             visible,
             startLatitude,
-            startLongitude);
+            startLongitude,
+            ReceivedAt: Now - (age ?? TimeSpan.FromSeconds(5)));
 
     private static CasualLiveResponse View(
         IReadOnlyCollection<CasualLiveEntry> live,
@@ -134,20 +135,43 @@ public class CasualVisibilityTests
     [Fact]
     public void IsLive_ExpiresTenMinutesAfterTheLastPosition()
     {
-        Assert.True(CasualVisibility.IsLive(Entry("a", age: TimeSpan.FromMinutes(9)).Position, Now));
-        Assert.False(CasualVisibility.IsLive(Entry("a", age: TimeSpan.FromMinutes(11)).Position, Now));
+        Assert.True(CasualVisibility.IsLive(Entry("a", age: TimeSpan.FromMinutes(9)), Now));
+        Assert.False(CasualVisibility.IsLive(Entry("a", age: TimeSpan.FromMinutes(11)), Now));
     }
 
     [Fact]
     public void IsLive_HonoursASlowerCadence_UpToThirtyMinutes()
     {
-        // Last heard 15 minutes ago, said the next post is due 14 minutes ago + grace, so live.
-        var slow = Entry("a", age: TimeSpan.FromMinutes(15), nextExpectedAt: Now - TimeSpan.FromMinutes(1)).Position;
+        // Posts every 14 minutes (nextExpectedAt is 14 minutes after the position), last heard 15
+        // minutes ago: inside the interval plus the grace, so still out.
+        var ts = Now - TimeSpan.FromMinutes(15);
+        var slow = Entry("a", age: TimeSpan.FromMinutes(15), nextExpectedAt: ts + TimeSpan.FromMinutes(14));
         Assert.True(CasualVisibility.IsLive(slow, Now));
 
         // A garbled far-future nextExpectedAt can't keep a dot past the thirty minute cap.
-        var stuck = Entry("a", age: TimeSpan.FromMinutes(31), nextExpectedAt: Now + TimeSpan.FromHours(3)).Position;
+        var stuck = Entry("a", age: TimeSpan.FromMinutes(31), nextExpectedAt: Now + TimeSpan.FromHours(3));
         Assert.False(CasualVisibility.IsLive(stuck, Now));
+    }
+
+    [Fact]
+    public void IsLive_UsesTheServersClock_NotThePhones()
+    {
+        // The phone's clock is two hours fast: the position claims to be from the future. Only the
+        // time the server received it counts, so it expires like any other.
+        var fast = new CasualLiveEntry(
+            "a",
+            new RunnerPosition("A", -41.17, 174.7762, 90, Now + TimeSpan.FromHours(2)),
+            false, true, null, null,
+            ReceivedAt: Now - TimeSpan.FromMinutes(11));
+        Assert.False(CasualVisibility.IsLive(fast, Now));
+
+        // And a phone two hours slow, heard from just now, is out.
+        var slow = fast with
+        {
+            Position = fast.Position with { Timestamp = Now - TimeSpan.FromHours(2) },
+            ReceivedAt = Now - TimeSpan.FromSeconds(5),
+        };
+        Assert.True(CasualVisibility.IsLive(slow, Now));
     }
 
     [Fact]

@@ -36,6 +36,10 @@ public sealed class CasualMaintenanceService(
     {
         try
         {
+            // The casual session is shared by every account, and a build that predates the guard in
+            // DeleteUserAccount could remove it; recreate it if so (a no-op otherwise).
+            store.EnsureCasualSession();
+
             var retention = TimeSpan.FromDays(configuration.GetValue<double>("Casual:RetentionDays", 7));
             var (closedRuns, deletedPositions, deletedRuns) = store.PurgeCasualData(timeProvider.GetUtcNow(), retention);
             if (closedRuns + deletedPositions + deletedRuns > 0)

@@ -26,6 +26,13 @@ public sealed class FeatureFlags
     public IReadOnlyList<string> ForUser(string userId) =>
         Normalize(_enabledForAll.Concat(_store.GetUserFeatures(userId)));
 
+    /// <summary>
+    /// The features for an account whose granted features the caller has already read, so a request
+    /// that needs the account row anyway doesn't read it a second time.
+    /// </summary>
+    public IReadOnlyList<string> ForGranted(IEnumerable<string> granted) =>
+        Normalize(_enabledForAll.Concat(granted));
+
     public bool IsEnabled(string userId, string feature) =>
         _enabledForAll.Contains(feature) || _store.GetUserFeatures(userId).Contains(feature);
 

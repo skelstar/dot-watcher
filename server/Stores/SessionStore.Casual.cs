@@ -25,6 +25,10 @@ public partial class SessionStore
     public static readonly TimeSpan CasualNextExpectedGrace = TimeSpan.FromMinutes(2);
     public static readonly TimeSpan CasualHardStaleCap = TimeSpan.FromMinutes(30);
 
+    // After someone presses stop, positions copied across from a named session don't put them back
+    // on the map for this long. Pressing start again ends it at once.
+    public static readonly TimeSpan CasualStopSuppression = TimeSpan.FromHours(12);
+
     /// <summary>
     /// How long one read of everyone currently out is reused. Every runner polls every ~15s, so
     /// without this each poll would query Postgres for the whole session. Zero disables the reuse.
@@ -44,6 +48,9 @@ public partial class SessionStore
     // user id -> their open run, so a position post doesn't have to look it up. Per process like
     // `_sessions`; a miss (or an entry older than the hard cap) falls back to Postgres.
     private readonly ConcurrentDictionary<string, CasualRun> _casualRuns = new();
+
+    // user id -> until when a copy from a named session may not start a run (set by an explicit stop).
+    private readonly ConcurrentDictionary<string, DateTimeOffset> _casualSuppressedUntil = new();
 
     private readonly object _casualSnapshotLock = new();
     private IReadOnlyList<CasualLiveEntry> _casualSnapshot = [];
@@ -82,13 +89,19 @@ public partial class SessionStore
 
     // ---- Settings ------------------------------------------------------------------------------
 
-    public bool GetCasualVisibleToNonCrew(string userId)
+    public bool GetCasualVisibleToNonCrew(string userId) => GetCasualAccount(userId).VisibleToNonCrew;
+
+    /// <summary>The toggle and the account's granted features, in one query.</summary>
+    public CasualAccount GetCasualAccount(string userId)
     {
         using var conn = Connect();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "SELECT casual_visible_to_non_crew FROM users WHERE id = @userId";
+        cmd.CommandText = "SELECT casual_visible_to_non_crew, features FROM users WHERE id = @userId";
         cmd.Parameters.AddWithValue("@userId", userId);
-        return cmd.ExecuteScalar() is true;
+        using var reader = cmd.ExecuteReader();
+        return reader.Read()
+            ? new CasualAccount(reader.GetBoolean(0), ParseFeatures(reader.GetString(1)))
+            : new CasualAccount(false, []);
     }
 
     public bool SetCasualVisibleToNonCrew(string userId, bool visible)
@@ -107,20 +120,27 @@ public partial class SessionStore
 
     /// <summary>
     /// Starts the caller's casual run, or continues the one they already have. Idempotent, so a
-    /// client can call it on every launch. An open run whose last position is older than the hard
-    /// cap is closed (at that last position) and replaced.
+    /// client can call it on every launch. An open run the server hasn't heard from within the hard
+    /// cap is closed (at the last time it was heard from) and replaced.
     /// </summary>
-    public CasualStartResponse StartCasualRun(string userId, DateTimeOffset now) =>
-        new(CasualSessionId, OpenOrReuseCasualRun(userId, now).Id);
+    public CasualStartResponse StartCasualRun(string userId, DateTimeOffset now)
+    {
+        _casualSuppressedUntil.TryRemove(userId, out _);
+        return new(CasualSessionId, OpenOrReuseCasualRun(userId, now, honourStop: false)!.Id);
+    }
 
     /// <summary>Ends the caller's open run, if any. They leave everyone's map at once. Idempotent.</summary>
     public void StopCasualRun(string userId, DateTimeOffset now)
     {
         _casualRuns.TryRemove(userId, out _);
+        _casualSuppressedUntil[userId] = now + CasualStopSuppression;
 
         using var conn = Connect();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "UPDATE casual_runs SET ended_at = @endedAt WHERE user_id = @userId AND ended_at IS NULL";
+        cmd.CommandText = """
+            UPDATE casual_runs SET ended_at = @endedAt, stopped_by_user = TRUE
+            WHERE user_id = @userId AND ended_at IS NULL
+            """;
         cmd.Parameters.AddWithValue("@endedAt", ToIso(now));
         cmd.Parameters.AddWithValue("@userId", userId);
         cmd.ExecuteNonQuery();
@@ -128,23 +148,31 @@ public partial class SessionStore
         InvalidateCasualSnapshot();
     }
 
-    private CasualRun OpenOrReuseCasualRun(string userId, DateTimeOffset now)
+    // The caller's open run, creating one if there isn't a usable one. With honourStop (a copy from a
+    // named session) it returns null instead if the person pressed stop recently: a named-session
+    // post must not undo that.
+    private CasualRun? OpenOrReuseCasualRun(string userId, DateTimeOffset now, bool honourStop)
     {
         if (_casualRuns.TryGetValue(userId, out var cached) && now - cached.LastSeen <= CasualHardStaleCap)
-        {
-            cached.LastSeen = now;
             return cached;
-        }
+        _casualRuns.TryRemove(userId, out _);
+
+        if (honourStop && _casualSuppressedUntil.TryGetValue(userId, out var until) && now < until)
+            return null;
 
         using var conn = Connect();
         var open = FindOpenCasualRun(conn, userId);
         if (open is not null)
         {
-            var lastSeen = LatestCasualPositionAt(conn, userId, open.StartedAt) ?? open.StartedAt;
+            var lastSeen = LatestCasualReceivedAt(conn, open.Id) ?? open.StartedAt;
             if (now - lastSeen <= CasualHardStaleCap)
-                return _casualRuns[userId] = new CasualRun(open.Id, now, open.StartLatitude, open.StartLongitude);
+                return _casualRuns[userId] = new CasualRun(open.Id, lastSeen, open.StartLatitude, open.StartLongitude);
 
             CloseCasualRun(conn, open.Id, lastSeen);
+        }
+        else if (honourStop && StoppedRecently(conn, userId, now))
+        {
+            return null;
         }
 
         var id = Guid.NewGuid().ToString();
@@ -167,18 +195,40 @@ public partial class SessionStore
         return _casualRuns[userId] = new CasualRun(id, now, null, null);
     }
 
-    // The caller's open run without creating one - what a position post needs.
+    // The caller's open run without creating one - what a direct position post needs. A run the server
+    // hasn't heard from within the hard cap doesn't count: the client starts again, which gives a new
+    // run (and a new start point) rather than resuming an abandoned one.
     private CasualRun? GetOpenCasualRun(string userId, DateTimeOffset now)
     {
         if (_casualRuns.TryGetValue(userId, out var cached) && now - cached.LastSeen <= CasualHardStaleCap)
             return cached;
-
         _casualRuns.TryRemove(userId, out _);
+
         using var conn = Connect();
         var open = FindOpenCasualRun(conn, userId);
-        return open is null
-            ? null
-            : _casualRuns[userId] = new CasualRun(open.Id, now, open.StartLatitude, open.StartLongitude);
+        if (open is null)
+            return null;
+
+        var lastSeen = LatestCasualReceivedAt(conn, open.Id) ?? open.StartedAt;
+        return now - lastSeen <= CasualHardStaleCap
+            ? _casualRuns[userId] = new CasualRun(open.Id, lastSeen, open.StartLatitude, open.StartLongitude)
+            : null;
+    }
+
+    private bool StoppedRecently(NpgsqlConnection conn, string userId, DateTimeOffset now)
+    {
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT MAX(ended_at) FROM casual_runs WHERE user_id = @userId AND stopped_by_user";
+        cmd.Parameters.AddWithValue("@userId", userId);
+        if (cmd.ExecuteScalar() is not string stoppedAt)
+            return false;
+
+        var until = DateTimeOffset.Parse(stoppedAt) + CasualStopSuppression;
+        if (now >= until)
+            return false;
+
+        _casualSuppressedUntil[userId] = until;
+        return true;
     }
 
     private static OpenCasualRun? FindOpenCasualRun(NpgsqlConnection conn, string userId)
@@ -200,16 +250,12 @@ public partial class SessionStore
             : null;
     }
 
-    private static DateTimeOffset? LatestCasualPositionAt(NpgsqlConnection conn, string userId, DateTimeOffset since)
+    // The server's clock at the run's most recent live position.
+    private static DateTimeOffset? LatestCasualReceivedAt(NpgsqlConnection conn, string runId)
     {
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = """
-            SELECT MAX(timestamp) FROM location_updates
-            WHERE session_id = @sessionId AND runner_user_id = @userId AND timestamp >= @since
-            """;
-        cmd.Parameters.AddWithValue("@sessionId", CasualSessionId);
-        cmd.Parameters.AddWithValue("@userId", userId);
-        cmd.Parameters.AddWithValue("@since", ToIso(since));
+        cmd.CommandText = "SELECT MAX(received_at) FROM location_updates WHERE casual_run_id = @runId";
+        cmd.Parameters.AddWithValue("@runId", runId);
         return cmd.ExecuteScalar() is string latest ? DateTimeOffset.Parse(latest) : null;
     }
 
@@ -226,27 +272,74 @@ public partial class SessionStore
 
     /// <summary>
     /// Stores a position in the casual session. A direct casual post needs an open run
-    /// (<paramref name="startRunIfNone"/> false) and gets null back without one, so a delayed post
-    /// after the user pressed stop can't bring them back. A post copied across from a named session
-    /// starts a run if there isn't one. Returns the caller's own entry for the response.
+    /// (<paramref name="startRunIfNone"/> false) and gets NoRun without one, so a delayed post after
+    /// the user pressed stop can't bring them back. A post copied across from a named session starts
+    /// a run if there isn't one, unless the person pressed stop recently. A position older than the
+    /// stale window is a queued one flushed late: a direct post keeps it (for replay) without moving
+    /// the runner's dot, and a copy from a named session ignores it.
     /// </summary>
-    public CasualLiveEntry? AddCasualPosition(
+    public CasualPostResult AddCasualPosition(
         ValidatedLocationUpdate update, string userId, bool inSession, bool startRunIfNone, DateTimeOffset now)
     {
-        var run = startRunIfNone ? OpenOrReuseCasualRun(userId, now) : GetOpenCasualRun(userId, now);
-        if (run is null)
-            return null;
+        var historical = now - update.Timestamp > CasualStaleAfter;
+        if (historical && startRunIfNone)
+            return new CasualPostResult(CasualPostOutcome.Historical);
 
-        run.LastSeen = now;
-
-        using var conn = Connect();
-
-        if (run.StartLatitude is null)
+        // Twice: the first attempt can find the cached run was closed behind this process's back.
+        for (var attempt = 0; attempt < 2; attempt++)
         {
-            run.StartLatitude = update.Latitude;
-            run.StartLongitude = update.Longitude;
+            var run = startRunIfNone
+                ? OpenOrReuseCasualRun(userId, now, honourStop: true)
+                : GetOpenCasualRun(userId, now);
+            if (run is null)
+                return new CasualPostResult(CasualPostOutcome.NoRun);
+
+            if (!TryInsertCasualPosition(userId, run, update, inSession, historical, now))
+            {
+                // Stopped on the other server, or closed as abandoned. Forget it and look again.
+                _casualRuns.TryRemove(userId, out _);
+                continue;
+            }
+
+            if (historical)
+                return new CasualPostResult(CasualPostOutcome.Historical);
+
+            run.LastSeen = now;
+            return new CasualPostResult(
+                CasualPostOutcome.Live,
+                new CasualLiveEntry(
+                    userId,
+                    new RunnerPosition(
+                        update.RunnerName, update.Latitude, update.Longitude, update.Heading, update.Timestamp,
+                        update.NextExpectedAt, update.IsUltraConstrained, update.BatteryLevel),
+                    inSession,
+                    VisibleToNonCrew: true,
+                    run.StartLatitude,
+                    run.StartLongitude,
+                    now));
+        }
+
+        return new CasualPostResult(CasualPostOutcome.NoRun);
+    }
+
+    // Inserts only if the run is still open in the database (not just in this process's cache), and
+    // sets the run's start point in the same transaction so a reader never sees the position without
+    // it. False when the run has been closed.
+    private bool TryInsertCasualPosition(
+        string userId, CasualRun run, ValidatedLocationUpdate update, bool inSession, bool historical, DateTimeOffset now)
+    {
+        using var conn = Connect();
+        using var tx = conn.BeginTransaction();
+
+        var setsStart = !historical && run.StartLatitude is null;
+        if (setsStart)
+        {
             using var start = conn.CreateCommand();
-            start.CommandText = "UPDATE casual_runs SET start_lat = @lat, start_lon = @lon WHERE id = @id AND start_lat IS NULL";
+            start.Transaction = tx;
+            start.CommandText = """
+                UPDATE casual_runs SET start_lat = @lat, start_lon = @lon
+                WHERE id = @id AND start_lat IS NULL AND ended_at IS NULL
+                """;
             start.Parameters.AddWithValue("@lat", update.Latitude);
             start.Parameters.AddWithValue("@lon", update.Longitude);
             start.Parameters.AddWithValue("@id", run.Id);
@@ -254,41 +347,32 @@ public partial class SessionStore
         }
 
         using var cmd = conn.CreateCommand();
+        cmd.Transaction = tx;
         cmd.CommandText = """
-            INSERT INTO location_updates (session_id, runner_user_id, runner_name, latitude, longitude, heading, timestamp, next_expected_at, is_ultra_constrained, battery_level, in_session)
-            VALUES (@sessionId, @userId, @name, @lat, @lon, @heading, @ts, @nextExpectedAt, @isUltraConstrained, @batteryLevel, @inSession)
+            INSERT INTO location_updates (session_id, runner_user_id, runner_name, latitude, longitude, heading, timestamp, next_expected_at, is_ultra_constrained, battery_level, in_session, casual_run_id, received_at)
+            SELECT @sessionId, @userId, @name, @lat, @lon, @heading, @ts, @nextExpectedAt, @isUltraConstrained, @batteryLevel, @inSession, @runId, @receivedAt
+            WHERE EXISTS (SELECT 1 FROM casual_runs WHERE id = @runId AND ended_at IS NULL)
             """;
-        cmd.Parameters.AddWithValue("@sessionId", CasualSessionId);
-        cmd.Parameters.AddWithValue("@userId", userId);
-        cmd.Parameters.AddWithValue("@name", update.RunnerName);
-        cmd.Parameters.AddWithValue("@lat", update.Latitude);
-        cmd.Parameters.AddWithValue("@lon", update.Longitude);
-        cmd.Parameters.Add(new NpgsqlParameter("heading", NpgsqlDbType.Double)
-        {
-            Value = update.Heading.HasValue ? update.Heading.Value : DBNull.Value
-        });
-        cmd.Parameters.AddWithValue("@ts", ToIso(update.Timestamp));
-        cmd.Parameters.Add(new NpgsqlParameter("nextExpectedAt", NpgsqlDbType.Text)
-        {
-            Value = update.NextExpectedAt.HasValue ? ToIso(update.NextExpectedAt.Value) : DBNull.Value
-        });
-        cmd.Parameters.AddWithValue("@isUltraConstrained", update.IsUltraConstrained);
-        cmd.Parameters.Add(new NpgsqlParameter("batteryLevel", NpgsqlDbType.Smallint)
-        {
-            Value = update.BatteryLevel.HasValue ? update.BatteryLevel.Value : DBNull.Value
-        });
+        AddLocationParameters(cmd, CasualSessionId, userId, update);
         cmd.Parameters.AddWithValue("@inSession", inSession);
-        cmd.ExecuteNonQuery();
+        cmd.Parameters.AddWithValue("@runId", run.Id);
+        cmd.Parameters.Add(new NpgsqlParameter("receivedAt", NpgsqlDbType.Text)
+        {
+            Value = historical ? DBNull.Value : ToIso(now)
+        });
+        if (cmd.ExecuteNonQuery() == 0)
+        {
+            tx.Rollback();
+            return false;
+        }
 
-        return new CasualLiveEntry(
-            userId,
-            new RunnerPosition(
-                update.RunnerName, update.Latitude, update.Longitude, update.Heading, update.Timestamp,
-                update.NextExpectedAt, update.IsUltraConstrained, update.BatteryLevel),
-            inSession,
-            VisibleToNonCrew: true,
-            run.StartLatitude,
-            run.StartLongitude);
+        tx.Commit();
+        if (setsStart)
+        {
+            run.StartLatitude = update.Latitude;
+            run.StartLongitude = update.Longitude;
+        }
+        return true;
     }
 
     // ---- Reading -------------------------------------------------------------------------------
@@ -296,13 +380,15 @@ public partial class SessionStore
     /// <summary>
     /// What <paramref name="viewerId"/> can see right now. <paramref name="self"/> is the entry just
     /// built from the viewer's own post, so they see themselves without waiting for the snapshot.
-    /// <paramref name="includeCrew"/> is false for accounts without the crew feature, who then see
-    /// everyone else as a non-crew dot.
+    /// Nearby dots are only returned to someone who is out themselves, and are centred on where the
+    /// server last placed them, never on a position the caller supplies: otherwise any opted-in
+    /// account could scan the map for strangers. <paramref name="includeCrew"/> is false for accounts
+    /// without the crew feature, who then see everyone else as a non-crew dot.
     /// </summary>
     public CasualLiveResponse GetCasualLive(
         string viewerId,
+        bool viewerVisibleToNonCrew,
         bool includeCrew,
-        (double Latitude, double Longitude)? viewerPosition,
         CasualLiveEntry? self,
         DateTimeOffset now)
     {
@@ -313,17 +399,22 @@ public partial class SessionStore
             entries.Add(self);
         }
 
+        var me = entries.FirstOrDefault(e => e.UserId == viewerId && CasualVisibility.IsLive(e, now));
+        (double Latitude, double Longitude)? viewerPosition =
+            me is null ? null : (me.Position.Latitude, me.Position.Longitude);
+
+        using var conn = Connect();
         var crewLabels = new Dictionary<string, string>();
         if (includeCrew)
-            foreach (var member in GetCrewOverview(viewerId).Crew)
+            foreach (var member in GetCrewOverview(conn, viewerId).Crew)
                 crewLabels[member.UserId] = string.IsNullOrWhiteSpace(member.Nickname) ? member.DisplayName : member.Nickname;
 
         return CasualVisibility.ForViewer(
             viewerId,
-            GetCasualVisibleToNonCrew(viewerId),
+            viewerVisibleToNonCrew,
             viewerPosition,
             crewLabels,
-            GetBlockedPartyIds(viewerId),
+            GetBlockedPartyIds(conn, viewerId),
             entries,
             now);
     }
@@ -348,26 +439,24 @@ public partial class SessionStore
             _casualSnapshotAt = DateTimeOffset.MinValue;
     }
 
-    // Everyone with an open run and a position inside the hard cap. Read from Postgres rather than
-    // an in-memory cache because Staging and Production share the database but not memory.
+    // Everyone whose open run has a live position received inside the hard cap, taking each person's
+    // latest. Only positions belonging to the open run count, so a restart never shows the last run's
+    // final position. Read from Postgres rather than an in-memory cache because Staging and
+    // Production share the database but not memory.
     private IReadOnlyList<CasualLiveEntry> LoadCasualSnapshot(DateTimeOffset now)
     {
         using var conn = Connect();
         using var cmd = conn.CreateCommand();
         cmd.CommandText = """
-            SELECT l.runner_user_id, l.runner_name, l.latitude, l.longitude, l.heading, l.timestamp,
-                   l.next_expected_at, l.is_ultra_constrained, l.battery_level, l.in_session,
+            SELECT DISTINCT ON (l.runner_user_id)
+                   l.runner_user_id, l.runner_name, l.latitude, l.longitude, l.heading, l.timestamp,
+                   l.next_expected_at, l.is_ultra_constrained, l.battery_level, l.in_session, l.received_at,
                    u.casual_visible_to_non_crew, r.start_lat, r.start_lon
-            FROM (
-                SELECT DISTINCT ON (runner_user_id)
-                       runner_user_id, runner_name, latitude, longitude, heading, timestamp,
-                       next_expected_at, is_ultra_constrained, battery_level, in_session
-                FROM location_updates
-                WHERE session_id = @sessionId AND runner_user_id IS NOT NULL AND timestamp >= @since
-                ORDER BY runner_user_id, timestamp DESC
-            ) l
+            FROM location_updates l
+            JOIN casual_runs r ON r.id = l.casual_run_id AND r.ended_at IS NULL
             JOIN users u ON u.id = l.runner_user_id
-            JOIN casual_runs r ON r.user_id = l.runner_user_id AND r.ended_at IS NULL
+            WHERE l.session_id = @sessionId AND l.received_at >= @since
+            ORDER BY l.runner_user_id, l.received_at DESC
             """;
         cmd.Parameters.AddWithValue("@sessionId", CasualSessionId);
         cmd.Parameters.AddWithValue("@since", ToIso(now - CasualHardStaleCap));
@@ -387,9 +476,10 @@ public partial class SessionStore
                     reader.GetBoolean(7),
                     reader.IsDBNull(8) ? null : reader.GetInt16(8)),
                 reader.GetBoolean(9),
-                reader.GetBoolean(10),
-                reader.IsDBNull(11) ? null : reader.GetDouble(11),
-                reader.IsDBNull(12) ? null : reader.GetDouble(12)));
+                reader.GetBoolean(11),
+                reader.IsDBNull(12) ? null : reader.GetDouble(12),
+                reader.IsDBNull(13) ? null : reader.GetDouble(13),
+                DateTimeOffset.Parse(reader.GetString(10))));
         }
         return entries;
     }
@@ -398,6 +488,11 @@ public partial class SessionStore
     public IReadOnlySet<string> GetBlockedPartyIds(string userId)
     {
         using var conn = Connect();
+        return GetBlockedPartyIds(conn, userId);
+    }
+
+    private static IReadOnlySet<string> GetBlockedPartyIds(NpgsqlConnection conn, string userId)
+    {
         using var cmd = conn.CreateCommand();
         cmd.CommandText = """
             SELECT blocked_user_id FROM blocked_users WHERE blocker_user_id = @userId
@@ -417,15 +512,16 @@ public partial class SessionStore
     private void ForgetCasualUser(string userId)
     {
         _casualRuns.TryRemove(userId, out _);
+        _casualSuppressedUntil.TryRemove(userId, out _);
         InvalidateCasualSnapshot();
     }
 
     // ---- Retention -----------------------------------------------------------------------------
 
     /// <summary>
-    /// Closes runs that were abandoned (no position inside the hard cap) at their last position,
-    /// then deletes casual positions and finished runs older than <paramref name="retention"/>.
-    /// Safe to run from both servers at once.
+    /// Closes runs the server hasn't heard from within the hard cap, at the last time it did, then
+    /// deletes casual positions and finished runs older than <paramref name="retention"/>. Safe to
+    /// run from both servers at once.
     /// </summary>
     public (int ClosedRuns, int DeletedPositions, int DeletedRuns) PurgeCasualData(DateTimeOffset now, TimeSpan retention)
     {
@@ -437,16 +533,14 @@ public partial class SessionStore
             cmd.CommandText = """
                 UPDATE casual_runs r
                 SET ended_at = COALESCE(
-                    (SELECT MAX(l.timestamp) FROM location_updates l
-                     WHERE l.session_id = @sessionId AND l.runner_user_id = r.user_id AND l.timestamp >= r.started_at),
+                    (SELECT MAX(l.received_at) FROM location_updates l WHERE l.casual_run_id = r.id),
                     r.started_at)
                 WHERE r.ended_at IS NULL
                   AND r.started_at < @staleBefore
                   AND NOT EXISTS (
                       SELECT 1 FROM location_updates l
-                      WHERE l.session_id = @sessionId AND l.runner_user_id = r.user_id AND l.timestamp >= @staleBefore)
+                      WHERE l.casual_run_id = r.id AND l.received_at >= @staleBefore)
                 """;
-            cmd.Parameters.AddWithValue("@sessionId", CasualSessionId);
             cmd.Parameters.AddWithValue("@staleBefore", ToIso(now - CasualHardStaleCap));
             closed = cmd.ExecuteNonQuery();
         }
@@ -456,7 +550,11 @@ public partial class SessionStore
         int deletedPositions;
         using (var cmd = conn.CreateCommand())
         {
-            cmd.CommandText = "DELETE FROM location_updates WHERE session_id = @sessionId AND timestamp < @cutoff";
+            cmd.CommandText = """
+                DELETE FROM location_updates
+                WHERE session_id = @sessionId
+                  AND COALESCE(received_at, timestamp) < @cutoff
+                """;
             cmd.Parameters.AddWithValue("@sessionId", CasualSessionId);
             cmd.Parameters.AddWithValue("@cutoff", cutoff);
             deletedPositions = cmd.ExecuteNonQuery();

@@ -53,6 +53,27 @@ Deviations from the design above, found while reading the code:
   Only the copy from a named session starts one.
 - **Replay** (casual_runs is in place; the endpoints are not built).
 
+Changes after code review (PR #211):
+- **Positions belong to a run** (`location_updates.casual_run_id`), so a restart never shows the previous run's last
+  position, and the 300 m start fuzz always has its run's start point.
+- **"Out" is judged on the server's clock** (`location_updates.received_at`), not the phone's timestamp. A wrong phone
+  clock can no longer keep a dot alive for hours or hide a runner. The client's own posting interval
+  (`nextExpectedAt - timestamp`) still extends the window for slow (satellite) cadences.
+- **Late (queued) positions** (older than 10 min on arrival) are stored for replay but have no `received_at`, so they
+  never become the runner's shown position or set a run's start point. A named-session copy ignores them entirely.
+- **Inserts verify the run is still open in Postgres**, so a run closed by the other server or the purge can't keep
+  accepting posts from this process's cache. Reusing an open run after a cache miss applies the same abandoned-run check
+  as `/casual/start`.
+- **`GET /casual/live` takes no position.** Nearby dots are only returned to someone who is out themselves, centred on
+  where the server last placed them (otherwise any opted-in account could scan the map for strangers). Watchers who
+  aren't tracking get crew only. This changes the earlier "watcher mode with the viewer's location" idea.
+- **Pressing stop sticks**: for 12 hours a copy from a named session won't start a run again (`stopped_by_user`);
+  `/casual/start` clears it.
+- **The casual owner account can't be deleted**, casual is excluded from admin session lists, merge and recording
+  deletion, and the hourly job recreates the session if a pre-guard Production build deletes it.
+- **Fewer queries per post** (account row read once; crew and blocks share a connection; one shared parameter helper
+  for the position INSERT).
+
 Server tasks: S1 storage, S2 bootstrap, S3 flag, S4 start/stop, S5 write path + fan-out, S6 read + visibility, S7
 guards (delete refused; session endpoints refuse by having no memberships), S8 retention, S9 tests are written.
 Not done: client work, replay endpoints, a config/ops check of `Features:EnabledForAll` for `casual` on Staging.
