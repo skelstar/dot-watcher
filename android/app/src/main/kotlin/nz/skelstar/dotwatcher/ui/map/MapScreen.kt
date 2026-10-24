@@ -24,6 +24,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import nz.skelstar.dotwatcher.location.nextPostAt
+import nz.skelstar.dotwatcher.network.NearbyDot
 import nz.skelstar.dotwatcher.network.RunnerPosition
 import org.maplibre.android.MapLibre
 import org.maplibre.android.camera.CameraPosition
@@ -66,6 +67,11 @@ private const val RELEASE_THRESHOLD = 0.1
 private const val HEADING_PROPERTY = "heading"
 private const val ICON_PROPERTY = "icon"
 
+private const val NEARBY_SOURCE_ID = "nearby-source"
+private const val NEARBY_LAYER_ID = "nearby-layer"
+private const val NEARBY_IMAGE = "nearby-dot"
+private const val NEARBY_LOCKED_IMAGE = "nearby-dot-locked"
+
 private const val CHEVRONS_SOURCE_ID = "chevrons-source"
 private const val CHEVRONS_LAYER_ID = "chevrons-layer"
 
@@ -103,6 +109,10 @@ fun MapScreen(
     onUserMovedCamera: () -> Unit = {},
     sendIntervalSeconds: Long? = null,
     ownPaused: Boolean = false,
+    /** Casual only: people who are not in the crew, drawn as anonymous grey dots under the runners. */
+    nearby: List<NearbyDot> = emptyList(),
+    /** Casual only: runners (by name) who are in a named session rather than out casually. */
+    lockedRunners: Set<String> = emptySet(),
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -209,6 +219,16 @@ fun MapScreen(
                                     iconIgnorePlacement(true),
                                 )
                             )
+                            loadedStyle.addImage(NEARBY_IMAGE, nearbyBitmap(locked = false, density = density))
+                            loadedStyle.addImage(NEARBY_LOCKED_IMAGE, nearbyBitmap(locked = true, density = density))
+                            loadedStyle.addSource(GeoJsonSource(NEARBY_SOURCE_ID))
+                            loadedStyle.addLayer(
+                                SymbolLayer(NEARBY_LAYER_ID, NEARBY_SOURCE_ID).withProperties(
+                                    iconImage(get(ICON_PROPERTY)),
+                                    iconAllowOverlap(true),
+                                    iconIgnorePlacement(true),
+                                )
+                            )
                             loadedStyle.addSource(GeoJsonSource(RUNNERS_SOURCE_ID))
                             loadedStyle.addLayer(
                                 SymbolLayer(RUNNERS_LAYER_ID, RUNNERS_SOURCE_ID).withProperties(
@@ -240,13 +260,16 @@ fun MapScreen(
                     val remainingMs = Duration.between(now, nextPostAt(now, interval)).toMillis()
                     ceil(RING_STEPS * remainingMs / (interval * 1000.0)).toInt().coerceIn(0, RING_STEPS)
                 }
-                val specs = positions.associate { it.runnerName to pinSpecFor(it, currentUserName, now, ringStep, ownPaused) }
+                val specs = positions.associate {
+                    it.runnerName to pinSpecFor(it, currentUserName, now, ringStep, ownPaused, it.runnerName in lockedRunners)
+                }
                 specs.values.distinctBy { it.key }.forEach { spec ->
                     if (currentStyle.getImage(spec.key) == null) {
                         currentStyle.addImage(spec.key, pinBitmap(spec, density))
                     }
                 }
                 source.setGeoJson(positions.toPinFeatures(specs))
+                currentStyle.getSourceAs<GeoJsonSource>(NEARBY_SOURCE_ID)?.setGeoJson(nearby.toNearbyFeatures())
                 currentStyle.getSourceAs<GeoJsonSource>(CHEVRONS_SOURCE_ID)
                     ?.setGeoJson(positions.toChevronFeatures(specs))
 
@@ -278,6 +301,15 @@ fun MapScreen(
  *  decide whether the user has since pulled it away. Not Compose state: it is only read from map
  *  callbacks, never during composition. */
 private class CameraAim(var aimed: LatLng? = null, var userGesture: Boolean = false)
+
+private fun List<NearbyDot>.toNearbyFeatures(): FeatureCollection =
+    FeatureCollection.fromFeatures(
+        map { dot ->
+            Feature.fromGeometry(Point.fromLngLat(dot.longitude, dot.latitude)).apply {
+                addStringProperty(ICON_PROPERTY, if (dot.inSession) NEARBY_LOCKED_IMAGE else NEARBY_IMAGE)
+            }
+        }
+    )
 
 private fun List<RunnerPosition>.centre(): LatLng {
     val lat = (minOf { it.latitude } + maxOf { it.latitude }) / 2

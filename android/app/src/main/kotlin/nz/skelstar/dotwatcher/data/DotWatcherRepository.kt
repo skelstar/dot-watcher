@@ -1,5 +1,8 @@
 package nz.skelstar.dotwatcher.data
 
+import nz.skelstar.dotwatcher.network.CasualLiveResponse
+import nz.skelstar.dotwatcher.network.CasualSettings
+import nz.skelstar.dotwatcher.network.CasualStartResponse
 import nz.skelstar.dotwatcher.network.CreateSessionRequest
 import nz.skelstar.dotwatcher.network.CrewCode
 import nz.skelstar.dotwatcher.network.CrewCodePreview
@@ -14,6 +17,7 @@ import nz.skelstar.dotwatcher.network.ProfileResponse
 import nz.skelstar.dotwatcher.network.RegisterRequest
 import nz.skelstar.dotwatcher.network.RunnerPosition
 import nz.skelstar.dotwatcher.network.SessionMembership
+import nz.skelstar.dotwatcher.network.UpdateCasualSettingsRequest
 import nz.skelstar.dotwatcher.network.UpdateProfileRequest
 import nz.skelstar.dotwatcher.network.bearer
 import okhttp3.MediaType.Companion.toMediaType
@@ -140,6 +144,19 @@ class DotWatcherRepository(
 
     suspend fun redeemCrewCode(code: String): Response<CrewMember> =
         api.redeemCrewCode(code, bearer(requireToken()))
+
+    // --- Casual ------------------------------------------------------------------------
+
+    suspend fun casualStart(): Response<CasualStartResponse> = api.casualStart(bearer(requireToken()))
+
+    suspend fun casualStop(): Response<Unit> = api.casualStop(bearer(requireToken()))
+
+    suspend fun casualLive(): Response<CasualLiveResponse> = api.casualLive(bearer(requireToken()))
+
+    suspend fun getCasualSettings(): Response<CasualSettings> = api.getCasualSettings(bearer(requireToken()))
+
+    suspend fun setCasualVisibleToNonCrew(visible: Boolean): Response<CasualSettings> =
+        api.updateCasualSettings(bearer(requireToken()), UpdateCasualSettingsRequest(visible))
 
     suspend fun getProfile(): Response<ProfileResponse> = api.getProfile(bearer(requireToken()))
 
