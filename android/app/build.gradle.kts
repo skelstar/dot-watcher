@@ -42,7 +42,7 @@ android {
         applicationId = "nz.skelstar.dotwatcher"
         minSdk = 26
         targetSdk = 36
-        versionCode = 16
+        versionCode = 17
         versionName = "1.1.2"
 
         buildConfigField("String", "LINZ_API_KEY", "\"$linzApiKey\"")
