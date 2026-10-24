@@ -67,6 +67,9 @@ public sealed class DotWatcherApiFactory : WebApplicationFactory<global::Program
                 ["JwtSigningKey"] = "test-jwt-signing-key-change-me-32-bytes",
                 ["ConnectionString"] = $"{BaseConnectionString};SearchPath={_schema}",
                 ["RecordingsPath"] = _recordingsPath,
+                // Reads of the casual session are normally reused for a few seconds; tests post and
+                // read straight back, so they must always see the latest.
+                ["Casual:SnapshotSeconds"] = "0",
             };
             for (var i = 0; i < EnabledForAll.Length; i++)
                 settings[$"Features:EnabledForAll:{i}"] = EnabledForAll[i];

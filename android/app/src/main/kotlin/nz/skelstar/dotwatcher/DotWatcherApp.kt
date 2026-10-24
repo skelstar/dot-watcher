@@ -10,6 +10,9 @@ import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -20,6 +23,7 @@ import nz.skelstar.dotwatcher.ui.crew.CrewConfirmDialog
 import nz.skelstar.dotwatcher.ui.UpdateRequiredScreen
 import nz.skelstar.dotwatcher.ui.auth.AuthScreen
 import nz.skelstar.dotwatcher.ui.map.BackgroundLocationRequiredScreen
+import nz.skelstar.dotwatcher.ui.map.CasualMapScreen
 import nz.skelstar.dotwatcher.ui.map.LiveMapScreen
 import nz.skelstar.dotwatcher.ui.map.ShareLocationConsentScreen
 import nz.skelstar.dotwatcher.ui.session.SessionScreen
@@ -57,6 +61,8 @@ fun DotWatcherApp(hasBackgroundLocationPermission: Boolean) {
     val authState by viewModel.authState.collectAsState()
     val sessionState by viewModel.sessionState.collectAsState()
     val crewState by viewModel.crew.state.collectAsState()
+    // Holding Go needs "all the time" location, as sharing in a session does.
+    var casualNeedsLocationPermission by remember { mutableStateOf(false) }
 
     DotWatcherTheme {
         Surface(modifier = Modifier.fillMaxSize()) {
@@ -74,7 +80,21 @@ fun DotWatcherApp(hasBackgroundLocationPermission: Boolean) {
                     CircularProgressIndicator()
                 }
 
-                Destination.Session -> SessionScreen(
+                Destination.Session -> if (casualNeedsLocationPermission && !hasBackgroundLocationPermission) {
+                    val context = LocalContext.current
+                    BackgroundLocationRequiredScreen(
+                        sessionName = "Casual",
+                        onOpenSettings = {
+                            context.startActivity(
+                                Intent(
+                                    Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                                    Uri.fromParts("package", context.packageName, null),
+                                )
+                            )
+                        },
+                        onViewOnly = { casualNeedsLocationPermission = false },
+                    )
+                } else SessionScreen(
                     state = sessionState,
                     onCreateSession = viewModel::createSession,
                     onJoinSession = viewModel::joinSession,
@@ -83,6 +103,21 @@ fun DotWatcherApp(hasBackgroundLocationPermission: Boolean) {
                     account = viewModel.account,
                     onDeleteAccount = viewModel::deleteAccount,
                     crew = viewModel.crew,
+                    casual = viewModel.casual,
+                    onStartCasual = { duration ->
+                        if (hasBackgroundLocationPermission) {
+                            casualNeedsLocationPermission = false
+                            viewModel.startCasual(duration)
+                        } else {
+                            casualNeedsLocationPermission = true
+                        }
+                    },
+                )
+
+                Destination.Casual -> CasualMapScreen(
+                    repository = viewModel.repository,
+                    casual = viewModel.casual,
+                    onStop = viewModel::stopCasual,
                 )
 
                 is Destination.Consent -> if (hasBackgroundLocationPermission) {

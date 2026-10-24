@@ -45,7 +45,12 @@ import androidx.lifecycle.compose.LifecycleResumeEffect
 import nz.skelstar.dotwatcher.AccountInfo
 import nz.skelstar.dotwatcher.BuildConfig
 import nz.skelstar.dotwatcher.SessionUiState
+import nz.skelstar.dotwatcher.casual.CasualModel
 import nz.skelstar.dotwatcher.crew.CrewModel
+import nz.skelstar.dotwatcher.ui.casual.BeforeYouGoSheet
+import nz.skelstar.dotwatcher.ui.casual.CasualGoBlock
+import nz.skelstar.dotwatcher.ui.casual.WhoCanSeeMeSheet
+import java.time.Duration
 import nz.skelstar.dotwatcher.ui.CodeBoxField
 import nz.skelstar.dotwatcher.ui.GroupDivider
 import nz.skelstar.dotwatcher.ui.GroupedCard
@@ -85,8 +90,13 @@ fun SessionScreen(
     account: AccountInfo,
     onDeleteAccount: (onError: (String) -> Unit) -> Unit,
     crew: CrewModel,
+    casual: CasualModel,
+    onStartCasual: (Duration) -> Unit,
 ) {
     var inviteCode by remember { mutableStateOf("") }
+    var showBeforeYouGo by remember { mutableStateOf(false) }
+    var showWhoCanSeeMe by remember { mutableStateOf(false) }
+    val casualState by casual.state.collectAsState()
     var showCreateDialog by remember { mutableStateOf(false) }
     var showAccount by remember { mutableStateOf(false) }
     var crewStage by remember { mutableStateOf(CrewStage.None) }
@@ -97,6 +107,7 @@ fun SessionScreen(
     // notifications, so pick it up whenever this screen comes back to the front.
     LifecycleResumeEffect(Unit) {
         crew.refresh()
+        casual.refresh()
         onPauseOrDispose { }
     }
 
@@ -116,6 +127,12 @@ fun SessionScreen(
         if (crewState.isAvailable) {
             CrewRow(state = crewState, onClick = { crewStage = CrewStage.List })
             Spacer(modifier = Modifier.height(24.dp))
+        }
+
+        // Hidden entirely until the server says it has casual tracking for this account.
+        if (casualState.isAvailable) {
+            CasualGoBlock(crewOut = casualState.crewOut, onGoHeld = { showBeforeYouGo = true })
+            Spacer(modifier = Modifier.height(28.dp))
         }
 
         SectionLabel("Join a Session")
@@ -186,6 +203,32 @@ fun SessionScreen(
                 Text("Sign out")
             }
         }
+    }
+
+    if (showBeforeYouGo) {
+        BeforeYouGoSheet(
+            onGo = { duration ->
+                showBeforeYouGo = false
+                onStartCasual(duration)
+            },
+            onChooseWhoCanSeeMe = {
+                showBeforeYouGo = false
+                showWhoCanSeeMe = true
+            },
+            onDismiss = { showBeforeYouGo = false },
+        )
+    }
+
+    if (showWhoCanSeeMe) {
+        WhoCanSeeMeSheet(
+            visibleToNonCrew = casualState.visibleToNonCrew,
+            error = casualState.error,
+            onVisibleChange = casual::setVisibleToNonCrew,
+            onDismiss = {
+                showWhoCanSeeMe = false
+                casual.clearError()
+            },
+        )
     }
 
     if (showAccount) {

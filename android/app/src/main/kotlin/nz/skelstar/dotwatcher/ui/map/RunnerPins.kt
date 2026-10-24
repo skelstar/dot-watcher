@@ -44,8 +44,10 @@ data class PinSpec(
     /** Own dot only: automatic tracking is paused for a critical battery. Drawn grey with a low-battery
      *  badge and no countdown ring, since no send is coming. */
     val paused: Boolean = false,
+    /** In a named session rather than out casually: a small padlock on the dot. */
+    val locked: Boolean = false,
 ) {
-    val key: String get() = "pin|$label|$colorIndex|${state.ordinal}|$satellite|${ringStep ?: -1}|$paused"
+    val key: String get() = "pin|$label|$colorIndex|${state.ordinal}|$satellite|${ringStep ?: -1}|$paused|$locked"
 }
 
 /** The 1–2 letter tag drawn on a dot. Accounts are meant to carry 2-letter initials, but older
@@ -69,6 +71,7 @@ fun pinSpecFor(
     now: Instant,
     ringStep: Int?,
     ownPaused: Boolean = false,
+    locked: Boolean = false,
 ): PinSpec {
     val isMe = position.runnerName == currentUserName
     val age = if (isMe) null else runCatching {
@@ -87,6 +90,7 @@ fun pinSpecFor(
         satellite = position.isUltraConstrained,
         ringStep = if (isMe && !ownPaused) ringStep else null,
         paused = isMe && ownPaused,
+        locked = locked,
     )
 }
 
@@ -211,6 +215,10 @@ fun pinBitmap(spec: PinSpec, density: Float): Bitmap {
         }
         by += badgeR * 2 + dp(1f)
     }
+    if (spec.locked) {
+        // Bottom-right of the circle, away from the other badges.
+        drawLock(canvas, cx + r * 0.78f, cy + r * 0.78f, dp(8.5f), 0xFF14181F.toInt(), density)
+    }
     if (spec.state != PinState.Live) {
         canvas.drawCircle(bx, by, badgeR, Paint(Paint.ANTI_ALIAS_FLAG).apply { this.color = 0xFFFF3B30.toInt() })
         val bang = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -221,6 +229,45 @@ fun pinBitmap(spec: PinSpec, density: Float): Bitmap {
         }
         canvas.drawText("!", bx, by - (bang.descent() + bang.ascent()) / 2, bang)
     }
+    return bitmap
+}
+
+/** A white padlock on a filled disc of [discColor], centred on ([cx], [cy]) with radius [radius]. */
+private fun drawLock(canvas: Canvas, cx: Float, cy: Float, radius: Float, discColor: Int, density: Float) {
+    canvas.drawCircle(cx, cy, radius, Paint(Paint.ANTI_ALIAS_FLAG).apply { color = discColor })
+    val white = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = 0xFFFFFFFF.toInt()
+        strokeWidth = radius * 0.2f
+        strokeCap = Paint.Cap.ROUND
+    }
+    val bodyW = radius * 0.95f
+    val bodyH = radius * 0.7f
+    val body = RectF(cx - bodyW / 2, cy - bodyH * 0.1f, cx + bodyW / 2, cy - bodyH * 0.1f + bodyH)
+    canvas.drawRoundRect(body, radius * 0.15f, radius * 0.15f, white)
+    white.style = Paint.Style.STROKE
+    val shackle = RectF(cx - bodyW * 0.3f, cy - bodyH * 0.1f - radius * 0.5f, cx + bodyW * 0.3f, cy - bodyH * 0.1f + radius * 0.3f)
+    canvas.drawArc(shackle, 180f, 180f, false, white)
+}
+
+/** A person who is not in the crew: a grey dot with a white edge, and a padlock when they are in a
+ *  named session. No name, initials or colour: nothing that says who it is. */
+fun nearbyBitmap(locked: Boolean, density: Float): Bitmap {
+    fun dp(v: Float) = v * density
+    val size = dp(28f).toInt()
+    val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+    val canvas = Canvas(bitmap)
+    val cx = size / 2f
+    val cy = size / 2f
+    canvas.drawCircle(cx, cy, dp(9f), Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFF9EA3A8.toInt() })
+    canvas.drawCircle(
+        cx, cy, dp(9f),
+        Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE
+            strokeWidth = dp(2f)
+            color = 0xFFFFFFFF.toInt()
+        },
+    )
+    if (locked) drawLock(canvas, cx, cy, dp(6.5f), 0xFF5D6675.toInt(), density)
     return bitmap
 }
 

@@ -44,6 +44,10 @@ const val POST_INTERVAL_SECONDS = 15L
  *  runner just picks how soon. */
 val TRACKING_DURATION_OPTIONS: List<Duration> = listOf(2L, 4L, 8L, 24L).map { Duration.ofHours(it) }
 
+/** The casual session's id. Fixed on the server (SessionStore.CasualSessionId) so every server and
+ *  client agrees; a tracking run for this id is a casual one, with no membership behind it. */
+const val CASUAL_SESSION_ID = "ca5ca100-0000-4000-8000-000000000001"
+
 sealed interface TrackingState {
     data object Stopped : TrackingState
     data class Tracking(
@@ -224,6 +228,8 @@ class LocationTrackingService : Service() {
                 // Re-read each pass: the runner can extend the session while this loop sleeps.
                 val expiresAt = (_state.value as? TrackingState.Tracking)?.expiresAt ?: initialExpiry
                 if (now >= expiresAt) {
+                    // Auto-stop ends the casual run now rather than leaving it to time out.
+                    if (sessionId == CASUAL_SESSION_ID) runCatching { repository.casualStop() }
                     stopTracking()
                     stopSelf()
                     break
@@ -271,7 +277,16 @@ class LocationTrackingService : Service() {
      */
     private suspend fun postOrEnqueue(captured: QueuedCapture) {
         val result = runCatching { repository.postCapture(captured) }
-        val response = result.getOrNull()
+        var response = result.getOrNull()
+
+        // A casual post is refused (403) once its run has closed (stopped on another device, or
+        // closed by the server after a long gap). Starting again is free and idempotent, so do it
+        // and send this position once more rather than losing it.
+        if (response != null && response.code() == 403 && captured.sessionId == CASUAL_SESSION_ID) {
+            val restarted = runCatching { repository.casualStart() }.getOrNull()?.isSuccessful == true
+            if (restarted) response = runCatching { repository.postCapture(captured) }.getOrNull()
+        }
+
         when {
             response != null && response.isSuccessful -> {
                 recordSuccess()

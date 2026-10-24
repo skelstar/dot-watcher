@@ -123,6 +123,49 @@ data class ProfileResponse(val nickname: String? = null)
 @Serializable
 data class UpdateProfileRequest(val nickname: String?)
 
+// --- Casual tracking (server: Controllers/CasualController.cs) ------------------------
+// Start tracking without creating or joining a session. See .ai/plans/casual-tracking.md.
+
+@Serializable
+data class CasualStartResponse(val sessionId: String, val runId: String)
+
+/** Whether people outside the caller's crew can see them, as an anonymous dot. Off by default. */
+@Serializable
+data class CasualSettings(val visibleToNonCrew: Boolean = false)
+
+@Serializable
+data class UpdateCasualSettingsRequest(val visibleToNonCrew: Boolean)
+
+/** Yourself or someone in your crew, out casually. The same fields as [RunnerPosition] plus
+ *  [inSession] (they are in a named session rather than out casually: the lock) and [isSelf]. */
+@Serializable
+data class CasualPosition(
+    val runnerName: String,
+    val latitude: Double,
+    val longitude: Double,
+    val heading: Double? = null,
+    val timestamp: String,
+    val isUltraConstrained: Boolean = false,
+    val inSession: Boolean = false,
+    val isSelf: Boolean = false,
+)
+
+/** Someone who is not in your crew: a position and nothing else, so there is no name or id to show. */
+@Serializable
+data class NearbyDot(
+    val latitude: Double,
+    val longitude: Double,
+    val heading: Double? = null,
+    val inSession: Boolean = false,
+)
+
+@Serializable
+data class CasualLiveResponse(
+    val participants: List<String> = emptyList(),
+    val positions: List<List<CasualPosition>> = emptyList(),
+    val nearby: List<NearbyDot> = emptyList(),
+)
+
 @Serializable
 data class LocationUpdate(
     val runnerName: String? = null,
@@ -317,6 +360,38 @@ interface DotWatcherApi {
         @Header("Authorization") bearerToken: String,
         @Header("X-Api-Version") apiVersion: String = API_VERSION,
     ): Response<CrewMember>
+
+    @POST("casual/start")
+    suspend fun casualStart(
+        @Header("Authorization") bearerToken: String,
+        @Header("X-Api-Version") apiVersion: String = API_VERSION,
+    ): Response<CasualStartResponse>
+
+    @POST("casual/stop")
+    suspend fun casualStop(
+        @Header("Authorization") bearerToken: String,
+        @Header("X-Api-Version") apiVersion: String = API_VERSION,
+    ): Response<Unit>
+
+    @GET("casual/live")
+    suspend fun casualLive(
+        @Header("Authorization") bearerToken: String,
+        @Header("X-Api-Version") apiVersion: String = API_VERSION,
+    ): Response<CasualLiveResponse>
+
+    /** 404 on a server without casual, or for an account that hasn't been given it. */
+    @GET("me/casual/settings")
+    suspend fun getCasualSettings(
+        @Header("Authorization") bearerToken: String,
+        @Header("X-Api-Version") apiVersion: String = API_VERSION,
+    ): Response<CasualSettings>
+
+    @PUT("me/casual/settings")
+    suspend fun updateCasualSettings(
+        @Header("Authorization") bearerToken: String,
+        @Body request: UpdateCasualSettingsRequest,
+        @Header("X-Api-Version") apiVersion: String = API_VERSION,
+    ): Response<CasualSettings>
 
     @GET("me/profile")
     suspend fun getProfile(

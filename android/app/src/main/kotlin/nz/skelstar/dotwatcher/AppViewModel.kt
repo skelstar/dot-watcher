@@ -10,10 +10,13 @@ import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import nz.skelstar.dotwatcher.casual.CasualModel
+import nz.skelstar.dotwatcher.casual.CasualPrefs
 import nz.skelstar.dotwatcher.crew.CrewModel
 import nz.skelstar.dotwatcher.data.AuthTokenStore
 import nz.skelstar.dotwatcher.data.DotWatcherRepository
 import nz.skelstar.dotwatcher.data.ShareChoiceStore
+import nz.skelstar.dotwatcher.location.CASUAL_SESSION_ID
 import nz.skelstar.dotwatcher.location.LocationTrackingService
 import nz.skelstar.dotwatcher.location.TrackingState
 import nz.skelstar.dotwatcher.network.DotWatcherApiClient
@@ -36,6 +39,9 @@ sealed interface Destination {
      *  `canTrackSelectedSession`, i.e. role == "runner"). */
     data class Consent(val membership: SessionMembership) : Destination
     data class Map(val membership: SessionMembership, val isSharing: Boolean) : Destination
+
+    /** Out casually: the live map with no session behind it. See .ai/plans/casual-tracking.md. */
+    data object Casual : Destination
 }
 
 sealed interface AuthUiState {
@@ -65,6 +71,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     /** The signed-in account's crew. Shares this ViewModel's repository and scope rather than being a
      *  second ViewModel, so there is one network stack (see the class note above). */
     val crew = CrewModel(repository, viewModelScope)
+
+    /** Casual tracking: start tracking without creating or joining a session. */
+    val casual = CasualModel(repository, viewModelScope, CasualPrefs(application))
 
     private val _destination = MutableStateFlow<Destination>(
         if (tokenStore.isSignedIn) Destination.Restoring else Destination.Auth
@@ -105,6 +114,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun restoreActiveSession() {
         viewModelScope.launch {
+            // Out casually, with the service still running or a share that has not run out: carry
+            // on, don't ask. (Casual has no membership, so the session restore below can't see it.)
+            if (restoreCasual()) return@launch
+
             val memberships = runCatching { repository.getMySessions() }
                 .getOrNull()
                 ?.takeIf { it.isSuccessful }
@@ -136,6 +149,64 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     Destination.Map(decision.membership, isSharing = true)
                 }
             }
+        }
+    }
+
+    /** True if the app landed on the casual map. */
+    private suspend fun restoreCasual(): Boolean {
+        val tracking = LocationTrackingService.state.value as? TrackingState.Tracking
+        if (tracking?.sessionId == CASUAL_SESSION_ID) {
+            if (_destination.value == Destination.Restoring) _destination.value = Destination.Casual
+            return true
+        }
+        val choice = shareChoices.read() as? ShareChoiceStore.Choice.Sharing ?: return false
+        val now = Instant.now()
+        if (choice.sessionId != CASUAL_SESSION_ID || !choice.expiresAt.isAfter(now) || !hasLocationPermissionsForSharing()) {
+            return false
+        }
+        // Starting again is idempotent on the server: it continues this run if it is still open.
+        val started = runCatching { repository.casualStart() }.getOrNull()
+        if (started == null || !started.isSuccessful || _destination.value != Destination.Restoring) return false
+        LocationTrackingService.start(
+            getApplication(),
+            CASUAL_SESSION_ID,
+            Duration.between(now, choice.expiresAt),
+            maxOf(choice.totalDuration, Duration.between(now, choice.expiresAt)),
+        )
+        _destination.value = Destination.Casual
+        return true
+    }
+
+    /** Holding Go, then Go on "Before you go": start the casual run on the server, then the
+     *  tracking service, then show the map. A failure stays on the start screen with the reason. */
+    fun startCasual(duration: Duration) {
+        viewModelScope.launch {
+            _sessionState.value = SessionUiState.Loading
+            val result = runCatching { repository.casualStart() }
+            val response = result.getOrNull()
+            val started = response?.body()
+            if (response != null && response.isSuccessful && started != null) {
+                LocationTrackingService.start(getApplication(), started.sessionId, duration)
+                _sessionState.value = SessionUiState.Idle
+                _destination.value = Destination.Casual
+            } else {
+                _sessionState.value = SessionUiState.Error(
+                    response?.errorMessageOrStatus() ?: (result.exceptionOrNull()?.message ?: "Network error.")
+                )
+            }
+        }
+    }
+
+    /** Ends the casual run: stops the service at once, tells the server (which takes the person off
+     *  everyone's map), and returns to the start screen. */
+    fun stopCasual() {
+        LocationTrackingService.stop(getApplication())
+        shareChoices.clear()
+        _sessionState.value = SessionUiState.Idle
+        _destination.value = Destination.Session
+        viewModelScope.launch {
+            runCatching { repository.casualStop() }
+            casual.refresh()
         }
     }
 
@@ -220,6 +291,11 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun startSharing(membership: SessionMembership, duration: Duration) {
+        // The service tracks one thing at a time. Starting a session replaces a casual run, so end
+        // that one properly rather than leaving it open on the server.
+        if ((LocationTrackingService.state.value as? TrackingState.Tracking)?.sessionId == CASUAL_SESSION_ID) {
+            viewModelScope.launch { runCatching { repository.casualStop() } }
+        }
         LocationTrackingService.start(getApplication(), membership.sessionId, duration)
         _destination.value = Destination.Map(membership, isSharing = true)
     }
@@ -260,6 +336,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     LocationTrackingService.stop(getApplication())
                     shareChoices.clear()
                     crew.clear()
+                    casual.clear()
                     _destination.value = Destination.Auth
                 }
                 response != null -> onError(response.errorMessageOrStatus())
@@ -269,10 +346,15 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun signOut() {
+        val wasCasual = (LocationTrackingService.state.value as? TrackingState.Tracking)?.sessionId == CASUAL_SESSION_ID
         LocationTrackingService.stop(getApplication())
         shareChoices.clear()
         crew.clear()
+        casual.clear()
         viewModelScope.launch {
+            // Take the person off the map before the token goes; the server would only drop them
+            // after its stale timeout otherwise.
+            if (wasCasual) runCatching { repository.casualStop() }
             repository.logout()
             _destination.value = Destination.Auth
         }
