@@ -7,7 +7,7 @@ using NpgsqlTypes;
 
 namespace DotWatcher.Server;
 
-public class SessionStore(string connectionString) : IDisposable
+public partial class SessionStore(string connectionString) : IDisposable
 {
     private static readonly JsonSerializerOptions _jsonOptions = new()
     {
@@ -182,6 +182,37 @@ public class SessionStore(string connectionString) : IDisposable
         using var addFeatures = conn.CreateCommand();
         addFeatures.CommandText = "ALTER TABLE users ADD COLUMN IF NOT EXISTS features TEXT NOT NULL DEFAULT ''";
         addFeatures.ExecuteNonQuery();
+
+        // Casual tracking (see .ai/plans/casual-tracking.md). Same rules as crew above: everything
+        // is additive and every foreign key cascades, because Staging and Production share this
+        // database and a build that predates casual still does a plain DELETE FROM users and
+        // INSERTs into location_updates by explicit column list. The new columns are NOT NULL with
+        // a constant default (metadata-only on Postgres 11+) so old code never has to supply them.
+        using var addCasual = conn.CreateCommand();
+        addCasual.CommandText = """
+            ALTER TABLE users ADD COLUMN IF NOT EXISTS casual_visible_to_non_crew BOOLEAN NOT NULL DEFAULT FALSE;
+            ALTER TABLE location_updates ADD COLUMN IF NOT EXISTS in_session BOOLEAN NOT NULL DEFAULT FALSE;
+            -- Which run a casual position belongs to, and when the server received it. Liveness uses
+            -- the server's clock (received_at), never the phone's, which can be wrong. A null
+            -- received_at marks a delayed (queued) position: stored, but not shown as live.
+            ALTER TABLE location_updates ADD COLUMN IF NOT EXISTS casual_run_id TEXT;
+            ALTER TABLE location_updates ADD COLUMN IF NOT EXISTS received_at TEXT;
+            CREATE INDEX IF NOT EXISTS idx_location_updates_casual_run ON location_updates(casual_run_id) WHERE casual_run_id IS NOT NULL;
+            CREATE INDEX IF NOT EXISTS idx_location_updates_received ON location_updates(received_at) WHERE received_at IS NOT NULL;
+
+            CREATE TABLE IF NOT EXISTS casual_runs (
+                id         TEXT PRIMARY KEY,
+                user_id    TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                started_at TEXT NOT NULL,
+                ended_at   TEXT,
+                start_lat  DOUBLE PRECISION,
+                start_lon  DOUBLE PRECISION
+            );
+            ALTER TABLE casual_runs ADD COLUMN IF NOT EXISTS stopped_by_user BOOLEAN NOT NULL DEFAULT FALSE;
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_casual_runs_open ON casual_runs(user_id) WHERE ended_at IS NULL;
+            CREATE INDEX IF NOT EXISTS idx_casual_runs_user ON casual_runs(user_id, started_at);
+            """;
+        addCasual.ExecuteNonQuery();
     }
 
     // Idempotent - safe to call on every startup. Resolves (creating if missing) the permanent
@@ -401,6 +432,11 @@ public class SessionStore(string connectionString) : IDisposable
         var memberships = GetSessionMembersForUser(conn, userId);
         var ownedSessionIds = GetOwnedSessionIds(conn, userId);
 
+        // The casual session's owner is a system account; deleting it would delete the session and
+        // every position in it.
+        if (ownedSessionIds.Contains(CasualSessionId))
+            return false;
+
         using var tx = conn.BeginTransaction();
 
         using (var cmd = conn.CreateCommand())
@@ -464,6 +500,8 @@ public class SessionStore(string connectionString) : IDisposable
         }
 
         tx.Commit();
+
+        ForgetCasualUser(userId);
 
         foreach (var sessionId in ownedSessionIds)
             _sessions.TryRemove(sessionId, out _);
@@ -874,6 +912,11 @@ public class SessionStore(string connectionString) : IDisposable
     public CrewOverview GetCrewOverview(string userId)
     {
         using var conn = Connect();
+        return GetCrewOverview(conn, userId);
+    }
+
+    private static CrewOverview GetCrewOverview(NpgsqlConnection conn, string userId)
+    {
         using var cmd = conn.CreateCommand();
         cmd.CommandText = """
             SELECT u.id, u.nickname, u.display_name, l.created_at
@@ -1197,6 +1240,15 @@ public class SessionStore(string connectionString) : IDisposable
             INSERT INTO location_updates (session_id, runner_user_id, runner_name, latitude, longitude, heading, timestamp, next_expected_at, is_ultra_constrained, battery_level)
             VALUES (@sessionId, @userId, @name, @lat, @lon, @heading, @ts, @nextExpectedAt, @isUltraConstrained, @batteryLevel)
             """;
+        AddLocationParameters(cmd, sessionId, userId, update);
+        cmd.ExecuteNonQuery();
+    }
+
+    // The ten values every stored position has, shared by AddPosition and the casual insert so the
+    // two can't drift apart when a column is added.
+    private static void AddLocationParameters(
+        NpgsqlCommand cmd, string sessionId, string userId, ValidatedLocationUpdate update)
+    {
         cmd.Parameters.AddWithValue("@sessionId", sessionId);
         cmd.Parameters.AddWithValue("@userId", userId);
         cmd.Parameters.AddWithValue("@name", update.RunnerName);
@@ -1216,7 +1268,6 @@ public class SessionStore(string connectionString) : IDisposable
         {
             Value = update.BatteryLevel.HasValue ? update.BatteryLevel.Value : DBNull.Value
         });
-        cmd.ExecuteNonQuery();
     }
 
     public IReadOnlyList<string> GetParticipants(string sessionId, string? callerUserId = null)
@@ -1326,9 +1377,11 @@ public class SessionStore(string connectionString) : IDisposable
             FROM app_sessions s
             JOIN users u ON u.id = s.owner_user_id
             LEFT JOIN session_members m ON m.session_id = s.id AND m.left_at IS NULL
+            WHERE s.id <> @casualSessionId
             GROUP BY s.id, u.username
             ORDER BY s.created_at DESC
             """;
+        cmd.Parameters.AddWithValue("@casualSessionId", CasualSessionId);
         using var reader = cmd.ExecuteReader();
         var sessions = new List<AdminSessionSummary>();
         while (reader.Read())
@@ -1377,6 +1430,9 @@ public class SessionStore(string connectionString) : IDisposable
 
     public bool DeleteSession(string sessionId)
     {
+        if (IsCasualSession(sessionId))
+            return false;
+
         using var conn = Connect();
         using var tx = conn.BeginTransaction();
 
@@ -1410,9 +1466,11 @@ public class SessionStore(string connectionString) : IDisposable
         cmd.CommandText = """
             SELECT session_id
             FROM location_updates
+            WHERE session_id <> @casualSessionId
             GROUP BY session_id
             ORDER BY MAX(timestamp) DESC
             """;
+        cmd.Parameters.AddWithValue("@casualSessionId", CasualSessionId);
         using var reader = cmd.ExecuteReader();
         var ids = new List<string>();
         while (reader.Read())
@@ -1695,6 +1753,9 @@ public class SessionStore(string connectionString) : IDisposable
 
     public bool DeleteRecording(string sessionId)
     {
+        if (IsCasualSession(sessionId))
+            return false;
+
         using var conn = Connect();
         using var cmd = conn.CreateCommand();
         cmd.CommandText = "DELETE FROM location_updates WHERE session_id = @code";
@@ -1754,6 +1815,9 @@ public class SessionStore(string connectionString) : IDisposable
 
     public int MergeSession(string sourceId, string targetId)
     {
+        if (IsCasualSession(sourceId) || IsCasualSession(targetId))
+            return 0;
+
         using var conn = Connect();
         using var cmd = conn.CreateCommand();
         cmd.CommandText = "UPDATE location_updates SET session_id = @tgt WHERE session_id = @src";

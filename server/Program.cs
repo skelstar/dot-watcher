@@ -35,6 +35,7 @@ builder.Services.AddSingleton<AuthAttemptLimiter>();
 builder.Services.AddSingleton<ClientErrorLimiter>();
 builder.Services.AddSingleton<CrewCodeLimiter>();
 builder.Services.AddSingleton<FeatureFlags>();
+builder.Services.AddHostedService<CasualMaintenanceService>();
 builder.Services.AddSingleton(sp =>
 {
     var connectionString = sp.GetRequiredService<IConfiguration>()["ConnectionString"]
@@ -271,6 +272,9 @@ store.EnsureDemoSession(
     demoSessionConfig.GetValue<double>("AnchorLongitude", 174.7762),
     demoSessionConfig.GetValue<double>("LoopRadiusMeters", 150),
     demoSessionConfig.GetValue<double>("LoopPeriodSeconds", 360));
+
+store.EnsureCasualSession();
+store.CasualSnapshotLifetime = TimeSpan.FromSeconds(app.Configuration.GetValue<double>("Casual:SnapshotSeconds", 5));
 
 // Migrate any existing NDJSON recordings into SQLite
 var recordingsPath = app.Configuration.GetValue<string>("RecordingsPath", "recordings")!;
