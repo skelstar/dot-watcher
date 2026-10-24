@@ -31,11 +31,17 @@ type MemberStatsState = AdminMemberStats[] | 'loading' | { error: string }
 
 // Owns imported demo sessions (see handleImportSubmit's default owner); excluded from bulk
 // deletion so importing doesn't leave the account orphaned mid-list.
-const PROTECTED_USERNAME = 'dw-demo'
+// System accounts that can't be selected for deletion: the demo runner, and the owner of the casual
+// session (deleting it would delete the session; the server refuses too).
+const PROTECTED_USERNAMES = new Set(['dw-demo', 'dw-casual'])
 
 // The feature the Users table can grant (server: Features.Crew). Accounts without it get a 404 from
 // every crew endpoint, so apps hide Crew for them.
 const CREW_FEATURE = 'crew'
+
+// Casual tracking (server: Features.Casual). Accounts without it get a 404 from every /casual endpoint,
+// so apps hide the Go button for them. Crew-visible output also needs Crew, so grant both together.
+const CASUAL_FEATURE = 'casual'
 
 const BEARER_TOKEN_KEY = 'adminBearerToken'
 const APP_VERSION = import.meta.env.VITE_APP_VERSION ?? 'v-local'
@@ -134,7 +140,7 @@ export default function AdminPanel({ serverUrl }: { serverUrl: string }) {
   }
 
   function toggleAllUsersSelected() {
-    const selectableIds = users.filter(u => u.username !== PROTECTED_USERNAME).map(u => u.id)
+    const selectableIds = users.filter(u => !PROTECTED_USERNAMES.has(u.username)).map(u => u.id)
     setSelectedUserIds(prev => prev.size === selectableIds.length ? new Set() : new Set(selectableIds))
   }
 
@@ -541,7 +547,7 @@ export default function AdminPanel({ serverUrl }: { serverUrl: string }) {
               <th style={checkboxTh}>
                 <input
                   type="checkbox"
-                  checked={selectedUserIds.size > 0 && selectedUserIds.size === users.filter(u => u.username !== PROTECTED_USERNAME).length}
+                  checked={selectedUserIds.size > 0 && selectedUserIds.size === users.filter(u => !PROTECTED_USERNAMES.has(u.username)).length}
                   onChange={toggleAllUsersSelected}
                   aria-label="Select all users"
                 />
@@ -549,6 +555,7 @@ export default function AdminPanel({ serverUrl }: { serverUrl: string }) {
               <th style={th}>Username</th>
               <th style={th}>Display name</th>
               <th style={th}>Crew</th>
+              <th style={th}>Casual</th>
               <th style={th}>Created</th>
             </tr>
           </thead>
@@ -556,7 +563,7 @@ export default function AdminPanel({ serverUrl }: { serverUrl: string }) {
             {users.map(user => (
               <tr key={user.id} style={tr}>
                 <td style={checkboxTd}>
-                  {user.username !== PROTECTED_USERNAME && (
+                  {!PROTECTED_USERNAMES.has(user.username) && (
                     <input
                       type="checkbox"
                       checked={selectedUserIds.has(user.id)}
@@ -575,6 +582,16 @@ export default function AdminPanel({ serverUrl }: { serverUrl: string }) {
                     disabled={featureBusyUserId === user.id}
                     aria-label={`Crew for ${user.username}`}
                     title="Lets this account see and use Crew"
+                  />
+                </td>
+                <td style={td}>
+                  <input
+                    type="checkbox"
+                    checked={(user.features ?? []).includes(CASUAL_FEATURE)}
+                    onChange={() => void handleToggleFeature(user, CASUAL_FEATURE)}
+                    disabled={featureBusyUserId === user.id}
+                    aria-label={`Casual for ${user.username}`}
+                    title="Lets this account use casual tracking (the Go button). Crew is needed to see crew."
                   />
                 </td>
                 <td style={td}>{timeAgo(user.createdAt)}</td>
