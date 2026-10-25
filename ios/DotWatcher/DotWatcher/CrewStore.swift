@@ -1,4 +1,5 @@
 import Foundation
+import SwiftUI
 import Observation
 
 // Crew (server: Controllers/CrewController.cs). A crew is the people you have chosen: mutual, and tied
@@ -61,6 +62,10 @@ final class CrewStore {
     /// granted account sees crew without signing in again.
     private(set) var availability: Availability = .unknown
     private(set) var members: [CrewMember] = []
+    /// The dot colour for someone in your crew; see `CrewColorPalette`.
+    func color(for userId: String) -> Color {
+        CrewColorPalette.assign(members.map(\.userId) + [userId])[userId] ?? .gray
+    }
     /// The name this account's crew sees; nil until chosen (they then see the initials).
     private(set) var nickname: String?
     var nicknameError: String?

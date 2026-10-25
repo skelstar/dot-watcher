@@ -42,10 +42,10 @@ struct CrewDot: View {
     }
 }
 
-private func crewDot(for member: CrewMember, size: CGFloat, ringed: Bool = true) -> some View {
+private func crewDot(for member: CrewMember, color: Color, size: CGFloat, ringed: Bool = true) -> some View {
     CrewDot(
         initials: RunnerCircle.initials(for: member.displayName),
-        color: RunnerColorPalette.color(for: member.userId),
+        color: color,
         size: size,
         isCrew: ringed
     )
@@ -80,7 +80,7 @@ struct CrewRow: View {
                                 // No ring here: the row is already "Your crew", and rings overlapping
                                 // looked messy. A card-coloured edge keeps overlapped dots apart, and
                                 // 38 is the outer size the ringed 30 dot used to have.
-                                crewDot(for: member, size: 38, ringed: false)
+                                crewDot(for: member, color: crew.color(for: member.userId), size: 38, ringed: false)
                                     .overlay(Circle().strokeBorder(Color(.systemGray5), lineWidth: 2))
                             }
                         }
@@ -289,7 +289,7 @@ struct CrewListView: View {
             selectedId = isSelected ? nil : member.userId
         } label: {
             VStack(spacing: 4) {
-                crewDot(for: member, size: 38)
+                crewDot(for: member, color: crew.color(for: member.userId), size: 38)
                 Text(member.label)
                     .font(.caption2)
                     .lineLimit(1)
@@ -304,7 +304,7 @@ struct CrewListView: View {
 
     private func detailCard(_ member: CrewMember) -> some View {
         HStack(spacing: 12) {
-            crewDot(for: member, size: 34)
+            crewDot(for: member, color: crew.color(for: member.userId), size: 34)
             VStack(alignment: .leading, spacing: 2) {
                 Text(member.label)
                     .font(.headline)
