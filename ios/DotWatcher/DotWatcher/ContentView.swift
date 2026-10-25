@@ -55,7 +55,10 @@ struct ContentView: View {
                     if location.runnerName.trimmingCharacters(in: .whitespaces).isEmpty {
                         showNameEntry = true
                     }
-                    Task { await location.loadSessions() }
+                    Task {
+                        await location.loadSessions()
+                        await leaveStaleSessions()
+                    }
                 } else {
                     showAuth = true
                 }
@@ -115,6 +118,10 @@ struct ContentView: View {
                 }
                 if location.runnerName.trimmingCharacters(in: .whitespaces).isEmpty {
                     showNameEntry = true
+                }
+                Task {
+                    await location.loadSessions()
+                    await leaveStaleSessions()
                 }
                 resolvePendingLink()
             }
@@ -325,6 +332,19 @@ struct ContentView: View {
         versionTapCount = 0
         location.debugForceUltraConstrained.toggle()
         UINotificationFeedbackGenerator().notificationOccurred(.success)
+    }
+
+    // MARK: - Stale sessions
+
+    /// A session doesn't carry over a relaunch or a sign-in: tracking never resumes by itself, so any session
+    /// the server still lists is left over from an earlier run. Leave it, so the others stop seeing someone who
+    /// isn't sharing any more, and the person rejoins with the invite code. Skipped while tracking, or while the
+    /// share dialog is up, which means a session was only just joined.
+    private func leaveStaleSessions() async {
+        for membership in location.memberships {
+            guard !location.isTracking, !showShareConsent else { return }
+            try? await location.leaveSession(sessionId: membership.sessionId)
+        }
     }
 
     // MARK: - No Session Actions
