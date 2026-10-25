@@ -275,7 +275,7 @@ struct ContentView: View {
                 VStack(spacing: 16) {
                     headerSection
                     CrewRow(crew: crew)
-                    if casual.isAvailable, let line = crewOutLine(casual.crewOut) {
+                    if casual.isAvailable, !crew.members.isEmpty, let line = crewOutLine(casual.crewOut) {
                         Text(line)
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
