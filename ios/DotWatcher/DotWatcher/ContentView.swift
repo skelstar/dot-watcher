@@ -313,7 +313,7 @@ struct ContentView: View {
             if casual.isAvailable {
                 HoldSignButton(
                     title: "Go",
-                    subtitle: "Hold to start. Your crew will see you"
+                    subtitle: "Hold to start"
                 ) { casual.isBeforeYouGoPresented = true }
             }
             // Placeholder until public events exist: always shown for now so builds can be tried on a

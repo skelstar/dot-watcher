@@ -97,7 +97,7 @@ struct SignButton: View {
     }
 }
 
-/// The Go sign, about 1.5x the height of `SignButton` with a lava bar across the top. Held rather than
+/// The Go sign, about 2.2x the height of `SignButton` with a lava bar across the top. Held rather than
 /// tapped, like the round Go button was: a lighter fill sweeps across while it is pressed and
 /// `onComplete` runs when full, so a pocket can't start tracking.
 struct HoldSignButton: View {
@@ -108,14 +108,14 @@ struct HoldSignButton: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            SignPalette.lava.frame(height: signBarHeight)
+            SignPalette.lava.frame(height: signBarHeight * 1.5)
             SignContent(
-                title: title, subtitle: subtitle, titleSize: 44, arrowSize: 30, ink: SignPalette.camel,
-                alignBottom: true
+                title: title, subtitle: subtitle, titleSize: 44, arrowSize: 30,
+                ink: SignPalette.camel, alignBottom: true
             )
-            .padding(.horizontal, 16)
-            .padding(.vertical, 14)
-            .frame(maxWidth: .infinity, minHeight: 108, alignment: .bottomLeading)
+            .padding(.horizontal, 20)
+            .padding(.vertical, 18)
+            .frame(maxWidth: .infinity, minHeight: 162, alignment: .bottomLeading)
             .background(SignPalette.coffee)
             .overlay(alignment: .leading) {
                 GeometryReader { proxy in

@@ -42,11 +42,12 @@ struct CrewDot: View {
     }
 }
 
-private func crewDot(for member: CrewMember, size: CGFloat) -> some View {
+private func crewDot(for member: CrewMember, size: CGFloat, ringed: Bool = true) -> some View {
     CrewDot(
         initials: RunnerCircle.initials(for: member.displayName),
         color: RunnerColorPalette.color(for: member.userId),
-        size: size
+        size: size,
+        isCrew: ringed
     )
     .accessibilityElement(children: .ignore)
     .accessibilityLabel("\(member.label), in your crew")
@@ -54,7 +55,7 @@ private func crewDot(for member: CrewMember, size: CGFloat) -> some View {
 
 // MARK: - Start-screen row
 
-/// The slim "Your crew" row: up to four ringed faces (the ring means "in your crew"), "+N" for the
+/// The slim "Your crew" row: up to four faces, "+N" for the
 /// rest, and a count. Tapping opens the crew sheet. Draws nothing until the server has said it has
 /// crew, so an app running against an older server shows no trace of it.
 struct CrewRow: View {
@@ -76,7 +77,11 @@ struct CrewRow: View {
                     } else {
                         HStack(spacing: -10) {
                             ForEach(summary.faces) { member in
-                                crewDot(for: member, size: 30)
+                                // No ring here: the row is already "Your crew", and rings overlapping
+                                // looked messy. A card-coloured edge keeps overlapped dots apart, and
+                                // 38 is the outer size the ringed 30 dot used to have.
+                                crewDot(for: member, size: 38, ringed: false)
+                                    .overlay(Circle().strokeBorder(Color(.systemGray5), lineWidth: 2))
                             }
                         }
                         if summary.extra > 0 {
