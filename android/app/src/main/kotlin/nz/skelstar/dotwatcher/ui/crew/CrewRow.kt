@@ -33,10 +33,10 @@ import nz.skelstar.dotwatcher.crew.label
 import nz.skelstar.dotwatcher.ui.CrewDot
 import nz.skelstar.dotwatcher.ui.GroupedCard
 import nz.skelstar.dotwatcher.ui.crewColor
+import nz.skelstar.dotwatcher.ui.groupedCardColor
 
 /**
- * The slim "Your crew" row at the top of the start screen: up to four ringed faces (the ring means
- * "in your crew"), "+N" for the rest, and a count. Tapping opens the crew sheet. Draws nothing until
+ * The slim "Your crew" row at the top of the start screen: up to four faces, "+N" for the rest, and a count. Tapping opens the crew sheet. Draws nothing until
  * the server has said it has crew, so an app running against an older server shows no trace of it.
  */
 @Composable
@@ -70,11 +70,17 @@ fun CrewRow(state: CrewUiState, onClick: () -> Unit, modifier: Modifier = Modifi
             } else {
                 Row(horizontalArrangement = Arrangement.spacedBy((-10).dp)) {
                     summary.faces.forEach { member ->
+                        // No ring here: the row is already "Your crew", and overlapping rings looked
+                        // messy. A card-coloured edge keeps overlapped dots apart, and 38 is the outer
+                        // size the ringed 30 dot used to have.
                         CrewDot(
                             initials = member.displayName,
                             color = crewColor(member.userId),
-                            size = 30.dp,
-                            modifier = Modifier.semantics { contentDescription = "${member.label()}, in your crew" },
+                            size = 38.dp,
+                            isCrew = false,
+                            modifier = Modifier
+                                .border(2.dp, groupedCardColor(), CircleShape)
+                                .semantics { contentDescription = "${member.label()}, in your crew" },
                         )
                     }
                 }

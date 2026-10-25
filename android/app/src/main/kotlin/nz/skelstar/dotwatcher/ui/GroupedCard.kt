@@ -19,6 +19,10 @@ import androidx.compose.ui.unit.dp
 private val GroupedCardLight = Color(0xFFE5E5EA)
 private val GroupedCardDark = Color(0xFF2C2C2E)
 
+/** The fill [GroupedCard] uses in the current theme, for things that must blend into it. */
+@Composable
+fun groupedCardColor(): Color = if (isSystemInDarkTheme()) GroupedCardDark else GroupedCardLight
+
 /**
  * A rounded, tinted-background section grouping related rows with thin dividers between them —
  * matches the iOS app's grouped-list look seen throughout its screens (the "Account" screen's
@@ -31,7 +35,7 @@ fun GroupedCard(
     modifier: Modifier = Modifier,
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    val cardColor = if (isSystemInDarkTheme()) GroupedCardDark else GroupedCardLight
+    val cardColor = groupedCardColor()
     Column(
         modifier = modifier
             .background(cardColor, RoundedCornerShape(14.dp))

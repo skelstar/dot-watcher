@@ -159,7 +159,7 @@ fun SessionScreen(
             if (casualState.isAvailable) {
                 HoldSignButton(
                     title = "Go",
-                    subtitle = "Hold to start. Your crew will see you",
+                    subtitle = "Hold to start",
                     onComplete = { showBeforeYouGo = true },
                 )
             }

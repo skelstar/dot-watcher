@@ -74,7 +74,7 @@ fun SignButton(
 }
 
 /**
- * The Go sign, about 1.5x the height of [SignButton] with a lava bar across the top. Held rather
+ * The Go sign, about 2.2x the height of [SignButton] with a lava bar across the top. Held rather
  * than tapped, as the round Go button was: a lighter fill sweeps across while it is pressed and
  * [onComplete] runs when full, so a pocket can't start tracking. TalkBack gets a long-press action.
  */
@@ -97,7 +97,7 @@ fun HoldSignButton(
                 onLongClick(label = "Start tracking") { onComplete(); true }
             },
     ) {
-        Box(Modifier.fillMaxWidth().height(BarHeight).background(SignPalette.Lava))
+        Box(Modifier.fillMaxWidth().height(BarHeight * 1.5f).background(SignPalette.Lava))
         SignContent(
             title = title,
             subtitle = subtitle,
@@ -106,7 +106,7 @@ fun HoldSignButton(
             ink = SignPalette.Camel,
             modifier = Modifier
                 .fillMaxWidth()
-                .heightIn(min = 108.dp)
+                .heightIn(min = 162.dp)
                 .background(SignPalette.Coffee)
                 .drawBehind {
                     drawRect(
@@ -117,7 +117,7 @@ fun HoldSignButton(
                 .pointerInput(Unit) {
                     detectTapGestures(onPress = { holdToComplete(progress, scope, haptic, onComplete) })
                 }
-                .padding(horizontal = 16.dp, vertical = 14.dp),
+                .padding(horizontal = 20.dp, vertical = 18.dp),
             alignBottom = true,
         )
     }
