@@ -5,6 +5,7 @@ public static class Features
 {
     public const string Crew = "crew";
     public const string Casual = "casual";
+    public const string Events = "events";
 }
 
 /// <summary>
