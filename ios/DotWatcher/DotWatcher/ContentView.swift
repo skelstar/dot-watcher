@@ -8,6 +8,8 @@ struct ContentView: View {
     @State private var crew = CrewStore()
     /// Casual tracking (start tracking with no session). Self-contained: see `CasualStore` and `CasualViews.swift`.
     @State private var casual = CasualStore()
+    /// Public events near the person; the start screen shows a sign for the first one. See `EventsStore`.
+    @State private var events = EventsStore()
     @State private var batteryLevel: Float = UIDevice.current.batteryLevel
     @State private var showNameEntry: Bool = false
     @State private var nameInput: String = ""
@@ -28,6 +30,7 @@ struct ContentView: View {
     @State private var noSessionCreateCode = ""
     @State private var noSessionCreateLengthHours = CreateSessionView.defaultLengthHours
     @State private var noSessionInviteCode = ""
+    @State private var showJoinSheet = false
     /// Invite code from a tapped `/join/{CODE}` link (see `InviteLink`), held until it's been prefilled
     /// or confirmed. Survives the sign-in sheet and the initial sessions load.
     @State private var pendingLinkCode: String?
@@ -56,6 +59,7 @@ struct ContentView: View {
         mainContent
             .modifier(CrewHost(crew: crew, location: location, yieldsToCasualMap: casual.isMapPresented))
             .modifier(CasualHost(casual: casual, crew: crew, location: location))
+            .modifier(EventsHost(events: events, location: location))
             .preferredColorScheme(location.appearanceMode.colorScheme)
             .onAppear {
                 UIDevice.current.isBatteryMonitoringEnabled = true
@@ -105,6 +109,13 @@ struct ContentView: View {
                     Task { await noSessionCreateSession() }
                 }
                 .presentationDetents([.height(560)])
+                .preferredColorScheme(location.appearanceMode.colorScheme)
+            }
+            .sheet(isPresented: $showJoinSheet) {
+                JoinCodeSheet(code: $noSessionInviteCode, isBusy: isBusy) {
+                    Task { await noSessionJoinSession() }
+                }
+                .presentationDetents([.height(380)])
                 .preferredColorScheme(location.appearanceMode.colorScheme)
             }
             .fullScreenCover(isPresented: $showAuth) {
@@ -261,14 +272,24 @@ struct ContentView: View {
             if location.isOffline {
                 offlineBanner
             }
+            // Header, crew and any error scroll; the sign buttons stay pinned to the bottom where a
+            // thumb reaches them.
             ScrollView {
                 VStack(spacing: 16) {
                     headerSection
-                    runnerRow
                     CrewRow(crew: crew)
-                    CasualGoBlock(casual: casual)
-                    noSessionJoinCard
-                    noSessionCreateLink
+                    if casual.isAvailable, !crew.members.isEmpty, let line = crewOutLine(casual.crewOut) {
+                        Text(line)
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    if let error = casual.startError {
+                        Text(error)
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.red)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
                     if let formError {
                         Label(formError, systemImage: "exclamationmark.triangle.fill")
                             .font(.subheadline.weight(.semibold))
@@ -282,11 +303,43 @@ struct ContentView: View {
                 .padding()
             }
             .refreshable {
-                await location.loadSessions()
-                await crew.refresh()
-                await casual.refresh()
+                // Detached: `.refreshable` cancels its closure's Task once the pull gesture is released, which
+                // cut off every request after the first (see `sessionView`'s refresh).
+                await Task {
+                    await location.loadSessions()
+                    await crew.refresh()
+                    await casual.refresh()
+                    await events.refresh()
+                }.value
             }
+            noSessionSigns
         }
+    }
+
+    private var noSessionSigns: some View {
+        VStack(spacing: 14) {
+            if casual.isAvailable {
+                HoldSignButton(
+                    title: "Go",
+                    subtitle: "Hold to start"
+                ) { casual.isBeforeYouGoPresented = true }
+            }
+            // Only when the server has events for this account (the "events" feature).
+            if let event = events.events.first {
+                EventSignButton(eyebrow: event.eyebrow, title: event.title, subtitle: event.subtitle) {}
+            }
+            SignButton(title: "Invite code", subtitle: "Join a run you've been invited to") {
+                showJoinSheet = true
+            }
+            .disabled(isBusy)
+            SignButton(title: "Create", subtitle: "Set up a new run for others") {
+                showCreateSession = true
+            }
+            .disabled(isBusy)
+        }
+        .padding(.horizontal)
+        .padding(.top, 8)
+        .padding(.bottom)
     }
 
     private var offlineBanner: some View {
@@ -296,74 +349,6 @@ struct ContentView: View {
             .frame(maxWidth: .infinity)
             .padding(.vertical, 10)
             .background(Color.red)
-    }
-
-    private var noSessionCreateLink: some View {
-        HStack {
-            Text("Create a session?")
-                .font(.title2.weight(.bold))
-                .padding(.leading, 4)
-            Spacer()
-            Button {
-                showCreateSession = true
-            } label: {
-                Text("Create")
-                    .fontWeight(.bold)
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 24)
-                    .padding(.vertical, 10)
-                    .background(Color.blue)
-                    .clipShape(Capsule())
-            }
-            .buttonStyle(.plain)
-        }
-    }
-
-    private var noSessionJoinCard: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Have an invite code?")
-                .font(.title2.weight(.bold))
-                .padding(.leading, 4)
-            VStack(spacing: 0) {
-                VStack(alignment: .leading, spacing: 10) {
-                    HStack {
-                        Text("Enter your invite code")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                        Spacer()
-                        Button {
-                            if let pasted = UIPasteboard.general.string {
-                                noSessionInviteCode = pasted
-                            }
-                        } label: {
-                            Label("Paste", systemImage: "doc.on.clipboard")
-                                .font(.subheadline)
-                                .foregroundStyle(.primary)
-                        }
-                        .buttonStyle(.plain)
-                    }
-                    CodeBoxField(text: $noSessionInviteCode, length: 6, autoFocus: true)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 14)
-                Divider().padding(.leading, 16)
-                Button {
-                    Task { await noSessionJoinSession() }
-                } label: {
-                    Text("Join Session")
-                        .fontWeight(.semibold)
-                        .foregroundStyle(isBusy || noSessionInviteCode.count < 6 ? Color.secondary : Color.primary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 14)
-                }
-                .buttonStyle(.plain)
-                .disabled(isBusy || noSessionInviteCode.count < 6)
-            }
-            .background(Color(.systemGray5))
-            .clipShape(RoundedRectangle(cornerRadius: 14))
-        }
     }
 
     // MARK: - Session View
@@ -416,11 +401,18 @@ struct ContentView: View {
                     Text("d")
                         .font(.largeTitle.bold())
                     if location.isAuthenticated, !location.runnerName.trimmingCharacters(in: .whitespaces).isEmpty {
-                        Text(location.runnerName.uppercased())
-                            .font(.callout.bold())
-                            .foregroundStyle(.white)
-                            .frame(width: 38, height: 38)
-                            .background(Circle().fill(RunnerColorPalette.currentUser))
+                        Button {
+                            nameInput = location.runnerName
+                            showNameEntry = true
+                        } label: {
+                            Text(location.runnerName.uppercased())
+                                .font(.callout.bold())
+                                .foregroundStyle(.white)
+                                .frame(width: 38, height: 38)
+                                .background(Circle().fill(RunnerColorPalette.currentUser))
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Edit your name")
                     } else {
                         Text("o")
                             .font(.largeTitle.bold())
@@ -467,6 +459,12 @@ struct ContentView: View {
                             }
                         }
                         Divider()
+                    }
+                    Button {
+                        nameInput = location.runnerName
+                        showNameEntry = true
+                    } label: {
+                        Label("Edit name", systemImage: "pencil")
                     }
                     Button { showAuth = true } label: {
                         Label(location.isAuthenticated ? "Settings" : "Account", systemImage: location.isAuthenticated ? "gearshape" : "person.crop.circle")
@@ -881,6 +879,7 @@ struct ContentView: View {
         guard let code = pendingLinkCode else { return }
         if location.memberships.isEmpty {
             noSessionInviteCode = code
+            showJoinSheet = location.isAuthenticated
         } else if location.memberships.contains(where: { $0.inviteCode == code }) {
             pendingLinkCode = nil
         } else if location.isAuthenticated {
