@@ -29,6 +29,7 @@ import RouteUploadPage from './RouteUploadPage.tsx'
 import LandingPage from './LandingPage.tsx'
 import JoinPage from './JoinPage.tsx'
 import CrewLinkPage from './CrewLinkPage.tsx'
+import WatchPage from './WatchPage.tsx'
 import InitialsBadge from './components/InitialsBadge.tsx'
 import { useRunnerMarkers } from './useRunnerMarkers.ts'
 import { useRouteLayer } from './useRouteLayer.ts'
@@ -47,6 +48,8 @@ interface RouteState {
   inviteCode: string | null
   joinCode: string | null
   crewCode: string | null
+  // The secret of a casual watch link, /watch/{token}. Case-sensitive, so it is never upper-cased.
+  watchToken: string | null
   legalPage: 'privacy' | 'terms' | null
   isAdmin: boolean
   isLanding: boolean
@@ -63,7 +66,7 @@ interface RouteState {
 function parseUrl(): RouteState {
   const parts = window.location.pathname.replace(/^\//, '').split('/')
   const norm = (s: string) => s.toUpperCase() || null
-  const base = { inviteCode: null, joinCode: null, crewCode: null, legalPage: null, isAdmin: false, isLanding: false, isDeleteAccount: false, routeUploadSessionId: null }
+  const base = { inviteCode: null, joinCode: null, crewCode: null, watchToken: null, legalPage: null, isAdmin: false, isLanding: false, isDeleteAccount: false, routeUploadSessionId: null }
   if (parts[0] === 'admin') return { ...base, isAdmin: true }
   if (parts[0] === 'privacy') return { ...base, legalPage: 'privacy' }
   if (parts[0] === 'terms') return { ...base, legalPage: 'terms' }
@@ -71,6 +74,7 @@ function parseUrl(): RouteState {
   if (parts[0] === 'route-upload' && parts[1]) return { ...base, routeUploadSessionId: parts[1] }
   if (parts[0] === 'join' && parts[1]) return { ...base, joinCode: norm(parts[1]) }
   if (parts[0] === 'crew' && parts[1]) return { ...base, crewCode: norm(parts[1]) }
+  if (parts[0] === 'watch' && parts[1]) return { ...base, watchToken: parts[1] }
   if (parts[0] === 'code') return { ...base, inviteCode: norm(parts[1] ?? '') }
   return { ...base, isLanding: true }
 }
@@ -78,7 +82,7 @@ function parseUrl(): RouteState {
 export default function App() {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<MapLibreMap | null>(null)
-  const { inviteCode, joinCode, crewCode, legalPage, isAdmin, isLanding, isDeleteAccount, routeUploadSessionId } = parseUrl()
+  const { inviteCode, joinCode, crewCode, watchToken, legalPage, isAdmin, isLanding, isDeleteAccount, routeUploadSessionId } = parseUrl()
   const [routeCoordinates, setRouteCoordinates] = useState<[number, number][] | null>(null)
   const [mapStyleId, setMapStyleId] = useState<MapStyleId>(DEFAULT_MAP_STYLE_ID)
 
@@ -239,6 +243,10 @@ export default function App() {
 
   if (routeUploadSessionId) {
     return <RouteUploadPage serverUrl={SERVER_URL} sessionId={routeUploadSessionId} />
+  }
+
+  if (watchToken) {
+    return <WatchPage serverUrl={SERVER_URL} token={watchToken} />
   }
 
   if (crewCode) {

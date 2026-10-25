@@ -80,3 +80,28 @@ public record CasualPostResult(CasualPostOutcome Outcome, CasualLiveEntry? Self 
 
 /// <summary>What the casual endpoints need to know about an account, read in one query.</summary>
 public record CasualAccount(bool VisibleToNonCrew, IReadOnlyList<string> GrantedFeatures);
+
+/// <summary>A new watch link for the caller's current run. <see cref="Path"/> is relative to the web
+/// site (<c>/watch/{token}</c>); each client builds the full link with its own web base URL.</summary>
+public record CasualWatchLinkResponse(string Token, string Path);
+
+/// <summary>Where the watched runner was last heard from, on the server's clock.</summary>
+public record WatchPosition(
+    double Latitude,
+    double Longitude,
+    double? Heading,
+    DateTimeOffset Timestamp,
+    DateTimeOffset ReceivedAt
+);
+
+/// <summary>
+/// What someone with a watch link sees: one runner, by initials, and nothing else. <see cref="Ended"/>
+/// once the run has stopped (no position is returned then); <see cref="Live"/> while the server has
+/// heard from the runner recently enough to call them out.
+/// </summary>
+public record CasualWatchView(
+    string Label,
+    bool Ended,
+    bool Live,
+    WatchPosition? Position
+);
