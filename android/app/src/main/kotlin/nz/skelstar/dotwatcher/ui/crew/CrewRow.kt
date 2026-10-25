@@ -32,7 +32,7 @@ import nz.skelstar.dotwatcher.crew.crewRowSummary
 import nz.skelstar.dotwatcher.crew.label
 import nz.skelstar.dotwatcher.ui.CrewDot
 import nz.skelstar.dotwatcher.ui.GroupedCard
-import nz.skelstar.dotwatcher.ui.crewColor
+import nz.skelstar.dotwatcher.ui.colorFor
 import nz.skelstar.dotwatcher.ui.groupedCardColor
 
 /**
@@ -75,7 +75,7 @@ fun CrewRow(state: CrewUiState, onClick: () -> Unit, modifier: Modifier = Modifi
                         // size the ringed 30 dot used to have.
                         CrewDot(
                             initials = member.displayName,
-                            color = crewColor(member.userId),
+                            color = state.colorFor(member.userId),
                             size = 38.dp,
                             isCrew = false,
                             modifier = Modifier
