@@ -20,7 +20,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.HelpOutline
 import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.ContentPaste
-import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -36,7 +35,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -47,16 +45,18 @@ import nz.skelstar.dotwatcher.BuildConfig
 import nz.skelstar.dotwatcher.SessionUiState
 import nz.skelstar.dotwatcher.casual.CasualModel
 import nz.skelstar.dotwatcher.crew.CrewModel
+import nz.skelstar.dotwatcher.events.EventsModel
 import nz.skelstar.dotwatcher.ui.casual.BeforeYouGoSheet
-import nz.skelstar.dotwatcher.ui.casual.CasualGoBlock
+import nz.skelstar.dotwatcher.ui.casual.crewOutLine
 import nz.skelstar.dotwatcher.ui.casual.WhoCanSeeMeSheet
 import java.time.Duration
 import nz.skelstar.dotwatcher.ui.CodeBoxField
-import nz.skelstar.dotwatcher.ui.GroupDivider
-import nz.skelstar.dotwatcher.ui.GroupedCard
 import nz.skelstar.dotwatcher.ui.crew.CrewFlow
 import nz.skelstar.dotwatcher.ui.crew.CrewRow
 import nz.skelstar.dotwatcher.ui.crew.CrewStage
+import nz.skelstar.dotwatcher.ui.landing.EventSignButton
+import nz.skelstar.dotwatcher.ui.landing.HoldSignButton
+import nz.skelstar.dotwatcher.ui.landing.SignButton
 
 /**
  * Lets a signed-in runner either start a new session ([POST /sessions]) or join an existing one
@@ -84,123 +84,110 @@ fun SessionScreen(
     state: SessionUiState,
     onCreateSession: (sessionName: String?) -> Unit,
     onJoinSession: (inviteCode: String) -> Unit,
-    onRefresh: () -> Unit,
     onSignOut: () -> Unit,
     account: AccountInfo,
     onDeleteAccount: (onError: (String) -> Unit) -> Unit,
     crew: CrewModel,
     casual: CasualModel,
+    events: EventsModel,
     onStartCasual: (Duration) -> Unit,
 ) {
-    var inviteCode by remember { mutableStateOf("") }
+    var showJoinDialog by remember { mutableStateOf(false) }
     var showBeforeYouGo by remember { mutableStateOf(false) }
     var showWhoCanSeeMe by remember { mutableStateOf(false) }
     val casualState by casual.state.collectAsState()
+    val eventsState by events.state.collectAsState()
     var showCreateDialog by remember { mutableStateOf(false) }
     var showAccount by remember { mutableStateOf(false) }
     var crewStage by remember { mutableStateOf(CrewStage.None) }
     val crewState by crew.state.collectAsState()
-    val clipboard = LocalClipboardManager.current
 
     // Crew changes on other people's phones (a code redeemed, a removal), and there are no push
     // notifications, so pick it up whenever this screen comes back to the front.
     LifecycleResumeEffect(Unit) {
         crew.refresh()
         casual.refresh()
+        events.refresh()
         onPauseOrDispose { }
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(24.dp),
-    ) {
-        AppHeader(onAccountClick = { showAccount = true })
-        Spacer(modifier = Modifier.height(24.dp))
-
-        StatusRow(onRefresh = onRefresh)
-        Spacer(modifier = Modifier.height(24.dp))
-
-        // Hidden entirely until the server says it has crew (see CrewRow).
-        if (crewState.isAvailable) {
-            CrewRow(state = crewState, onClick = { crewStage = CrewStage.List })
+    // Header, crew and any error scroll; the three sign buttons stay pinned to the bottom where a
+    // thumb reaches them.
+    Column(modifier = Modifier.fillMaxSize()) {
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .verticalScroll(rememberScrollState())
+                .padding(start = 24.dp, top = 24.dp, end = 24.dp),
+        ) {
+            AppHeader(onAccountClick = { showAccount = true })
             Spacer(modifier = Modifier.height(24.dp))
-        }
 
-        // Hidden entirely until the server says it has casual tracking for this account.
-        if (casualState.isAvailable) {
-            CasualGoBlock(crewOut = casualState.crewOut, onGoHeld = { showBeforeYouGo = true })
-            Spacer(modifier = Modifier.height(28.dp))
-        }
+            // Hidden entirely until the server says it has crew (see CrewRow).
+            if (crewState.isAvailable) {
+                CrewRow(state = crewState, onClick = { crewStage = CrewStage.List })
+                Spacer(modifier = Modifier.height(12.dp))
+            }
 
-        SectionLabel("Join a Session")
-        GroupedCard(modifier = Modifier.fillMaxWidth()) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
+            // Hidden until the server has casual for this account, and when there is no crew to be out.
+            if (casualState.isAvailable && crewState.members.isNotEmpty()) {
+                crewOutLine(casualState.crewOut)?.let {
                     Text(
-                        text = "Enter your invite code",
-                        style = MaterialTheme.typography.labelMedium,
+                        text = it,
+                        style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                    TextButton(onClick = {
-                        clipboard.getText()?.text?.let { pasted ->
-                            inviteCode = pasted
-                        }
-                    }) {
-                        Icon(
-                            imageVector = Icons.Default.ContentPaste,
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp),
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("Paste")
-                    }
                 }
-                Spacer(modifier = Modifier.height(8.dp))
-                CodeBoxField(
-                    value = inviteCode,
-                    onValueChange = { inviteCode = it },
-                    length = 6,
+            }
+
+            when (state) {
+                is SessionUiState.Loading -> {
+                    Spacer(modifier = Modifier.height(16.dp))
+                    CircularProgressIndicator()
+                }
+                is SessionUiState.Error -> {
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text(
+                        text = state.message,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
+                SessionUiState.Idle -> Unit
+            }
+        }
+
+        Column(
+            modifier = Modifier.padding(start = 24.dp, top = 16.dp, end = 24.dp, bottom = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            if (casualState.isAvailable) {
+                HoldSignButton(
+                    title = "Go",
+                    subtitle = "Hold to start",
+                    onComplete = { showBeforeYouGo = true },
                 )
             }
-            GroupDivider()
-            CardActionRow(
-                text = "Join Session",
-                // Requires the full 6 characters, matching iOS's noSessionJoinCard
-                // (`disabled(... || noSessionInviteCode.count < 6)`).
-                enabled = state !is SessionUiState.Loading && inviteCode.length == 6,
-                onClick = { onJoinSession(inviteCode) },
-            )
-        }
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        when (state) {
-            is SessionUiState.Loading -> CircularProgressIndicator()
-            is SessionUiState.Error -> Text(
-                text = state.message,
-                color = MaterialTheme.colorScheme.error,
-            )
-            SessionUiState.Idle -> Unit
-        }
-
-        Spacer(modifier = Modifier.height(24.dp))
-        Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-            TextButton(onClick = { showCreateDialog = true }) {
-                Text("Session doesn't exist yet? Create one")
+            // Only when the server has events for this account (the "events" feature).
+            eventsState.events.firstOrNull()?.let { event ->
+                EventSignButton(
+                    eyebrow = event.eyebrow,
+                    title = event.title,
+                    subtitle = event.subtitle,
+                    onClick = {},
+                )
             }
-        }
-
-        Spacer(modifier = Modifier.height(24.dp))
-        Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-            TextButton(onClick = onSignOut) {
-                Text("Sign out")
-            }
+            SignButton(
+                title = "Invite code",
+                subtitle = "Join a run you've been invited to",
+                enabled = state !is SessionUiState.Loading,
+                onClick = { showJoinDialog = true },
+            )
+            SignButton(
+                title = "Create",
+                subtitle = "Set up a new run for others",
+                enabled = state !is SessionUiState.Loading,
+                onClick = { showCreateDialog = true },
+            )
         }
     }
 
@@ -248,6 +235,17 @@ fun SessionScreen(
     }
 
     CrewFlow(crew = crew, state = crewState, stage = crewStage, onStage = { crewStage = it })
+
+    if (showJoinDialog) {
+        JoinSessionDialog(
+            enabled = state !is SessionUiState.Loading,
+            onJoin = { code ->
+                showJoinDialog = false
+                onJoinSession(code)
+            },
+            onCancel = { showJoinDialog = false },
+        )
+    }
 
     if (showCreateDialog) {
         CreateSessionDialog(
@@ -323,59 +321,63 @@ private fun AppHeader(onAccountClick: () -> Unit) {
     }
 }
 
-/** Colored dot + "Signed in" + refresh button, matching iOS's status row (media-files/
- *  Simulator Screenshot ... 16.19.49.png) — this screen is only ever reached signed-in, so unlike
- *  iOS (which also shows "Idle" for its separate tracking/connection status), there's no other
- *  state this row needs to reflect yet. [onRefresh] re-checks for an active session. */
+/** The invite-code entry that used to be the inline "Join a Session" card: paste or type the six
+ *  characters, then join. Opened from the Invite code sign. */
 @Composable
-private fun StatusRow(onRefresh: () -> Unit) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                modifier = Modifier
-                    .size(10.dp)
-                    .background(Color(0xFFFF9500), CircleShape),
-            )
-            Spacer(modifier = Modifier.width(8.dp))
-            Text(text = "Signed in", style = MaterialTheme.typography.titleMedium)
-        }
-        IconButton(onClick = onRefresh) {
-            Icon(imageVector = Icons.Default.Refresh, contentDescription = "Refresh")
-        }
-    }
-}
+private fun JoinSessionDialog(
+    enabled: Boolean,
+    onJoin: (inviteCode: String) -> Unit,
+    onCancel: () -> Unit,
+) {
+    var inviteCode by remember { mutableStateOf("") }
+    val clipboard = LocalClipboardManager.current
 
-/** Small caps-style section header above a [GroupedCard], matching the iOS screenshots'
- *  "Join a Session" label. */
-@Composable
-private fun SectionLabel(text: String) {
-    Text(
-        text = text,
-        style = MaterialTheme.typography.titleSmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = Modifier.padding(start = 4.dp, bottom = 8.dp),
-    )
-}
-
-/** A left-aligned text "button" styled as a plain row inside a [GroupedCard], matching iOS's
- *  full-width tappable rows rather than Material3's pill-shaped [androidx.compose.material3.Button]. */
-@Composable
-private fun CardActionRow(text: String, enabled: Boolean, onClick: () -> Unit) {
-    TextButton(
-        onClick = onClick,
-        enabled = enabled,
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Text(
-            text = text,
+    Dialog(onDismissRequest = onCancel) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(vertical = 4.dp),
-        )
+                .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(20.dp))
+                .padding(24.dp),
+        ) {
+            Text(
+                text = "Enter your invite code",
+                textAlign = TextAlign.Center,
+                style = MaterialTheme.typography.titleLarge,
+            )
+            Spacer(modifier = Modifier.height(12.dp))
+            TextButton(onClick = {
+                clipboard.getText()?.text?.let { pasted -> inviteCode = pasted }
+            }) {
+                Icon(
+                    imageVector = Icons.Default.ContentPaste,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp),
+                )
+                Spacer(modifier = Modifier.width(4.dp))
+                Text("Paste")
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+            CodeBoxField(
+                value = inviteCode,
+                onValueChange = { inviteCode = it },
+                length = 6,
+            )
+            Spacer(modifier = Modifier.height(20.dp))
+            Button(
+                onClick = { onJoin(inviteCode) },
+                // Requires the full 6 characters, matching iOS's noSessionJoinCard
+                // (`disabled(... || noSessionInviteCode.count < 6)`).
+                enabled = enabled && inviteCode.length == 6,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text("Join Session")
+            }
+            Spacer(modifier = Modifier.height(4.dp))
+            TextButton(onClick = onCancel, modifier = Modifier.fillMaxWidth()) {
+                Text("Cancel")
+            }
+        }
     }
 }
 

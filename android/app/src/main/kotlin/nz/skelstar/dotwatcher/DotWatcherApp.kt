@@ -98,12 +98,12 @@ fun DotWatcherApp(hasBackgroundLocationPermission: Boolean) {
                     state = sessionState,
                     onCreateSession = viewModel::createSession,
                     onJoinSession = viewModel::joinSession,
-                    onRefresh = viewModel::refresh,
                     onSignOut = viewModel::signOut,
                     account = viewModel.account,
                     onDeleteAccount = viewModel::deleteAccount,
                     crew = viewModel.crew,
                     casual = viewModel.casual,
+                    events = viewModel.events,
                     onStartCasual = { duration ->
                         if (hasBackgroundLocationPermission) {
                             casualNeedsLocationPermission = false

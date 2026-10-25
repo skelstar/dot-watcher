@@ -65,7 +65,7 @@ import nz.skelstar.dotwatcher.crew.label
 import nz.skelstar.dotwatcher.network.CrewMember
 import nz.skelstar.dotwatcher.ui.CodeBoxField
 import nz.skelstar.dotwatcher.ui.CrewDot
-import nz.skelstar.dotwatcher.ui.crewColor
+import nz.skelstar.dotwatcher.ui.colorFor
 import java.time.Instant
 import java.time.ZoneId
 
@@ -156,7 +156,7 @@ fun CrewSheet(
                                 .padding(vertical = 8.dp)
                                 .semantics { contentDescription = "${member.label()}, in your crew" },
                         ) {
-                            CrewDot(initials = member.displayName, color = crewColor(member.userId), size = 38.dp)
+                            CrewDot(initials = member.displayName, color = state.colorFor(member.userId), size = 38.dp)
                             Spacer(modifier = Modifier.height(4.dp))
                             Text(
                                 text = member.label(),
@@ -181,7 +181,7 @@ fun CrewSheet(
                             .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(12.dp))
                             .padding(12.dp),
                     ) {
-                        CrewDot(initials = selected.displayName, color = crewColor(selected.userId))
+                        CrewDot(initials = selected.displayName, color = state.colorFor(selected.userId))
                         Spacer(modifier = Modifier.width(12.dp))
                         Column(modifier = Modifier.weight(1f)) {
                             Text(selected.label(), style = MaterialTheme.typography.titleMedium)

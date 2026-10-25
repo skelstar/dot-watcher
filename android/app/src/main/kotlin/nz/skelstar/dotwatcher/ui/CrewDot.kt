@@ -17,12 +17,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import nz.skelstar.dotwatcher.ui.map.RunnerColorPalette
-
-/** A person's colour, the same every time and on every screen: hashed from their user id into the
- *  runner palette (which keeps blue for the local user). */
-fun crewColor(userId: String): Color =
-    Color(RunnerColorPalette.colorAt(RunnerColorPalette.indexForName(userId)))
 
 /**
  * A person as a coloured circle with their two initials. The dark ring around it is the "crew mark":
