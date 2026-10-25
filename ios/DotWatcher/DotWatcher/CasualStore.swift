@@ -10,6 +10,11 @@ struct CasualStartResponse: Decodable {
     let runId: String
 }
 
+private struct CasualWatchLinkResponse: Decodable {
+    let token: String
+    let path: String
+}
+
 private struct CasualSettings: Decodable {
     let visibleToNonCrew: Bool
 }
@@ -66,6 +71,13 @@ final class CasualStore {
     var settingsError: String?
     var startError: String?
     private(set) var isStarting = false
+
+    /// The secret link to the current run that anyone can open in a browser, with no account or app.
+    /// Made when the person opens "Share your run" and kept for the run, so reopening the sheet doesn't
+    /// make another. Every link stops working when the run ends.
+    private(set) var watchLink: URL?
+    private(set) var isMakingWatchLink = false
+    private(set) var watchLinkError: String?
 
     /// What the map shows: this person and their crew by name, and anonymous dots nearby.
     private(set) var people: [CasualPosition] = []
@@ -128,6 +140,8 @@ final class CasualStore {
         crewOut = nil
         people = []
         nearby = []
+        watchLink = nil
+        watchLinkError = nil
         settingsError = nil
         startError = nil
         isBeforeYouGoPresented = false
@@ -155,6 +169,33 @@ final class CasualStore {
         }
     }
 
+    // MARK: - Watch link
+
+    /// Makes a link to the current run (if there isn't one yet). The server gives a path, which is
+    /// joined to the web site's address here, as the invite links are.
+    func makeWatchLink() async {
+        guard let location, watchLink == nil, !isMakingWatchLink else { return }
+        isMakingWatchLink = true
+        watchLinkError = nil
+        defer { isMakingWatchLink = false }
+        do {
+            let link: CasualWatchLinkResponse = try await location.send(path: "/casual/watch-link", method: "POST")
+            let base = location.webBaseURL.absoluteString.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+            watchLink = URL(string: base + link.path)
+            if watchLink == nil { watchLinkError = "Couldn't make a link." }
+        } catch {
+            watchLinkError = error.localizedDescription
+        }
+    }
+
+    /// Ends every watch link for the current run now. The next time the sheet opens it makes a new one.
+    func turnOffWatchLinks() async {
+        guard let location else { return }
+        try? await location.sendAuthorizedEmpty(path: "/casual/watch-link", method: "DELETE")
+        watchLink = nil
+        watchLinkError = nil
+    }
+
     // MARK: - Starting and stopping
 
     /// Holding Go, then Go on "Before you go": start the casual run on the server, then tracking,
@@ -170,6 +211,8 @@ final class CasualStore {
             guard location.isTracking else { return }
             people = []
             nearby = []
+            watchLink = nil
+            watchLinkError = nil
             isMapPresented = true
         } catch {
             startError = error.localizedDescription
@@ -181,6 +224,8 @@ final class CasualStore {
     func stop() {
         location?.stop()
         isMapPresented = false
+        watchLink = nil
+        watchLinkError = nil
         Task { await refresh() }
     }
 }
