@@ -5,6 +5,15 @@ import path from 'node:path'
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
+  // The map style URL embeds this key at build time (src/map/mapStyle.ts). Without it LINZ answers 400 and
+  // every map on the site is blank, with nothing to say why. A production build that is missing it is a
+  // mistake, so stop it here rather than ship it. (CI builds with a placeholder, which is fine.)
+  if (mode === 'production' && !env.VITE_LINZ_API_KEY) {
+    throw new Error(
+      'VITE_LINZ_API_KEY is not set, so the built site would have a blank map. Put it in client/.env ' +
+        'or pass it as a build argument (docker build --build-arg VITE_LINZ_API_KEY=...).',
+    )
+  }
   // Falls back to the repo root's .env so this agrees with start-local.ps1 and
   // tools/simulator on which port the server is running on, without requiring the value to
   // also be duplicated into client/.env.
