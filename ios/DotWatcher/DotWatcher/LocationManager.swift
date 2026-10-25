@@ -410,6 +410,11 @@ final class LocationManager {
         defer { isLoadingSessions = false }
         do {
             memberships = try await send(path: "/me/sessions")
+            // An earlier request that failed (a cancelled one at launch, say) leaves "Network error." in the
+            // status line. This one got through, so that text is out of date.
+            if !isTracking, status == DotWatcherAPIError.network.errorDescription {
+                status = "Signed in"
+            }
             if !sessionId.isEmpty && activeMembership == nil {
                 sessionId = ""
             }
@@ -1265,6 +1270,7 @@ final class LocationManager {
     private static func configuredServerBaseURL() -> URL {
         configuredBaseURL(
             infoKey: isTestFlightBuild ? "DotWatcherStagingAPIBaseURL" : "DotWatcherAPIBaseURL",
+            debugEnvKey: "DOTWATCHER_API_BASE_URL",
             fallback: "https://dot-watcher.skelstar.io/api"
         )
     }
@@ -1278,13 +1284,23 @@ final class LocationManager {
     private static func configuredWebBaseURL() -> URL {
         configuredBaseURL(
             infoKey: "DotWatcherWebBaseURL",
+            debugEnvKey: "DOTWATCHER_WEB_BASE_URL",
             fallback: "https://dot-watcher.skelstar.io"
         )
     }
 
-    private static func configuredBaseURL(infoKey: String, fallback: String) -> URL {
+    /// `debugEnvKey` lets a Debug run from Xcode point at another server without editing the project:
+    /// set it as an environment variable in the scheme (Edit Scheme > Run > Arguments), for example
+    /// `DOTWATCHER_API_BASE_URL=https://dot-watcher-staging.skelstar.io/api`. It wins over the
+    /// Info.plist value and does nothing in a Release build, so it can't reach TestFlight or the App Store.
+    private static func configuredBaseURL(infoKey: String, debugEnvKey: String, fallback: String) -> URL {
+        #if DEBUG
+        let override = ProcessInfo.processInfo.environment[debugEnvKey]?.trimmingCharacters(in: .whitespacesAndNewlines)
+        #else
+        let override: String? = nil
+        #endif
         let configured = Bundle.main.object(forInfoDictionaryKey: infoKey) as? String
-        let rawValue = configured?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let rawValue = override.flatMap { $0.isEmpty ? nil : $0 } ?? configured?.trimmingCharacters(in: .whitespacesAndNewlines)
         let urlString: String
         if let rawValue, !rawValue.isEmpty {
             urlString = rawValue

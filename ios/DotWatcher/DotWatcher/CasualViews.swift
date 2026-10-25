@@ -24,14 +24,22 @@ private struct HoldToComplete: ViewModifier {
     @Binding var progress: CGFloat
     let onComplete: () -> Void
     @State private var holdTask: Task<Void, Never>?
+    // True only while a finger is down. Unlike onEnded, it also goes back to false when the system
+    // cancels the touch (a scroll taking over, a sheet appearing under the finger), so a hold can't
+    // carry on, or stay stuck, after the finger has gone.
+    @GestureState private var isPressed = false
 
     func body(content: Content) -> some View {
         content
             .gesture(
                 DragGesture(minimumDistance: 0)
+                    .updating($isPressed) { _, state, _ in state = true }
                     .onChanged { _ in begin() }
                     .onEnded { _ in cancel() }
             )
+            .onChange(of: isPressed) { _, pressed in
+                if !pressed { cancel() }
+            }
             .accessibilityAddTraits(.isButton)
             .accessibilityAction { onComplete() }
     }
@@ -46,6 +54,7 @@ private struct HoldToComplete: ViewModifier {
             UIImpactFeedbackGenerator(style: .rigid).impactOccurred()
             onComplete()
             progress = 0
+            holdTask = nil
         }
     }
 
@@ -61,6 +70,32 @@ private extension View {
     func holdToComplete(progress: Binding<CGFloat>, onComplete: @escaping () -> Void) -> some View {
         modifier(HoldToComplete(progress: progress, onComplete: onComplete))
     }
+}
+
+// MARK: - Sheets
+
+/// A close button in the corner of a sheet. A phone dismisses a sheet by dragging it down; a Mac window has
+/// no such gesture, so without this the sheet could not be closed there.
+private struct SheetCloseButton: ViewModifier {
+    @Environment(\.dismiss) private var dismiss
+
+    func body(content: Content) -> some View {
+        content.overlay(alignment: .topTrailing) {
+            Button { dismiss() } label: {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.system(size: 28))
+                    .symbolRenderingMode(.hierarchical)
+                    .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain)
+            .padding(16)
+            .accessibilityLabel("Close")
+        }
+    }
+}
+
+private extension View {
+    func sheetCloseButton() -> some View { modifier(SheetCloseButton()) }
 }
 
 // MARK: - Start screen
@@ -183,6 +218,7 @@ struct BeforeYouGoSheet: View {
             }
             .padding(24)
         }
+        .sheetCloseButton()
     }
 
     private func point(_ title: String, _ body: String) -> some View {
@@ -231,6 +267,7 @@ struct WhoCanSeeMeSheet: View {
         }
         .padding(24)
         .frame(maxWidth: .infinity, alignment: .leading)
+        .sheetCloseButton()
     }
 }
 
@@ -308,6 +345,7 @@ struct CasualMapScreen: View {
     @State private var stopProgress: CGFloat = 0
     @State private var showExtend = false
     @State private var showWhoCanSeeMe = false
+    @State private var showShare = false
     @State private var fittedCount = -1
 
     private static let pollInterval: Duration = .seconds(10)
@@ -397,6 +435,10 @@ struct CasualMapScreen: View {
         .sheet(isPresented: $showWhoCanSeeMe) {
             WhoCanSeeMeSheet(casual: casual)
                 .presentationDetents([.medium])
+        }
+        .sheet(isPresented: $showShare) {
+            ShareRunSheet(casual: casual)
+                .presentationDetents([.large])
         }
     }
 
@@ -524,6 +566,10 @@ struct CasualMapScreen: View {
 
     private var rail: some View {
         VStack(spacing: 10) {
+            railButton("square.and.arrow.up", label: "Share a link to watch me") {
+                showShare = true
+                Task { await casual.makeWatchLink() }
+            }
             railButton("arrow.up.left.and.arrow.down.right", label: "Fit all runners") { fitAll() }
             railButton("eye", label: "Who can see me") { showWhoCanSeeMe = true }
         }
@@ -661,6 +707,83 @@ private struct LockBadge: View {
     }
 }
 
+/// "Share your run": a secret link to a web map of just this person, for someone with no app or account.
+/// It can be sent through the share sheet, opened in the browser, or copied. The link stops working when
+/// the run ends, and "Turn off links" ends it sooner.
+private struct ShareRunSheet: View {
+    var casual: CasualStore
+    @Environment(\.openURL) private var openURL
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                Text("Share your run")
+                    .font(.largeTitle.bold())
+                Text("Send this link to someone who isn't in the app. They watch your position on a web map. No app and no account.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+
+                if let url = casual.watchLink {
+                    Text(url.absoluteString)
+                        .font(.system(.subheadline, design: .monospaced))
+                        .textSelection(.enabled)
+                    ShareLink(item: url, message: Text("Watch my run on Dot Watcher")) {
+                        Text("Share link")
+                            .font(.headline)
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(goGreen)
+                    .controlSize(.large)
+                    Button { openURL(url) } label: {
+                        Text("Open in browser").frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.large)
+                    Button { UIPasteboard.general.string = url.absoluteString } label: {
+                        Text("Copy link").frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.large)
+                } else if let error = casual.watchLinkError {
+                    Text(error).font(.subheadline.weight(.semibold)).foregroundStyle(.red)
+                    Button { Task { await casual.makeWatchLink() } } label: {
+                        Text("Try again").frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.large)
+                } else {
+                    ProgressView().frame(maxWidth: .infinity)
+                }
+
+                point("Works until you stop", "The link goes dead when your run ends. A new run gets a new link.")
+                point("Shows only you", "Not your crew, and not anyone nearby.")
+
+                if casual.watchLink != nil {
+                    Button(role: .destructive) {
+                        Task {
+                            await casual.turnOffWatchLinks()
+                            dismiss()
+                        }
+                    } label: {
+                        Text("Turn off links").frame(maxWidth: .infinity)
+                    }
+                }
+            }
+            .padding(24)
+        }
+        .sheetCloseButton()
+    }
+
+    private func point(_ title: String, _ body: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title).font(.headline)
+            Text(body).font(.subheadline).foregroundStyle(.secondary)
+        }
+    }
+}
+
 /// Opened by tapping the countdown: add time to the current auto-stop, or stop now.
 private struct ExtendSheet: View {
     let onExtend: (TimeInterval) -> Void
@@ -697,5 +820,6 @@ private struct ExtendSheet: View {
             .controlSize(.large)
         }
         .padding(24)
+        .sheetCloseButton()
     }
 }
