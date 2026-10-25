@@ -136,6 +136,12 @@ data class CasualSettings(val visibleToNonCrew: Boolean = false)
 @Serializable
 data class UpdateCasualSettingsRequest(val visibleToNonCrew: Boolean)
 
+// --- Events near you (server: Controllers/EventsController.cs) --------------------------
+
+/** A public event shown on the start screen. [eyebrow] is the small line above the title. */
+@Serializable
+data class NearbyEvent(val id: String, val eyebrow: String, val title: String, val subtitle: String)
+
 /** Yourself or someone in your crew, out casually. The same fields as [RunnerPosition] plus
  *  [inSession] (they are in a named session rather than out casually: the lock) and [isSelf]. */
 @Serializable
@@ -396,6 +402,13 @@ interface DotWatcherApi {
         @Header("Authorization") bearerToken: String,
         @Header("X-Api-Version") apiVersion: String = API_VERSION,
     ): Response<CasualLiveResponse>
+
+    /** 404 on a server without events, or for an account that hasn't been given the feature. */
+    @GET("me/events/nearby")
+    suspend fun getNearbyEvents(
+        @Header("Authorization") bearerToken: String,
+        @Header("X-Api-Version") apiVersion: String = API_VERSION,
+    ): Response<List<NearbyEvent>>
 
     /** 404 on a server without casual, or for an account that hasn't been given it. */
     @GET("me/casual/settings")

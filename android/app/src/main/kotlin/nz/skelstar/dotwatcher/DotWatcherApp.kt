@@ -103,6 +103,7 @@ fun DotWatcherApp(hasBackgroundLocationPermission: Boolean) {
                     onDeleteAccount = viewModel::deleteAccount,
                     crew = viewModel.crew,
                     casual = viewModel.casual,
+                    events = viewModel.events,
                     onStartCasual = { duration ->
                         if (hasBackgroundLocationPermission) {
                             casualNeedsLocationPermission = false

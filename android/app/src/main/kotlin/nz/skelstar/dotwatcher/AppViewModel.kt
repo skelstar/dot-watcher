@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import nz.skelstar.dotwatcher.casual.CasualModel
 import nz.skelstar.dotwatcher.casual.CasualPrefs
+import nz.skelstar.dotwatcher.events.EventsModel
 import nz.skelstar.dotwatcher.crew.CrewModel
 import nz.skelstar.dotwatcher.data.AuthTokenStore
 import nz.skelstar.dotwatcher.data.DotWatcherRepository
@@ -71,6 +72,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     /** The signed-in account's crew. Shares this ViewModel's repository and scope rather than being a
      *  second ViewModel, so there is one network stack (see the class note above). */
     val crew = CrewModel(repository, viewModelScope)
+
+    /** Public events near the signed-in account. */
+    val events = EventsModel(repository, viewModelScope)
 
     /** Casual tracking: start tracking without creating or joining a session. */
     val casual = CasualModel(repository, viewModelScope, CasualPrefs(application))

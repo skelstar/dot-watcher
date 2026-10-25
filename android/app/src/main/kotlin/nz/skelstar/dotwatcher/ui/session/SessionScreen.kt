@@ -45,6 +45,7 @@ import nz.skelstar.dotwatcher.BuildConfig
 import nz.skelstar.dotwatcher.SessionUiState
 import nz.skelstar.dotwatcher.casual.CasualModel
 import nz.skelstar.dotwatcher.crew.CrewModel
+import nz.skelstar.dotwatcher.events.EventsModel
 import nz.skelstar.dotwatcher.ui.casual.BeforeYouGoSheet
 import nz.skelstar.dotwatcher.ui.casual.crewOutLine
 import nz.skelstar.dotwatcher.ui.casual.WhoCanSeeMeSheet
@@ -88,12 +89,14 @@ fun SessionScreen(
     onDeleteAccount: (onError: (String) -> Unit) -> Unit,
     crew: CrewModel,
     casual: CasualModel,
+    events: EventsModel,
     onStartCasual: (Duration) -> Unit,
 ) {
     var showJoinDialog by remember { mutableStateOf(false) }
     var showBeforeYouGo by remember { mutableStateOf(false) }
     var showWhoCanSeeMe by remember { mutableStateOf(false) }
     val casualState by casual.state.collectAsState()
+    val eventsState by events.state.collectAsState()
     var showCreateDialog by remember { mutableStateOf(false) }
     var showAccount by remember { mutableStateOf(false) }
     var crewStage by remember { mutableStateOf(CrewStage.None) }
@@ -104,6 +107,7 @@ fun SessionScreen(
     LifecycleResumeEffect(Unit) {
         crew.refresh()
         casual.refresh()
+        events.refresh()
         onPauseOrDispose { }
     }
 
@@ -163,14 +167,15 @@ fun SessionScreen(
                     onComplete = { showBeforeYouGo = true },
                 )
             }
-            // Placeholder until public events exist: always shown for now so release builds can be tried on a
-            // phone. Remove, or gate on real event data, before this ships to users.
-            EventSignButton(
-                eyebrow = "Happening near you · 2.3 km",
-                title = "Rogaine event",
-                subtitle = "Sat 9am · Hunua Ranges · 14 joined",
-                onClick = {},
-            )
+            // Only when the server has events for this account (the "events" feature).
+            eventsState.events.firstOrNull()?.let { event ->
+                EventSignButton(
+                    eyebrow = event.eyebrow,
+                    title = event.title,
+                    subtitle = event.subtitle,
+                    onClick = {},
+                )
+            }
             SignButton(
                 title = "Invite code",
                 subtitle = "Join a run you've been invited to",
