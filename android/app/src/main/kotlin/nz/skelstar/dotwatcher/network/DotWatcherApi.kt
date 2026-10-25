@@ -159,6 +159,11 @@ data class NearbyDot(
     val inSession: Boolean = false,
 )
 
+/** A secret link that lets someone with no account or app watch the caller's current run on the web.
+ *  [path] is relative to the web site (`/watch/{token}`); the full link is the web base URL plus it. */
+@Serializable
+data class CasualWatchLinkResponse(val token: String, val path: String)
+
 @Serializable
 data class CasualLiveResponse(
     val participants: List<String> = emptyList(),
@@ -369,6 +374,19 @@ interface DotWatcherApi {
 
     @POST("casual/stop")
     suspend fun casualStop(
+        @Header("Authorization") bearerToken: String,
+        @Header("X-Api-Version") apiVersion: String = API_VERSION,
+    ): Response<Unit>
+
+    /** 409 when the caller isn't out on a run; 404 on a server (or account) without casual. */
+    @POST("casual/watch-link")
+    suspend fun createCasualWatchLink(
+        @Header("Authorization") bearerToken: String,
+        @Header("X-Api-Version") apiVersion: String = API_VERSION,
+    ): Response<CasualWatchLinkResponse>
+
+    @DELETE("casual/watch-link")
+    suspend fun revokeCasualWatchLinks(
         @Header("Authorization") bearerToken: String,
         @Header("X-Api-Version") apiVersion: String = API_VERSION,
     ): Response<Unit>

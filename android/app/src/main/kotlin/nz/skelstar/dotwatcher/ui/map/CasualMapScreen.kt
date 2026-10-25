@@ -14,6 +14,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -40,6 +42,8 @@ import nz.skelstar.dotwatcher.location.TrackingState
 import nz.skelstar.dotwatcher.network.NearbyDot
 import nz.skelstar.dotwatcher.network.RunnerPosition
 import nz.skelstar.dotwatcher.ui.casual.HoldToStopPill
+import nz.skelstar.dotwatcher.ui.casual.ShareRunSheet
+import nz.skelstar.dotwatcher.ui.casual.WatchLinkState
 import nz.skelstar.dotwatcher.ui.casual.WhoCanSeeMeSheet
 
 private const val POLL_INTERVAL_MS = 10_000L
@@ -64,6 +68,10 @@ fun CasualMapScreen(
     var crewOut by remember { mutableStateOf(0) }
     var showExtendSheet by remember { mutableStateOf(false) }
     var showWhoCanSeeMe by remember { mutableStateOf(false) }
+    var showShare by remember { mutableStateOf(false) }
+    // The link made for this run, kept while the screen is up so reopening the sheet doesn't make another.
+    var watchLink by remember { mutableStateOf<WatchLinkState>(WatchLinkState.Creating) }
+    val scope = rememberCoroutineScope()
     var fitAll by remember { mutableStateOf(true) }
     var followedRunner by remember { mutableStateOf<String?>(null) }
     var fitAllTick by remember { mutableStateOf(0) }
@@ -101,6 +109,32 @@ fun CasualMapScreen(
                 delay(POLL_INTERVAL_MS)
             }
         }
+    }
+
+    fun makeWatchLink() {
+        watchLink = WatchLinkState.Creating
+        scope.launch {
+            watchLink = casual.createWatchLink(BuildConfig.WEB_BASE_URL).fold(
+                onSuccess = { WatchLinkState.Ready(it) },
+                onFailure = { WatchLinkState.Failed(it.message ?: "Couldn't make a link.") },
+            )
+        }
+    }
+
+    if (showShare) {
+        ShareRunSheet(
+            state = watchLink,
+            onRetry = ::makeWatchLink,
+            onTurnOff = {
+                scope.launch {
+                    casual.turnOffWatchLinks()
+                    // A fresh link is made the next time the sheet opens.
+                    watchLink = WatchLinkState.Creating
+                    showShare = false
+                }
+            },
+            onDismiss = { showShare = false },
+        )
     }
 
     tracking?.takeIf { showExtendSheet }?.let { running ->
@@ -173,6 +207,10 @@ fun CasualMapScreen(
                 .padding(end = 14.dp, top = 8.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
+            RailButton(RailIcon.Share, "Share a link to watch me") {
+                if (watchLink !is WatchLinkState.Ready) makeWatchLink()
+                showShare = true
+            }
             RailButton(RailIcon.Fit, "Fit all runners", active = fitAll) {
                 followedRunner = null
                 fitAll = true
