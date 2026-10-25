@@ -18,6 +18,9 @@ struct ContentView: View {
     @State private var showUpdateRequired: Bool = false
     @State private var showLeaveConfirm: Bool = false
     @State private var showShareConsent: Bool = false
+    /// True from the moment a join starts until the share dialog is answered, so the landing screen stays put
+    /// (as it does for Go) instead of the session screen flashing up under the map and dialog.
+    @State private var joinShareFlow = false
     /// The web route-upload page while it's open in the in-app browser; nil otherwise.
     @State private var routeUploadPage: IdentifiableURL?
     @State private var routeUploadError: String?
@@ -60,6 +63,12 @@ struct ContentView: View {
             .modifier(CrewHost(crew: crew, location: location, yieldsToCasualMap: casual.isMapPresented))
             .modifier(CasualHost(casual: casual, crew: crew, location: location))
             .modifier(EventsHost(events: events, location: location))
+            .modifier(SessionMapCover(
+                location: location,
+                casualMapPresented: casual.isMapPresented,
+                showShareConsent: $showShareConsent,
+                joinShareFlow: $joinShareFlow
+            ))
             .preferredColorScheme(location.appearanceMode.colorScheme)
             .onAppear {
                 UIDevice.current.isBatteryMonitoringEnabled = true
@@ -196,20 +205,6 @@ struct ContentView: View {
             .onChange(of: location.updateRequired) { _, updateRequired in
                 if updateRequired { showUpdateRequired = true }
             }
-            .sheet(isPresented: $showShareConsent) {
-                if let membership = location.activeMembership {
-                    ShareLocationConsentView(
-                        sessionName: membership.sessionName,
-                        onShare: { duration in
-                            location.recordSharingConsent(sessionId: membership.sessionId)
-                            location.start(duration: duration)
-                        },
-                        onDecline: {}
-                    )
-                    .presentationDetents([.medium, .large])
-                    .preferredColorScheme(location.appearanceMode.colorScheme)
-                }
-            }
             .confirmationDialog(
                 blockCandidateName ?? "",
                 isPresented: blockDialogPresented,
@@ -258,7 +253,7 @@ struct ContentView: View {
 
     @ViewBuilder
     private var mainContent: some View {
-        if location.isAuthenticated && location.memberships.isEmpty {
+        if location.isAuthenticated && (location.memberships.isEmpty || joinShareFlow) {
             noSessionView
         } else {
             sessionView
@@ -384,16 +379,6 @@ struct ContentView: View {
                         .background(.regularMaterial)
                 }
             }
-        }
-        // While tracking in a named session the full-screen map takes over, as it does for Go. Stopping
-        // (or leaving) clears `isTracking`, which brings the session screen back. Not when out casually:
-        // that has its own map.
-        .fullScreenCover(isPresented: Binding(
-            get: { location.isTracking && location.activeMembership != nil && !casual.isMapPresented },
-            set: { _ in }
-        )) {
-            SessionMapScreen(location: location)
-                .preferredColorScheme(location.appearanceMode.colorScheme)
         }
     }
 
@@ -866,11 +851,14 @@ struct ContentView: View {
     private func noSessionJoinSession() async {
         isBusy = true
         formError = nil
+        joinShareFlow = true
         do {
             try await location.joinInvite(code: noSessionInviteCode, displayName: location.runnerName)
             noSessionInviteCode = ""
             pendingLinkCode = nil
+            offerSharingAfterJoin()
         } catch {
+            joinShareFlow = false
             formError = error.localizedDescription
         }
         isBusy = false
@@ -897,12 +885,26 @@ struct ContentView: View {
         pendingLinkCode = nil
         isBusy = true
         formError = nil
+        joinShareFlow = true
         do {
             try await location.joinInvite(code: code, displayName: location.runnerName)
+            offerSharingAfterJoin()
         } catch {
+            joinShareFlow = false
             formError = error.localizedDescription
         }
         isBusy = false
+    }
+
+    /// Just joined: ask how long to share for straight away, so confirming starts tracking and the map
+    /// opens, instead of stopping at the session screen with a Start tracking button. Not for a viewer,
+    /// who can't share. "Don't Share" lands on the session screen as a spectator.
+    private func offerSharingAfterJoin() {
+        guard let membership = location.activeMembership, membership.role != "viewer" else {
+            joinShareFlow = false
+            return
+        }
+        showShareConsent = true
     }
 
     // MARK: - Block Participant

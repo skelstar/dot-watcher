@@ -7,7 +7,7 @@ import SwiftUI
 struct SessionMapScreen: View {
     var location: LocationManager
 
-    @State private var camera: MapCameraPosition = .automatic
+    @State private var camera: MapCameraPosition = .userLocation(fallback: .automatic)
     @State private var stopProgress: CGFloat = 0
     @State private var showExtend = false
     @State private var showParticipants = false
@@ -51,7 +51,11 @@ struct SessionMapScreen: View {
                     VStack(alignment: .leading, spacing: 10) {
                         HStack(spacing: 8) {
                             MapWordmark(runnerName: location.runnerName)
-                            MapCountdown(location: location) { showExtend = true }
+                            // Nothing to count down until sharing starts: the map is also the backdrop for
+                            // the "share your location?" dialog.
+                            if location.isTracking {
+                                MapCountdown(location: location) { showExtend = true }
+                            }
                         }
                         EndingSoonPill(location: location)
                     }
@@ -74,7 +78,9 @@ struct SessionMapScreen: View {
                     HStack(alignment: .bottom) {
                         participantsRow
                         Spacer(minLength: 12)
-                        HoldToStopPill(progress: $stopProgress) { location.stop() }
+                        if location.isTracking {
+                            HoldToStopPill(progress: $stopProgress) { location.stop() }
+                        }
                     }
                     .padding(.horizontal, 14)
                     .padding(.bottom, 26)
@@ -348,5 +354,47 @@ private struct ParticipantsSheet: View {
         guard let age else { return "No position yet" }
         if age < 60 { return "Updated just now" }
         return "Updated \(Int(age / 60)) min ago"
+    }
+}
+
+/// Shows the session map full-screen while tracking in a named session, and as the backdrop while the
+/// "share your location?" dialog is up, so joining goes from the code straight to the map (as Go goes from
+/// "Before you go" to its map). Stopping, leaving or "Don't Share" brings the session screen back. Not when
+/// out casually, which has its own map. The dialog is presented from here because a sheet can't be
+/// presented from the screen underneath a full-screen cover. Lives at the root so it can present over the
+/// landing screen too.
+struct SessionMapCover: ViewModifier {
+    var location: LocationManager
+    var casualMapPresented: Bool
+    @Binding var showShareConsent: Bool
+    /// Set while a join is in progress; cleared once the dialog is answered or dismissed.
+    @Binding var joinShareFlow: Bool
+
+    func body(content: Content) -> some View {
+        content
+            .fullScreenCover(isPresented: Binding(
+                get: { location.activeMembership != nil && (location.isTracking || showShareConsent) && !casualMapPresented },
+                set: { _ in }
+            )) {
+                SessionMapScreen(location: location)
+                    .preferredColorScheme(location.appearanceMode.colorScheme)
+                    .sheet(isPresented: $showShareConsent) {
+                        if let membership = location.activeMembership {
+                            ShareLocationConsentView(
+                                sessionName: membership.sessionName,
+                                onShare: { duration in
+                                    location.recordSharingConsent(sessionId: membership.sessionId)
+                                    location.start(duration: duration)
+                                },
+                                onDecline: {}
+                            )
+                            .presentationDetents([.medium, .large])
+                            .preferredColorScheme(location.appearanceMode.colorScheme)
+                        }
+                    }
+            }
+            .onChange(of: showShareConsent) { _, isShowing in
+                if !isShowing { joinShareFlow = false }
+            }
     }
 }
