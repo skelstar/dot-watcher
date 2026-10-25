@@ -106,10 +106,33 @@ the map beyond the 10 s poll, iOS.
 
 ---
 
+## iOS status
+
+Branch `ios-casual` (off `staging`). Built with `xcodebuild` and run in the iPhone 17 Pro simulator against a local
+server: hold Go, Before you go (4h default), the casual map with own dot, countdown, nearby grey dots, the padlock for a
+person in a named session, Who can see me (switch saved to the server), and Hold to stop (server shows nobody out).
+Not yet on a real phone. Same decisions as Android:
+
+- `CasualStore.swift` (state and server calls, like `CrewStore`) and `CasualViews.swift` (Go block, Before you go, Who
+  can see me, the map, and `CasualHost`, which presents them once at the top of `ContentView`, like `CrewHost`).
+- `LocationManager`: `startCasual` runs the same tracking loop against the casual session id (kept out of `sessionId`,
+  which `loadSessions()` clears when there is no membership). A 403 on a casual post calls `/casual/start` and
+  retries once; `stop()` ends the run on the server (token captured first, so sign-out can't lose it);
+  `extendTracking(by:)` backs the countdown's +30 min / +1 hr / +2 hr and never passes the 24 hour bound.
+- Hidden unless `GET /me/casual/settings` succeeds, so an older server or an account without the feature shows nothing.
+- The map is a full-screen cover (not the session map's drag sheet), like the Android casual map.
+- Fit-all includes the anonymous dots, so the person sees them. (Android's fit-all frames only the runners.)
+
+Not built on iOS: tap-a-pin-to-follow on the casual map, and resuming
+a run after the app is killed (iOS stops tracking when the app is terminated, and the server drops the dot after its
+stale timeout).
+
+---
+
 ## Watch link status
 
 Branch `casual-watch-link` (off `staging`): the **server and web page** for sharing a run with someone who has no
-account or app. The apps' buttons (Android, iOS) are not built yet.
+account or app. The apps' buttons are in their own PRs (iOS #218, Android #219).
 
 - `POST /casual/watch-link` (signed in, out on a run; 409 otherwise) makes a secret link for the current run and
   returns `{ token, path }`; `DELETE /casual/watch-link` ends every link for the run now. Each call makes a **new**
