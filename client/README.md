@@ -35,7 +35,7 @@ The app will be available at `http://localhost:5173` by default.
 
 | Variable               | Required | Default                 | Description                                              |
 | ---------------------- | -------- | ----------------------- | -------------------------------------------------------- |
-| `VITE_LINZ_API_KEY`    | Yes      | —                       | LINZ Basemaps API key for rendering the topographic map (public in the built bundle, like an old Mapbox public token — coverage is NZ-only, blank elsewhere) |
+| `VITE_LINZ_API_KEY`    | Yes      | —                       | LINZ Basemaps API key for rendering the topographic map (public in the built bundle, like an old Mapbox public token — coverage is NZ-only, blank elsewhere). A production build fails without it; in Docker, supply it in `client/.env` or as `--build-arg VITE_LINZ_API_KEY=...` |
 | `VITE_SERVER_URL`      | No       | `/api`                  | Base URL of the dot-watcher server                       |
 | `VITE_APP_VERSION`    | No       | `v-{git-sha}-beta`      | Version label shown in the client footer                 |
 | `VITE_APP_UPDATED_AT` | No       | `Updated {NZ datetime}` | Build/update timestamp shown in the client footer        |
