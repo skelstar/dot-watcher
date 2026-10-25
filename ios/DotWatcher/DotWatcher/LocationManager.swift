@@ -87,7 +87,9 @@ private struct ServerErrorBody: Decodable {
 enum DotWatcherAPIError: LocalizedError {
     case missingToken
     case badResponse(Int, String?)
-    case network
+    /// The request never got a usable answer from the server (unlike `badResponse`, where the server answered
+    /// with an error). `detail` says in words what went wrong; nil gives the generic message.
+    case network(String? = nil)
 
     var errorDescription: String? {
         switch self {
@@ -95,8 +97,8 @@ enum DotWatcherAPIError: LocalizedError {
             return "Sign in required."
         case .badResponse(_, let message):
             return message ?? "Something went wrong. Please try again."
-        case .network:
-            return "Network error."
+        case .network(let detail):
+            return detail ?? "Network error."
         }
     }
 }
@@ -362,10 +364,16 @@ final class LocationManager {
     }
 
     func signIn(username: String, password: String) async throws {
-        try await authenticate(path: "/auth/login", body: [
-            "username": username,
-            "password": password,
-        ])
+        do {
+            try await authenticate(path: "/auth/login", body: [
+                "username": username,
+                "password": password,
+            ])
+        } catch DotWatcherAPIError.badResponse(401, _) {
+            // The server answers a failed sign-in with a bare 401 on purpose (it never says whether the
+            // username or the password was wrong), which the app would otherwise show as a generic error.
+            throw DotWatcherAPIError.badResponse(401, "Wrong username or password.")
+        }
     }
 
     func register(username: String, password: String, displayName: String) async throws {
@@ -412,7 +420,7 @@ final class LocationManager {
             memberships = try await send(path: "/me/sessions")
             // An earlier request that failed (a cancelled one at launch, say) leaves "Network error." in the
             // status line. This one got through, so that text is out of date.
-            if !isTracking, status == DotWatcherAPIError.network.errorDescription {
+            if !isTracking, Self.isNetworkProblemText(status) {
                 status = "Signed in"
             }
             if !sessionId.isEmpty && activeMembership == nil {
@@ -527,7 +535,7 @@ final class LocationManager {
             resolvingAgainstBaseURL: false
         )
         components?.fragment = "token=\(issued.token)"
-        guard let url = components?.url else { throw DotWatcherAPIError.network }
+        guard let url = components?.url else { throw DotWatcherAPIError.network() }
         return url
     }
 
@@ -1097,7 +1105,7 @@ final class LocationManager {
     ) async throws -> T {
         let normalizedPath = path.hasPrefix("/") ? path : "/\(path)"
         guard let url = URL(string: serverBaseURL.absoluteString + normalizedPath) else {
-            throw DotWatcherAPIError.network
+            throw DotWatcherAPIError.network()
         }
         var request = URLRequest(url: url)
         request.httpMethod = method
@@ -1123,11 +1131,16 @@ final class LocationManager {
                 let message = try? JSONDecoder().decode(ServerErrorBody.self, from: data)
                 throw DotWatcherAPIError.badResponse(statusCode, message?.error)
             }
-            return try JSONDecoder().decode(T.self, from: data)
+            do {
+                return try JSONDecoder().decode(T.self, from: data)
+            } catch {
+                print("[net] \(url.path) reply couldn't be read: \(error)")
+                throw DotWatcherAPIError.badResponse(statusCode, "The server sent a reply the app couldn't read. Try updating the app.")
+            }
         } catch let error as DotWatcherAPIError {
             throw error
         } catch {
-            throw DotWatcherAPIError.network
+            throw Self.networkError(for: error, url: url)
         }
     }
 
@@ -1156,7 +1169,7 @@ final class LocationManager {
     private func sendEmpty(path: String, method: String, token: String) async throws {
         let normalizedPath = path.hasPrefix("/") ? path : "/\(path)"
         guard let url = URL(string: serverBaseURL.absoluteString + normalizedPath) else {
-            throw DotWatcherAPIError.network
+            throw DotWatcherAPIError.network()
         }
 
         var request = URLRequest(url: url)
@@ -1178,8 +1191,39 @@ final class LocationManager {
         } catch let error as DotWatcherAPIError {
             throw error
         } catch {
-            throw DotWatcherAPIError.network
+            throw Self.networkError(for: error, url: url)
         }
+    }
+
+    /// Words for a request that failed below the HTTP level, so the message tells the person what to try.
+    /// The host is named because a build pointed at the wrong server (localhost, a LAN machine, staging) looks
+    /// exactly like an outage otherwise. The underlying error goes to the console.
+    private static func networkError(for error: Error, url: URL) -> DotWatcherAPIError {
+        print("[net] \(url.host ?? "?") request failed: \(error)")
+        guard let urlError = error as? URLError else { return .network() }
+        let host = url.port.map { "\(url.host ?? "the server"):\($0)" } ?? (url.host ?? "the server")
+        switch urlError.code {
+        case .notConnectedToInternet, .networkConnectionLost, .dataNotAllowed, .internationalRoamingOff:
+            return .network("No internet connection.")
+        case .cancelled:
+            return .network("The request was interrupted. Try again.")
+        case .timedOut:
+            return .network("\(host) didn't answer in time. Try again.")
+        case .cannotFindHost, .cannotConnectToHost, .dnsLookupFailed:
+            return .network("Can't reach \(host). Check your connection and try again.")
+        case .secureConnectionFailed, .serverCertificateUntrusted, .serverCertificateHasBadDate,
+             .serverCertificateHasUnknownRoot, .serverCertificateNotYetValid:
+            return .network("Can't make a secure connection to \(host).")
+        default:
+            return .network()
+        }
+    }
+
+    /// The status-line texts a failed request leaves behind (see `networkError(for:url:)`).
+    private static func isNetworkProblemText(_ text: String) -> Bool {
+        text == "Network error." || text == "No internet connection." || text == "The request was interrupted. Try again."
+            || text.hasPrefix("Can't reach ") || text.hasPrefix("Can't make a secure connection")
+            || text.hasSuffix("didn't answer in time. Try again.")
     }
 
     private func upsertMembership(_ membership: SessionMembership) {
