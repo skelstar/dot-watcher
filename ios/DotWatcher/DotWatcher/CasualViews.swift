@@ -417,8 +417,8 @@ struct CasualMapScreen: View {
                             name: pin.id,
                             isHighlighted: pin.isSelf,
                             heading: pin.heading,
-                            isStale: age.map { $0 > NativeMapView.staleAfter } ?? false,
-                            isDisconnected: age.map { $0 > NativeMapView.disconnectedAfter } ?? false
+                            isStale: age.map { $0 > MapPinAge.staleAfter } ?? false,
+                            isDisconnected: age.map { $0 > MapPinAge.disconnectedAfter } ?? false
                         )
                         .overlay(alignment: .bottomTrailing) {
                             if pin.isLocked { LockBadge().offset(x: 4, y: 4) }

@@ -11,6 +11,13 @@ struct SessionMapScreen: View {
     @State private var stopProgress: CGFloat = 0
     @State private var showExtend = false
     @State private var showParticipants = false
+    /// The web route-upload page while it's open in the in-app browser; nil otherwise.
+    @State private var routeUploadPage: IdentifiableURL?
+    @State private var routeError: String?
+    @State private var showRemoveRoute = false
+    /// Who a touch-and-hold just targeted, showing the block confirmation; nil when none is up.
+    @State private var blockCandidate: String?
+    @State private var blockError: String?
     @State private var fittedCount = -1
     /// The runner the map stays centred on, picked by tapping their dot; nil frames everyone.
     @State private var followedName: String?
@@ -102,9 +109,60 @@ struct SessionMapScreen: View {
                     followedName = name
                     showParticipants = false
                     followIfNeeded()
+                },
+                onBlock: { name in
+                    showParticipants = false
+                    blockCandidate = name
                 }
             )
             .presentationDetents([.medium, .large])
+        }
+        .fullScreenCover(item: $routeUploadPage, onDismiss: {
+            Task { await location.loadRoute() }
+        }) { page in
+            SafariView(url: page.url)
+                .ignoresSafeArea()
+        }
+        .alert("Remove route?", isPresented: $showRemoveRoute) {
+            Button("Remove", role: .destructive) {
+                Task {
+                    do { try await location.removeRoute() }
+                    catch { routeError = error.localizedDescription }
+                }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This removes the route for everyone in the session.")
+        }
+        .alert("Couldn't update the route", isPresented: Binding(
+            get: { routeError != nil },
+            set: { if !$0 { routeError = nil } }
+        )) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            if let routeError { Text(routeError) }
+        }
+        .confirmationDialog(
+            blockCandidate ?? "",
+            isPresented: Binding(get: { blockCandidate != nil }, set: { if !$0 { blockCandidate = nil } }),
+            titleVisibility: .visible
+        ) {
+            if let name = blockCandidate {
+                Button("Block \(name)", role: .destructive) {
+                    Task { await blockParticipant(name: name) }
+                }
+                Button("Cancel", role: .cancel) {}
+            }
+        } message: {
+            Text("They'll be removed from this session and won't be able to join any of your sessions again.")
+        }
+        .alert("Couldn't block user", isPresented: Binding(
+            get: { blockError != nil },
+            set: { if !$0 { blockError = nil } }
+        )) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            if let blockError { Text(blockError) }
         }
         .sheet(isPresented: $showExtend) {
             ExtendSheet(
@@ -135,8 +193,8 @@ struct SessionMapScreen: View {
                             name: pin.id,
                             isHighlighted: pin.isSelf,
                             heading: pin.heading,
-                            isStale: age.map { $0 > NativeMapView.staleAfter } ?? false,
-                            isDisconnected: age.map { $0 > NativeMapView.disconnectedAfter } ?? false
+                            isStale: age.map { $0 > MapPinAge.staleAfter } ?? false,
+                            isDisconnected: age.map { $0 > MapPinAge.disconnectedAfter } ?? false
                         )
                     }
                 }
@@ -217,6 +275,53 @@ struct SessionMapScreen: View {
                 .accessibilityLabel("Share the invite")
             }
             MapRailButton(symbol: "arrow.up.left.and.arrow.down.right", label: "Fit all runners") { fitAll() }
+            Menu {
+                Button {
+                    Task { await openRouteUpload() }
+                } label: {
+                    Label(
+                        location.hasRoute ? "Replace route (GPX)…" : "Add route (GPX)…",
+                        systemImage: "point.topleft.down.to.point.bottomright.curvepath"
+                    )
+                }
+                if location.hasRoute {
+                    Button(role: .destructive) {
+                        showRemoveRoute = true
+                    } label: {
+                        Label("Remove route", systemImage: "trash")
+                    }
+                }
+            } label: {
+                Image(systemName: "point.topleft.down.to.point.bottomright.curvepath")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(.black)
+                    .frame(width: 44, height: 44)
+                    .background(Color.white.opacity(0.85), in: Circle())
+                    .shadow(color: .black.opacity(0.18), radius: 2, y: 1)
+            }
+            .accessibilityLabel("Route")
+        }
+    }
+
+    /// Asks the server for a short-lived upload link and opens the web route-upload page in an in-app
+    /// browser. The route is refetched when that browser is dismissed.
+    private func openRouteUpload() async {
+        do {
+            routeUploadPage = IdentifiableURL(url: try await location.createRouteUploadURL())
+        } catch {
+            routeError = error.localizedDescription
+        }
+    }
+
+    private func blockParticipant(name: String) async {
+        guard let userId = location.participantUserIds[name] else {
+            blockError = "Couldn't find that participant. Try refreshing and blocking again."
+            return
+        }
+        do {
+            try await location.blockUser(userId: userId, displayName: name)
+        } catch {
+            blockError = error.localizedDescription
         }
     }
 
@@ -250,7 +355,7 @@ struct SessionMapScreen: View {
                         size: 34,
                         fontSize: 11,
                         fillColor: name == me ? RunnerColorPalette.currentUser : RunnerColorPalette.color(for: name),
-                        isDisconnected: pin == nil || (age.map { $0 > NativeMapView.disconnectedAfter } ?? false)
+                        isDisconnected: pin == nil || (age.map { $0 > MapPinAge.disconnectedAfter } ?? false)
                     )
                     .overlay(
                         Circle()
@@ -267,6 +372,9 @@ struct SessionMapScreen: View {
                                 guard pin != nil else { return }
                                 followedName = followedName == name ? nil : name
                                 if followedName == nil { fitAll() } else { followIfNeeded() }
+                            }
+                            .onLongPressGesture {
+                                if name != me { blockCandidate = name }
                             }
                             .accessibilityElement(children: .ignore)
                             .accessibilityLabel(name == me ? "You" : name)
@@ -309,6 +417,7 @@ private struct ParticipantsSheet: View {
     /// Seconds since the person's last position, or nil if they have none.
     let status: (String) -> TimeInterval?
     let onSelect: (String) -> Void
+    let onBlock: (String) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -327,7 +436,7 @@ private struct ParticipantsSheet: View {
                                     size: 40,
                                     fontSize: 13,
                                     fillColor: name == me ? RunnerColorPalette.currentUser : RunnerColorPalette.color(for: name),
-                                    isDisconnected: age == nil || (age ?? 0) > NativeMapView.disconnectedAfter
+                                    isDisconnected: age == nil || (age ?? 0) > MapPinAge.disconnectedAfter
                                 )
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(name == me ? "You" : name).font(.headline)
@@ -344,6 +453,13 @@ private struct ParticipantsSheet: View {
                         }
                         .buttonStyle(.plain)
                         .disabled(age == nil)
+                        .contextMenu {
+                            if name != me {
+                                Button(role: .destructive) { onBlock(name) } label: {
+                                    Label("Block \(name)", systemImage: "hand.raised")
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -359,7 +475,8 @@ private struct ParticipantsSheet: View {
 
 /// Shows the session map full-screen while tracking in a named session, and as the backdrop while the
 /// "share your location?" dialog is up, so joining goes from the code straight to the map (as Go goes from
-/// "Before you go" to its map). Stopping, leaving or "Don't Share" brings the session screen back. Not when
+/// "Before you go" to its map). Stopping, or declining to share, leaves the session and returns to the landing
+/// screen: there is no separate session screen. Not when
 /// out casually, which has its own map. The dialog is presented from here because a sheet can't be
 /// presented from the screen underneath a full-screen cover. Lives at the root so it can present over the
 /// landing screen too.
@@ -367,8 +484,6 @@ struct SessionMapCover: ViewModifier {
     var location: LocationManager
     var casualMapPresented: Bool
     @Binding var showShareConsent: Bool
-    /// Set while a join is in progress; cleared once the dialog is answered or dismissed.
-    @Binding var joinShareFlow: Bool
 
     func body(content: Content) -> some View {
         content
@@ -386,15 +501,29 @@ struct SessionMapCover: ViewModifier {
                                     location.recordSharingConsent(sessionId: membership.sessionId)
                                     location.start(duration: duration)
                                 },
-                                onDecline: {}
+                                onDecline: { leave(membership) }
                             )
                             .presentationDetents([.medium, .large])
                             .preferredColorScheme(location.appearanceMode.colorScheme)
                         }
                     }
             }
+            // Swiping the dialog away without choosing counts as declining.
             .onChange(of: showShareConsent) { _, isShowing in
-                if !isShowing { joinShareFlow = false }
+                guard !isShowing, !location.isTracking, let membership = location.activeMembership else { return }
+                leave(membership)
             }
+            // Stopping ends your part in the session, as stopping Go ends a run: Stop, "Stop now" and the
+            // auto-stop all land here, and the person is taken back to the landing screen. Rejoin with the
+            // invite code to carry on.
+            .onChange(of: location.isTracking) { wasTracking, isTracking in
+                guard wasTracking, !isTracking, !casualMapPresented,
+                      let membership = location.activeMembership else { return }
+                leave(membership)
+            }
+    }
+
+    private func leave(_ membership: SessionMembership) {
+        Task { try? await location.leaveSession(sessionId: membership.sessionId) }
     }
 }

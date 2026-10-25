@@ -4,11 +4,11 @@ import SwiftUI
 /// with a small chevron that orbits the circle's edge to show compass heading — mirrors the
 /// web client's `Arrow.tsx` marker (upright dot + orbiting chevron), scaled to `size`.
 ///
-/// When `isStale` (no position update for `NativeMapView.staleAfter`), renders the web
+/// When `isStale` (no position update for `MapPinAge.staleAfter`), renders the web
 /// client's "sleep" style instead: white fill, colored outline/initials, gently pulsing, no
 /// chevron — signals the runner may have stopped moving or lost signal.
 ///
-/// When `isDisconnected` (no position update for `NativeMapView.disconnectedAfter`, a longer
+/// When `isDisconnected` (no position update for `MapPinAge.disconnectedAfter`, a longer
 /// threshold than `isStale`), renders a further, static style instead: transparent fill, dashed
 /// outline, initials, no pulse — signals the runner likely isn't sending data at all anymore.
 struct RunnerMapPin: View {
