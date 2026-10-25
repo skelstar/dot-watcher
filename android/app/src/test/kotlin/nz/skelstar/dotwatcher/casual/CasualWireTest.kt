@@ -4,6 +4,7 @@ import kotlinx.serialization.json.Json
 import nz.skelstar.dotwatcher.location.CASUAL_SESSION_ID
 import nz.skelstar.dotwatcher.network.CasualLiveResponse
 import nz.skelstar.dotwatcher.network.CasualSettings
+import nz.skelstar.dotwatcher.network.CasualWatchLinkResponse
 import nz.skelstar.dotwatcher.network.LocationPostResponse
 import nz.skelstar.dotwatcher.network.UpdateCasualSettingsRequest
 import nz.skelstar.dotwatcher.ui.casual.crewOutLine
@@ -89,5 +90,21 @@ class CasualWireTest {
         assertEquals("No crew out right now. They'll show up here.", crewOutLine(0))
         assertEquals("1 of your crew is out now", crewOutLine(1))
         assertEquals("3 of your crew are out now", crewOutLine(3))
+    }
+
+    @Test fun `a watch link response reads, and joins the web base URL to its path`() {
+        val link = json.decodeFromString<CasualWatchLinkResponse>(
+            """{"token":"Qm7K2x9FabcdefghijKLmn","path":"/watch/Qm7K2x9FabcdefghijKLmn"}""",
+        )
+
+        assertEquals("Qm7K2x9FabcdefghijKLmn", link.token)
+        assertEquals(
+            "https://dot-watcher.skelstar.io/watch/Qm7K2x9FabcdefghijKLmn",
+            watchLinkUrl("https://dot-watcher.skelstar.io", link.path),
+        )
+        assertEquals(
+            "https://dot-watcher.skelstar.io/watch/x",
+            watchLinkUrl("https://dot-watcher.skelstar.io/", "/watch/x"),
+        )
     }
 }

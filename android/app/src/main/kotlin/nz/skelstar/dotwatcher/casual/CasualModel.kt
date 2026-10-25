@@ -9,6 +9,9 @@ import kotlinx.coroutines.launch
 import nz.skelstar.dotwatcher.data.DotWatcherRepository
 import nz.skelstar.dotwatcher.network.errorMessageOrStatus
 
+/** The full address of a watch link: the web site's base URL joined to the path the server gives. */
+fun watchLinkUrl(webBaseUrl: String, path: String): String = webBaseUrl.trimEnd('/') + path
+
 /** Whether this server has casual tracking for this account. Until the server is updated, or while
  *  the account hasn't been given the feature, `/me/casual/settings` is a 404, and the UI then shows
  *  nothing rather than an error. Same approach as crew. */
@@ -87,6 +90,27 @@ class CasualModel(
             }
         }
     }
+
+    /**
+     * Makes a secret link to the current run that anyone can open in a browser, no account or app
+     * needed, and returns the full address ([webBaseUrl] plus the path the server gives). Each call
+     * makes a new link; every link stops working when the run ends.
+     */
+    suspend fun createWatchLink(webBaseUrl: String): Result<String> {
+        val result = runCatching { repository.createCasualWatchLink() }
+        val response = result.getOrNull()
+        val link = response?.body()
+        return when {
+            response != null && response.isSuccessful && link != null ->
+                Result.success(watchLinkUrl(webBaseUrl, link.path))
+            response != null -> Result.failure(IllegalStateException(response.errorMessageOrStatus()))
+            else -> Result.failure(IllegalStateException(result.exceptionOrNull()?.message ?: "Network error."))
+        }
+    }
+
+    /** Ends every watch link for the current run now. True when the server confirmed. */
+    suspend fun turnOffWatchLinks(): Boolean =
+        runCatching { repository.revokeCasualWatchLinks() }.getOrNull()?.isSuccessful == true
 
     fun clearError() = _state.update { it.copy(error = null) }
 
