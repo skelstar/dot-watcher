@@ -66,7 +66,7 @@ private struct HoldToComplete: ViewModifier {
     }
 }
 
-private extension View {
+extension View {
     func holdToComplete(progress: Binding<CGFloat>, onComplete: @escaping () -> Void) -> some View {
         modifier(HoldToComplete(progress: progress, onComplete: onComplete))
     }
@@ -100,64 +100,13 @@ private extension View {
 
 // MARK: - Start screen
 
-/// The big hold-to-go button with its caption, shown on the start screen when the server has casual for
-/// this account. Holding Go opens "Before you go", which is where tracking actually starts.
-struct CasualGoBlock: View {
-    var casual: CasualStore
-    @State private var progress: CGFloat = 0
-
-    var body: some View {
-        if casual.isAvailable {
-            VStack(spacing: 10) {
-                if let line = Self.crewOutLine(casual.crewOut) {
-                    Text(line)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                        .multilineTextAlignment(.center)
-                }
-                ZStack {
-                    Circle().stroke(Color(.systemGray5), lineWidth: 10)
-                    Circle()
-                        .trim(from: 0, to: progress)
-                        .stroke(goGreen, style: StrokeStyle(lineWidth: 10, lineCap: .round))
-                        .rotationEffect(.degrees(-90))
-                    Circle().fill(goGreen).padding(17)
-                    Text("Go")
-                        .font(.system(size: 60, weight: .heavy))
-                        .foregroundStyle(.white)
-                }
-                .frame(width: 224, height: 224)
-                .padding(.vertical, 4)
-                .contentShape(Circle())
-                .holdToComplete(progress: $progress) { casual.isBeforeYouGoPresented = true }
-                .accessibilityLabel("Go")
-                .accessibilityHint("Hold to start tracking")
-                Text("HOLD TO GO")
-                    .font(.footnote.weight(.bold))
-                    .foregroundStyle(.secondary)
-                Text("Out for a run? Hold Go. Your crew will see you.")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-                if let error = casual.startError {
-                    Text(error)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.red)
-                        .multilineTextAlignment(.center)
-                }
-            }
-            .frame(maxWidth: .infinity)
-        }
-    }
-
-    /// The line under the crew row: who is out, or that nobody is. nil while still loading.
-    static func crewOutLine(_ crewOut: Int?) -> String? {
-        switch crewOut {
-        case nil: return nil
-        case 0: return "No crew out right now. They'll show up here."
-        case 1: return "1 of your crew is out now"
-        default: return "\(crewOut ?? 0) of your crew are out now"
-        }
+/// The line under the crew row: who is out, or that nobody is. nil while still loading.
+func crewOutLine(_ crewOut: Int?) -> String? {
+    switch crewOut {
+    case nil: return nil
+    case 0: return "No crew out right now. They'll show up here."
+    case 1: return "1 of your crew is out now"
+    default: return "\(crewOut ?? 0) of your crew are out now"
     }
 }
 
