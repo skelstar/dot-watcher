@@ -54,8 +54,8 @@ struct ContentView: View {
     /// reasonable time").
     private var bodyWithSheets: some View {
         mainContent
-            .modifier(CrewHost(crew: crew, location: location))
-            .modifier(CasualHost(casual: casual, location: location))
+            .modifier(CrewHost(crew: crew, location: location, yieldsToCasualMap: casual.isMapPresented))
+            .modifier(CasualHost(casual: casual, crew: crew, location: location))
             .preferredColorScheme(location.appearanceMode.colorScheme)
             .onAppear {
                 UIDevice.current.isBatteryMonitoringEnabled = true

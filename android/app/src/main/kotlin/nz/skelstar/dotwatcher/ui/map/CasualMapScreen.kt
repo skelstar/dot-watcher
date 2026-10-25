@@ -1,6 +1,7 @@
 package nz.skelstar.dotwatcher.ui.map
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -9,17 +10,21 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.rememberCoroutineScope
-import kotlinx.coroutines.launch
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -33,8 +38,10 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.repeatOnLifecycle
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import nz.skelstar.dotwatcher.BuildConfig
 import nz.skelstar.dotwatcher.casual.CasualModel
+import nz.skelstar.dotwatcher.crew.CrewModel
 import nz.skelstar.dotwatcher.data.DotWatcherRepository
 import nz.skelstar.dotwatcher.location.LocationTrackingService
 import nz.skelstar.dotwatcher.location.POST_INTERVAL_SECONDS
@@ -45,6 +52,8 @@ import nz.skelstar.dotwatcher.ui.casual.HoldToStopPill
 import nz.skelstar.dotwatcher.ui.casual.ShareRunSheet
 import nz.skelstar.dotwatcher.ui.casual.WatchLinkState
 import nz.skelstar.dotwatcher.ui.casual.WhoCanSeeMeSheet
+import nz.skelstar.dotwatcher.ui.crew.CrewFlow
+import nz.skelstar.dotwatcher.ui.crew.CrewStage
 
 private const val POLL_INTERVAL_MS = 10_000L
 
@@ -59,6 +68,7 @@ private const val POLL_INTERVAL_MS = 10_000L
 fun CasualMapScreen(
     repository: DotWatcherRepository,
     casual: CasualModel,
+    crew: CrewModel,
     onStop: () -> Unit,
 ) {
     val context = LocalContext.current
@@ -69,6 +79,8 @@ fun CasualMapScreen(
     var showExtendSheet by remember { mutableStateOf(false) }
     var showWhoCanSeeMe by remember { mutableStateOf(false) }
     var showShare by remember { mutableStateOf(false) }
+    var crewStage by remember { mutableStateOf(CrewStage.None) }
+    val crewState by crew.state.collectAsState()
     // The link made for this run, kept while the screen is up so reopening the sheet doesn't make another.
     var watchLink by remember { mutableStateOf<WatchLinkState>(WatchLinkState.Creating) }
     val scope = rememberCoroutineScope()
@@ -136,6 +148,8 @@ fun CasualMapScreen(
             onDismiss = { showShare = false },
         )
     }
+
+    CrewFlow(crew = crew, state = crewState, stage = crewStage, onStage = { crewStage = it })
 
     tracking?.takeIf { showExtendSheet }?.let { running ->
         ExtendSessionSheet(
@@ -224,6 +238,8 @@ fun CasualMapScreen(
             CountChip(
                 crewOut = crewOut,
                 nearby = nearby.size.takeIf { casualState.visibleToNonCrew },
+                hasNoCrew = crewState.isAvailable && crewState.members.isEmpty(),
+                onClick = if (crewState.isAvailable) ({ crewStage = CrewStage.List }) else null,
                 modifier = Modifier
                     .align(Alignment.BottomStart)
                     .navigationBarsPadding()
@@ -253,17 +269,40 @@ fun CasualMapScreen(
 }
 
 /** "2 crew out · 5 nearby". The nearby part appears only when the person has chosen to be seen,
- *  because that is also when they can see others. */
+ *  because that is also when they can see others. Tapping it opens the crew sheet so crew can be
+ *  added mid-run; with no crew yet it says so and offers the add. [onClick] is null while crew is
+ *  unavailable. */
 @Composable
-private fun CountChip(crewOut: Int, nearby: Int?, modifier: Modifier = Modifier) {
+private fun CountChip(
+    crewOut: Int,
+    nearby: Int?,
+    hasNoCrew: Boolean,
+    onClick: (() -> Unit)?,
+    modifier: Modifier = Modifier,
+) {
     val text = buildString {
-        append(if (crewOut == 0) "No crew out" else "$crewOut crew out")
+        append(if (hasNoCrew) "No crew yet" else if (crewOut == 0) "No crew out" else "$crewOut crew out")
         if (nearby != null) append("  ·  $nearby nearby")
     }
-    Box(
-        modifier = modifier.height(36.dp).clip(CircleShape).background(GlassColor).padding(horizontal = 14.dp),
-        contentAlignment = Alignment.Center,
+    Row(
+        modifier = modifier
+            .height(36.dp)
+            .clip(CircleShape)
+            .background(GlassColor)
+            .then(if (onClick != null) Modifier.clickable(onClickLabel = "Open your crew", onClick = onClick) else Modifier)
+            .padding(horizontal = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        Text(text, color = androidx.compose.ui.graphics.Color(0xFF14181F), fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold)
+        val ink = androidx.compose.ui.graphics.Color(0xFF14181F)
+        Text(text, color = ink, fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold)
+        if (onClick != null) {
+            Icon(
+                imageVector = if (hasNoCrew) Icons.Default.Add else Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                contentDescription = null,
+                tint = ink,
+                modifier = Modifier.size(16.dp),
+            )
+        }
     }
 }

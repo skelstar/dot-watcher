@@ -277,6 +277,7 @@ struct WhoCanSeeMeSheet: View {
 /// with sign-in and the app coming to the front (as `CrewHost` does for crew).
 struct CasualHost: ViewModifier {
     @Bindable var casual: CasualStore
+    var crew: CrewStore
     var location: LocationManager
     @Environment(\.scenePhase) private var scenePhase
 
@@ -306,7 +307,7 @@ struct CasualHost: ViewModifier {
                     .preferredColorScheme(location.appearanceMode.colorScheme)
             }
             .fullScreenCover(isPresented: $casual.isMapPresented) {
-                CasualMapScreen(casual: casual, location: location)
+                CasualMapScreen(casual: casual, crew: crew, location: location)
                     .preferredColorScheme(location.appearanceMode.colorScheme)
             }
             .task {
@@ -338,6 +339,7 @@ struct CasualHost: ViewModifier {
 /// name, and (only when both have chosen to be seen) anonymous dots within 5 km. Stopping is a hold.
 struct CasualMapScreen: View {
     var casual: CasualStore
+    @Bindable var crew: CrewStore
     var location: LocationManager
 
     @Environment(\.scenePhase) private var scenePhase
@@ -439,6 +441,13 @@ struct CasualMapScreen: View {
         .sheet(isPresented: $showShare) {
             ShareRunSheet(casual: casual)
                 .presentationDetents([.large])
+        }
+        // The crew sheet lives here, not on `ContentView`, because the map is a full-screen cover. A
+        // crew link opened during a run lands here too (`CrewStore` sets the same flag).
+        .sheet(isPresented: $crew.isFlowPresented) {
+            CrewFlowView(crew: crew, webBaseURL: location.webBaseURL)
+                .presentationDetents([.large])
+                .preferredColorScheme(location.appearanceMode.colorScheme)
         }
     }
 
@@ -589,18 +598,32 @@ struct CasualMapScreen: View {
     }
 
     /// "2 crew out · 5 nearby". The nearby part appears only when the person has chosen to be seen,
-    /// because that is also when they can see others.
+    /// because that is also when they can see others. Tapping it opens the crew sheet, so crew can be
+    /// added mid-run; with no crew yet it says so and offers the add.
     private var countChip: some View {
-        let crew = casual.crewOut ?? 0
-        let text = (crew == 0 ? "No crew out" : "\(crew) crew out")
+        let crewOut = casual.crewOut ?? 0
+        let hasNoCrew = crew.isAvailable && crew.members.isEmpty
+        let text = (hasNoCrew ? "No crew yet" : crewOut == 0 ? "No crew out" : "\(crewOut) crew out")
             + (casual.visibleToNonCrew ? "  ·  \(casual.nearby.count) nearby" : "")
-        return Text(text)
+        return Button {
+            crew.isFlowPresented = true
+        } label: {
+            HStack(spacing: 6) {
+                Text(text)
+                Image(systemName: hasNoCrew ? "plus" : "chevron.right")
+                    .font(.system(size: 11, weight: .bold))
+                    .accessibilityHidden(true)
+            }
             .font(.system(size: 12.5, weight: .semibold))
             .foregroundStyle(.black)
             .padding(.horizontal, 14)
             .frame(height: 36)
             .background(Color.white.opacity(0.85), in: Capsule())
             .shadow(color: .black.opacity(0.18), radius: 2, y: 1)
+        }
+        .buttonStyle(.plain)
+        .disabled(!crew.isAvailable)
+        .accessibilityHint("Opens your crew, where you can add someone")
     }
 
     private var stopPill: some View {
