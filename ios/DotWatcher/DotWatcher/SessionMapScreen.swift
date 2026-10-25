@@ -11,6 +11,8 @@ struct SessionMapScreen: View {
     @State private var stopProgress: CGFloat = 0
     @State private var showExtend = false
     @State private var fittedCount = -1
+    /// The runner the map stays centred on, picked by tapping their dot; nil frames everyone.
+    @State private var followedName: String?
 
     private struct Pin: Identifiable {
         let id: String
@@ -69,8 +71,8 @@ struct SessionMapScreen: View {
                         .padding(.bottom, 16)
                 } else {
                     HStack(alignment: .bottom) {
-                        sessionChip
-                        Spacer()
+                        participantsRow
+                        Spacer(minLength: 12)
                         HoldToStopPill(progress: $stopProgress) { location.stop() }
                     }
                     .padding(.horizontal, 14)
@@ -78,6 +80,8 @@ struct SessionMapScreen: View {
                 }
             }
         }
+        // Who is in the session, so a member who hasn't sent a position yet still gets a dot.
+        .task { await location.loadLatestPositions() }
         .sheet(isPresented: $showExtend) {
             ExtendSheet(
                 onExtend: { location.extendTracking(by: $0) },
@@ -113,6 +117,7 @@ struct SessionMapScreen: View {
                     }
                 }
             }
+            .onChange(of: context.date) { _, _ in followIfNeeded() }
         }
         // Dims the frozen last-known frame while on satellite: positions stop refreshing, so the map is
         // left as it was rather than hidden.
@@ -132,7 +137,22 @@ struct SessionMapScreen: View {
         .onAppear { fitAll() }
     }
 
+    /// Keeps the map on the followed runner (their pin moves as new positions land), at the zoom the
+    /// map already has. Frozen on satellite, like the rest of the map.
+    private func followIfNeeded() {
+        guard !location.isUltraConstrained, let followedName else { return }
+        guard let pin = pins.first(where: { $0.id == followedName }) else {
+            self.followedName = nil  // they left, or have no position any more
+            return
+        }
+        withAnimation(.easeInOut(duration: 0.6)) {
+            camera = .region(MKCoordinateRegion(
+                center: pin.coordinate, span: MKCoordinateSpan(latitudeDelta: 0.01, longitudeDelta: 0.01)))
+        }
+    }
+
     private func fitAll() {
+        followedName = nil
         guard !location.isUltraConstrained else { return }
         let coordinates = pins.map(\.coordinate)
         guard let first = coordinates.first else { return }
@@ -176,17 +196,59 @@ struct SessionMapScreen: View {
         }
     }
 
-    /// "TESTSESS · 3 runners": which session this is, and how many of its runners are on the map.
-    private var sessionChip: some View {
-        let count = pins.count
-        let name = location.activeMembership?.sessionName ?? ""
-        let text = (name.isEmpty ? "" : "\(name)  ·  ") + (count == 1 ? "1 runner" : "\(count) runners")
-        return Text(text)
-            .font(.system(size: 12.5, weight: .semibold))
-            .foregroundStyle(.black)
-            .padding(.horizontal, 14)
-            .frame(height: 36)
+    /// Everyone in the session as a dot, you first: the same colours as their pins. A dot with a dashed
+    /// edge has no recent position. Tapping one centres the map on that runner; tap it again, or the
+    /// fit-all button, to see everyone.
+    private var participantsRow: some View {
+        let me = location.runnerName
+        // Members from the session list, plus anyone who has a position (the list only loads on a
+        // refresh, positions arrive with every send).
+        var others = location.participants.filter { $0 != me }
+        for position in location.runnerPositions where position.runnerName != me && !others.contains(position.runnerName) {
+            others.append(position.runnerName)
+        }
+        let names = [me] + others
+        let shown = names.prefix(4)
+        let extra = names.count - shown.count
+        return TimelineView(.periodic(from: .now, by: 1)) { context in
+            HStack(spacing: 6) {
+                ForEach(Array(shown), id: \.self) { name in
+                    let pin = pins.first { $0.id == name }
+                    let age = pin?.timestamp.map { context.date.timeIntervalSince($0) }
+                    RunnerCircle(
+                        name: name,
+                        size: 34,
+                        fontSize: 11,
+                        fillColor: name == me ? RunnerColorPalette.currentUser : RunnerColorPalette.color(for: name),
+                        isDisconnected: pin == nil || (age.map { $0 > NativeMapView.disconnectedAfter } ?? false)
+                    )
+                    .overlay(
+                        Circle()
+                            .stroke(Color.black, lineWidth: 2.5)
+                            .opacity(followedName == name ? 1 : 0)
+                            .padding(-3)
+                    )
+                    .onTapGesture {
+                        guard pin != nil else { return }
+                        followedName = followedName == name ? nil : name
+                        if followedName == nil { fitAll() } else { followIfNeeded() }
+                    }
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel(name == me ? "You" : name)
+                    .accessibilityAddTraits(.isButton)
+                    .accessibilityHint(pin == nil ? "No recent position" : "Centres the map on them")
+                }
+                if extra > 0 {
+                    Text("+\(extra)")
+                        .font(.system(size: 12.5, weight: .bold))
+                        .foregroundStyle(.black.opacity(0.6))
+                        .padding(.horizontal, 2)
+                }
+            }
+            .padding(.horizontal, 10)
+            .frame(height: 46)
             .background(Color.white.opacity(0.85), in: Capsule())
             .shadow(color: .black.opacity(0.18), radius: 2, y: 1)
+        }
     }
 }
