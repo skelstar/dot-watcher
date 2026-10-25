@@ -8,6 +8,8 @@ struct ContentView: View {
     @State private var crew = CrewStore()
     /// Casual tracking (start tracking with no session). Self-contained: see `CasualStore` and `CasualViews.swift`.
     @State private var casual = CasualStore()
+    /// Public events near the person; the start screen shows a sign for the first one. See `EventsStore`.
+    @State private var events = EventsStore()
     @State private var batteryLevel: Float = UIDevice.current.batteryLevel
     @State private var showNameEntry: Bool = false
     @State private var nameInput: String = ""
@@ -57,6 +59,7 @@ struct ContentView: View {
         mainContent
             .modifier(CrewHost(crew: crew, location: location, yieldsToCasualMap: casual.isMapPresented))
             .modifier(CasualHost(casual: casual, crew: crew, location: location))
+            .modifier(EventsHost(events: events, location: location))
             .preferredColorScheme(location.appearanceMode.colorScheme)
             .onAppear {
                 UIDevice.current.isBatteryMonitoringEnabled = true
@@ -303,6 +306,7 @@ struct ContentView: View {
                 await location.loadSessions()
                 await crew.refresh()
                 await casual.refresh()
+                await events.refresh()
             }
             noSessionSigns
         }
@@ -316,13 +320,10 @@ struct ContentView: View {
                     subtitle: "Hold to start"
                 ) { casual.isBeforeYouGoPresented = true }
             }
-            // Placeholder until public events exist: always shown for now so builds can be tried on a
-            // phone. Remove, or gate on real event data, before this ships to users.
-            EventSignButton(
-                eyebrow: "Happening near you · 2.3 km",
-                title: "Rogaine event",
-                subtitle: "Sat 9am · Hunua Ranges · 14 joined"
-            ) {}
+            // Only when the server has events for this account (the "events" feature).
+            if let event = events.events.first {
+                EventSignButton(eyebrow: event.eyebrow, title: event.title, subtitle: event.subtitle) {}
+            }
             SignButton(title: "Invite code", subtitle: "Join a run you've been invited to") {
                 showJoinSheet = true
             }
