@@ -106,6 +106,29 @@ the map beyond the 10 s poll, iOS.
 
 ---
 
+## iOS status
+
+Branch `ios-casual` (off `staging`). Built with `xcodebuild` and run in the iPhone 17 Pro simulator against a local
+server: hold Go, Before you go (4h default), the casual map with own dot, countdown, nearby grey dots, the padlock for a
+person in a named session, Who can see me (switch saved to the server), and Hold to stop (server shows nobody out).
+Not yet on a real phone. Same decisions as Android:
+
+- `CasualStore.swift` (state and server calls, like `CrewStore`) and `CasualViews.swift` (Go block, Before you go, Who
+  can see me, the map, and `CasualHost`, which presents them once at the top of `ContentView`, like `CrewHost`).
+- `LocationManager`: `startCasual` runs the same tracking loop against the casual session id (kept out of `sessionId`,
+  which `loadSessions()` clears when there is no membership). A 403 on a casual post calls `/casual/start` and
+  retries once; `stop()` ends the run on the server (token captured first, so sign-out can't lose it);
+  `extendTracking(by:)` backs the countdown's +30 min / +1 hr / +2 hr and never passes the 24 hour bound.
+- Hidden unless `GET /me/casual/settings` succeeds, so an older server or an account without the feature shows nothing.
+- The map is a full-screen cover (not the session map's drag sheet), like the Android casual map.
+- Fit-all includes the anonymous dots, so the person sees them. (Android's fit-all frames only the runners.)
+
+Not built on iOS: share-a-watch-link (needs the server piece), tap-a-pin-to-follow on the casual map, and resuming
+a run after the app is killed (iOS stops tracking when the app is terminated, and the server drops the dot after its
+stale timeout).
+
+---
+
 ## Precedent in the code: the demo session
 
 `SessionStore.EnsureDemoSession` already creates a permanent session with a placeholder system user, and
