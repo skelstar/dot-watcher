@@ -251,6 +251,17 @@ final class LocationManager {
     /// Options offered in the share-consent sheet's duration picker, ascending.
     static let trackingDurationOptions: [TimeInterval] = [2, 4, 8, 24].map { $0 * 60 * 60 }
     private(set) var trackingExpiresAt: Date?
+    /// How long this run was set to share for in total (the original choice plus any extensions), so a
+    /// countdown can be drawn against the real span.
+    private(set) var trackingTotalDuration: TimeInterval = 0
+
+    /// The casual session's id while a casual run is being tracked, else nil. Casual has no
+    /// membership behind it, so it must not go through `sessionId` (`loadSessions()` clears a
+    /// `sessionId` with no matching membership). Set by `startCasual`, cleared by `stop()`.
+    private(set) var casualSessionId: String?
+    var isCasualTracking: Bool { isTracking && casualSessionId != nil }
+    /// What `POST /location` is sent to: the casual session while out casually, else the selected one.
+    private var postTargetId: String { casualSessionId ?? sessionId }
 
     var isAuthenticated: Bool { accessToken != nil && currentUser != nil }
 
@@ -399,6 +410,11 @@ final class LocationManager {
         defer { isLoadingSessions = false }
         do {
             memberships = try await send(path: "/me/sessions")
+            // An earlier request that failed (a cancelled one at launch, say) leaves "Network error." in the
+            // status line. This one got through, so that text is out of date.
+            if !isTracking, status == DotWatcherAPIError.network.errorDescription {
+                status = "Signed in"
+            }
             if !sessionId.isEmpty && activeMembership == nil {
                 sessionId = ""
             }
@@ -610,6 +626,23 @@ final class LocationManager {
             status = "Owner/runner required"
             return
         }
+        beginTracking(duration: duration)
+    }
+
+    /// Starts tracking a casual run (see `CasualStore`): the same loop, cadence, battery and
+    /// satellite handling as a session, posting to the casual session `casualId` instead. The
+    /// caller has already called `POST /casual/start`. Always bounded by `duration`, like a session.
+    func startCasual(sessionId casualId: String, duration: TimeInterval) {
+        guard !isTracking else { return }
+        guard isAuthenticated else {
+            status = "Sign in required"
+            return
+        }
+        casualSessionId = casualId
+        beginTracking(duration: duration)
+    }
+
+    private func beginTracking(duration: TimeInterval?) {
         if satelliteAlertsEnabled { SatelliteAlerts.shared.requestAuthorizationIfNeeded() }
 
         clManager.requestAlwaysAuthorization()
@@ -620,6 +653,7 @@ final class LocationManager {
         batteryOverrideAcknowledged = false
         let cappedDuration = min(duration ?? maxTrackingDuration, maxTrackingDuration)
         trackingExpiresAt = Date().addingTimeInterval(cappedDuration)
+        trackingTotalDuration = cappedDuration
         trackingTask = Task { [weak self] in await self?.trackingLoop() }
         // `latestLocation` isn't updated while not tracking, so whatever it (or CoreLocation's cached
         // `location`) holds can be from wherever the phone last had a fix — e.g. where the session
@@ -650,6 +684,14 @@ final class LocationManager {
     }
 
     func stop() {
+        // Ending a casual run takes the person off everyone's map now instead of leaving the server
+        // to time them out. The token is captured here because sign-out clears it right after.
+        if casualSessionId != nil {
+            casualSessionId = nil
+            if let token = accessToken {
+                Task { try? await sendEmpty(path: "/casual/stop", method: "POST", token: token) }
+            }
+        }
         trackingTask?.cancel()
         trackingTask = nil
         cancelRetries()
@@ -659,6 +701,16 @@ final class LocationManager {
         trackingExpiresAt = nil
         pausedForBattery = false
         status = "Stopped"
+    }
+
+    /// Adds time to the running share, for the countdown's "+30 min / +1 hr / +2 hr". Never past
+    /// `maxTrackingDuration` from now: the App Store 5.1.2(i) bound holds however often it is extended.
+    func extendTracking(by added: TimeInterval) {
+        guard isTracking, let expiresAt = trackingExpiresAt else { return }
+        let ceiling = Date().addingTimeInterval(maxTrackingDuration)
+        let newExpiry = min(expiresAt.addingTimeInterval(added), ceiling)
+        trackingTotalDuration += newExpiry.timeIntervalSince(expiresAt)
+        trackingExpiresAt = newExpiry
     }
 
     /// Explicit override for the runner-facing "Turn on automatic updates" button in the battery-
@@ -933,7 +985,7 @@ final class LocationManager {
         lat: Double, lon: Double, heading: Double?, timestamp: Date, nextExpectedAt: Date, isUltraConstrained: Bool,
         batteryLevel: Int?
     ) async -> PostOutcome {
-        let targetSessionId = sessionId
+        let targetSessionId = postTargetId
         do {
             var body: [String: Any] = [
                 "runnerName": runnerName,
@@ -960,9 +1012,21 @@ final class LocationManager {
             if let heading { body["heading"] = heading }
             if let batteryLevel { body["batteryLevel"] = batteryLevel }
 
-            let response: LocationPostResponse = try await send(
-                path: "/location", method: "POST", body: body, session: Self.ultraConstrainedSession)
-            guard sessionId == targetSessionId else { return .superseded }
+            let postBody = body
+            func sendOnce() async throws -> LocationPostResponse {
+                try await send(path: "/location", method: "POST", body: postBody, session: Self.ultraConstrainedSession)
+            }
+            let response: LocationPostResponse
+            do {
+                response = try await sendOnce()
+            } catch DotWatcherAPIError.badResponse(403, _) where targetSessionId == casualSessionId {
+                // A casual post is refused once its run has closed (stopped elsewhere, or closed by
+                // the server after a long gap). Starting again is free and idempotent: do it and send
+                // this position once more rather than losing it.
+                let _: CasualStartResponse = try await send(path: "/casual/start", method: "POST")
+                response = try await sendOnce()
+            }
+            guard postTargetId == targetSessionId else { return .superseded }
             status = "Sent"
             lastSent = Date()
             // `response.participants`/`positions` only cover runners who have actually posted —
@@ -983,7 +1047,7 @@ final class LocationManager {
             runnerPositions = Array(mergedPositions.values)
             return .success
         } catch {
-            guard sessionId == targetSessionId, !Task.isCancelled else { return .superseded }
+            guard postTargetId == targetSessionId, !Task.isCancelled else { return .superseded }
             status = error.localizedDescription
             // Only transport failures are worth a quick retry; a 4xx/426 from the server won't
             // fix itself in a few seconds and is handled by the next regular tick as before.
@@ -1206,6 +1270,7 @@ final class LocationManager {
     private static func configuredServerBaseURL() -> URL {
         configuredBaseURL(
             infoKey: isTestFlightBuild ? "DotWatcherStagingAPIBaseURL" : "DotWatcherAPIBaseURL",
+            debugEnvKey: "DOTWATCHER_API_BASE_URL",
             fallback: "https://dot-watcher.skelstar.io/api"
         )
     }
@@ -1219,13 +1284,23 @@ final class LocationManager {
     private static func configuredWebBaseURL() -> URL {
         configuredBaseURL(
             infoKey: "DotWatcherWebBaseURL",
+            debugEnvKey: "DOTWATCHER_WEB_BASE_URL",
             fallback: "https://dot-watcher.skelstar.io"
         )
     }
 
-    private static func configuredBaseURL(infoKey: String, fallback: String) -> URL {
+    /// `debugEnvKey` lets a Debug run from Xcode point at another server without editing the project:
+    /// set it as an environment variable in the scheme (Edit Scheme > Run > Arguments), for example
+    /// `DOTWATCHER_API_BASE_URL=https://dot-watcher-staging.skelstar.io/api`. It wins over the
+    /// Info.plist value and does nothing in a Release build, so it can't reach TestFlight or the App Store.
+    private static func configuredBaseURL(infoKey: String, debugEnvKey: String, fallback: String) -> URL {
+        #if DEBUG
+        let override = ProcessInfo.processInfo.environment[debugEnvKey]?.trimmingCharacters(in: .whitespacesAndNewlines)
+        #else
+        let override: String? = nil
+        #endif
         let configured = Bundle.main.object(forInfoDictionaryKey: infoKey) as? String
-        let rawValue = configured?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let rawValue = override.flatMap { $0.isEmpty ? nil : $0 } ?? configured?.trimmingCharacters(in: .whitespacesAndNewlines)
         let urlString: String
         if let rawValue, !rawValue.isEmpty {
             urlString = rawValue

@@ -2,6 +2,7 @@ package nz.skelstar.dotwatcher.data
 
 import nz.skelstar.dotwatcher.network.CasualLiveResponse
 import nz.skelstar.dotwatcher.network.CasualSettings
+import nz.skelstar.dotwatcher.network.CasualWatchLinkResponse
 import nz.skelstar.dotwatcher.network.CasualStartResponse
 import nz.skelstar.dotwatcher.network.CreateSessionRequest
 import nz.skelstar.dotwatcher.network.CrewCode
@@ -152,6 +153,11 @@ class DotWatcherRepository(
     suspend fun casualStop(): Response<Unit> = api.casualStop(bearer(requireToken()))
 
     suspend fun casualLive(): Response<CasualLiveResponse> = api.casualLive(bearer(requireToken()))
+
+    suspend fun createCasualWatchLink(): Response<CasualWatchLinkResponse> =
+        api.createCasualWatchLink(bearer(requireToken()))
+
+    suspend fun revokeCasualWatchLinks(): Response<Unit> = api.revokeCasualWatchLinks(bearer(requireToken()))
 
     suspend fun getCasualSettings(): Response<CasualSettings> = api.getCasualSettings(bearer(requireToken()))
 

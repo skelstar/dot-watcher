@@ -6,6 +6,8 @@ struct ContentView: View {
     @State private var location = LocationManager()
     /// Crew (the people you have chosen). Self-contained: see `CrewStore` and `CrewViews.swift`.
     @State private var crew = CrewStore()
+    /// Casual tracking (start tracking with no session). Self-contained: see `CasualStore` and `CasualViews.swift`.
+    @State private var casual = CasualStore()
     @State private var batteryLevel: Float = UIDevice.current.batteryLevel
     @State private var showNameEntry: Bool = false
     @State private var nameInput: String = ""
@@ -53,6 +55,7 @@ struct ContentView: View {
     private var bodyWithSheets: some View {
         mainContent
             .modifier(CrewHost(crew: crew, location: location))
+            .modifier(CasualHost(casual: casual, location: location))
             .preferredColorScheme(location.appearanceMode.colorScheme)
             .onAppear {
                 UIDevice.current.isBatteryMonitoringEnabled = true
@@ -263,6 +266,7 @@ struct ContentView: View {
                     headerSection
                     runnerRow
                     CrewRow(crew: crew)
+                    CasualGoBlock(casual: casual)
                     noSessionJoinCard
                     noSessionCreateLink
                     if let formError {
@@ -280,6 +284,7 @@ struct ContentView: View {
             .refreshable {
                 await location.loadSessions()
                 await crew.refresh()
+                await casual.refresh()
             }
         }
     }
@@ -594,7 +599,12 @@ struct ContentView: View {
                     .buttonStyle(.plain)
                 } else if location.isAuthenticated {
                     Button {
-                        Task { await location.loadSessions() }
+                        Task {
+                            await location.loadSessions()
+                            // Crew and casual are granted per account on the server, so re-check them too.
+                            await crew.refresh()
+                            await casual.refresh()
+                        }
                     } label: {
                         Image(systemName: "arrow.clockwise")
                             .font(.system(size: 20))
