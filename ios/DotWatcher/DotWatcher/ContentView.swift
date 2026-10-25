@@ -303,10 +303,14 @@ struct ContentView: View {
                 .padding()
             }
             .refreshable {
-                await location.loadSessions()
-                await crew.refresh()
-                await casual.refresh()
-                await events.refresh()
+                // Detached: `.refreshable` cancels its closure's Task once the pull gesture is released, which
+                // cut off every request after the first (see `sessionView`'s refresh).
+                await Task {
+                    await location.loadSessions()
+                    await crew.refresh()
+                    await casual.refresh()
+                    await events.refresh()
+                }.value
             }
             noSessionSigns
         }
