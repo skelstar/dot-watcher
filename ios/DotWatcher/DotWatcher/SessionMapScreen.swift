@@ -10,6 +10,7 @@ struct SessionMapScreen: View {
     @State private var camera: MapCameraPosition = .automatic
     @State private var stopProgress: CGFloat = 0
     @State private var showExtend = false
+    @State private var showParticipants = false
     @State private var fittedCount = -1
     /// The runner the map stays centred on, picked by tapping their dot; nil frames everyone.
     @State private var followedName: String?
@@ -82,6 +83,23 @@ struct SessionMapScreen: View {
         }
         // Who is in the session, so a member who hasn't sent a position yet still gets a dot.
         .task { await location.loadLatestPositions() }
+        .sheet(isPresented: $showParticipants) {
+            ParticipantsSheet(
+                names: sessionNames,
+                me: location.runnerName,
+                followedName: followedName,
+                status: { name in
+                    guard let pin = pins.first(where: { $0.id == name }) else { return nil }
+                    return pin.timestamp.map { Date().timeIntervalSince($0) } ?? 0
+                },
+                onSelect: { name in
+                    followedName = name
+                    showParticipants = false
+                    followIfNeeded()
+                }
+            )
+            .presentationDetents([.medium, .large])
+        }
         .sheet(isPresented: $showExtend) {
             ExtendSheet(
                 onExtend: { location.extendTracking(by: $0) },
@@ -196,26 +214,32 @@ struct SessionMapScreen: View {
         }
     }
 
-    /// Everyone in the session as a dot, you first: the same colours as their pins. A dot with a dashed
-    /// edge has no recent position. Tapping one centres the map on that runner; tap it again, or the
-    /// fit-all button, to see everyone.
-    private var participantsRow: some View {
+    /// You first, then everyone else in the session: members from the session list plus anyone who has a
+    /// position (the list only loads on a refresh, positions arrive with every send).
+    private var sessionNames: [String] {
         let me = location.runnerName
-        // Members from the session list, plus anyone who has a position (the list only loads on a
-        // refresh, positions arrive with every send).
         var others = location.participants.filter { $0 != me }
         for position in location.runnerPositions where position.runnerName != me && !others.contains(position.runnerName) {
             others.append(position.runnerName)
         }
-        let names = [me] + others
-        let shown = names.prefix(4)
+        return [me] + others
+    }
+
+    /// Up to four people as separate dots, you first, in the pins' colours; a dashed edge means no recent
+    /// position. Tapping a dot centres the map on that runner; tap it again, or the fit-all button, to see
+    /// everyone. With more than four the dots overlap, as in the crew row, and the whole chip opens a list.
+    private var participantsRow: some View {
+        let me = location.runnerName
+        let names = sessionNames
+        let overlapped = names.count > Self.separateDotLimit
+        let shown = names.prefix(overlapped ? Self.overlappedFaces : Self.separateDotLimit)
         let extra = names.count - shown.count
         return TimelineView(.periodic(from: .now, by: 1)) { context in
-            HStack(spacing: 6) {
+            let chip = HStack(spacing: overlapped ? -10 : 6) {
                 ForEach(Array(shown), id: \.self) { name in
                     let pin = pins.first { $0.id == name }
                     let age = pin?.timestamp.map { context.date.timeIntervalSince($0) }
-                    RunnerCircle(
+                    let dot = RunnerCircle(
                         name: name,
                         size: 34,
                         fontSize: 11,
@@ -228,27 +252,101 @@ struct SessionMapScreen: View {
                             .opacity(followedName == name ? 1 : 0)
                             .padding(-3)
                     )
-                    .onTapGesture {
-                        guard pin != nil else { return }
-                        followedName = followedName == name ? nil : name
-                        if followedName == nil { fitAll() } else { followIfNeeded() }
+                    if overlapped {
+                        // A chip-coloured edge keeps overlapped dots apart.
+                        dot.background(Circle().fill(Color.white)).overlay(Circle().strokeBorder(Color.white, lineWidth: 2))
+                    } else {
+                        dot
+                            .onTapGesture {
+                                guard pin != nil else { return }
+                                followedName = followedName == name ? nil : name
+                                if followedName == nil { fitAll() } else { followIfNeeded() }
+                            }
+                            .accessibilityElement(children: .ignore)
+                            .accessibilityLabel(name == me ? "You" : name)
+                            .accessibilityAddTraits(.isButton)
+                            .accessibilityHint(pin == nil ? "No recent position" : "Centres the map on them")
                     }
-                    .accessibilityElement(children: .ignore)
-                    .accessibilityLabel(name == me ? "You" : name)
-                    .accessibilityAddTraits(.isButton)
-                    .accessibilityHint(pin == nil ? "No recent position" : "Centres the map on them")
                 }
                 if extra > 0 {
                     Text("+\(extra)")
                         .font(.system(size: 12.5, weight: .bold))
                         .foregroundStyle(.black.opacity(0.6))
-                        .padding(.horizontal, 2)
+                        .padding(.leading, overlapped ? 14 : 6)
                 }
             }
             .padding(.horizontal, 10)
             .frame(height: 46)
             .background(Color.white.opacity(0.85), in: Capsule())
             .shadow(color: .black.opacity(0.18), radius: 2, y: 1)
+            if overlapped {
+                Button { showParticipants = true } label: { chip }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("\(names.count) people in this session")
+                    .accessibilityHint("Opens the list")
+            } else {
+                chip
+            }
         }
+    }
+
+    private static let separateDotLimit = 4
+    private static let overlappedFaces = 6
+}
+
+/// Everyone in the session, for when there are too many dots to tap one at a time. Tapping someone with a
+/// position closes the list and centres the map on them.
+private struct ParticipantsSheet: View {
+    let names: [String]
+    let me: String
+    let followedName: String?
+    /// Seconds since the person's last position, or nil if they have none.
+    let status: (String) -> TimeInterval?
+    let onSelect: (String) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("In this session · \(names.count)")
+                .font(.title3.bold())
+                .padding(.horizontal, 20)
+                .padding(.top, 20)
+            ScrollView {
+                VStack(spacing: 0) {
+                    ForEach(names, id: \.self) { name in
+                        let age = status(name)
+                        Button { onSelect(name) } label: {
+                            HStack(spacing: 14) {
+                                RunnerCircle(
+                                    name: name,
+                                    size: 40,
+                                    fontSize: 13,
+                                    fillColor: name == me ? RunnerColorPalette.currentUser : RunnerColorPalette.color(for: name),
+                                    isDisconnected: age == nil || (age ?? 0) > NativeMapView.disconnectedAfter
+                                )
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(name == me ? "You" : name).font(.headline)
+                                    Text(Self.statusText(age)).font(.caption).foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                                if followedName == name {
+                                    Image(systemName: "scope").foregroundStyle(.secondary)
+                                }
+                            }
+                            .padding(.horizontal, 20)
+                            .padding(.vertical, 10)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(age == nil)
+                    }
+                }
+            }
+        }
+    }
+
+    private static func statusText(_ age: TimeInterval?) -> String {
+        guard let age else { return "No position yet" }
+        if age < 60 { return "Updated just now" }
+        return "Updated \(Int(age / 60)) min ago"
     }
 }
