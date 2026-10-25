@@ -34,6 +34,7 @@ builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<AuthAttemptLimiter>();
 builder.Services.AddSingleton<ClientErrorLimiter>();
 builder.Services.AddSingleton<CrewCodeLimiter>();
+builder.Services.AddSingleton<WatchLinkLimiter>();
 builder.Services.AddSingleton<FeatureFlags>();
 builder.Services.AddHostedService<CasualMaintenanceService>();
 builder.Services.AddSingleton(sp =>
@@ -107,14 +108,19 @@ app.Use(async (ctx, next) =>
 {
     var sw = Stopwatch.StartNew();
     var path = ctx.Request.Path.Value ?? "/";
+    // A watch link's secret is its whole credential, so it never goes into the logs.
+    var isWatchLink = path.StartsWith("/watch/", StringComparison.Ordinal);
+    if (isWatchLink) path = "/watch/{token}";
     var method = ctx.Request.Method;
-    var requestUrl = $"{ctx.Request.Scheme}://{ctx.Request.Host}{ctx.Request.PathBase}{ctx.Request.Path}{ctx.Request.QueryString}";
+    var requestUrl = $"{ctx.Request.Scheme}://{ctx.Request.Host}{ctx.Request.PathBase}{(isWatchLink ? path : ctx.Request.Path.Value)}{ctx.Request.QueryString}";
     var environment = ResolveEnvironment(ctx.Request.Host.Host);
 
     // /me/crew/codes responses carry live crew codes (single-use credentials), so like /auth they
     // are not copied into the logs. (The code in the request path of preview/redeem/revoke is
     // logged, as session invite codes are; it is dead once used or after 24 hours.)
-    var captureBody = !path.StartsWith("/auth") && !path.EndsWith("/recording") && !path.StartsWith("/me/crew/codes");
+    // Watch-link responses carry a live position, and creating one returns the secret itself.
+    var captureBody = !path.StartsWith("/auth") && !path.EndsWith("/recording") && !path.StartsWith("/me/crew/codes")
+        && !isWatchLink && !path.StartsWith("/casual/watch-link");
     var originalBody = ctx.Response.Body;
     MemoryStream? capture = null;
     if (captureBody)
