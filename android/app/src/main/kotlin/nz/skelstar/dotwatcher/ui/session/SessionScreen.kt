@@ -125,8 +125,8 @@ fun SessionScreen(
                 Spacer(modifier = Modifier.height(12.dp))
             }
 
-            // Hidden entirely until the server says it has casual tracking for this account.
-            if (casualState.isAvailable) {
+            // Hidden until the server has casual for this account, and when there is no crew to be out.
+            if (casualState.isAvailable && crewState.members.isNotEmpty()) {
                 crewOutLine(casualState.crewOut)?.let {
                     Text(
                         text = it,
@@ -163,15 +163,14 @@ fun SessionScreen(
                     onComplete = { showBeforeYouGo = true },
                 )
             }
-            // Placeholder until public events exist: debug and device builds only, never release.
-            if (BuildConfig.DEBUG) {
-                EventSignButton(
-                    eyebrow = "Happening near you · 2.3 km",
-                    title = "Rogaine event",
-                    subtitle = "Sat 9am · Hunua Ranges · 14 joined",
-                    onClick = {},
-                )
-            }
+            // Placeholder until public events exist: always shown for now so release builds can be tried on a
+            // phone. Remove, or gate on real event data, before this ships to users.
+            EventSignButton(
+                eyebrow = "Happening near you · 2.3 km",
+                title = "Rogaine event",
+                subtitle = "Sat 9am · Hunua Ranges · 14 joined",
+                onClick = {},
+            )
             SignButton(
                 title = "Invite code",
                 subtitle = "Join a run you've been invited to",
