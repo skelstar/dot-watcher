@@ -10,6 +10,7 @@ import nz.skelstar.dotwatcher.network.CrewCode
 import nz.skelstar.dotwatcher.network.CrewCodePreview
 import nz.skelstar.dotwatcher.network.CrewMember
 import nz.skelstar.dotwatcher.network.errorMessageOrStatus
+import nz.skelstar.dotwatcher.network.networkMessage
 import retrofit2.Response
 
 /** Whether this server has crew for this account. Until the server is updated, or while the account
@@ -110,7 +111,9 @@ class CrewModel(
                     onSaved()
                 }
                 response != null -> _state.update { it.copy(nicknameError = response.errorMessageOrStatus()) }
-                else -> _state.update { it.copy(nicknameError = "Network error. Try again.") }
+                else -> _state.update {
+                    it.copy(nicknameError = result.exceptionOrNull()?.networkMessage() ?: "Network error. Try again.")
+                }
             }
         }
     }
@@ -155,7 +158,10 @@ class CrewModel(
                     it.copy(myCode = response.body(), myCodeLoading = false, myCodeError = null)
                 response != null ->
                     it.copy(myCodeLoading = false, myCodeError = response.errorMessageOrStatus())
-                else -> it.copy(myCodeLoading = false, myCodeError = "Network error. Try again.")
+                else -> it.copy(
+                    myCodeLoading = false,
+                    myCodeError = result.exceptionOrNull()?.networkMessage() ?: "Network error. Try again.",
+                )
             }
         }
     }
@@ -200,7 +206,8 @@ class CrewModel(
     }
 
     private fun previewOutcome(code: String, result: Result<Response<CrewCodePreview>>): CrewConfirm {
-        val response = result.getOrNull() ?: return CrewConfirm.Failed(code, "Network error. Try again.")
+        val response = result.getOrNull()
+            ?: return CrewConfirm.Failed(code, result.exceptionOrNull()?.networkMessage() ?: "Network error. Try again.")
         val owner = response.body()
         return if (response.isSuccessful && owner != null) {
             CrewConfirm.Ready(code, owner)
@@ -226,7 +233,8 @@ class CrewModel(
                 }
                 refresh()
             } else {
-                val message = response?.let { crewCodeFailureMessage(it.code()) } ?: "Network error. Try again."
+                val message = response?.let { crewCodeFailureMessage(it.code()) }
+                    ?: (result.exceptionOrNull()?.networkMessage() ?: "Network error. Try again.")
                 _state.update { it.copy(confirm = CrewConfirm.Failed(ready.code, message)) }
             }
         }
@@ -244,7 +252,12 @@ class CrewModel(
             if (response != null && (response.isSuccessful || response.code() == 404)) {
                 _state.update { it.copy(members = it.members.filterNot { m -> m.userId == userId }, removeError = null) }
             } else {
-                _state.update { it.copy(removeError = response?.errorMessageOrStatus() ?: "Network error. Try again.") }
+                _state.update {
+                    it.copy(
+                        removeError = response?.errorMessageOrStatus()
+                            ?: (result.exceptionOrNull()?.networkMessage() ?: "Network error. Try again."),
+                    )
+                }
             }
         }
     }

@@ -22,6 +22,7 @@ import nz.skelstar.dotwatcher.location.TrackingState
 import nz.skelstar.dotwatcher.network.DotWatcherApiClient
 import nz.skelstar.dotwatcher.network.SessionMembership
 import nz.skelstar.dotwatcher.network.errorMessageOrStatus
+import nz.skelstar.dotwatcher.network.networkMessage
 import retrofit2.Response
 import java.time.Duration
 import java.time.Instant
@@ -191,7 +192,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 _destination.value = Destination.Casual
             } else {
                 _sessionState.value = SessionUiState.Error(
-                    response?.errorMessageOrStatus() ?: (result.exceptionOrNull()?.message ?: "Network error.")
+                    response?.errorMessageOrStatus() ?: (result.exceptionOrNull()?.networkMessage() ?: "Network error.")
                 )
             }
         }
@@ -222,13 +223,15 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             _authState.value = AuthUiState.Loading
             val response = runCatching { repository.login(username, password) }
-            _authState.value = handleAuthResult(response)
+            _authState.value = handleAuthResult(response, wrongCredentialsMessage = "Wrong username or password.")
         }
     }
 
-    private fun handleAuthResult(result: Result<Response<Unit>>): AuthUiState {
+    /** [wrongCredentialsMessage] replaces the server's reply to a failed sign-in: it answers a bad login with a
+     *  bare 401 on purpose (it never says whether the username or the password was wrong). */
+    private fun handleAuthResult(result: Result<Response<Unit>>, wrongCredentialsMessage: String? = null): AuthUiState {
         val response = result.getOrElse {
-            return AuthUiState.Error(it.message ?: "Network error.")
+            return AuthUiState.Error(it.networkMessage())
         }
         return if (response.isSuccessful) {
             _destination.value = Destination.Session
@@ -236,7 +239,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             crew.consumePendingLink()
             AuthUiState.Idle
         } else {
-            AuthUiState.Error(response.errorMessageOrStatus())
+            AuthUiState.Error(
+                if (response.code() == 401 && wrongCredentialsMessage != null) wrongCredentialsMessage
+                else response.errorMessageOrStatus()
+            )
         }
     }
 
@@ -275,7 +281,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         result: Result<Response<SessionMembership>>,
     ): SessionUiState {
         val response = result.getOrElse {
-            return SessionUiState.Error(it.message ?: "Network error.")
+            return SessionUiState.Error(it.networkMessage())
         }
         val membership = response.body()
         return if (response.isSuccessful && membership != null) {
@@ -340,7 +346,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     _destination.value = Destination.Auth
                 }
                 response != null -> onError(response.errorMessageOrStatus())
-                else -> onError(result.exceptionOrNull()?.message ?: "Network error.")
+                else -> onError(result.exceptionOrNull()?.networkMessage() ?: "Network error.")
             }
         }
     }
