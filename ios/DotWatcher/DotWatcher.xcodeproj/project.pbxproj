@@ -68,7 +68,7 @@
 				497F89C22FDC6E6300022FF1 /* Sources */,
 				497F89C32FDC6E6300022FF1 /* Frameworks */,
 				497F89C42FDC6E6300022FF1 /* Resources */,
-				497F89ED2FDCE39200022FF1 /* Stamp Git Commit SHA */,
+				497F89ED2FDCE39200022FF1 /* Stamp Git Commit SHA and Build Number */,
 			);
 			buildRules = (
 			);
@@ -129,7 +129,7 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXShellScriptBuildPhase section */
-		497F89ED2FDCE39200022FF1 /* Stamp Git Commit SHA */ = {
+		497F89ED2FDCE39200022FF1 /* Stamp Git Commit SHA and Build Number */ = {
 			isa = PBXShellScriptBuildPhase;
 			alwaysOutOfDate = 1;
 			buildActionMask = 2147483647;
@@ -137,12 +137,12 @@
 			);
 			inputPaths = (
 			);
-			name = "Stamp Git Commit SHA";
+			name = "Stamp Git Commit SHA and Build Number";
 			outputPaths = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "SHA=$(git -C \"$SRCROOT\" rev-parse --short HEAD 2>/dev/null || echo unknown)\n/usr/libexec/PlistBuddy -c \"Set :GitCommitSHA $SHA\" \"$CODESIGNING_FOLDER_PATH/Info.plist\"\n";
+			shellScript = "# Stamped into the built app's Info.plist (not the source file), after Xcode has processed it, so the\n# values are always this build's. The build number is the commit count: it rises with every commit.\nPLIST=\"$CODESIGNING_FOLDER_PATH/Info.plist\"\nSHA=$(git -C \"$SRCROOT\" rev-parse --short HEAD 2>/dev/null || echo unknown)\nCOUNT=$(git -C \"$SRCROOT\" rev-list --count HEAD 2>/dev/null)\n/usr/libexec/PlistBuddy -c \"Set :GitCommitSHA $SHA\" \"$PLIST\"\ncase \"$COUNT\" in\n  ''|*[!0-9]*) echo \"warning: could not read the commit count; leaving CFBundleVersion as it is\" ;;\n  *) /usr/libexec/PlistBuddy -c \"Set :CFBundleVersion $COUNT\" \"$PLIST\" ;;\nesac\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 
