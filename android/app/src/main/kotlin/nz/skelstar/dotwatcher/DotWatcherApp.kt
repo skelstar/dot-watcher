@@ -117,6 +117,7 @@ fun DotWatcherApp(hasBackgroundLocationPermission: Boolean) {
                 Destination.Casual -> CasualMapScreen(
                     repository = viewModel.repository,
                     casual = viewModel.casual,
+                    crew = viewModel.crew,
                     onStop = viewModel::stopCasual,
                 )
 

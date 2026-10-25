@@ -73,6 +73,35 @@ import java.time.ZoneId
 // (Show my code) is the whole flow; the "Add X to your crew?" confirmation lives at the app level
 // (CrewConfirmDialog) because a crew link can arrive on any screen.
 
+/** Which crew sheet is open. They stack as a flow: the crew, then adding someone, then (from there)
+ *  showing your own code; dismissing steps back one. */
+enum class CrewStage { None, List, Add, MyCode }
+
+/** The crew sheets for [stage]. Shared by the start screen and the casual map, which both open it. */
+@Composable
+fun CrewFlow(crew: CrewModel, state: CrewUiState, stage: CrewStage, onStage: (CrewStage) -> Unit) {
+    when (stage) {
+        CrewStage.None -> Unit
+        CrewStage.List -> CrewSheet(
+            crew = crew,
+            state = state,
+            onAdd = { onStage(CrewStage.Add) },
+            onDismiss = { onStage(CrewStage.None) },
+        )
+        CrewStage.Add -> AddCrewSheet(
+            crew = crew,
+            state = state,
+            onShowMyCode = { onStage(CrewStage.MyCode) },
+            onDismiss = { onStage(CrewStage.List) },
+        )
+        CrewStage.MyCode -> MyCrewCodeSheet(
+            crew = crew,
+            state = state,
+            onDismiss = { onStage(CrewStage.List) },
+        )
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun CrewSheet(

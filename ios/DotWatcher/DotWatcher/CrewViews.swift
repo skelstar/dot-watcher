@@ -118,11 +118,17 @@ struct CrewRow: View {
 struct CrewHost: ViewModifier {
     @Bindable var crew: CrewStore
     var location: LocationManager
+    /// True while the casual map covers the screen. A sheet can't present from beneath a full-screen
+    /// cover, so the map presents the crew sheet itself and this one stands down.
+    var yieldsToCasualMap = false
     @Environment(\.scenePhase) private var scenePhase
 
     func body(content: Content) -> some View {
         content
-            .sheet(isPresented: $crew.isFlowPresented) {
+            .sheet(isPresented: Binding(
+                get: { crew.isFlowPresented && !yieldsToCasualMap },
+                set: { crew.isFlowPresented = $0 }
+            )) {
                 CrewFlowView(crew: crew, webBaseURL: location.webBaseURL)
                     .presentationDetents([.large])
                     .preferredColorScheme(location.appearanceMode.colorScheme)

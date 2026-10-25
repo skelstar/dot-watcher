@@ -54,10 +54,9 @@ import java.time.Duration
 import nz.skelstar.dotwatcher.ui.CodeBoxField
 import nz.skelstar.dotwatcher.ui.GroupDivider
 import nz.skelstar.dotwatcher.ui.GroupedCard
-import nz.skelstar.dotwatcher.ui.crew.AddCrewSheet
+import nz.skelstar.dotwatcher.ui.crew.CrewFlow
 import nz.skelstar.dotwatcher.ui.crew.CrewRow
-import nz.skelstar.dotwatcher.ui.crew.CrewSheet
-import nz.skelstar.dotwatcher.ui.crew.MyCrewCodeSheet
+import nz.skelstar.dotwatcher.ui.crew.CrewStage
 
 /**
  * Lets a signed-in runner either start a new session ([POST /sessions]) or join an existing one
@@ -248,26 +247,7 @@ fun SessionScreen(
         )
     }
 
-    when (crewStage) {
-        CrewStage.None -> Unit
-        CrewStage.List -> CrewSheet(
-            crew = crew,
-            state = crewState,
-            onAdd = { crewStage = CrewStage.Add },
-            onDismiss = { crewStage = CrewStage.None },
-        )
-        CrewStage.Add -> AddCrewSheet(
-            crew = crew,
-            state = crewState,
-            onShowMyCode = { crewStage = CrewStage.MyCode },
-            onDismiss = { crewStage = CrewStage.List },
-        )
-        CrewStage.MyCode -> MyCrewCodeSheet(
-            crew = crew,
-            state = crewState,
-            onDismiss = { crewStage = CrewStage.List },
-        )
-    }
+    CrewFlow(crew = crew, state = crewState, stage = crewStage, onStage = { crewStage = it })
 
     if (showCreateDialog) {
         CreateSessionDialog(
@@ -280,10 +260,6 @@ fun SessionScreen(
         )
     }
 }
-
-/** Which crew sheet is open over the start screen. They stack as a flow: the crew, then adding
- *  someone, then (from there) showing your own code; dismissing steps back one. */
-private enum class CrewStage { None, List, Add, MyCode }
 
 private val HeaderIconSize = 34.dp
 private val HeaderButtonSize = 44.dp
