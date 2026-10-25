@@ -211,6 +211,16 @@ public partial class SessionStore(string connectionString) : IDisposable
             ALTER TABLE casual_runs ADD COLUMN IF NOT EXISTS stopped_by_user BOOLEAN NOT NULL DEFAULT FALSE;
             CREATE UNIQUE INDEX IF NOT EXISTS idx_casual_runs_open ON casual_runs(user_id) WHERE ended_at IS NULL;
             CREATE INDEX IF NOT EXISTS idx_casual_runs_user ON casual_runs(user_id, started_at);
+
+            -- Secret links that let someone with no account watch one run (see .ai/plans/casual-tracking.md).
+            -- Only a hash of the secret is stored. Cascades with the run, so a link goes when the run's
+            -- data is purged or its owner's account is deleted.
+            CREATE TABLE IF NOT EXISTS casual_watch_links (
+                token_hash TEXT PRIMARY KEY,
+                run_id     TEXT NOT NULL REFERENCES casual_runs(id) ON DELETE CASCADE,
+                created_at TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_casual_watch_links_run ON casual_watch_links(run_id);
             """;
         addCasual.ExecuteNonQuery();
     }

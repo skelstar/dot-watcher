@@ -67,6 +67,41 @@ public class CasualController(
             timeProvider.GetUtcNow()));
     }
 
+    /// <summary>
+    /// Makes a secret link that lets someone with no account watch the caller's current run on the web.
+    /// Each call makes a new link. Every link stops working when the run ends. 409 when the caller
+    /// isn't out.
+    /// </summary>
+    [HttpPost("/casual/watch-link")]
+    [ProducesResponseType(typeof(CasualWatchLinkResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    public IActionResult CreateWatchLink()
+    {
+        if (Gate(out var user) is { } denied)
+            return denied;
+
+        var token = store.CreateCasualWatchLink(user.UserId, timeProvider.GetUtcNow());
+        return token is null
+            ? Conflict(new { error = "Start tracking before sharing a link." })
+            : Ok(new CasualWatchLinkResponse(token, $"/watch/{token}"));
+    }
+
+    /// <summary>Ends every watch link for the caller's current run now. Safe to repeat.</summary>
+    [HttpDelete("/casual/watch-link")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public IActionResult RevokeWatchLinks()
+    {
+        if (Gate(out var user) is { } denied)
+            return denied;
+
+        store.RevokeCasualWatchLinks(user.UserId);
+        return NoContent();
+    }
+
     /// <summary>Gets whether people who aren't in the caller's crew can see them (off by default).</summary>
     [HttpGet("/me/casual/settings")]
     [ProducesResponseType(typeof(CasualSettings), StatusCodes.Status200OK)]

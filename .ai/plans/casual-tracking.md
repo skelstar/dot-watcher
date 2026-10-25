@@ -123,9 +123,30 @@ Not yet on a real phone. Same decisions as Android:
 - The map is a full-screen cover (not the session map's drag sheet), like the Android casual map.
 - Fit-all includes the anonymous dots, so the person sees them. (Android's fit-all frames only the runners.)
 
-Not built on iOS: share-a-watch-link (needs the server piece), tap-a-pin-to-follow on the casual map, and resuming
+Not built on iOS: tap-a-pin-to-follow on the casual map, and resuming
 a run after the app is killed (iOS stops tracking when the app is terminated, and the server drops the dot after its
 stale timeout).
+
+---
+
+## Watch link status
+
+Branch `casual-watch-link` (off `staging`): the **server and web page** for sharing a run with someone who has no
+account or app. The apps' buttons are in their own PRs (iOS #218, Android #219).
+
+- `POST /casual/watch-link` (signed in, out on a run; 409 otherwise) makes a secret link for the current run and
+  returns `{ token, path }`; `DELETE /casual/watch-link` ends every link for the run now. Each call makes a **new**
+  link (only a SHA-256 of the 128-bit secret is stored, so an old one can't be shown again); all of a run's links die
+  when the run ends.
+- `GET /watch/{token}` (no sign-in) returns `{ label, ended, live, position }` for that one run and nothing else:
+  the label is the account's initials, never a username or id. Unknown, malformed or revoked tokens are a bare 404;
+  repeated wrong guesses get 429 without ever refusing a valid link. The response is `Cache-Control: no-store`.
+- The exact position is shown (no hidden 300 m near the start): the runner chose to send this link to a person.
+- The secret is kept out of the request logs (`/watch/{token}` is what gets logged, and watch-link responses aren't
+  captured) and out of referrers and search indexes (the page sets `noindex` and `no-referrer`).
+- Web: `/watch/{token}` shows one dot with a heading chevron and "Live · updated 12 s ago", falling back to
+  "Not updating · last seen 13 min ago", "Waiting for the first position…", or "This run has ended"; an unknown link gets
+  a plain "This link isn't working" card. A browser with no WebGL gets a text view with an "Open in Maps" link.
 
 ---
 
