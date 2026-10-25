@@ -384,11 +384,16 @@ struct ContentView: View {
                         .background(.regularMaterial)
                 }
             }
-            if location.isTracking {
-                DragSheet(onVisibleFractionChange: { mapVisibleFraction = $0 }) {
-                    LiveMapSheet(location: location, followedRunnerName: $followedRunnerName, fitAllTrigger: fitAllTrigger, visibleFraction: mapVisibleFraction)
-                }
-            }
+        }
+        // While tracking in a named session the full-screen map takes over, as it does for Go. Stopping
+        // (or leaving) clears `isTracking`, which brings the session screen back. Not when out casually:
+        // that has its own map.
+        .fullScreenCover(isPresented: Binding(
+            get: { location.isTracking && location.activeMembership != nil && !casual.isMapPresented },
+            set: { _ in }
+        )) {
+            SessionMapScreen(location: location)
+                .preferredColorScheme(location.appearanceMode.colorScheme)
         }
     }
 

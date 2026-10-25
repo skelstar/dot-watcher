@@ -242,7 +242,7 @@ private extension RunnerPositionResponse {
 /// Shown over the map while `NativeMapView.isUltraConstrained` — mirrors `ContentView`'s
 /// `offlineBanner` (`Label` + SF Symbol) but as a floating pill rather than a full-width bar,
 /// since this overlays just the map rather than the whole screen.
-private struct SatelliteStatusBadge: View {
+struct SatelliteStatusBadge: View {
     let lastSent: Date?
     let nextRetryAt: Date?
 
