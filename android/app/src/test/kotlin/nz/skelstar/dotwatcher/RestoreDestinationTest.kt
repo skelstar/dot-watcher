@@ -4,18 +4,16 @@ import nz.skelstar.dotwatcher.data.ShareChoiceStore.Choice
 import nz.skelstar.dotwatcher.location.TrackingState
 import nz.skelstar.dotwatcher.network.SessionMembership
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.time.Duration
 import java.time.Instant
 
 class RestoreDestinationTest {
     private val now = Instant.parse("2026-10-19T00:00:00Z")
-    private val runner = membership("s1", role = "runner")
-    private val viewer = membership("s2", role = "viewer")
+    private val runner = membership("s1")
 
-    private fun membership(id: String, role: String) =
-        SessionMembership(id, "Session $id", "ABC123", role, "AA")
+    private fun membership(id: String) =
+        SessionMembership(id, "Session $id", "ABC123", "runner", "AA")
 
     private fun decide(
         memberships: List<SessionMembership> = listOf(runner),
@@ -28,24 +26,18 @@ class RestoreDestinationTest {
         assertEquals(RestoreDecision.CreateOrJoin, decide(memberships = emptyList()))
     }
 
-    @Test fun `a runner who has never chosen is asked`() {
-        assertEquals(RestoreDecision.Consent(runner), decide())
+    @Test fun `a session left over from an earlier run is left`() {
+        assertEquals(RestoreDecision.LeaveStale(listOf(runner)), decide())
     }
 
-    @Test fun `a viewer goes straight to the map`() {
-        assertEquals(RestoreDecision.Map(viewer, isSharing = false), decide(memberships = listOf(viewer)))
+    @Test fun `every leftover session is left`() {
+        val other = membership("s2")
+        assertEquals(RestoreDecision.LeaveStale(listOf(runner, other)), decide(memberships = listOf(runner, other)))
     }
 
-    @Test fun `still sharing in this process stays on the map sharing`() {
+    @Test fun `still sharing in this process stays on the map`() {
         val tracking = TrackingState.Tracking("s1", now.plusSeconds(600))
-        assertEquals(RestoreDecision.Map(runner, isSharing = true), decide(tracking = tracking))
-    }
-
-    @Test fun `a runner who chose view only is not asked again`() {
-        assertEquals(
-            RestoreDecision.Map(runner, isSharing = false),
-            decide(choice = Choice.ViewOnly("s1")),
-        )
+        assertEquals(RestoreDecision.Map(runner), decide(tracking = tracking))
     }
 
     @Test fun `a share that has not run out resumes without asking, keeping the real total`() {
@@ -56,26 +48,27 @@ class RestoreDestinationTest {
         )
     }
 
-    @Test fun `a share that has run out asks again`() {
+    @Test fun `a share that has run out is left`() {
         val choice = Choice.Sharing("s1", expiresAt = now.minusSeconds(1), totalDuration = Duration.ofHours(2))
-        assertEquals(RestoreDecision.Consent(runner), decide(choice = choice))
+        assertEquals(RestoreDecision.LeaveStale(listOf(runner)), decide(choice = choice))
     }
 
-    @Test fun `a share that cannot resume for lack of permission falls back to asking`() {
+    @Test fun `a share that cannot resume for lack of permission is left`() {
         val choice = Choice.Sharing("s1", expiresAt = now.plus(Duration.ofHours(1)), totalDuration = Duration.ofHours(2))
-        assertEquals(RestoreDecision.Consent(runner), decide(choice = choice, canResume = false))
+        assertEquals(RestoreDecision.LeaveStale(listOf(runner)), decide(choice = choice, canResume = false))
     }
 
-    @Test fun `a choice for a different session does not count`() {
-        val other = Choice.ViewOnly("some-other-session")
-        assertEquals(RestoreDecision.Consent(runner), decide(choice = other))
+    @Test fun `a share for a session we are no longer in does not count`() {
+        val choice = Choice.Sharing("gone", expiresAt = now.plus(Duration.ofHours(1)), totalDuration = Duration.ofHours(1))
+        assertEquals(RestoreDecision.LeaveStale(listOf(runner)), decide(choice = choice))
     }
 
-    @Test fun `the session the choice belongs to is preferred when there are several`() {
-        val a = membership("a", "runner")
-        val b = membership("b", "runner")
-        val result = decide(memberships = listOf(a, b), choice = Choice.ViewOnly("b"))
-        assertTrue(result is RestoreDecision.Map && result.membership == b && !result.isSharing)
+    @Test fun `the session being shared is the one resumed when there are several`() {
+        val a = membership("a")
+        val b = membership("b")
+        val choice = Choice.Sharing("b", expiresAt = now.plus(Duration.ofHours(1)), totalDuration = Duration.ofHours(1))
+        val result = decide(memberships = listOf(a, b), choice = choice)
+        assertEquals(RestoreDecision.ResumeSharing(b, Duration.ofHours(1), Duration.ofHours(1)), result)
     }
 
     @Test fun `total is never reported smaller than what remains`() {

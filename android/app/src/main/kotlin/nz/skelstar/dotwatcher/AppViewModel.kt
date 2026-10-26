@@ -35,12 +35,10 @@ sealed interface Destination {
      *  relaunched — shown briefly so the create/join screen doesn't flash first. */
     data object Restoring : Destination
     data object Session : Destination
-    /** Shown only for role "runner" — asks whether/how-long to share this device's own position
-     *  before starting the background tracking service. A "viewer" skips straight to Map, same
-     *  as iOS only asking runners (ShareLocationConsentView is only shown when
-     *  `canTrackSelectedSession`, i.e. role == "runner"). */
+    /** Asks how long to share this device's own position for, before starting the background tracking
+     *  service. Declining leaves the session: there is no view-only map. */
     data class Consent(val membership: SessionMembership) : Destination
-    data class Map(val membership: SessionMembership, val isSharing: Boolean) : Destination
+    data class Map(val membership: SessionMembership) : Destination
 
     /** Out casually: the live map with no session behind it. See .ai/plans/casual-tracking.md. */
     data object Casual : Destination
@@ -139,10 +137,17 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 now = Instant.now(),
                 canResumeSharing = hasLocationPermissionsForSharing(),
             )
+            if (decision is RestoreDecision.LeaveStale) {
+                // A session doesn't carry over a relaunch: leave it, so the others stop seeing someone who
+                // isn't sharing, and start from the create/join screen.
+                shareChoices.clear()
+                decision.memberships.forEach { runCatching { repository.leaveSession(it.sessionId) } }
+                if (_destination.value == Destination.Restoring) _destination.value = Destination.Session
+                return@launch
+            }
             _destination.value = when (decision) {
-                RestoreDecision.CreateOrJoin -> Destination.Session
-                is RestoreDecision.Map -> Destination.Map(decision.membership, decision.isSharing)
-                is RestoreDecision.Consent -> Destination.Consent(decision.membership)
+                RestoreDecision.CreateOrJoin, is RestoreDecision.LeaveStale -> Destination.Session
+                is RestoreDecision.Map -> Destination.Map(decision.membership)
                 is RestoreDecision.ResumeSharing -> {
                     // They already chose how long to share and it hasn't run out: carry on, don't ask.
                     LocationTrackingService.start(
@@ -151,7 +156,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                         decision.remaining,
                         decision.total,
                     )
-                    Destination.Map(decision.membership, isSharing = true)
+                    Destination.Map(decision.membership)
                 }
             }
         }
@@ -289,11 +294,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         }
         val membership = response.body()
         return if (response.isSuccessful && membership != null) {
-            _destination.value = if (membership.role == "runner") {
-                Destination.Consent(membership)
-            } else {
-                Destination.Map(membership, isSharing = false)
-            }
+            _destination.value = Destination.Consent(membership)
             SessionUiState.Idle
         } else {
             SessionUiState.Error(response.errorMessageOrStatus())
@@ -307,13 +308,11 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             viewModelScope.launch { runCatching { repository.casualStop() } }
         }
         LocationTrackingService.start(getApplication(), membership.sessionId, duration)
-        _destination.value = Destination.Map(membership, isSharing = true)
+        _destination.value = Destination.Map(membership)
     }
 
-    fun declineSharing(membership: SessionMembership) {
-        shareChoices.recordViewOnly(membership.sessionId)
-        _destination.value = Destination.Map(membership, isSharing = false)
-    }
+    /** "Don't share" leaves the session and returns to the create/join screen: there is no view-only map. */
+    fun declineSharing(membership: SessionMembership) = leaveSession(membership)
 
     /** Leaves [membership]'s session for real ([DELETE /me/sessions/{sessionId}/membership] —
      *  matches iOS's `leaveSession(sessionId:)`) and returns to the create/join screen. Stops

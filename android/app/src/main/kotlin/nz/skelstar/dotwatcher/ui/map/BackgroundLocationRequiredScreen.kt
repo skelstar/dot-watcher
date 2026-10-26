@@ -29,7 +29,7 @@ import androidx.compose.ui.unit.dp
 fun BackgroundLocationRequiredScreen(
     sessionName: String,
     onOpenSettings: () -> Unit,
-    onViewOnly: () -> Unit,
+    onSkip: () -> Unit,
 ) {
     Column(
         modifier = Modifier
@@ -64,8 +64,8 @@ fun BackgroundLocationRequiredScreen(
             Text("Open settings")
         }
         Spacer(modifier = Modifier.height(8.dp))
-        OutlinedButton(onClick = onViewOnly, modifier = Modifier.fillMaxWidth()) {
-            Text("Just watch, don't share")
+        OutlinedButton(onClick = onSkip, modifier = Modifier.fillMaxWidth()) {
+            Text("Not now")
         }
     }
 }
