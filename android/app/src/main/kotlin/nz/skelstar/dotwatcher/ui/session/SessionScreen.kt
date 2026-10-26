@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
@@ -112,13 +113,14 @@ fun SessionScreen(
     }
 
     // Header, crew and any error scroll; the three sign buttons stay pinned to the bottom where a
-    // thumb reaches them.
-    Column(modifier = Modifier.fillMaxSize()) {
+    // thumb reaches them. Kept inside the system bars: with three-button navigation the bottom button
+    // would otherwise run under the nav bar (the map screens allow for the bars themselves).
+    Column(modifier = Modifier.fillMaxSize().safeDrawingPadding()) {
         Column(
             modifier = Modifier
                 .weight(1f)
                 .verticalScroll(rememberScrollState())
-                .padding(start = 24.dp, top = 24.dp, end = 24.dp),
+                .padding(start = 24.dp, top = 8.dp, end = 24.dp),
         ) {
             AppHeader(onAccountClick = { showAccount = true })
             Spacer(modifier = Modifier.height(24.dp))
