@@ -6,8 +6,8 @@ import SwiftUI
 // screens, which follow the "Casual Go Button" design. See .ai/plans/casual-tracking.md.
 
 private let goGreen = Color(red: 0x34 / 255, green: 0xC7 / 255, blue: 0x59 / 255)
-private let stopRed = Color(red: 1, green: 0x3B / 255, blue: 0x30 / 255)
-private let stopRedFill = Color(red: 0xB3 / 255, green: 0x26 / 255, blue: 0x1E / 255)
+let stopRed = Color(red: 1, green: 0x3B / 255, blue: 0x30 / 255)
+let stopRedFill = Color(red: 0xB3 / 255, green: 0x26 / 255, blue: 0x1E / 255)
 
 /// How long Go and Stop must be held. Long enough to ignore a press in a pocket, short enough that
 /// nobody has to try twice.
@@ -66,7 +66,7 @@ private struct HoldToComplete: ViewModifier {
     }
 }
 
-private extension View {
+extension View {
     func holdToComplete(progress: Binding<CGFloat>, onComplete: @escaping () -> Void) -> some View {
         modifier(HoldToComplete(progress: progress, onComplete: onComplete))
     }
@@ -94,70 +94,19 @@ private struct SheetCloseButton: ViewModifier {
     }
 }
 
-private extension View {
+extension View {
     func sheetCloseButton() -> some View { modifier(SheetCloseButton()) }
 }
 
 // MARK: - Start screen
 
-/// The big hold-to-go button with its caption, shown on the start screen when the server has casual for
-/// this account. Holding Go opens "Before you go", which is where tracking actually starts.
-struct CasualGoBlock: View {
-    var casual: CasualStore
-    @State private var progress: CGFloat = 0
-
-    var body: some View {
-        if casual.isAvailable {
-            VStack(spacing: 10) {
-                if let line = Self.crewOutLine(casual.crewOut) {
-                    Text(line)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                        .multilineTextAlignment(.center)
-                }
-                ZStack {
-                    Circle().stroke(Color(.systemGray5), lineWidth: 10)
-                    Circle()
-                        .trim(from: 0, to: progress)
-                        .stroke(goGreen, style: StrokeStyle(lineWidth: 10, lineCap: .round))
-                        .rotationEffect(.degrees(-90))
-                    Circle().fill(goGreen).padding(17)
-                    Text("Go")
-                        .font(.system(size: 60, weight: .heavy))
-                        .foregroundStyle(.white)
-                }
-                .frame(width: 224, height: 224)
-                .padding(.vertical, 4)
-                .contentShape(Circle())
-                .holdToComplete(progress: $progress) { casual.isBeforeYouGoPresented = true }
-                .accessibilityLabel("Go")
-                .accessibilityHint("Hold to start tracking")
-                Text("HOLD TO GO")
-                    .font(.footnote.weight(.bold))
-                    .foregroundStyle(.secondary)
-                Text("Out for a run? Hold Go. Your crew will see you.")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-                if let error = casual.startError {
-                    Text(error)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.red)
-                        .multilineTextAlignment(.center)
-                }
-            }
-            .frame(maxWidth: .infinity)
-        }
-    }
-
-    /// The line under the crew row: who is out, or that nobody is. nil while still loading.
-    static func crewOutLine(_ crewOut: Int?) -> String? {
-        switch crewOut {
-        case nil: return nil
-        case 0: return "No crew out right now. They'll show up here."
-        case 1: return "1 of your crew is out now"
-        default: return "\(crewOut ?? 0) of your crew are out now"
-        }
+/// The line under the crew row: who is out, or that nobody is. nil while still loading.
+func crewOutLine(_ crewOut: Int?) -> String? {
+    switch crewOut {
+    case nil: return nil
+    case 0: return "No crew out right now. They'll show up here."
+    case 1: return "1 of your crew is out now"
+    default: return "\(crewOut ?? 0) of your crew are out now"
     }
 }
 
@@ -277,6 +226,7 @@ struct WhoCanSeeMeSheet: View {
 /// with sign-in and the app coming to the front (as `CrewHost` does for crew).
 struct CasualHost: ViewModifier {
     @Bindable var casual: CasualStore
+    var crew: CrewStore
     var location: LocationManager
     @Environment(\.scenePhase) private var scenePhase
 
@@ -306,7 +256,7 @@ struct CasualHost: ViewModifier {
                     .preferredColorScheme(location.appearanceMode.colorScheme)
             }
             .fullScreenCover(isPresented: $casual.isMapPresented) {
-                CasualMapScreen(casual: casual, location: location)
+                CasualMapScreen(casual: casual, crew: crew, location: location)
                     .preferredColorScheme(location.appearanceMode.colorScheme)
             }
             .task {
@@ -338,6 +288,7 @@ struct CasualHost: ViewModifier {
 /// name, and (only when both have chosen to be seen) anonymous dots within 5 km. Stopping is a hold.
 struct CasualMapScreen: View {
     var casual: CasualStore
+    @Bindable var crew: CrewStore
     var location: LocationManager
 
     @Environment(\.scenePhase) private var scenePhase
@@ -399,14 +350,14 @@ struct CasualMapScreen: View {
                 .padding(.top, 8)
                 Spacer()
                 if location.pausedForBattery {
-                    batteryCard
+                    BatteryPausedCard(location: location) { casual.stop() }
                         .padding(.horizontal, 12)
                         .padding(.bottom, 16)
                 } else {
                     HStack(alignment: .bottom) {
                         countChip
                         Spacer()
-                        stopPill
+                        HoldToStopPill(progress: $stopProgress) { casual.stop() }
                     }
                     .padding(.horizontal, 14)
                     .padding(.bottom, 26)
@@ -440,6 +391,13 @@ struct CasualMapScreen: View {
             ShareRunSheet(casual: casual)
                 .presentationDetents([.large])
         }
+        // The crew sheet lives here, not on `ContentView`, because the map is a full-screen cover. A
+        // crew link opened during a run lands here too (`CrewStore` sets the same flag).
+        .sheet(isPresented: $crew.isFlowPresented) {
+            CrewFlowView(crew: crew, webBaseURL: location.webBaseURL)
+                .presentationDetents([.large])
+                .preferredColorScheme(location.appearanceMode.colorScheme)
+        }
     }
 
     // MARK: Map
@@ -459,8 +417,8 @@ struct CasualMapScreen: View {
                             name: pin.id,
                             isHighlighted: pin.isSelf,
                             heading: pin.heading,
-                            isStale: age.map { $0 > NativeMapView.staleAfter } ?? false,
-                            isDisconnected: age.map { $0 > NativeMapView.disconnectedAfter } ?? false
+                            isStale: age.map { $0 > MapPinAge.staleAfter } ?? false,
+                            isDisconnected: age.map { $0 > MapPinAge.disconnectedAfter } ?? false
                         )
                         .overlay(alignment: .bottomTrailing) {
                             if pin.isLocked { LockBadge().offset(x: 4, y: 4) }
@@ -510,169 +468,56 @@ struct CasualMapScreen: View {
     private var topLeft: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
-                wordmark
-                countdown
+                MapWordmark(runnerName: location.runnerName)
+                MapCountdown(location: location) { showExtend = true }
             }
             EndingSoonPill(location: location)
         }
     }
 
-    private var wordmark: some View {
-        HStack(spacing: 1) {
-            Text("d").font(.system(size: 19, weight: .heavy))
-            Text(RunnerCircle.initials(for: location.runnerName))
-                .font(.system(size: 9.5, weight: .bold))
-                .foregroundStyle(.white)
-                .frame(width: 25, height: 25)
-                .background(Circle().fill(RunnerColorPalette.currentUser))
-            Text("t-watchr").font(.system(size: 19, weight: .heavy))
-        }
-        .shadow(color: .white, radius: 4)
-        .foregroundStyle(.black)
-    }
-
-    private var countdown: some View {
-        TimelineView(.periodic(from: .now, by: 1)) { context in
-            let remaining = max(0, (location.trackingExpiresAt ?? context.date).timeIntervalSince(context.date))
-            let total = max(1, location.trackingTotalDuration)
-            let low = remaining <= 30 * 60
-            let tint = low ? Color(red: 0xE0 / 255, green: 0x8A / 255, blue: 0) : Color(red: 0x30 / 255, green: 0xA1 / 255, blue: 0x4E / 255)
-            Button { showExtend = true } label: {
-                ZStack {
-                    Circle().stroke(Color.black.opacity(0.08), lineWidth: 3)
-                    Circle()
-                        .trim(from: 0, to: min(1, remaining / total))
-                        .stroke(tint, style: StrokeStyle(lineWidth: 3, lineCap: .round))
-                        .rotationEffect(.degrees(-90))
-                    Text(Self.hoursMinutes(remaining))
-                        .font(.system(size: 11, weight: .bold, design: .monospaced))
-                        .foregroundStyle(low ? Color(red: 0xA3 / 255, green: 0x5F / 255, blue: 0) : .black)
-                }
-                .padding(2)
-                .frame(width: 46, height: 46)
-                .background(low ? Color(red: 1, green: 0.88, blue: 0.54) : Color.white.opacity(0.85), in: Circle())
-                .shadow(color: .black.opacity(0.18), radius: 2, y: 1)
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Auto-stops in \(Int(remaining / 60)) minutes")
-            .accessibilityHint("Add time or stop now")
-        }
-    }
-
-    static func hoursMinutes(_ seconds: TimeInterval) -> String {
-        let total = Int(seconds)
-        return "\(total / 3600):" + String(format: "%02d", (total % 3600) / 60)
-    }
-
     private var rail: some View {
         VStack(spacing: 10) {
-            railButton("square.and.arrow.up", label: "Share a link to watch me") {
+            MapRailButton(symbol: "square.and.arrow.up", label: "Share a link to watch me") {
                 showShare = true
                 Task { await casual.makeWatchLink() }
             }
-            railButton("arrow.up.left.and.arrow.down.right", label: "Fit all runners") { fitAll() }
-            railButton("eye", label: "Who can see me") { showWhoCanSeeMe = true }
+            MapRailButton(symbol: "arrow.up.left.and.arrow.down.right", label: "Fit all runners") { fitAll() }
+            MapRailButton(symbol: "eye", label: "Who can see me") { showWhoCanSeeMe = true }
         }
-    }
-
-    private func railButton(_ symbol: String, label: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Image(systemName: symbol)
-                .font(.system(size: 18, weight: .semibold))
-                .foregroundStyle(.black)
-                .frame(width: 44, height: 44)
-                .background(Color.white.opacity(0.85), in: Circle())
-                .shadow(color: .black.opacity(0.18), radius: 2, y: 1)
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(label)
     }
 
     /// "2 crew out · 5 nearby". The nearby part appears only when the person has chosen to be seen,
-    /// because that is also when they can see others.
+    /// because that is also when they can see others. Tapping it opens the crew sheet, so crew can be
+    /// added mid-run; with no crew yet it says so and offers the add.
     private var countChip: some View {
-        let crew = casual.crewOut ?? 0
-        let text = (crew == 0 ? "No crew out" : "\(crew) crew out")
+        let crewOut = casual.crewOut ?? 0
+        let hasNoCrew = crew.isAvailable && crew.members.isEmpty
+        let text = (hasNoCrew ? "No crew yet" : crewOut == 0 ? "No crew out" : "\(crewOut) crew out")
             + (casual.visibleToNonCrew ? "  ·  \(casual.nearby.count) nearby" : "")
-        return Text(text)
+        return Button {
+            crew.isFlowPresented = true
+        } label: {
+            HStack(spacing: 6) {
+                Text(text)
+                Image(systemName: hasNoCrew ? "plus" : "chevron.right")
+                    .font(.system(size: 11, weight: .bold))
+                    .accessibilityHidden(true)
+            }
             .font(.system(size: 12.5, weight: .semibold))
             .foregroundStyle(.black)
             .padding(.horizontal, 14)
             .frame(height: 36)
             .background(Color.white.opacity(0.85), in: Capsule())
             .shadow(color: .black.opacity(0.18), radius: 2, y: 1)
+        }
+        .buttonStyle(.plain)
+        .disabled(!crew.isAvailable)
+        .accessibilityHint("Opens your crew, where you can add someone")
     }
 
-    private var stopPill: some View {
-        ZStack {
-            Capsule().fill(stopRed)
-            GeometryReader { geometry in
-                Capsule()
-                    .fill(stopRedFill)
-                    .frame(width: geometry.size.width * stopProgress)
-            }
-            .clipShape(Capsule())
-            Text("Hold to stop")
-                .font(.system(size: 15, weight: .bold))
-                .foregroundStyle(.white)
-        }
-        .frame(width: 150, height: 48)
-        .shadow(color: .black.opacity(0.25), radius: 3, y: 2)
-        .contentShape(Capsule())
-        .holdToComplete(progress: $stopProgress) { casual.stop() }
-        .accessibilityLabel("Stop")
-        .accessibilityHint("Hold to stop tracking")
-    }
-
-    private var batteryCard: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Label("Battery critical, updates paused", systemImage: "battery.0percent")
-                .font(.system(size: 13.5, weight: .bold))
-                .foregroundStyle(Color(red: 0xC4 / 255, green: 0x27 / 255, blue: 0x1D / 255))
-            Text("Others can't see you move until you send manually, plug in, or turn automatic updates back on.")
-                .font(.system(size: 11.5))
-                .foregroundStyle(.secondary)
-            HStack(spacing: 8) {
-                Button { Task { await location.sendLocationNowWhilePaused() } } label: {
-                    Text("Send now").frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.borderedProminent)
-                Button { location.resumeAutomaticTrackingOverridingBattery() } label: {
-                    Text("Auto").frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.bordered)
-            }
-            Button { casual.stop() } label: {
-                Text("Stop").fontWeight(.bold).frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.borderedProminent)
-            .tint(stopRed)
-        }
-        .padding(14)
-        .background(Color(red: 1, green: 0.94, blue: 0.93), in: RoundedRectangle(cornerRadius: 22))
-    }
 }
 
 // MARK: - Map pieces
-
-/// "Auto-stops in 8 min": only inside the last 30 minutes, next to the amber countdown.
-private struct EndingSoonPill: View {
-    var location: LocationManager
-
-    var body: some View {
-        TimelineView(.periodic(from: .now, by: 1)) { context in
-            let remaining = (location.trackingExpiresAt ?? context.date).timeIntervalSince(context.date)
-            if remaining > 0, remaining <= 30 * 60 {
-                Text("Auto-stops in \(Int((remaining + 59) / 60)) min")
-                    .font(.system(size: 12.5, weight: .semibold))
-                    .foregroundStyle(Color(red: 0x7A / 255, green: 0x4D / 255, blue: 0))
-                    .padding(.horizontal, 13)
-                    .frame(height: 36)
-                    .background(Color(red: 1, green: 0.96, blue: 0.84), in: Capsule())
-            }
-        }
-    }
-}
 
 /// A person who is not in the crew: a grey dot with a white edge, and a padlock when they are in a named
 /// session. No name, initials or colour: nothing that says who it is.
@@ -785,7 +630,7 @@ private struct ShareRunSheet: View {
 }
 
 /// Opened by tapping the countdown: add time to the current auto-stop, or stop now.
-private struct ExtendSheet: View {
+struct ExtendSheet: View {
     let onExtend: (TimeInterval) -> Void
     let onStopNow: () -> Void
     var location: LocationManager

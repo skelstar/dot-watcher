@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import nz.skelstar.dotwatcher.casual.CasualModel
 import nz.skelstar.dotwatcher.casual.CasualPrefs
+import nz.skelstar.dotwatcher.events.EventsModel
 import nz.skelstar.dotwatcher.crew.CrewModel
 import nz.skelstar.dotwatcher.data.AuthTokenStore
 import nz.skelstar.dotwatcher.data.DotWatcherRepository
@@ -22,6 +23,7 @@ import nz.skelstar.dotwatcher.location.TrackingState
 import nz.skelstar.dotwatcher.network.DotWatcherApiClient
 import nz.skelstar.dotwatcher.network.SessionMembership
 import nz.skelstar.dotwatcher.network.errorMessageOrStatus
+import nz.skelstar.dotwatcher.network.networkMessage
 import retrofit2.Response
 import java.time.Duration
 import java.time.Instant
@@ -33,12 +35,10 @@ sealed interface Destination {
      *  relaunched — shown briefly so the create/join screen doesn't flash first. */
     data object Restoring : Destination
     data object Session : Destination
-    /** Shown only for role "runner" — asks whether/how-long to share this device's own position
-     *  before starting the background tracking service. A "viewer" skips straight to Map, same
-     *  as iOS only asking runners (ShareLocationConsentView is only shown when
-     *  `canTrackSelectedSession`, i.e. role == "runner"). */
+    /** Asks how long to share this device's own position for, before starting the background tracking
+     *  service. Declining leaves the session: there is no view-only map. */
     data class Consent(val membership: SessionMembership) : Destination
-    data class Map(val membership: SessionMembership, val isSharing: Boolean) : Destination
+    data class Map(val membership: SessionMembership) : Destination
 
     /** Out casually: the live map with no session behind it. See .ai/plans/casual-tracking.md. */
     data object Casual : Destination
@@ -71,6 +71,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     /** The signed-in account's crew. Shares this ViewModel's repository and scope rather than being a
      *  second ViewModel, so there is one network stack (see the class note above). */
     val crew = CrewModel(repository, viewModelScope)
+
+    /** Public events near the signed-in account. */
+    val events = EventsModel(repository, viewModelScope)
 
     /** Casual tracking: start tracking without creating or joining a session. */
     val casual = CasualModel(repository, viewModelScope, CasualPrefs(application))
@@ -134,10 +137,17 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 now = Instant.now(),
                 canResumeSharing = hasLocationPermissionsForSharing(),
             )
+            if (decision is RestoreDecision.LeaveStale) {
+                // A session doesn't carry over a relaunch: leave it, so the others stop seeing someone who
+                // isn't sharing, and start from the create/join screen.
+                shareChoices.clear()
+                decision.memberships.forEach { runCatching { repository.leaveSession(it.sessionId) } }
+                if (_destination.value == Destination.Restoring) _destination.value = Destination.Session
+                return@launch
+            }
             _destination.value = when (decision) {
-                RestoreDecision.CreateOrJoin -> Destination.Session
-                is RestoreDecision.Map -> Destination.Map(decision.membership, decision.isSharing)
-                is RestoreDecision.Consent -> Destination.Consent(decision.membership)
+                RestoreDecision.CreateOrJoin, is RestoreDecision.LeaveStale -> Destination.Session
+                is RestoreDecision.Map -> Destination.Map(decision.membership)
                 is RestoreDecision.ResumeSharing -> {
                     // They already chose how long to share and it hasn't run out: carry on, don't ask.
                     LocationTrackingService.start(
@@ -146,7 +156,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                         decision.remaining,
                         decision.total,
                     )
-                    Destination.Map(decision.membership, isSharing = true)
+                    Destination.Map(decision.membership)
                 }
             }
         }
@@ -191,7 +201,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 _destination.value = Destination.Casual
             } else {
                 _sessionState.value = SessionUiState.Error(
-                    response?.errorMessageOrStatus() ?: (result.exceptionOrNull()?.message ?: "Network error.")
+                    response?.errorMessageOrStatus() ?: (result.exceptionOrNull()?.networkMessage() ?: "Network error.")
                 )
             }
         }
@@ -222,13 +232,15 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             _authState.value = AuthUiState.Loading
             val response = runCatching { repository.login(username, password) }
-            _authState.value = handleAuthResult(response)
+            _authState.value = handleAuthResult(response, wrongCredentialsMessage = "Wrong username or password.")
         }
     }
 
-    private fun handleAuthResult(result: Result<Response<Unit>>): AuthUiState {
+    /** [wrongCredentialsMessage] replaces the server's reply to a failed sign-in: it answers a bad login with a
+     *  bare 401 on purpose (it never says whether the username or the password was wrong). */
+    private fun handleAuthResult(result: Result<Response<Unit>>, wrongCredentialsMessage: String? = null): AuthUiState {
         val response = result.getOrElse {
-            return AuthUiState.Error(it.message ?: "Network error.")
+            return AuthUiState.Error(it.networkMessage())
         }
         return if (response.isSuccessful) {
             _destination.value = Destination.Session
@@ -236,7 +248,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             crew.consumePendingLink()
             AuthUiState.Idle
         } else {
-            AuthUiState.Error(response.errorMessageOrStatus())
+            AuthUiState.Error(
+                if (response.code() == 401 && wrongCredentialsMessage != null) wrongCredentialsMessage
+                else response.errorMessageOrStatus()
+            )
         }
     }
 
@@ -275,15 +290,11 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         result: Result<Response<SessionMembership>>,
     ): SessionUiState {
         val response = result.getOrElse {
-            return SessionUiState.Error(it.message ?: "Network error.")
+            return SessionUiState.Error(it.networkMessage())
         }
         val membership = response.body()
         return if (response.isSuccessful && membership != null) {
-            _destination.value = if (membership.role == "runner") {
-                Destination.Consent(membership)
-            } else {
-                Destination.Map(membership, isSharing = false)
-            }
+            _destination.value = Destination.Consent(membership)
             SessionUiState.Idle
         } else {
             SessionUiState.Error(response.errorMessageOrStatus())
@@ -297,13 +308,11 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             viewModelScope.launch { runCatching { repository.casualStop() } }
         }
         LocationTrackingService.start(getApplication(), membership.sessionId, duration)
-        _destination.value = Destination.Map(membership, isSharing = true)
+        _destination.value = Destination.Map(membership)
     }
 
-    fun declineSharing(membership: SessionMembership) {
-        shareChoices.recordViewOnly(membership.sessionId)
-        _destination.value = Destination.Map(membership, isSharing = false)
-    }
+    /** "Don't share" leaves the session and returns to the create/join screen: there is no view-only map. */
+    fun declineSharing(membership: SessionMembership) = leaveSession(membership)
 
     /** Leaves [membership]'s session for real ([DELETE /me/sessions/{sessionId}/membership] —
      *  matches iOS's `leaveSession(sessionId:)`) and returns to the create/join screen. Stops
@@ -340,7 +349,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     _destination.value = Destination.Auth
                 }
                 response != null -> onError(response.errorMessageOrStatus())
-                else -> onError(result.exceptionOrNull()?.message ?: "Network error.")
+                else -> onError(result.exceptionOrNull()?.networkMessage() ?: "Network error.")
             }
         }
     }

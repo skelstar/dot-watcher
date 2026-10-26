@@ -8,6 +8,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import nz.skelstar.dotwatcher.data.DotWatcherRepository
 import nz.skelstar.dotwatcher.network.errorMessageOrStatus
+import nz.skelstar.dotwatcher.network.networkMessage
 
 /** The full address of a watch link: the web site's base URL joined to the path the server gives. */
 fun watchLinkUrl(webBaseUrl: String, path: String): String = webBaseUrl.trimEnd('/') + path
@@ -78,13 +79,15 @@ class CasualModel(
         prefs.visibleToNonCrew = visible
         _state.update { it.copy(visibleToNonCrew = visible, error = null) }
         scope.launch {
-            val response = runCatching { repository.setCasualVisibleToNonCrew(visible) }.getOrNull()
+            val result = runCatching { repository.setCasualVisibleToNonCrew(visible) }
+            val response = result.getOrNull()
             if (response == null || !response.isSuccessful) {
                 prefs.visibleToNonCrew = before
                 _state.update {
                     it.copy(
                         visibleToNonCrew = before,
-                        error = response?.errorMessageOrStatus() ?: "Network error. Try again.",
+                        error = response?.errorMessageOrStatus()
+                            ?: (result.exceptionOrNull()?.networkMessage() ?: "Network error. Try again."),
                     )
                 }
             }
@@ -104,7 +107,7 @@ class CasualModel(
             response != null && response.isSuccessful && link != null ->
                 Result.success(watchLinkUrl(webBaseUrl, link.path))
             response != null -> Result.failure(IllegalStateException(response.errorMessageOrStatus()))
-            else -> Result.failure(IllegalStateException(result.exceptionOrNull()?.message ?: "Network error."))
+            else -> Result.failure(IllegalStateException(result.exceptionOrNull()?.networkMessage() ?: "Network error."))
         }
     }
 

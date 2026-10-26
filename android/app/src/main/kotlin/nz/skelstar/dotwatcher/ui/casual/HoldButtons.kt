@@ -54,7 +54,7 @@ private val StopRedFill = Color(0xFFB3261E)
  * The same press-and-hold for Go and Stop: [progress] fills over [HOLD_MILLIS] while the finger is
  * down, then [onComplete] runs with a firm tap. Letting go early drains it and does nothing.
  */
-private suspend fun PressGestureScope.holdToComplete(
+internal suspend fun PressGestureScope.holdToComplete(
     progress: Animatable<Float, *>,
     scope: CoroutineScope,
     haptic: HapticFeedback,

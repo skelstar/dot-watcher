@@ -42,11 +42,12 @@ struct CrewDot: View {
     }
 }
 
-private func crewDot(for member: CrewMember, size: CGFloat) -> some View {
+private func crewDot(for member: CrewMember, color: Color, size: CGFloat, ringed: Bool = true) -> some View {
     CrewDot(
         initials: RunnerCircle.initials(for: member.displayName),
-        color: RunnerColorPalette.color(for: member.userId),
-        size: size
+        color: color,
+        size: size,
+        isCrew: ringed
     )
     .accessibilityElement(children: .ignore)
     .accessibilityLabel("\(member.label), in your crew")
@@ -54,7 +55,7 @@ private func crewDot(for member: CrewMember, size: CGFloat) -> some View {
 
 // MARK: - Start-screen row
 
-/// The slim "Your crew" row: up to four ringed faces (the ring means "in your crew"), "+N" for the
+/// The slim "Your crew" row: up to four faces, "+N" for the
 /// rest, and a count. Tapping opens the crew sheet. Draws nothing until the server has said it has
 /// crew, so an app running against an older server shows no trace of it.
 struct CrewRow: View {
@@ -76,7 +77,11 @@ struct CrewRow: View {
                     } else {
                         HStack(spacing: -10) {
                             ForEach(summary.faces) { member in
-                                crewDot(for: member, size: 30)
+                                // No ring here: the row is already "Your crew", and rings overlapping
+                                // looked messy. A card-coloured edge keeps overlapped dots apart, and
+                                // 38 is the outer size the ringed 30 dot used to have.
+                                crewDot(for: member, color: crew.color(for: member.userId), size: 38, ringed: false)
+                                    .overlay(Circle().strokeBorder(Color(.systemGray5), lineWidth: 2))
                             }
                         }
                         if summary.extra > 0 {
@@ -118,11 +123,17 @@ struct CrewRow: View {
 struct CrewHost: ViewModifier {
     @Bindable var crew: CrewStore
     var location: LocationManager
+    /// True while the casual map covers the screen. A sheet can't present from beneath a full-screen
+    /// cover, so the map presents the crew sheet itself and this one stands down.
+    var yieldsToCasualMap = false
     @Environment(\.scenePhase) private var scenePhase
 
     func body(content: Content) -> some View {
         content
-            .sheet(isPresented: $crew.isFlowPresented) {
+            .sheet(isPresented: Binding(
+                get: { crew.isFlowPresented && !yieldsToCasualMap },
+                set: { crew.isFlowPresented = $0 }
+            )) {
                 CrewFlowView(crew: crew, webBaseURL: location.webBaseURL)
                     .presentationDetents([.large])
                     .preferredColorScheme(location.appearanceMode.colorScheme)
@@ -278,7 +289,7 @@ struct CrewListView: View {
             selectedId = isSelected ? nil : member.userId
         } label: {
             VStack(spacing: 4) {
-                crewDot(for: member, size: 38)
+                crewDot(for: member, color: crew.color(for: member.userId), size: 38)
                 Text(member.label)
                     .font(.caption2)
                     .lineLimit(1)
@@ -293,7 +304,7 @@ struct CrewListView: View {
 
     private func detailCard(_ member: CrewMember) -> some View {
         HStack(spacing: 12) {
-            crewDot(for: member, size: 34)
+            crewDot(for: member, color: crew.color(for: member.userId), size: 34)
             VStack(alignment: .leading, spacing: 2) {
                 Text(member.label)
                     .font(.headline)

@@ -65,13 +65,42 @@ import nz.skelstar.dotwatcher.crew.label
 import nz.skelstar.dotwatcher.network.CrewMember
 import nz.skelstar.dotwatcher.ui.CodeBoxField
 import nz.skelstar.dotwatcher.ui.CrewDot
-import nz.skelstar.dotwatcher.ui.crewColor
+import nz.skelstar.dotwatcher.ui.colorFor
 import java.time.Instant
 import java.time.ZoneId
 
 // The crew sheets, opened from the "Your crew" row on the start screen. Crew sheet -> Add sheet ->
 // (Show my code) is the whole flow; the "Add X to your crew?" confirmation lives at the app level
 // (CrewConfirmDialog) because a crew link can arrive on any screen.
+
+/** Which crew sheet is open. They stack as a flow: the crew, then adding someone, then (from there)
+ *  showing your own code; dismissing steps back one. */
+enum class CrewStage { None, List, Add, MyCode }
+
+/** The crew sheets for [stage]. Shared by the start screen and the casual map, which both open it. */
+@Composable
+fun CrewFlow(crew: CrewModel, state: CrewUiState, stage: CrewStage, onStage: (CrewStage) -> Unit) {
+    when (stage) {
+        CrewStage.None -> Unit
+        CrewStage.List -> CrewSheet(
+            crew = crew,
+            state = state,
+            onAdd = { onStage(CrewStage.Add) },
+            onDismiss = { onStage(CrewStage.None) },
+        )
+        CrewStage.Add -> AddCrewSheet(
+            crew = crew,
+            state = state,
+            onShowMyCode = { onStage(CrewStage.MyCode) },
+            onDismiss = { onStage(CrewStage.List) },
+        )
+        CrewStage.MyCode -> MyCrewCodeSheet(
+            crew = crew,
+            state = state,
+            onDismiss = { onStage(CrewStage.List) },
+        )
+    }
+}
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -127,7 +156,7 @@ fun CrewSheet(
                                 .padding(vertical = 8.dp)
                                 .semantics { contentDescription = "${member.label()}, in your crew" },
                         ) {
-                            CrewDot(initials = member.displayName, color = crewColor(member.userId), size = 38.dp)
+                            CrewDot(initials = member.displayName, color = state.colorFor(member.userId), size = 38.dp)
                             Spacer(modifier = Modifier.height(4.dp))
                             Text(
                                 text = member.label(),
@@ -152,7 +181,7 @@ fun CrewSheet(
                             .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(12.dp))
                             .padding(12.dp),
                     ) {
-                        CrewDot(initials = selected.displayName, color = crewColor(selected.userId))
+                        CrewDot(initials = selected.displayName, color = state.colorFor(selected.userId))
                         Spacer(modifier = Modifier.width(12.dp))
                         Column(modifier = Modifier.weight(1f)) {
                             Text(selected.label(), style = MaterialTheme.typography.titleMedium)

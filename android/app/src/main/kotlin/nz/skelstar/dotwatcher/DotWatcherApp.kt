@@ -25,7 +25,7 @@ import nz.skelstar.dotwatcher.ui.auth.AuthScreen
 import nz.skelstar.dotwatcher.ui.map.BackgroundLocationRequiredScreen
 import nz.skelstar.dotwatcher.ui.map.CasualMapScreen
 import nz.skelstar.dotwatcher.ui.map.LiveMapScreen
-import nz.skelstar.dotwatcher.ui.map.ShareLocationConsentScreen
+import nz.skelstar.dotwatcher.ui.map.ShareLocationSheet
 import nz.skelstar.dotwatcher.ui.session.SessionScreen
 import nz.skelstar.dotwatcher.ui.theme.DotWatcherTheme
 
@@ -92,18 +92,18 @@ fun DotWatcherApp(hasBackgroundLocationPermission: Boolean) {
                                 )
                             )
                         },
-                        onViewOnly = { casualNeedsLocationPermission = false },
+                        onSkip = { casualNeedsLocationPermission = false },
                     )
                 } else SessionScreen(
                     state = sessionState,
                     onCreateSession = viewModel::createSession,
                     onJoinSession = viewModel::joinSession,
-                    onRefresh = viewModel::refresh,
                     onSignOut = viewModel::signOut,
                     account = viewModel.account,
                     onDeleteAccount = viewModel::deleteAccount,
                     crew = viewModel.crew,
                     casual = viewModel.casual,
+                    events = viewModel.events,
                     onStartCasual = { duration ->
                         if (hasBackgroundLocationPermission) {
                             casualNeedsLocationPermission = false
@@ -117,35 +117,36 @@ fun DotWatcherApp(hasBackgroundLocationPermission: Boolean) {
                 Destination.Casual -> CasualMapScreen(
                     repository = viewModel.repository,
                     casual = viewModel.casual,
+                    crew = viewModel.crew,
                     onStop = viewModel::stopCasual,
                 )
 
-                is Destination.Consent -> if (hasBackgroundLocationPermission) {
-                    ShareLocationConsentScreen(
-                        sessionName = current.membership.sessionName,
-                        onShare = { duration -> viewModel.startSharing(current.membership, duration) },
-                        onDecline = { viewModel.declineSharing(current.membership) },
-                    )
-                } else {
-                    // Background location isn't granted — sharing while backgrounded can't work,
-                    // so explain why it's needed rather than offer a consent screen for a feature
-                    // that can't function (or silently drop to view-only).
-                    val context = LocalContext.current
-                    BackgroundLocationRequiredScreen(
-                        sessionName = current.membership.sessionName,
-                        onOpenSettings = {
-                            context.startActivity(
-                                Intent(
-                                    Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
-                                    Uri.fromParts("package", context.packageName, null),
+                // One branch for both, so the map is not rebuilt when the runner answers the share sheet.
+                is Destination.Consent, is Destination.Map -> {
+                    val membership = (current as? Destination.Consent)?.membership
+                        ?: (current as Destination.Map).membership
+                    val asking = current is Destination.Consent
+                    if (asking && !hasBackgroundLocationPermission) {
+                        // Background location isn't granted — sharing while backgrounded can't work,
+                        // so explain why it's needed rather than offer a share sheet for a feature
+                        // that can't function.
+                        val context = LocalContext.current
+                        BackgroundLocationRequiredScreen(
+                            sessionName = membership.sessionName,
+                            onOpenSettings = {
+                                context.startActivity(
+                                    Intent(
+                                        Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                                        Uri.fromParts("package", context.packageName, null),
+                                    )
                                 )
-                            )
-                        },
-                        onViewOnly = { viewModel.declineSharing(current.membership) },
-                    )
+                            },
+                            onSkip = { viewModel.declineSharing(membership) },
+                        )
+                    } else {
+                        SessionMapDestination(membership, asking, viewModel)
+                    }
                 }
-
-                is Destination.Map -> MapDestinationScreen(current.membership, current.isSharing, viewModel)
             }
 
             // "Add X to your crew?" can come from a crew link on any screen once signed in, so it
@@ -157,12 +158,21 @@ fun DotWatcherApp(hasBackgroundLocationPermission: Boolean) {
     }
 }
 
+/** The session map, with the "share your location?" sheet over it until the runner answers. */
 @Composable
-private fun MapDestinationScreen(membership: SessionMembership, isSharing: Boolean, viewModel: AppViewModel) {
-    LiveMapScreen(
-        membership = membership,
-        repository = viewModel.repository,
-        isSharing = isSharing,
-        onLeaveSession = { viewModel.leaveSession(membership) },
-    )
+private fun SessionMapDestination(membership: SessionMembership, asking: Boolean, viewModel: AppViewModel) {
+    Box(modifier = Modifier.fillMaxSize()) {
+        LiveMapScreen(
+            membership = membership,
+            repository = viewModel.repository,
+            onLeaveSession = { viewModel.leaveSession(membership) },
+        )
+        if (asking) {
+            ShareLocationSheet(
+                sessionName = membership.sessionName,
+                onShare = { duration -> viewModel.startSharing(membership, duration) },
+                onDecline = { viewModel.declineSharing(membership) },
+            )
+        }
+    }
 }

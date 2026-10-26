@@ -10,6 +10,13 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.selection.selectable
@@ -38,25 +45,28 @@ import java.time.Duration
 
 /**
  * Explicit, declinable consent to share location with other members of this session — distinct
- * from the OS location permission prompt, asked once per session start. Ported from
- * ios/DotWatcher/DotWatcher/ShareLocationConsentView.swift, including its duration picker:
+ * from the OS location permission prompt, asked each time someone joins or creates a session. It is a
+ * bottom sheet over the session map, as on iOS (ShareLocationConsentView.swift). Includes the duration picker:
  * sharing always auto-stops on its own (see [TRACKING_DURATION_OPTIONS]'s kdoc), the runner just
- * picks how soon, up to 24 hours. Declining still allows viewing the session as a spectator —
- * only automatic sharing of the runner's own position is what's being consented to here.
+ * picks how soon, up to 24 hours. Declining leaves the session (there is no view-only map); the
+ * runner can rejoin with the invite code.
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ShareLocationConsentScreen(
+fun ShareLocationSheet(
     sessionName: String,
     onShare: (Duration) -> Unit,
     onDecline: () -> Unit,
 ) {
     var selectedDuration by remember { mutableStateOf(TRACKING_DURATION_OPTIONS.last()) }
 
+    // Closing the sheet without choosing counts as declining.
+    ModalBottomSheet(onDismissRequest = onDecline, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
     Column(
         modifier = Modifier
-            .fillMaxSize()
-            .padding(32.dp),
-        verticalArrangement = Arrangement.Center,
+            .verticalScroll(rememberScrollState())
+            .navigationBarsPadding()
+            .padding(horizontal = 32.dp, vertical = 8.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         // Matches ShareLocationConsentView.swift's icon badge: an accent-colored icon in a
@@ -93,25 +103,21 @@ fun ShareLocationConsentScreen(
         )
         Spacer(modifier = Modifier.height(8.dp))
 
-        Column(modifier = Modifier.selectableGroup().fillMaxWidth()) {
+        // One row of choices, as on iOS, so the Share button stays on screen without scrolling.
+        Row(
+            modifier = Modifier.selectableGroup().fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
             TRACKING_DURATION_OPTIONS.forEach { duration ->
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .selectable(
-                            selected = duration == selectedDuration,
-                            onClick = { selectedDuration = duration },
-                            role = Role.RadioButton,
-                        )
-                        .padding(vertical = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    RadioButton(selected = duration == selectedDuration, onClick = null)
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(text = label(duration))
-                }
+                FilterChip(
+                    selected = duration == selectedDuration,
+                    onClick = { selectedDuration = duration },
+                    label = { Text(text = label(duration), modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center) },
+                    modifier = Modifier.weight(1f),
+                )
             }
         }
+        Spacer(modifier = Modifier.height(8.dp))
         Text(
             text = "Sharing always stops on its own — this just picks how soon, up to 24 hours.",
             style = MaterialTheme.typography.labelSmall,
@@ -136,11 +142,13 @@ fun ShareLocationConsentScreen(
 
         Spacer(modifier = Modifier.height(16.dp))
         Text(
-            text = "You can still view this session as a spectator if you don't share.",
+            text = "If you don't share, you'll leave the session. You can rejoin with the invite code.",
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center,
         )
+        Spacer(modifier = Modifier.height(16.dp))
+    }
     }
 }
 

@@ -43,6 +43,10 @@ const CREW_FEATURE = 'crew'
 // so apps hide the Go button for them. Crew-visible output also needs Crew, so grant both together.
 const CASUAL_FEATURE = 'casual'
 
+// Public events near you (server: Features.Events). Accounts without it get a 404 from /me/events/nearby,
+// so apps hide the event sign for them.
+const EVENTS_FEATURE = 'events'
+
 const BEARER_TOKEN_KEY = 'adminBearerToken'
 const APP_VERSION = import.meta.env.VITE_APP_VERSION ?? 'v-local'
 // Matches the simulator's own VITE_CLIENT_URL convention (tools/simulator/.env.example) —
@@ -556,6 +560,7 @@ export default function AdminPanel({ serverUrl }: { serverUrl: string }) {
               <th style={th}>Display name</th>
               <th style={th}>Crew</th>
               <th style={th}>Casual</th>
+              <th style={th}>Events</th>
               <th style={th}>Created</th>
             </tr>
           </thead>
@@ -592,6 +597,16 @@ export default function AdminPanel({ serverUrl }: { serverUrl: string }) {
                     disabled={featureBusyUserId === user.id}
                     aria-label={`Casual for ${user.username}`}
                     title="Lets this account use casual tracking (the Go button). Crew is needed to see crew."
+                  />
+                </td>
+                <td style={td}>
+                  <input
+                    type="checkbox"
+                    checked={(user.features ?? []).includes(EVENTS_FEATURE)}
+                    onChange={() => void handleToggleFeature(user, EVENTS_FEATURE)}
+                    disabled={featureBusyUserId === user.id}
+                    aria-label={`Events for ${user.username}`}
+                    title="Shows this account the events sign on the start screen (placeholder event for now)"
                   />
                 </td>
                 <td style={td}>{timeAgo(user.createdAt)}</td>

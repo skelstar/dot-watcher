@@ -1,0 +1,332 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Landing page: sign buttons</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Alegreya:wght@700;800&family=Cormorant+Garamond:wght@700&family=EB+Garamond:wght@700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --sign-green: #243a30;
+    --sign-yellow: #efbf3f;
+    --cream: #f6efd9;
+    --accent: #efbf3f;
+    --accent-ink: #243a30;
+    --page: #e9e6dd;
+    --ink: #1d2a24;
+    --muted: #5d675f;
+    --font-sign: "EB Garamond", Georgia, serif;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--page); color: var(--ink); font: 16px/1.5 system-ui, -apple-system, sans-serif; }
+  main { max-width: 1180px; margin: 0 auto; padding: 32px 16px 64px; }
+  h1 { font-family: var(--font-sign); font-size: 34px; margin: 0 0 4px; }
+  h2 { font-family: var(--font-sign); font-size: 24px; margin: 0 0 4px; }
+  p.lede { color: var(--muted); max-width: 70ch; margin: 0 0 24px; }
+  .spec { display: flex; gap: 16px; flex-wrap: wrap; margin: 0 0 32px; }
+  .spec > div { background: #fff; border-radius: 10px; padding: 14px 16px; flex: 1 1 260px; }
+  .spec h3 { margin: 0 0 8px; font-size: 13px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+  .sw { display: flex; gap: 8px; flex-wrap: wrap; }
+  .sw span { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; }
+  .sw i { width: 22px; height: 22px; border-radius: 4px; border: 1px solid rgba(0,0,0,.2); display: inline-block; }
+  .fonts { display: flex; gap: 8px; flex-wrap: wrap; }
+  .fonts button { font: inherit; padding: 6px 12px; border-radius: 999px; border: 1px solid #b9b5a8; background: #fff; cursor: pointer; }
+  .fonts button[aria-pressed="true"] { background: var(--sign-green); color: var(--sign-yellow); border-color: var(--sign-green); }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 360px)); justify-content: center; gap: 28px; }
+  .option .note { color: var(--muted); font-size: 14px; margin: 0 0 12px; min-height: 63px; }
+  .phone { width: 100%; max-width: 340px; margin: 0 auto; background: #fff; border: 8px solid #111; border-radius: 36px; padding: 56px 16px 24px; min-height: 620px; display: flex; flex-direction: column; gap: 14px; position: relative; }
+  .phone::before { content: ""; position: absolute; top: 12px; left: 50%; width: 90px; height: 22px; margin-left: -45px; background: #111; border-radius: 12px; }
+  .brand { font: 700 28px/1.1 -apple-system, system-ui, sans-serif; color: #000; text-align: left; margin: 0 0 8px; padding: 0; }
+  .brand { display: block; }
+  .brand .dot { display: inline-grid; place-items: center; width: 31px; height: 31px; border-radius: 50%; background: #007aff; color: #fff; font-size: 13px; font-weight: 700; vertical-align: middle; margin: 0 2px; cursor: pointer; }
+  .brand small { display: block; font-size: 10px; font-weight: 400; color: #8a8a8e; margin-top: 4px; }
+  .top { display: flex; justify-content: space-between; align-items: flex-start; margin: 0 0 8px; }
+  .top .brand { margin: 0; }
+  .top svg { width: 28px; height: 28px; color: #000; flex: none; }
+
+  /* shared sign button */
+  .sign { all: unset; box-sizing: border-box; display: flex; align-items: center; width: 100%; cursor: pointer; font-family: var(--font-sign); position: relative; }
+  .sign .t { flex: 1; min-width: 0; }
+  .sign .t b { display: block; font-weight: 800; font-size: 30px; line-height: 1.05; }
+  .sign .t span { display: block; font-weight: 700; font-size: 15px; line-height: 1.2; margin-top: 3px; }
+  .sign .arrow { flex: none; width: 30px; height: 30px; }
+  .sign:active { transform: translateY(1px); }
+  .sign:focus-visible { outline: 3px solid var(--sign-yellow); outline-offset: 2px; }
+
+  /* Option A: faithful to the sign */
+  .A .sign { padding: 18px 16px 16px 18px; border-top: 12px solid var(--sign-yellow); }
+  .A .sign.go { background: var(--sign-green); color: var(--sign-yellow); }
+  .A .sign.alt { background: var(--cream); color: var(--sign-green); border-top-color: var(--sign-green); }
+  .A .sign.alt { box-shadow: inset 0 0 0 2px var(--sign-green); border-top-width: 12px; }
+
+  /* Option B: icon tile, like the "!" square */
+  .B .sign { padding: 14px 14px 14px 14px; gap: 14px; border-top: 10px solid var(--sign-yellow); }
+  .B .sign.go { background: var(--sign-green); color: var(--sign-yellow); }
+  .B .sign.alt { background: var(--cream); color: var(--sign-green); border-top-color: var(--sign-green); box-shadow: inset 0 0 0 2px var(--sign-green); }
+  .B .tile { flex: none; width: 56px; height: 56px; display: grid; place-items: center; }
+  .B .go .tile { background: var(--sign-yellow); color: var(--sign-green); }
+  .B .alt .tile { background: var(--sign-green); color: var(--cream); }
+  .B .tile svg { width: 30px; height: 30px; }
+
+  /* Option C: hero Go + two shorter signs, no top bars */
+  .C .sign { padding: 14px 16px; border-radius: 6px; }
+  .C .sign.go { background: var(--go-bg, var(--sign-green)); color: var(--go-fg, var(--sign-yellow)); padding: 14px 16px; min-height: 120px; border-top: 12px solid var(--go-bar, var(--sign-yellow)); border-radius: 0; flex: none; align-items: flex-end; }
+  .C .sign.go .t b { font-size: 44px; }
+  .C .sign.go .t span { font-size: 17px; }
+  .C .sign.go .arrow { width: 36px; height: 36px; }
+  .C .sign.alt { background: var(--alt-bg, var(--cream)); color: var(--alt-fg, var(--sign-green)); box-shadow: inset 0 0 0 2px var(--alt-fg, var(--sign-green)); border-radius: 0; }
+  .C .sign.alt .t b { font-size: 26px; }
+  .crew { display: flex; align-items: center; gap: 12px; background: #e5e5ea; border-radius: 14px; padding: 10px 16px; font-family: -apple-system, system-ui, sans-serif; color: #000; }
+  .crew .faces { display: flex; }
+  .crew .faces i { width: 30px; height: 30px; border-radius: 50%; margin-left: -10px; border: 2px solid #e5e5ea; display: grid; place-items: center; font: 700 11px/1 -apple-system, system-ui, sans-serif; color: #fff; font-style: normal; }
+  .crew .faces i:first-child { margin-left: 0; }
+  .crew .more { font-size: 12px; font-weight: 700; color: #6c6c70; }
+  .crew .txt { flex: 1; }
+  .crew .txt b { display: block; font-size: 17px; font-weight: 600; }
+  .crew .txt span { font-size: 12px; color: #6c6c70; }
+  .C .crew { margin-bottom: auto; }
+  .crew .chev { width: 10px; height: 16px; color: #aeaeb2; }
+  .C .sign.event { background: var(--accent); color: var(--accent-ink); box-shadow: inset 0 0 0 2px var(--accent-ink); border-top: 12px solid var(--accent-ink); border-radius: 0; padding: 12px 16px; }
+  .C .sign.event .t b { font-size: 28px; }
+  .C .sign.event .t em { display: block; font-style: normal; font-weight: 800; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; margin-bottom: 2px; }
+  .C .stack { display: flex; flex-direction: column; gap: 14px; flex: 1; justify-content: flex-end; }
+
+  /* Option D: thin inner border, like an enamel sign */
+  .D .sign { padding: 20px 18px; border-radius: 10px; }
+  .D .sign::after { content: ""; position: absolute; inset: 6px; border: 2px solid currentColor; border-radius: 6px; opacity: .55; pointer-events: none; }
+  .D .sign.go { background: var(--sign-green); color: var(--sign-yellow); }
+  .D .sign.alt { background: var(--cream); color: var(--sign-green); box-shadow: 0 0 0 2px var(--sign-green) inset; }
+
+  footer { margin-top: 36px; color: var(--muted); font-size: 14px; }
+  footer li { margin-bottom: 4px; }
+  @media (prefers-color-scheme: dark) {
+    :root { --page: #1a1f1c; --ink: #ece8da; --muted: #a2aaa2; }
+    .spec > div { background: #232a26; }
+    .fonts button { background: #232a26; color: var(--ink); border-color: #44504a; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <h1>Landing page: sign buttons</h1>
+  <p class="lede">Replaces the green Go button with three full-width, rectangular "sign" buttons: <b>Go</b>, <b>Invite code</b> and <b>Create</b>. The screen background is white. Only Go is solid green with yellow text. The other two are cream with green text and a green frame. Each has a right-pointing arrow and a line of secondary text. Option C (hero Go) is the chosen layout. The secondary copy is placeholder.</p>
+
+  <div class="spec">
+    <div>
+      <h3>Palette (sampled from the sign)</h3>
+      <div class="sw">
+        <span><i style="background:#243a30"></i>Sign green #243a30</span>
+        <span><i style="background:#efbf3f"></i>Sign yellow #efbf3f</span>
+        <span><i style="background:#f6efd9"></i>Cream #f6efd9</span>
+      </div>
+    </div>
+    <div>
+      <h3>Typeface: ITC Garamond Standard Bold (the real one is commercial)</h3>
+      <div class="fonts" id="fonts">
+        <button aria-pressed="true" data-f="EB Garamond">EB Garamond 800</button>
+        <button aria-pressed="false" data-f="Alegreya">Alegreya 800</button>
+        <button aria-pressed="false" data-f="Cormorant Garamond">Cormorant Garamond Bold</button>
+      </div>
+    </div>
+    <div>
+      <h3>Type sizes</h3>
+      Title 30sp bold. Secondary 15sp bold, about half the title size, the same ratio as the sign. Hero Go in option C is 56sp.
+    </div>
+  </div>
+
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <symbol id="arrow" viewBox="0 0 24 24"><path d="M4 12h14M12 5l7 7-7 7" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="square"/></symbol>
+    <symbol id="i-go" viewBox="0 0 24 24"><path d="M8 5l12 7-12 7z" fill="currentColor"/></symbol>
+    <symbol id="i-key" viewBox="0 0 24 24"><circle cx="8" cy="12" r="4" fill="none" stroke="currentColor" stroke-width="3"/><path d="M12 12h9M18 12v4" fill="none" stroke="currentColor" stroke-width="3"/></symbol>
+    <symbol id="i-menu" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="7" cy="12" r="1.3" fill="currentColor"/><circle cx="12" cy="12" r="1.3" fill="currentColor"/><circle cx="17" cy="12" r="1.3" fill="currentColor"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 4v16M4 12h16" stroke="currentColor" stroke-width="4"/></symbol>
+  </svg>
+
+  <div class="grid">
+    <section class="option C">
+      <h2>Option C: Hero Go</h2>
+      <p class="note">Go is the primary action, about 1.5x the height of the other two, and the three buttons sit at the bottom within thumb reach. Best if Go is used far more than the other two.</p>
+      <div class="phone">
+        <div class="top"><div class="brand">d<span class="dot" role="button" tabindex="0" aria-label="Edit your name" title="Tap to edit your name">SK</span>t-watchr<small>build 123 · a1b2c3d</small></div><svg viewBox="0 0 24 24" aria-label="Menu"><use href="#i-menu"/></svg></div>
+        <div class="stack">
+        <div class="crew"><div class="faces"><i style="background:#34c759">AB</i><i style="background:#ff9500">JT</i><i style="background:#af52de">MR</i></div><span class="more">+2</span><div class="txt"><b>Your crew</b><span>5 people</span></div><svg class="chev" viewBox="0 0 10 16"><path d="M2 2l6 6-6 6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg></div>
+        
+          <button class="sign go"><div class="t"><b>Go</b><span>Start tracking your run</span></div><svg class="arrow"><use href="#arrow"/></svg></button>
+          <button class="sign alt"><div class="t"><b>Invite code</b><span>Join a run you've been invited to</span></div><svg class="arrow"><use href="#arrow"/></svg></button>
+          <button class="sign alt"><div class="t"><b>Create</b><span>Set up a new run for others</span></div><svg class="arrow"><use href="#arrow"/></svg></button>
+        </div>
+      </div>
+    </section>
+
+
+  </div>
+
+  <h2 style="margin:40px 0 4px">Palette options</h2>
+  <p class="lede">The same layout with different colours. The first three use the latest five swatches you sent: Camel #AF9164, Ivory Mist #F7F3E3, Silver #B3B6B7, Molten Lava #6F1A07, Dark Coffee #2B2118. Dark Coffee doubles as the text ink. The last one is the original sign palette, kept here so we can return to it.</p>
+  <div class="grid">
+    <section class="option C" style="--go-bg:#6f1a07;--go-fg:#f7f3e3;--go-bar:#af9164;--alt-bg:#f7f3e3;--alt-fg:#2b2118;--accent:#af9164;--accent-ink:#2b2118;">
+      <h2>From your swatches A: lava Go</h2>
+      <p class="note">Molten Lava Go with ivory text and a camel bar, ivory alternates framed in dark coffee, and a camel event button.</p>
+      <div class="phone">
+        <div class="top"><div class="brand">d<span class="dot" role="button" tabindex="0" aria-label="Edit your name" title="Tap to edit your name">SK</span>t-watchr<small>build 123 · a1b2c3d</small></div><svg viewBox="0 0 24 24" aria-label="Menu"><use href="#i-menu"/></svg></div>
+        <div class="stack">
+        <div class="crew"><div class="faces"><i style="background:#34c759">AB</i><i style="background:#ff9500">JT</i><i style="background:#af52de">MR</i></div><span class="more">+2</span><div class="txt"><b>Your crew</b><span>5 people</span></div><svg class="chev" viewBox="0 0 10 16"><path d="M2 2l6 6-6 6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg></div>
+        
+          <button class="sign go"><div class="t"><b>Go</b><span>Start tracking your run</span></div><svg class="arrow"><use href="#arrow"/></svg></button>
+          <button class="sign event"><div class="t"><em>Happening near you · 2.3 km</em><b>Rogaine event</b><span>Sat 9am · Hunua Ranges · 14 joined</span></div><svg class="arrow"><use href="#arrow"/></svg></button>
+          <button class="sign alt"><div class="t"><b>Invite code</b><span>Join a run you've been invited to</span></div><svg class="arrow"><use href="#arrow"/></svg></button>
+          <button class="sign alt"><div class="t"><b>Create</b><span>Set up a new run for others</span></div><svg class="arrow"><use href="#arrow"/></svg></button>
+        </div>
+      </div>
+    </section>
+
+    <section class="option C" style="--go-bg:#2b2118;--go-fg:#af9164;--go-bar:#6f1a07;--alt-bg:#f7f3e3;--alt-fg:#2b2118;--accent:#6f1a07;--accent-ink:#f7f3e3;">
+      <h2>From your swatches B: coffee Go</h2>
+      <p class="note">Dark Coffee Go with camel text and a lava bar, ivory alternates, and a lava event with ivory text. The warmest and darkest option.</p>
+      <div class="phone">
+        <div class="top"><div class="brand">d<span class="dot" role="button" tabindex="0" aria-label="Edit your name" title="Tap to edit your name">SK</span>t-watchr<small>build 123 · a1b2c3d</small></div><svg viewBox="0 0 24 24" aria-label="Menu"><use href="#i-menu"/></svg></div>
+        <div class="stack">
+        <div class="crew"><div class="faces"><i style="background:#34c759">AB</i><i style="background:#ff9500">JT</i><i style="background:#af52de">MR</i></div><span class="more">+2</span><div class="txt"><b>Your crew</b><span>5 people</span></div><svg class="chev" viewBox="0 0 10 16"><path d="M2 2l6 6-6 6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg></div>
+        
+          <button class="sign go"><div class="t"><b>Go</b><span>Start tracking your run</span></div><svg class="arrow"><use href="#arrow"/></svg></button>
+          <button class="sign event"><div class="t"><em>Happening near you · 2.3 km</em><b>Rogaine event</b><span>Sat 9am · Hunua Ranges · 14 joined</span></div><svg class="arrow"><use href="#arrow"/></svg></button>
+          <button class="sign alt"><div class="t"><b>Invite code</b><span>Join a run you've been invited to</span></div><svg class="arrow"><use href="#arrow"/></svg></button>
+          <button class="sign alt"><div class="t"><b>Create</b><span>Set up a new run for others</span></div><svg class="arrow"><use href="#arrow"/></svg></button>
+        </div>
+      </div>
+    </section>
+
+    <section class="option C" style="--go-bg:#af9164;--go-fg:#2b2118;--go-bar:#6f1a07;--alt-bg:#b3b6b7;--alt-fg:#2b2118;--accent:#2b2118;--accent-ink:#f7f3e3;">
+      <h2>From your swatches C: camel Go</h2>
+      <p class="note">Camel Go with dark coffee text and a lava bar, silver alternates, and a dark coffee event with ivory text.</p>
+      <div class="phone">
+        <div class="top"><div class="brand">d<span class="dot" role="button" tabindex="0" aria-label="Edit your name" title="Tap to edit your name">SK</span>t-watchr<small>build 123 · a1b2c3d</small></div><svg viewBox="0 0 24 24" aria-label="Menu"><use href="#i-menu"/></svg></div>
+        <div class="stack">
+        <div class="crew"><div class="faces"><i style="background:#34c759">AB</i><i style="background:#ff9500">JT</i><i style="background:#af52de">MR</i></div><span class="more">+2</span><div class="txt"><b>Your crew</b><span>5 people</span></div><svg class="chev" viewBox="0 0 10 16"><path d="M2 2l6 6-6 6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg></div>
+        
+          <button class="sign go"><div class="t"><b>Go</b><span>Start tracking your run</span></div><svg class="arrow"><use href="#arrow"/></svg></button>
+          <button class="sign event"><div class="t"><em>Happening near you · 2.3 km</em><b>Rogaine event</b><span>Sat 9am · Hunua Ranges · 14 joined</span></div><svg class="arrow"><use href="#arrow"/></svg></button>
+          <button class="sign alt"><div class="t"><b>Invite code</b><span>Join a run you've been invited to</span></div><svg class="arrow"><use href="#arrow"/></svg></button>
+          <button class="sign alt"><div class="t"><b>Create</b><span>Set up a new run for others</span></div><svg class="arrow"><use href="#arrow"/></svg></button>
+        </div>
+      </div>
+    </section>
+
+    <section class="option C" style="--accent:#f08a5d;--accent-ink:#2a1a12;">
+      <h2>Palette 1: Forest, yellow Go text, coral event</h2>
+      <p class="note">Same green Go as the sign. The event picks up a warm coral, which is more of a change from the Go and cream buttons than the yellow.</p>
+      <div class="phone">
+        <div class="top"><div class="brand">d<span class="dot" role="button" tabindex="0" aria-label="Edit your name" title="Tap to edit your name">SK</span>t-watchr<small>build 123 · a1b2c3d</small></div><svg viewBox="0 0 24 24" aria-label="Menu"><use href="#i-menu"/></svg></div>
+        <div class="stack">
+        <div class="crew"><div class="faces"><i style="background:#34c759">AB</i><i style="background:#ff9500">JT</i><i style="background:#af52de">MR</i></div><span class="more">+2</span><div class="txt"><b>Your crew</b><span>5 people</span></div><svg class="chev" viewBox="0 0 10 16"><path d="M2 2l6 6-6 6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg></div>
+        
+          <button class="sign go"><div class="t"><b>Go</b><span>Start tracking your run</span></div><svg class="arrow"><use href="#arrow"/></svg></button>
+          <button class="sign event"><div class="t"><em>Happening near you · 2.3 km</em><b>Rogaine event</b><span>Sat 9am · Hunua Ranges · 14 joined</span></div><svg class="arrow"><use href="#arrow"/></svg></button>
+          <button class="sign alt"><div class="t"><b>Invite code</b><span>Join a run you've been invited to</span></div><svg class="arrow"><use href="#arrow"/></svg></button>
+          <button class="sign alt"><div class="t"><b>Create</b><span>Set up a new run for others</span></div><svg class="arrow"><use href="#arrow"/></svg></button>
+        </div>
+      </div>
+    </section>
+
+    <section class="option C" style="--sign-green:#1f3350;--sign-yellow:#f2efe4;--cream:#f6f1e4;--accent:#f28c28;--accent-ink:#1f2a3d;">
+      <h2>Palette 2: Navy and orange</h2>
+      <p class="note">Cooler and more "outdoor gear" than the green. Navy Go, cream alternates, safety-orange event.</p>
+      <div class="phone">
+        <div class="top"><div class="brand">d<span class="dot" role="button" tabindex="0" aria-label="Edit your name" title="Tap to edit your name">SK</span>t-watchr<small>build 123 · a1b2c3d</small></div><svg viewBox="0 0 24 24" aria-label="Menu"><use href="#i-menu"/></svg></div>
+        <div class="stack">
+        <div class="crew"><div class="faces"><i style="background:#34c759">AB</i><i style="background:#ff9500">JT</i><i style="background:#af52de">MR</i></div><span class="more">+2</span><div class="txt"><b>Your crew</b><span>5 people</span></div><svg class="chev" viewBox="0 0 10 16"><path d="M2 2l6 6-6 6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg></div>
+        
+          <button class="sign go"><div class="t"><b>Go</b><span>Start tracking your run</span></div><svg class="arrow"><use href="#arrow"/></svg></button>
+          <button class="sign event"><div class="t"><em>Happening near you · 2.3 km</em><b>Rogaine event</b><span>Sat 9am · Hunua Ranges · 14 joined</span></div><svg class="arrow"><use href="#arrow"/></svg></button>
+          <button class="sign alt"><div class="t"><b>Invite code</b><span>Join a run you've been invited to</span></div><svg class="arrow"><use href="#arrow"/></svg></button>
+          <button class="sign alt"><div class="t"><b>Create</b><span>Set up a new run for others</span></div><svg class="arrow"><use href="#arrow"/></svg></button>
+        </div>
+      </div>
+    </section>
+
+    <section class="option C" style="--accent:#8fd0d6;--accent-ink:#173a3a;">
+      <h2>Palette 3: Forest and teal</h2>
+      <p class="note">Keeps the sign green and yellow Go text. A pale teal event reads as "water and sky" and stays calm.</p>
+      <div class="phone">
+        <div class="top"><div class="brand">d<span class="dot" role="button" tabindex="0" aria-label="Edit your name" title="Tap to edit your name">SK</span>t-watchr<small>build 123 · a1b2c3d</small></div><svg viewBox="0 0 24 24" aria-label="Menu"><use href="#i-menu"/></svg></div>
+        <div class="stack">
+        <div class="crew"><div class="faces"><i style="background:#34c759">AB</i><i style="background:#ff9500">JT</i><i style="background:#af52de">MR</i></div><span class="more">+2</span><div class="txt"><b>Your crew</b><span>5 people</span></div><svg class="chev" viewBox="0 0 10 16"><path d="M2 2l6 6-6 6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg></div>
+        
+          <button class="sign go"><div class="t"><b>Go</b><span>Start tracking your run</span></div><svg class="arrow"><use href="#arrow"/></svg></button>
+          <button class="sign event"><div class="t"><em>Happening near you · 2.3 km</em><b>Rogaine event</b><span>Sat 9am · Hunua Ranges · 14 joined</span></div><svg class="arrow"><use href="#arrow"/></svg></button>
+          <button class="sign alt"><div class="t"><b>Invite code</b><span>Join a run you've been invited to</span></div><svg class="arrow"><use href="#arrow"/></svg></button>
+          <button class="sign alt"><div class="t"><b>Create</b><span>Set up a new run for others</span></div><svg class="arrow"><use href="#arrow"/></svg></button>
+        </div>
+      </div>
+    </section>
+
+    <section class="option C" style="--sign-green:#2a2d2f;--sign-yellow:#ffb81c;--cream:#f4f1ea;--accent:#ff6a2b;--accent-ink:#2a2d2f;">
+      <h2>Palette 4: Charcoal and safety orange</h2>
+      <p class="note">Neutral dark Go with warm text, a hi-vis orange event. The strongest highlight of the set.</p>
+      <div class="phone">
+        <div class="top"><div class="brand">d<span class="dot" role="button" tabindex="0" aria-label="Edit your name" title="Tap to edit your name">SK</span>t-watchr<small>build 123 · a1b2c3d</small></div><svg viewBox="0 0 24 24" aria-label="Menu"><use href="#i-menu"/></svg></div>
+        <div class="stack">
+        <div class="crew"><div class="faces"><i style="background:#34c759">AB</i><i style="background:#ff9500">JT</i><i style="background:#af52de">MR</i></div><span class="more">+2</span><div class="txt"><b>Your crew</b><span>5 people</span></div><svg class="chev" viewBox="0 0 10 16"><path d="M2 2l6 6-6 6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg></div>
+        
+          <button class="sign go"><div class="t"><b>Go</b><span>Start tracking your run</span></div><svg class="arrow"><use href="#arrow"/></svg></button>
+          <button class="sign event"><div class="t"><em>Happening near you · 2.3 km</em><b>Rogaine event</b><span>Sat 9am · Hunua Ranges · 14 joined</span></div><svg class="arrow"><use href="#arrow"/></svg></button>
+          <button class="sign alt"><div class="t"><b>Invite code</b><span>Join a run you've been invited to</span></div><svg class="arrow"><use href="#arrow"/></svg></button>
+          <button class="sign alt"><div class="t"><b>Create</b><span>Set up a new run for others</span></div><svg class="arrow"><use href="#arrow"/></svg></button>
+        </div>
+      </div>
+    </section>
+
+    <section class="option C" style="--sign-green:#5a1f3a;--sign-yellow:#f6d58a;--cream:#f8efe2;--accent:#e9b949;--accent-ink:#3d1226;">
+      <h2>Palette 5: Berry and cream</h2>
+      <p class="note">Away from the park-sign look entirely: deep berry Go, cream alternates, gold event.</p>
+      <div class="phone">
+        <div class="top"><div class="brand">d<span class="dot" role="button" tabindex="0" aria-label="Edit your name" title="Tap to edit your name">SK</span>t-watchr<small>build 123 · a1b2c3d</small></div><svg viewBox="0 0 24 24" aria-label="Menu"><use href="#i-menu"/></svg></div>
+        <div class="stack">
+        <div class="crew"><div class="faces"><i style="background:#34c759">AB</i><i style="background:#ff9500">JT</i><i style="background:#af52de">MR</i></div><span class="more">+2</span><div class="txt"><b>Your crew</b><span>5 people</span></div><svg class="chev" viewBox="0 0 10 16"><path d="M2 2l6 6-6 6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg></div>
+        
+          <button class="sign go"><div class="t"><b>Go</b><span>Start tracking your run</span></div><svg class="arrow"><use href="#arrow"/></svg></button>
+          <button class="sign event"><div class="t"><em>Happening near you · 2.3 km</em><b>Rogaine event</b><span>Sat 9am · Hunua Ranges · 14 joined</span></div><svg class="arrow"><use href="#arrow"/></svg></button>
+          <button class="sign alt"><div class="t"><b>Invite code</b><span>Join a run you've been invited to</span></div><svg class="arrow"><use href="#arrow"/></svg></button>
+          <button class="sign alt"><div class="t"><b>Create</b><span>Set up a new run for others</span></div><svg class="arrow"><use href="#arrow"/></svg></button>
+        </div>
+      </div>
+    </section>
+
+    <section class="option C">
+      <h2>Original: the sign palette (saved)</h2>
+      <p class="note">Sampled from the Slippery Rocks sign: dark green #243a30, yellow #efbf3f, cream #f6efd9. The event button is yellow with a green frame. Keep this as the fallback.</p>
+      <div class="phone">
+        <div class="top"><div class="brand">d<span class="dot" role="button" tabindex="0" aria-label="Edit your name" title="Tap to edit your name">SK</span>t-watchr<small>build 123 · a1b2c3d</small></div><svg viewBox="0 0 24 24" aria-label="Menu"><use href="#i-menu"/></svg></div>
+        <div class="stack">
+        <div class="crew"><div class="faces"><i style="background:#34c759">AB</i><i style="background:#ff9500">JT</i><i style="background:#af52de">MR</i></div><span class="more">+2</span><div class="txt"><b>Your crew</b><span>5 people</span></div><svg class="chev" viewBox="0 0 10 16"><path d="M2 2l6 6-6 6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg></div>
+        
+          <button class="sign go"><div class="t"><b>Go</b><span>Start tracking your run</span></div><svg class="arrow"><use href="#arrow"/></svg></button>
+          <button class="sign event"><div class="t"><em>Happening near you · 2.3 km</em><b>Rogaine event</b><span>Sat 9am · Hunua Ranges · 14 joined</span></div><svg class="arrow"><use href="#arrow"/></svg></button>
+          <button class="sign alt"><div class="t"><b>Invite code</b><span>Join a run you've been invited to</span></div><svg class="arrow"><use href="#arrow"/></svg></button>
+          <button class="sign alt"><div class="t"><b>Create</b><span>Set up a new run for others</span></div><svg class="arrow"><use href="#arrow"/></svg></button>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <footer>
+    <h3>Notes for implementation</h3>
+    <ul>
+      <li>The sign uses ITC Garamond Standard Bold, which is a commercial font. EB Garamond is the closest free Garamond. Alegreya has a larger x-height, nearer to ITC Garamond's wide, sturdy look. To match the sign exactly, license ITC Garamond and bundle it in the iOS and Android apps.</li>
+      <li>Cream-on-green contrast: green #243a30 on cream #f6efd9 is about 10:1. Yellow #efbf3f on green is about 7:1. Both pass AA at all sizes.</li>
+      <li>Editing your name: tap the initials circle in the banner, or choose "Edit name" in the "…" menu. Both open the existing name-entry screen. Pull-to-refresh replaces the old refresh button. The runner row is removed.</li>
+      <li>Each button is at least 72dp tall, well above the 48dp touch minimum.</li>
+      <li>Existing casual "hold to go" behaviour is not covered here. It would need a decision on whether Go keeps hold-to-confirm.</li>
+    </ul>
+  </footer>
+</main>
+<script>
+  document.getElementById('fonts').addEventListener('click', function (e) {
+    var b = e.target.closest('button'); if (!b) return;
+    this.querySelectorAll('button').forEach(function (x) { x.setAttribute('aria-pressed', x === b); });
+    document.documentElement.style.setProperty('--font-sign', '"' + b.dataset.f + '", Georgia, serif');
+  });
+</script>
+</body>
+</html>
