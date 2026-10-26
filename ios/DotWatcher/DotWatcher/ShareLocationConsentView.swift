@@ -1,9 +1,9 @@
 import SwiftUI
 
 /// App Store 5.1.2(i): explicit, declinable consent to share location with other members of a
-/// session — distinct from the OS CoreLocation permission prompt, and asked once per session
-/// (each session has a different set of viewers). Declining leaves the user able to view the
-/// session as normal; only starting to share their own position is refused.
+/// session — distinct from the OS CoreLocation permission prompt, asked each time someone joins or creates
+/// a session (each session has a different set of viewers). Declining leaves the session: there is no
+/// view-only map, and they rejoin with the invite code.
 ///
 /// Also collects how long to share for, capped at `LocationManager.maxTrackingDuration`: sharing
 /// always auto-stops on its own, the user just picks how soon (this is a cap on automatic
@@ -71,7 +71,7 @@ struct ShareLocationConsentView: View {
                 .controlSize(.large)
             }
 
-            Text("You can still view this session as a spectator if you don't share.")
+            Text("If you don't share, you'll leave the session. You can rejoin with the invite code.")
                 .font(.caption)
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.tertiary)
