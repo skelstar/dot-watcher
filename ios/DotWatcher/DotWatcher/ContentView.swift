@@ -16,16 +16,7 @@ struct ContentView: View {
     @State private var showHelp: Bool = false
     @State private var showAuth: Bool = false
     @State private var showUpdateRequired: Bool = false
-    @State private var showLeaveConfirm: Bool = false
     @State private var showShareConsent: Bool = false
-    /// The web route-upload page while it's open in the in-app browser; nil otherwise.
-    @State private var routeUploadPage: IdentifiableURL?
-    @State private var routeUploadError: String?
-    @State private var showRemoveRouteConfirm: Bool = false
-    /// Display name of the participant a touch-and-hold just targeted, showing the block
-    /// action sheet; nil when no sheet is up.
-    @State private var blockCandidateName: String?
-    @State private var blockError: String?
     @State private var showCreateSession: Bool = false
     @State private var noSessionCreateCode = ""
     @State private var noSessionCreateLengthHours = CreateSessionView.defaultLengthHours
@@ -34,18 +25,8 @@ struct ContentView: View {
     /// Invite code from a tapped `/join/{CODE}` link (see `InviteLink`), held until it's been prefilled
     /// or confirmed. Survives the sign-in sheet and the initial sessions load.
     @State private var pendingLinkCode: String?
-    @State private var showJoinLinkPrompt = false
     @State private var isBusy = false
     @State private var formError: String?
-    /// The runner the live map is currently centered on and tracking, set by tapping their
-    /// avatar in the participants grid while they're actively posting a position.
-    @State private var followedRunnerName: String?
-    /// Incremented to tell the live map to snap back to fitting every runner in frame.
-    @State private var fitAllTrigger = 0
-    /// How much of the map sheet's full height is currently visible above the drag sheet's
-    /// clip (1.0 = fully expanded, ~0.5 at the medium detent). Lets the map bias its fit-all
-    /// and follow framing so pins land in the visible slice instead of the sheet's true center.
-    @State private var mapVisibleFraction: CGFloat = 1
     /// Counts consecutive taps on the build/SHA label (`headerSection`) toward the hidden
     /// gesture that flips `LocationManager.debugForceUltraConstrained` — the only way to trigger
     /// satellite-mode testing on a TestFlight/Release build, which has no visible debug UI.
@@ -60,6 +41,11 @@ struct ContentView: View {
             .modifier(CrewHost(crew: crew, location: location, yieldsToCasualMap: casual.isMapPresented))
             .modifier(CasualHost(casual: casual, crew: crew, location: location))
             .modifier(EventsHost(events: events, location: location))
+            .modifier(SessionMapCover(
+                location: location,
+                casualMapPresented: casual.isMapPresented,
+                showShareConsent: $showShareConsent
+            ))
             .preferredColorScheme(location.appearanceMode.colorScheme)
             .onAppear {
                 UIDevice.current.isBatteryMonitoringEnabled = true
@@ -69,7 +55,10 @@ struct ContentView: View {
                     if location.runnerName.trimmingCharacters(in: .whitespaces).isEmpty {
                         showNameEntry = true
                     }
-                    Task { await location.loadSessions() }
+                    Task {
+                        await location.loadSessions()
+                        await leaveStaleSessions()
+                    }
                 } else {
                     showAuth = true
                 }
@@ -130,6 +119,11 @@ struct ContentView: View {
                 if location.runnerName.trimmingCharacters(in: .whitespaces).isEmpty {
                     showNameEntry = true
                 }
+                Task {
+                    await location.loadSessions()
+                    await leaveStaleSessions()
+                }
+                resolvePendingLink()
             }
     }
 
@@ -147,44 +141,6 @@ struct ContentView: View {
                 pendingLinkCode = code
                 resolvePendingLink()
             }
-            .onChange(of: location.memberships.count) {
-                resolvePendingLink()
-            }
-            .alert("Join session \(pendingLinkCode ?? "")?", isPresented: $showJoinLinkPrompt) {
-                Button("Join") {
-                    Task { await joinLinkSession() }
-                }
-                Button("Cancel", role: .cancel) {
-                    pendingLinkCode = nil
-                }
-            } message: {
-                Text("You followed an invite link.")
-            }
-            .fullScreenCover(item: $routeUploadPage, onDismiss: {
-                Task { await location.loadRoute() }
-            }) { page in
-                SafariView(url: page.url)
-                    .ignoresSafeArea()
-            }
-            .alert("Remove route?", isPresented: $showRemoveRouteConfirm) {
-                Button("Remove", role: .destructive) {
-                    Task {
-                        do { try await location.removeRoute() }
-                        catch { routeUploadError = error.localizedDescription }
-                    }
-                }
-                Button("Cancel", role: .cancel) {}
-            } message: {
-                Text("This removes the route for everyone in the session.")
-            }
-            .alert("Couldn't update the route", isPresented: Binding(
-                get: { routeUploadError != nil },
-                set: { if !$0 { routeUploadError = nil } }
-            )) {
-                Button("OK", role: .cancel) {}
-            } message: {
-                if let routeUploadError { Text(routeUploadError) }
-            }
             // Keeps the route in step with the active session (switching, joining, leaving).
             .task(id: location.activeMembership?.inviteCode) {
                 await location.loadRoute()
@@ -196,73 +152,14 @@ struct ContentView: View {
             .onChange(of: location.updateRequired) { _, updateRequired in
                 if updateRequired { showUpdateRequired = true }
             }
-            .sheet(isPresented: $showShareConsent) {
-                if let membership = location.activeMembership {
-                    ShareLocationConsentView(
-                        sessionName: membership.sessionName,
-                        onShare: { duration in
-                            location.recordSharingConsent(sessionId: membership.sessionId)
-                            location.start(duration: duration)
-                        },
-                        onDecline: {}
-                    )
-                    .presentationDetents([.medium, .large])
-                    .preferredColorScheme(location.appearanceMode.colorScheme)
-                }
-            }
-            .confirmationDialog(
-                blockCandidateName ?? "",
-                isPresented: blockDialogPresented,
-                titleVisibility: .visible
-            ) {
-                if let name = blockCandidateName {
-                    Button("Block \(name)", role: .destructive) {
-                        Task { await blockParticipant(name: name) }
-                    }
-                    Button("Cancel", role: .cancel) {}
-                }
-            } message: {
-                Text("They'll be removed from this session and won't be able to join any of your sessions again.")
-            }
-            .alert("Couldn't block user", isPresented: Binding(
-                get: { blockError != nil },
-                set: { if !$0 { blockError = nil } }
-            )) {
-                Button("OK", role: .cancel) {}
-            } message: {
-                if let blockError { Text(blockError) }
-            }
-            .alert(
-                location.isTracking ? "Stop tracking and leave session?" : "Leave session?",
-                isPresented: $showLeaveConfirm
-            ) {
-                Button(location.isTracking ? "Stop & Leave" : "Leave", role: .destructive) {
-                    Task { await leaveOrDeleteSession() }
-                }
-                Button("Cancel", role: .cancel) {}
-            } message: {
-                if location.activeMembership != nil {
-                    Text("Are you sure? You can rejoin later using the invite code.")
-                }
-            }
-    }
-
-    private var blockDialogPresented: Binding<Bool> {
-        Binding(
-            get: { blockCandidateName != nil },
-            set: { if !$0 { blockCandidateName = nil } }
-        )
     }
 
     // MARK: - Main Content
 
-    @ViewBuilder
+    /// There is one screen: the landing screen. A session lives on the map, which comes up over it while
+    /// tracking (see `SessionMapCover`); stopping, or declining to share, leaves the session and comes back here.
     private var mainContent: some View {
-        if location.isAuthenticated && location.memberships.isEmpty {
-            noSessionView
-        } else {
-            sessionView
-        }
+        noSessionView
     }
 
     // MARK: - No Session View
@@ -351,47 +248,6 @@ struct ContentView: View {
             .background(Color.red)
     }
 
-    // MARK: - Session View
-
-    private var sessionView: some View {
-        ZStack(alignment: .bottom) {
-            ScrollView {
-                VStack(spacing: 16) {
-                    headerSection
-                    runnerRow
-                    sessionNameCard
-                }
-                .padding()
-            }
-            .refreshable {
-                // Detached: `.refreshable` cancels its closure's Task as soon as the pull
-                // gesture's spinner dismisses, which on a fast local server can race ahead of
-                // the network calls actually completing and cancel them mid-flight (seen as
-                // NSURLErrorDomain -999 "cancelled" even though the server had already
-                // responded). A detached Task isn't a child of that Task, so releasing the
-                // gesture early no longer aborts the underlying requests.
-                await Task {
-                    await location.loadSessions()
-                    await location.loadLatestPositions()
-                }.value
-            }
-            .safeAreaInset(edge: .bottom) {
-                if !location.isTracking {
-                    bottomButton
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 12)
-                        .frame(maxWidth: .infinity)
-                        .background(.regularMaterial)
-                }
-            }
-            if location.isTracking {
-                DragSheet(onVisibleFractionChange: { mapVisibleFraction = $0 }) {
-                    LiveMapSheet(location: location, followedRunnerName: $followedRunnerName, fitAllTrigger: fitAllTrigger, visibleFraction: mapVisibleFraction)
-                }
-            }
-        }
-    }
-
     // MARK: - Header
 
     private var headerSection: some View {
@@ -431,35 +287,8 @@ struct ContentView: View {
                 }
             }
             Spacer()
-            if let inviteCode = location.activeMembership?.inviteCode {
-                let shareMessage = InviteLink.shareMessage(base: location.webBaseURL, code: inviteCode)
-                ShareLink(item: shareMessage) {
-                    Image(systemName: "square.and.arrow.up")
-                        .font(.title2)
-                        .foregroundStyle(.primary)
-                }
-                .buttonStyle(.plain)
-            }
             if location.isAuthenticated {
                 Menu {
-                    if location.activeMembership != nil {
-                        Button {
-                            Task { await openRouteUpload() }
-                        } label: {
-                            Label(
-                                location.hasRoute ? "Replace route (GPX)…" : "Add route (GPX)…",
-                                systemImage: "point.topleft.down.to.point.bottomright.curvepath"
-                            )
-                        }
-                        if location.hasRoute {
-                            Button(role: .destructive) {
-                                showRemoveRouteConfirm = true
-                            } label: {
-                                Label("Remove route", systemImage: "trash")
-                            }
-                        }
-                        Divider()
-                    }
                     Button {
                         nameInput = location.runnerName
                         showNameEntry = true
@@ -488,16 +317,6 @@ struct ContentView: View {
         }
     }
 
-    /// Asks the server for a short-lived upload link and opens the web route-upload page in an
-    /// in-app browser. The route is refetched when that browser is dismissed.
-    private func openRouteUpload() async {
-        do {
-            routeUploadPage = IdentifiableURL(url: try await location.createRouteUploadURL())
-        } catch {
-            routeUploadError = error.localizedDescription
-        }
-    }
-
     /// 10 taps within 2s of each other flips `debugForceUltraConstrained` — a deliberately
     /// undiscoverable way to test the satellite UI on TestFlight/Release builds, which have no
     /// visible debug menu. A single stray tap resets the count rather than accumulating forever,
@@ -515,328 +334,16 @@ struct ContentView: View {
         UINotificationFeedbackGenerator().notificationOccurred(.success)
     }
 
-    // MARK: - Runner Row
+    // MARK: - Stale sessions
 
-    private var runnerRow: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 12) {
-                // Excludes pausedForBattery: a countdown to a post that isn't coming would be
-                // actively misleading, not just stale — the plain status-dot branch below already
-                // reads location.status ("Battery critical — paused") correctly in that case.
-                if location.isTracking && !location.pausedForBattery {
-                    TimelineView(.periodic(from: .now, by: 1.0 / 10.0)) { context in
-                        let nextPostAt = location.nextPostAt(from: location.lastSent ?? Date())
-                        let remaining = max(0, nextPostAt.timeIntervalSince(context.date))
-                        let fraction = location.interval > 0 ? remaining / location.interval : 0
-
-                        HStack(spacing: 8) {
-                            StatusIndicatorDot(color: .red, countdownFraction: fraction, pulsing: true)
-                            Text("Tracking")
-                                .font(.headline)
-                                .fontWeight(.bold)
-                            PostCountdownRing(fraction: fraction)
-                            Text("\(Int(remaining.rounded(.up)))s")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                                .monospacedDigit()
-                        }
-                        .onTapGesture {
-                            nameInput = location.runnerName
-                            showNameEntry = true
-                        }
-                    }
-                } else {
-                    HStack(spacing: 8) {
-                        StatusIndicatorDot(color: statusDotColor)
-                        Text(location.status)
-                            .font(.headline)
-                            .fontWeight(.bold)
-                    }
-                    .onTapGesture {
-                        nameInput = location.runnerName
-                        showNameEntry = true
-                    }
-                }
-                Spacer()
-                if location.activeMembership != nil {
-                    Button { showLeaveConfirm = true } label: {
-                        Text("Leave")
-                            .font(.system(size: 16, weight: .semibold))
-                            .foregroundStyle(.white)
-                            .frame(height: 48)
-                            .padding(.horizontal, 16)
-                            .background(Color.red, in: RoundedRectangle(cornerRadius: 12))
-                    }
-                    .buttonStyle(.plain)
-                }
-                if let inviteCode = location.activeMembership?.inviteCode, location.isTracking {
-                    Button {
-                        let sessionUrl = location.webBaseURL.appendingPathComponent("code/\(inviteCode)")
-                        UIApplication.shared.open(sessionUrl)
-                    } label: {
-                        Image(systemName: "safari")
-                            .font(.system(size: 20))
-                            .foregroundStyle(.secondary)
-                            .frame(width: 48, height: 48)
-                            .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 12))
-                    }
-                    .buttonStyle(.plain)
-                } else if location.activeMembership != nil {
-                    Button {
-                        Task {
-                            await location.loadSessions()
-                            await location.loadLatestPositions()
-                        }
-                    } label: {
-                        Image(systemName: "arrow.clockwise")
-                            .font(.system(size: 20))
-                            .foregroundStyle(.secondary)
-                            .frame(width: 48, height: 48)
-                            .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 12))
-                    }
-                    .buttonStyle(.plain)
-                } else if location.isAuthenticated {
-                    Button {
-                        Task {
-                            await location.loadSessions()
-                            // Crew and casual are granted per account on the server, so re-check them too.
-                            await crew.refresh()
-                            await casual.refresh()
-                        }
-                    } label: {
-                        Image(systemName: "arrow.clockwise")
-                            .font(.system(size: 20))
-                            .foregroundStyle(.secondary)
-                            .frame(width: 48, height: 48)
-                            .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 12))
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-
-            if location.isTracking, let expiresAt = location.trackingExpiresAt {
-                TimelineView(.periodic(from: .now, by: 30)) { context in
-                    let remaining = max(0, expiresAt.timeIntervalSince(context.date))
-                    let fraction = location.maxTrackingDuration > 0 ? 1 - (remaining / location.maxTrackingDuration) : 0
-
-                    VStack(alignment: .leading, spacing: 6) {
-                        ProgressView(value: min(1, max(0, fraction)))
-                            .tint(.green)
-                        Text("Auto-stops in \(formattedDuration(remaining))")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .frame(maxWidth: .infinity, alignment: .center)
-                    }
-                }
-            }
-
-            if location.pausedForBattery {
-                batteryPausedBanner
-            }
-        }
-    }
-
-    // Persistent, not a transient toast — a state change that affects what other session members
-    // see shouldn't be easy to miss, matching the satellite-status treatment elsewhere in this
-    // file. Two explicit choices, no default action taken silently on the runner's behalf. See
-    // .ai/plans/battery-level-reporting.md.
-    private var batteryPausedBanner: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Label("Battery critical — automatic updates paused", systemImage: "battery.25")
-                .font(.subheadline)
-                .fontWeight(.semibold)
-                .foregroundStyle(.red)
-            Text("Your position will stop updating for others until you send it manually, plug in, or turn automatic updates back on.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            HStack(spacing: 10) {
-                Button {
-                    Task { await location.sendLocationNowWhilePaused() }
-                } label: {
-                    Text("Send location now")
-                        .font(.subheadline.weight(.semibold))
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.borderedProminent)
-
-                Button {
-                    location.resumeAutomaticTrackingOverridingBattery()
-                } label: {
-                    Text("Turn on automatic updates")
-                        .font(.subheadline.weight(.semibold))
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.bordered)
-            }
-        }
-        .padding(12)
-        .background(Color.red.opacity(0.1), in: RoundedRectangle(cornerRadius: 12))
-    }
-
-    // MARK: - Session Name Card
-
-    private var sessionNameCard: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("Session")
-                .font(.caption)
-                .fontWeight(.semibold)
-                .foregroundStyle(.secondary)
-
-            if location.sessionId.isEmpty {
-                HStack {
-                    Text("Tap to set")
-                        .font(.title3.monospaced())
-                        .foregroundStyle(.tertiary)
-                    Spacer()
-                    if location.activeMembership == nil {
-                        Image(systemName: "lock")
-                            .font(.subheadline)
-                            .foregroundStyle(.tertiary)
-                    }
-                }
-                .padding(.horizontal, 28)
-                .padding(.vertical, 14)
-                .background(Color(.tertiarySystemBackground))
-                .clipShape(RoundedRectangle(cornerRadius: 10))
-            } else {
-                CodeBoxDisplay(text: location.activeMembership?.sessionName ?? "")
-            }
-
-            if let inviteCode = location.activeMembership?.inviteCode {
-                HStack(spacing: 6) {
-                    Text("Invite")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                    Text(inviteCode)
-                        .font(.title3.weight(.medium).monospaced())
-                        .foregroundStyle(.primary)
-                }
-            }
-
-            Divider()
-                .padding(.vertical, 4)
-
-            Text("Participants")
-                .font(.caption)
-                .fontWeight(.semibold)
-                .foregroundStyle(.secondary)
-
-            // Single-row grid: rather than a fixed slot count, measure the available width and
-            // compute how many 38pt circles (10pt spacing) actually fit, so the row is always
-            // exactly full — however many that is on this device/orientation — instead of a
-            // guessed constant that's too few on wide screens or wraps on narrow ones.
-            GeometryReader { geometry in
-                let cellWidth: CGFloat = 38
-                let spacing: CGFloat = 10
-                let slotsPerRow = max(1, Int((geometry.size.width + spacing) / (cellWidth + spacing)))
-
-                // Drives `isDisconnected` below to re-check every second — without this, the row
-                // only re-renders when observable state (participants/positions) changes, so a
-                // runner crossing the disconnected threshold with no new data arriving wouldn't
-                // visually update until something else happened to trigger a redraw. Mirrors
-                // NativeMapView's identical use of TimelineView for its own stale/disconnected pins.
-                TimelineView(.periodic(from: .now, by: 1)) { context in
-                    LazyVGrid(columns: Array(repeating: GridItem(.fixed(cellWidth), spacing: spacing), count: slotsPerRow), spacing: 10) {
-                        if location.participants.isEmpty {
-                            RunnerCircle(name: location.runnerName, size: 38, fillColor: RunnerColorPalette.currentUser)
-                        } else {
-                            ForEach(location.participants, id: \.self) { name in
-                                // In lobby = joined but not actually tracking: either no position posted
-                                // yet at all, or (0, 0) — the placeholder Start posts when no real GPS
-                                // fix is available yet. Still used to gate the tap-to-follow gesture
-                                // below (nothing to follow yet), just not to change the dot's color.
-                                let position = location.runnerPositions.first { $0.runnerName == name }
-                                let isInLobby = position == nil || (position!.latitude == 0 && position!.longitude == 0)
-                                // Mirrors the map pin's `isDisconnected` (NativeMapView.disconnectedAfter):
-                                // no position for a minute or more renders dashed/transparent here too,
-                                // same as on the map. The current user's own row never counts as
-                                // disconnected — `position` reflects `runnerPositions`, a server round
-                                // trip that this device's own live GPS fix doesn't wait on.
-                                let positionAge = position?.parsedTimestamp.map { context.date.timeIntervalSince($0) }
-                                let isDisconnected = name != location.runnerName
-                                    && (positionAge.map { $0 > NativeMapView.disconnectedAfter } ?? false)
-                                RunnerCircle(
-                                    name: name,
-                                    size: 38,
-                                    fillColor: name == location.runnerName ? RunnerColorPalette.currentUser : RunnerColorPalette.color(for: name),
-                                    isDisconnected: isDisconnected
-                                )
-                                .overlay(
-                                    Circle()
-                                        .stroke(Color.accentColor, lineWidth: 2.5)
-                                        .opacity(followedRunnerName == name ? 1 : 0)
-                                        .padding(-3)
-                                )
-                                .onTapGesture {
-                                    guard !isInLobby, location.isTracking else { return }
-                                    followedRunnerName = followedRunnerName == name ? nil : name
-                                }
-                                .onLongPressGesture {
-                                    guard name != location.runnerName else { return }
-                                    blockCandidateName = name
-                                }
-                            }
-                        }
-                        // The row always totals exactly `slotsPerRow` cells: every rendered participant
-                        // (deduplicated, so it matches the count `ForEach` above actually produced) plus
-                        // enough dashed placeholders to fill out the row, with room reserved for the
-                        // FitAllButton when it's showing so it never gets pushed onto its own row.
-                        let uniqueParticipants = Set(location.participants).count
-                        let filledCount = max(1, uniqueParticipants)
-                        let reservedForButton = location.isTracking ? 1 : 0
-                        let emptySlots = max(0, slotsPerRow - filledCount - reservedForButton)
-                        ForEach(0..<emptySlots, id: \.self) { _ in
-                            Circle()
-                                .stroke(Color(.systemGray3), style: StrokeStyle(lineWidth: 2, dash: [4, 4]))
-                                .frame(width: 38, height: 38)
-                        }
-                        if location.isTracking {
-                            FitAllButton {
-                                fitAllTrigger += 1
-                            }
-                        }
-                    }
-                }
-            }
-            .frame(height: 38)
-
-            if location.participants.contains(where: { $0 != location.runnerName }) {
-                Text("Touch and hold a participant to block them.")
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .topLeading)
-        .padding(16)
-        .background(Color(.secondarySystemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 14))
-    }
-
-    // MARK: - Bottom Button
-
-    @ViewBuilder
-    private var bottomButton: some View {
-        if !location.isAuthenticated {
-            Button { showAuth = true } label: {
-                Text("Sign in").frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.large)
-        } else {
-            Button {
-                if let membership = location.activeMembership,
-                   !location.hasConsentedToSharing(sessionId: membership.sessionId) {
-                    showShareConsent = true
-                } else {
-                    location.start()
-                }
-            } label: {
-                Text("Start tracking")
-                    .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.borderedProminent)
-            .tint(.green)
-            .controlSize(.large)
+    /// A session doesn't carry over a relaunch or a sign-in: tracking never resumes by itself, so any session
+    /// the server still lists is left over from an earlier run. Leave it, so the others stop seeing someone who
+    /// isn't sharing any more, and the person rejoins with the invite code. Skipped while tracking, or while the
+    /// share dialog is up, which means a session was only just joined.
+    private func leaveStaleSessions() async {
+        for membership in location.memberships {
+            guard !location.isTracking, !showShareConsent else { return }
+            try? await location.leaveSession(sessionId: membership.sessionId)
         }
     }
 
@@ -852,6 +359,7 @@ struct ContentView: View {
                 maxLengthHours: noSessionCreateLengthHours)
             noSessionCreateCode = ""
             noSessionCreateLengthHours = CreateSessionView.defaultLengthHours
+            offerSharingAfterJoin()
         } catch {
             formError = error.localizedDescription
         }
@@ -865,80 +373,27 @@ struct ContentView: View {
             try await location.joinInvite(code: noSessionInviteCode, displayName: location.runnerName)
             noSessionInviteCode = ""
             pendingLinkCode = nil
+            offerSharingAfterJoin()
         } catch {
             formError = error.localizedDescription
         }
         isBusy = false
     }
 
-    /// Acts on a tapped invite link. With no sessions the no-session card shows the code prefilled and
-    /// the user taps Join; with existing sessions they confirm first. The link never joins on its own.
-    /// `pendingLinkCode` stays set after prefilling so the code isn't lost if the sessions list is
-    /// still loading (it briefly looks empty on launch) and arrives afterwards.
+    /// Acts on a tapped invite link: opens the join sheet with the code filled in, and the person taps Join.
+    /// The link never joins on its own. `pendingLinkCode` stays set until then, so the code isn't lost if the
+    /// link arrives before sign-in or while the app is still starting.
     private func resolvePendingLink() {
-        guard let code = pendingLinkCode else { return }
-        if location.memberships.isEmpty {
-            noSessionInviteCode = code
-            showJoinSheet = location.isAuthenticated
-        } else if location.memberships.contains(where: { $0.inviteCode == code }) {
-            pendingLinkCode = nil
-        } else if location.isAuthenticated {
-            showJoinLinkPrompt = true
-        }
+        guard let code = pendingLinkCode, location.isAuthenticated else { return }
+        noSessionInviteCode = code
+        showJoinSheet = true
     }
 
-    private func joinLinkSession() async {
-        guard let code = pendingLinkCode else { return }
-        pendingLinkCode = nil
-        isBusy = true
-        formError = nil
-        do {
-            try await location.joinInvite(code: code, displayName: location.runnerName)
-        } catch {
-            formError = error.localizedDescription
-        }
-        isBusy = false
+    /// Just joined or created: ask how long to share for straight away, so confirming starts tracking and the
+    /// map opens. Declining leaves the session and comes back to this screen.
+    private func offerSharingAfterJoin() {
+        showShareConsent = true
     }
-
-    // MARK: - Block Participant
-
-    private func blockParticipant(name: String) async {
-        guard let userId = location.participantUserIds[name] else {
-            blockError = "Couldn't find that participant. Try refreshing and blocking again."
-            return
-        }
-        do {
-            try await location.blockUser(userId: userId, displayName: name)
-        } catch {
-            blockError = error.localizedDescription
-        }
-    }
-
-    // MARK: - Leave / Delete Session
-
-    private func leaveOrDeleteSession() async {
-        guard let membership = location.activeMembership else { return }
-        if location.isTracking { location.stop() }
-        try? await location.leaveSession(sessionId: membership.sessionId)
-    }
-
-    // MARK: - Helpers
-
-    private var statusDotColor: Color {
-        let s = location.status
-        if s == "Idle" { return .gray }
-        if s == "Stopped" { return .red }
-        if s.hasPrefix("Sent") || s.hasPrefix("Tracking") { return .green }
-        return .orange
-    }
-
-    private func formattedDuration(_ interval: TimeInterval) -> String {
-        let totalMinutes = Int(interval / 60)
-        let hours = totalMinutes / 60
-        let minutes = totalMinutes % 60
-        return hours > 0 ? "\(hours)h \(minutes)m" : "\(minutes)m"
-    }
-
 }
 
 #Preview {

@@ -11,7 +11,7 @@ struct RunnerCircle: View {
     /// Defaults to the usual accent/gray behavior driven by `isHighlighted`.
     var fillColor: Color?
     /// When true, renders a dashed outline with a transparent fill instead of `fillColor` —
-    /// signals this runner hasn't sent a position in a while (see `NativeMapView.disconnectedAfter`).
+    /// signals this runner hasn't sent a position in a while (see `MapPinAge.disconnectedAfter`).
     /// The initials stay visible, colored with `fillColor`, so who-is-who is still readable.
     var isDisconnected: Bool = false
 
