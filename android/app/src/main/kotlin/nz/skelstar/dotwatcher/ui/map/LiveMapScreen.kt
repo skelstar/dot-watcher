@@ -72,6 +72,7 @@ import nz.skelstar.dotwatcher.location.POST_INTERVAL_SECONDS
 import nz.skelstar.dotwatcher.location.TrackingState
 import nz.skelstar.dotwatcher.network.RunnerPosition
 import nz.skelstar.dotwatcher.network.SessionMembership
+import nz.skelstar.dotwatcher.ui.casual.HoldToStopPill
 import java.time.Duration
 import java.time.Instant
 
@@ -84,9 +85,10 @@ private const val POLL_INTERVAL_MS = 10_000L
 /**
  * Hosts the live map for [membership]'s session, laid out per the "In-Session Map Redesign v2"
  * artifact: the map fills the screen with floating controls over it — wordmark and auto-stop
- * countdown top-left, a right rail (share, invite code) and a round Leave pill
- * bottom-right, which confirms then stops sharing and leaves the session. The map is only shown while
- * sharing, so when sharing ends by itself (the chosen time runs out) the session is left too. Polls everyone's latest positions to feed [MapScreen] and
+ * countdown top-left, a right rail (share, invite code), the people in the session as dots bottom-left
+ * and a hold-to-stop pill bottom-right, which stops sharing and leaves the session. The map is shown while
+ * sharing, and behind the "share your location?" sheet just before; when sharing ends by itself (the chosen
+ * time runs out) the session is left too. Polls everyone's latest positions to feed [MapScreen] and
  * surfaces [LocationTrackingService]'s state without owning the tracking loop itself.
  */
 @Composable
@@ -97,13 +99,24 @@ fun LiveMapScreen(
 ) {
     val context = LocalContext.current
     var positions by remember { mutableStateOf<List<RunnerPosition>>(emptyList()) }
-    var showLeaveConfirm by remember { mutableStateOf(false) }
+    var showPeople by remember { mutableStateOf(false) }
     var showInviteCode by remember { mutableStateOf(false) }
     var showExtendSheet by remember { mutableStateOf(false) }
     // Fit-all is lit by default; following a runner or panning away turns it off.
     var fitAll by remember { mutableStateOf(true) }
     var followedRunner by remember { mutableStateOf<String?>(null) }
     var fitAllTick by remember { mutableStateOf(0) }
+    val follow: (String) -> Unit = { name ->
+        if (name == followedRunner) {
+            // Tapping the runner you're following lets go again.
+            followedRunner = null
+            fitAll = true
+            fitAllTick++
+        } else {
+            followedRunner = name
+            fitAll = false
+        }
+    }
     val trackingState by LocationTrackingService.state.collectAsState()
     val pausedForBattery = (trackingState as? TrackingState.Tracking)?.pausedForBattery == true
 
@@ -112,6 +125,10 @@ fun LiveMapScreen(
     // already chose to leave, which stops the service on its way out.
     var wasSharing by remember { mutableStateOf(false) }
     var leaving by remember { mutableStateOf(false) }
+    val leaveNow = {
+        leaving = true
+        onLeaveSession()
+    }
     LaunchedEffect(trackingState) {
         if (trackingState is TrackingState.Tracking) {
             wasSharing = true
@@ -141,26 +158,29 @@ fun LiveMapScreen(
         }
     }
 
-    if (showLeaveConfirm) {
-        LeaveSessionDialog(
-            onConfirm = {
-                showLeaveConfirm = false
-                leaving = true
-                onLeaveSession()
-            },
-            onDismiss = { showLeaveConfirm = false },
-        )
-    }
-
     (trackingState as? TrackingState.Tracking)?.takeIf { showExtendSheet }?.let { tracking ->
         ExtendSessionSheet(
             expiresAt = tracking.expiresAt,
             onExtend = { LocationTrackingService.extend(context, it) },
             onStopNow = {
                 showExtendSheet = false
-                showLeaveConfirm = true
+                leaveNow()
             },
             onDismiss = { showExtendSheet = false },
+        )
+    }
+
+    if (showPeople) {
+        SessionPeopleSheet(
+            names = sessionNames(membership.displayName, positions),
+            me = membership.displayName,
+            positions = positions,
+            followed = followedRunner,
+            onSelect = { name ->
+                showPeople = false
+                follow(name)
+            },
+            onDismiss = { showPeople = false },
         )
     }
 
@@ -230,15 +250,30 @@ fun LiveMapScreen(
             RailButton(RailIcon.Hash, "Invite code") { showInviteCode = true }
         }
 
-        // While paused for battery, the card below carries its own Leave and takes the bottom edge.
+        // While paused for battery, the card below carries its own Stop and takes the bottom edge. Nothing
+        // to stop until sharing has started: the map is also the backdrop for the "share your location?" sheet.
         if (!pausedForBattery) {
-            StopPill(
-                onClick = { showLeaveConfirm = true },
+            SessionPeopleChip(
+                names = sessionNames(membership.displayName, positions),
+                me = membership.displayName,
+                positions = positions,
+                followed = followedRunner,
+                onFollow = follow,
+                onShowAll = { showPeople = true },
                 modifier = Modifier
-                    .align(Alignment.BottomEnd)
+                    .align(Alignment.BottomStart)
                     .navigationBarsPadding()
-                    .padding(end = 14.dp, bottom = 26.dp),
+                    .padding(start = 14.dp, bottom = 26.dp),
             )
+            if (trackingState is TrackingState.Tracking) {
+                HoldToStopPill(
+                    onComplete = leaveNow,
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .navigationBarsPadding()
+                        .padding(end = 14.dp, bottom = 26.dp),
+                )
+            }
         }
 
         val lastError = (trackingState as? TrackingState.Tracking)?.lastError
@@ -247,7 +282,7 @@ fun LiveMapScreen(
                 lastError = lastError,
                 onSendNow = { LocationTrackingService.sendNow(context) },
                 onAuto = { LocationTrackingService.resumeAutomatic(context) },
-                onStop = { showLeaveConfirm = true },
+                onStop = leaveNow,
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .navigationBarsPadding()
@@ -260,7 +295,7 @@ fun LiveMapScreen(
                 modifier = Modifier
                     .align(Alignment.BottomStart)
                     .navigationBarsPadding()
-                    .padding(16.dp),
+                    .padding(start = 16.dp, end = 16.dp, bottom = 84.dp),
             )
         }
     }
@@ -504,19 +539,6 @@ internal fun BatteryPausedCard(
 }
 
 @Composable
-private fun StopPill(onClick: () -> Unit, modifier: Modifier = Modifier) {
-    Row(
-        modifier = modifier.height(48.dp).clip(RoundedCornerShape(24.dp)).background(StopRed)
-            .clickable(onClick = onClick).padding(horizontal = 20.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        Box(Modifier.size(11.dp).clip(RoundedCornerShape(3.dp)).background(Color.White))
-        Text("Leave", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold)
-    }
-}
-
-@Composable
 private fun InviteCodeDialog(code: String, onShare: () -> Unit, onDismiss: () -> Unit) {
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -532,29 +554,6 @@ private fun InviteCodeDialog(code: String, onShare: () -> Unit, onDismiss: () ->
         },
         confirmButton = { TextButton(onClick = onShare) { Text("Share invite link") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Close") } },
-    )
-}
-
-/** Confirms stopping and leaving. There is always sharing to stop: the map is only shown while sharing. */
-@Composable
-private fun LeaveSessionDialog(
-    onConfirm: () -> Unit,
-    onDismiss: () -> Unit,
-) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Stop sharing and leave session?") },
-        text = { Text("Are you sure? You can rejoin later using the invite code.") },
-        confirmButton = {
-            TextButton(onClick = onConfirm) {
-                Text("Stop & Leave")
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancel")
-            }
-        },
     )
 }
 
