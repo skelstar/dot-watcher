@@ -41,8 +41,8 @@ import java.time.Duration
  * from the OS location permission prompt, asked once per session start. Ported from
  * ios/DotWatcher/DotWatcher/ShareLocationConsentView.swift, including its duration picker:
  * sharing always auto-stops on its own (see [TRACKING_DURATION_OPTIONS]'s kdoc), the runner just
- * picks how soon, up to 24 hours. Declining still allows viewing the session as a spectator —
- * only automatic sharing of the runner's own position is what's being consented to here.
+ * picks how soon, up to 24 hours. Declining leaves the session (there is no view-only map); the
+ * runner can rejoin with the invite code.
  */
 @Composable
 fun ShareLocationConsentScreen(
@@ -136,7 +136,7 @@ fun ShareLocationConsentScreen(
 
         Spacer(modifier = Modifier.height(16.dp))
         Text(
-            text = "You can still view this session as a spectator if you don't share.",
+            text = "If you don't share, you'll leave the session. You can rejoin with the invite code.",
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center,

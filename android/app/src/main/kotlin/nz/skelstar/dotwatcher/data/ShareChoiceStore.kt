@@ -24,7 +24,6 @@ class ShareChoiceStore(context: Context) {
             val totalDuration: Duration,
         ) : Choice
 
-        data class ViewOnly(override val sessionId: String) : Choice
     }
 
     private val prefs = context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -40,7 +39,6 @@ class ShareChoiceStore(context: Context) {
                     Duration.ofSeconds(prefs.getLong(KEY_TOTAL_SECONDS, 0L)),
                 )
             }
-            MODE_VIEW_ONLY -> Choice.ViewOnly(sessionId)
             else -> null
         }
     }
@@ -54,17 +52,7 @@ class ShareChoiceStore(context: Context) {
             .apply()
     }
 
-    fun recordViewOnly(sessionId: String) {
-        prefs.edit()
-            .putString(KEY_SESSION_ID, sessionId)
-            .putString(KEY_MODE, MODE_VIEW_ONLY)
-            .remove(KEY_EXPIRES_AT)
-            .remove(KEY_TOTAL_SECONDS)
-            .apply()
-    }
-
-    /** Forgets a *sharing* choice only. The tracking service calls this when sharing ends (it can
-     *  run just after the app has recorded "view only" for the same stop, which must survive). */
+    /** Forgets a *sharing* choice only. The tracking service calls this when sharing ends. */
     fun clearSharing() {
         if (prefs.getString(KEY_MODE, null) == MODE_SHARING) prefs.edit().clear().apply()
     }
@@ -81,6 +69,5 @@ class ShareChoiceStore(context: Context) {
         const val KEY_EXPIRES_AT = "expires_at"
         const val KEY_TOTAL_SECONDS = "total_seconds"
         const val MODE_SHARING = "sharing"
-        const val MODE_VIEW_ONLY = "view_only"
     }
 }

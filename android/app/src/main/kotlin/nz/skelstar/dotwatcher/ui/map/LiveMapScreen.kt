@@ -85,14 +85,14 @@ private const val POLL_INTERVAL_MS = 10_000L
  * Hosts the live map for [membership]'s session, laid out per the "In-Session Map Redesign v2"
  * artifact: the map fills the screen with floating controls over it — wordmark and auto-stop
  * countdown top-left, a right rail (share, invite code) and a round Leave pill
- * bottom-right, which confirms then stops sharing (if [isSharing]) and leaves the session. Polls everyone's latest positions to feed [MapScreen] and
+ * bottom-right, which confirms then stops sharing and leaves the session. The map is only shown while
+ * sharing, so when sharing ends by itself (the chosen time runs out) the session is left too. Polls everyone's latest positions to feed [MapScreen] and
  * surfaces [LocationTrackingService]'s state without owning the tracking loop itself.
  */
 @Composable
 fun LiveMapScreen(
     membership: SessionMembership,
     repository: DotWatcherRepository,
-    isSharing: Boolean,
     onLeaveSession: () -> Unit,
 ) {
     val context = LocalContext.current
@@ -105,7 +105,21 @@ fun LiveMapScreen(
     var followedRunner by remember { mutableStateOf<String?>(null) }
     var fitAllTick by remember { mutableStateOf(0) }
     val trackingState by LocationTrackingService.state.collectAsState()
-    val pausedForBattery = isSharing && (trackingState as? TrackingState.Tracking)?.pausedForBattery == true
+    val pausedForBattery = (trackingState as? TrackingState.Tracking)?.pausedForBattery == true
+
+    // Sharing ending by itself (the chosen time ran out) ends the session too, as stopping does. Only after
+    // sharing has been seen running, since the service takes a moment to start; and not when the runner
+    // already chose to leave, which stops the service on its way out.
+    var wasSharing by remember { mutableStateOf(false) }
+    var leaving by remember { mutableStateOf(false) }
+    LaunchedEffect(trackingState) {
+        if (trackingState is TrackingState.Tracking) {
+            wasSharing = true
+        } else if (wasSharing && !leaving) {
+            leaving = true
+            onLeaveSession()
+        }
+    }
 
     // Polls everyone's latest positions, including this device's own once the server has it.
     // Only while the app is visible (STARTED): with the screen locked or the app backgrounded
@@ -129,9 +143,9 @@ fun LiveMapScreen(
 
     if (showLeaveConfirm) {
         LeaveSessionDialog(
-            isSharing = isSharing,
             onConfirm = {
                 showLeaveConfirm = false
+                leaving = true
                 onLeaveSession()
             },
             onDismiss = { showLeaveConfirm = false },
@@ -166,7 +180,7 @@ fun LiveMapScreen(
             followedRunner = followedRunner,
             fitAll = fitAll,
             fitAllTick = fitAllTick,
-            sendIntervalSeconds = if (isSharing) POST_INTERVAL_SECONDS else null,
+            sendIntervalSeconds = POST_INTERVAL_SECONDS,
             ownPaused = pausedForBattery,
             onRunnerTapped = { name ->
                 // Tapping the runner you're following lets go again.
@@ -239,7 +253,7 @@ fun LiveMapScreen(
                     .navigationBarsPadding()
                     .padding(start = 12.dp, end = 12.dp, bottom = 16.dp),
             )
-        } else if (isSharing && lastError != null) {
+        } else if (lastError != null) {
             Text(
                 text = "Couldn't send your position: $lastError",
                 color = MaterialTheme.colorScheme.error,
@@ -521,21 +535,19 @@ private fun InviteCodeDialog(code: String, onShare: () -> Unit, onDismiss: () ->
     )
 }
 
-/** Matches iOS's leave-confirmation alert (ContentView.swift), including its wording branching
- *  on whether tracking is currently active. */
+/** Confirms stopping and leaving. There is always sharing to stop: the map is only shown while sharing. */
 @Composable
 private fun LeaveSessionDialog(
-    isSharing: Boolean,
     onConfirm: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(if (isSharing) "Stop sharing and leave session?" else "Leave session?") },
+        title = { Text("Stop sharing and leave session?") },
         text = { Text("Are you sure? You can rejoin later using the invite code.") },
         confirmButton = {
             TextButton(onClick = onConfirm) {
-                Text(if (isSharing) "Stop & Leave" else "Leave")
+                Text("Stop & Leave")
             }
         },
         dismissButton = {

@@ -92,7 +92,7 @@ fun DotWatcherApp(hasBackgroundLocationPermission: Boolean) {
                                 )
                             )
                         },
-                        onViewOnly = { casualNeedsLocationPermission = false },
+                        onSkip = { casualNeedsLocationPermission = false },
                     )
                 } else SessionScreen(
                     state = sessionState,
@@ -130,7 +130,7 @@ fun DotWatcherApp(hasBackgroundLocationPermission: Boolean) {
                 } else {
                     // Background location isn't granted — sharing while backgrounded can't work,
                     // so explain why it's needed rather than offer a consent screen for a feature
-                    // that can't function (or silently drop to view-only).
+                    // that can't function (or silently drop to a map that doesn't share).
                     val context = LocalContext.current
                     BackgroundLocationRequiredScreen(
                         sessionName = current.membership.sessionName,
@@ -142,11 +142,11 @@ fun DotWatcherApp(hasBackgroundLocationPermission: Boolean) {
                                 )
                             )
                         },
-                        onViewOnly = { viewModel.declineSharing(current.membership) },
+                        onSkip = { viewModel.declineSharing(current.membership) },
                     )
                 }
 
-                is Destination.Map -> MapDestinationScreen(current.membership, current.isSharing, viewModel)
+                is Destination.Map -> MapDestinationScreen(current.membership, viewModel)
             }
 
             // "Add X to your crew?" can come from a crew link on any screen once signed in, so it
@@ -159,11 +159,10 @@ fun DotWatcherApp(hasBackgroundLocationPermission: Boolean) {
 }
 
 @Composable
-private fun MapDestinationScreen(membership: SessionMembership, isSharing: Boolean, viewModel: AppViewModel) {
+private fun MapDestinationScreen(membership: SessionMembership, viewModel: AppViewModel) {
     LiveMapScreen(
         membership = membership,
         repository = viewModel.repository,
-        isSharing = isSharing,
         onLeaveSession = { viewModel.leaveSession(membership) },
     )
 }
