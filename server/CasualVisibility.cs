@@ -52,7 +52,7 @@ public static class CasualVisibility
         DateTimeOffset now)
     {
         var participants = new List<string>();
-        var positions = new List<CasualPosition[]>();
+        var positions = new List<RunnerPosition[]>();
         var nearby = new List<NearbyDot>();
 
         foreach (var entry in live)
@@ -94,14 +94,15 @@ public static class CasualVisibility
         return new CasualLiveResponse(participants, positions, nearby);
     }
 
-    private static CasualPosition ToCasualPosition(CasualLiveEntry entry, string name, bool isSelf)
-    {
-        var p = entry.Position;
-        return new CasualPosition(
-            name, p.Latitude, p.Longitude, p.Heading, p.Timestamp,
-            p.NextExpectedAt, p.IsUltraConstrained, p.BatteryLevel, entry.InSession, isSelf,
-            p.RunnerName);
-    }
+    /// <summary>The stored position, labelled for this viewer. RunnerName at rest is the account's initials.</summary>
+    private static RunnerPosition ToCasualPosition(CasualLiveEntry entry, string name, bool isSelf) =>
+        entry.Position with
+        {
+            RunnerName = name,
+            InSession = entry.InSession,
+            IsSelf = isSelf,
+            Initials = entry.Position.RunnerName,
+        };
 }
 
 public static class GeoMath
