@@ -84,7 +84,7 @@ fun pinSpecFor(
         else -> PinState.Live
     }
     return PinSpec(
-        label = initialsFor(position.runnerName),
+        label = initialsFor(position.initials ?: position.runnerName),
         colorIndex = if (isMe) RunnerColorPalette.CURRENT_USER_INDEX else RunnerColorPalette.indexForName(position.runnerName),
         state = state,
         satellite = position.isUltraConstrained,

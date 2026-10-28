@@ -20,6 +20,8 @@ public record CasualStartResponse(
 /// The caller or a crew member. Same fields as <see cref="RunnerPosition"/> (so a client can decode
 /// it as one) plus <see cref="InSession"/> (the lock: out in a named session rather than casually)
 /// and <see cref="IsSelf"/>. <see cref="RunnerName"/> is the crew nickname, else the account's initials.
+/// <see cref="Initials"/> is always the account's initials, for the letters on the dot, so a nickname
+/// such as "Sean" is never cut down to "SE".
 /// </summary>
 public record CasualPosition(
     string RunnerName,
@@ -31,7 +33,8 @@ public record CasualPosition(
     bool IsUltraConstrained,
     int? BatteryLevel,
     bool InSession,
-    bool IsSelf
+    bool IsSelf,
+    string Initials
 );
 
 /// <summary>
