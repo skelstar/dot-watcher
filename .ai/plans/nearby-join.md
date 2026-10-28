@@ -1,0 +1,139 @@
+# Nearby join — Plan
+
+*DotWatcher — plan, October 2026. Status: drafted, not started.*
+
+Goal: an organiser at the start of a trail creates a session; anyone physically near the organiser sees it on their
+main screen and joins in one tap, with no invite code. Related: [`casual-tracking.md`](casual-tracking.md),
+[`crew-feature-flag.md`](crew-feature-flag.md), mock-ups [`create-flow.html`](../mockups/create-flow.html) and
+[`landing-signs.html`](../mockups/landing-signs.html).
+
+Tick boxes as work lands: `- [ ]` → `- [x]`. Per `AGENTS.md`, build/test verification is left to CI on the PR;
+nothing below is verified locally.
+
+---
+
+## Decisions taken
+
+- **Opt-in per session.** A "Let people nearby join" switch on Create, **off by default**. Off means the session is
+  invisible to discovery and works exactly as today (invite code only).
+- **Open to everyone.** No crew or watch-list gate. Anyone signed in and near the meeting point can join.
+- **Gated by the existing `events` feature flag.** Same surface as "Happening near you"; no second flag.
+- **The meeting point is set by a "Ping" button, nothing else.** The organiser taps Ping and the server stores their
+  position as the session's join location. It never moves on its own: no tracking involved, no follow-the-organiser
+  logic. Tap Ping again to move it (e.g. from the start to the finish). Creating the session with nearby on counts as
+  the first ping. Joining is allowed for the whole session. Following the organiser while they track is a possible
+  later addition, deliberately left out for now.
+- **Location is for discovery only.** The list shows title, organiser name and a rough distance (rounded, no bearing,
+  never coordinates). Coordinates never leave the server.
+- **Radius gates discovery and the join tap only.** Once joined, nobody is removed for being far away.
+- **Selectable radius: 50 m, 100 m (default), 250 m, 500 m.** 20 m is too tight: phone GPS is typically 5-15 m
+  outdoors and 30-50 m under trees or near buildings, and the organiser's and joiner's errors add. The server also
+  forgives accuracy: a joiner passes if `distance - joiner accuracy - meeting-point accuracy <= radius`, each accuracy
+  capped at 50 m so a terrible fix can't open the gate wide. New requests carry `accuracy` (`horizontalAccuracy` on
+  iOS). A near-miss costs a retry, not a lockout.
+- **Ping buttons on the start screen and the map screen**, organiser only. Tracking isn't needed. The nearby switch and
+  radius can be changed from the same place (a small sheet behind the Ping button, or a long press; settle in the UI).
+- **One row per session**, nearest first. The title is what people choose by, so it is required when nearby is on, and
+  limited to **30 characters** for now. It is decoupled from the invite code.
+- **One active session per organiser.** "Active" means owned by them, not archived and within its event length. The
+  server enforces it on create (409 with the existing session's id), only for accounts with the `events` flag, so
+  older builds and accounts without the flag behave exactly as today. Staging and Production share a database and an
+  older Production build can still create a second session, so the client check is a convenience and the rule is
+  best-effort until every build has it. Existing owners with several sessions are left alone.
+- **End session = archive, not delete.** The owner ends the session for everyone: it is archived (nobody can join or
+  rejoin, nearby listing stops), replay and the recording stay, exactly what happens today when the last runner
+  leaves. A session also stops being "active" by itself when its event length passes, so an organiser who abandons one
+  is never locked out of creating another.
+- **Invite codes stay.** Family and remote watchers still need them. Nearby is an extra door, not a replacement.
+- **No silence timeout.** A nearby session stays discoverable at its last ping until the organiser switches it off, it
+  ends (event length) or it is archived. Simple and predictable; the organiser re-pings to move it.
+
+## What this changes in the Create flow
+
+The mock-up's "Show to people nearby" section (fixed meeting-point pin, draggable, range picker, map) becomes a
+single switch with a one-line explanation ("People near you can find this run and join. Turn off any time."), and
+below it a four-way radius choice (50 / 100 / 250 / 500 m, default 100 m) with a hint about GPS accuracy. No pin, no
+map. The organiser's position, taken when they tap Create, is the first meeting point. The title is shown to
+strangers, so limit it to 30 characters (the mock-up allows 40). Today the session name *is* the invite code (4-8
+chars, `NormalizeSessionName`), so title and code must be decoupled; check how far the create-flow work already goes
+(task N1).
+
+## Existing pieces this reuses
+
+- `GeoMath.DistanceMeters` (`server/CasualVisibility.cs`) for the distance test.
+- `GET /me/events/nearby`, `NearbyEvent` and the `events` flag (`EventsController.cs`): currently one placeholder.
+  Nearby sessions become entries in that list, so the main-screen "Happening near you" tile needs no second mechanism.
+- `JoinSessionByInvite` and the blocked-user check, so a nearby join creates an ordinary `session_members` row and a
+  blocked user is refused exactly as with a code.
+- Nothing from location tracking: the Ping is its own small request, so the existing `POST /location` path is **not
+  touched**. Joiners need no pre-join pings (their position travels with the list request).
+- `MapRailButton` (`MapChrome.swift`) for the organiser's map-screen Ping button.
+
+## Server
+
+- **Schema** (additive, nullable or defaulted, as Staging and Production share one database and an older build names
+  its columns explicitly): on `app_sessions` add `nearby BOOLEAN NOT NULL DEFAULT FALSE`, `nearby_radius_m SMALLINT`,
+  `anchor_lat`, `anchor_lon` (DOUBLE PRECISION), `anchor_accuracy_m REAL`.
+- **Create:** `CreateSessionRequest` gains optional `Nearby`, `NearbyRadiusMeters` (one of 50/100/250/500),
+  `Latitude`/`Longitude`/`Accuracy`. Nearby requires a position; it seeds the meeting point.
+- **Ping:** `PUT /sessions/{id}/nearby` (owner only) with `lat`/`lon`/`accuracy` and, optionally, `enabled` and
+  `radiusMeters`. Sets the meeting point (and turns nearby on if it was off and a radius is given). Needs no
+  tracking. Switching off hides the session from discovery only; existing members stay. Reject positions with an
+  old timestamp or implausible accuracy (> 100 m) so a bad fix isn't stored.
+- **List:** `GET /me/events/nearby?lat=&lon=&accuracy=` returns nearby sessions whose own radius covers the caller
+  (with the accuracy allowance), excluding sessions the caller is blocked from, archived or ended sessions, and ones
+  they already belong to. Capped (proposed 10); distance rounded (proposed to 50 m).
+- **Join:** `POST /nearby/sessions/{sessionId}/join` with `lat`/`lon`/`accuracy`, `displayName`, `role`. Re-checks
+  distance at join time (the server decides, never the client), then joins as an invite join would, returning the same
+  response shape so clients reuse their join handling. Failure is uniform ("not available") whether the session is too
+  far, non-nearby or unknown, so it can't be probed.
+- **Abuse limits:** rate-limit both endpoints per account (as `WatchLinkLimiter`/`CrewCodeLimiter` do). The list takes a
+  client-supplied position, so someone could walk it across a map to find organisers; the limits, the small radius,
+  rounded distance, no bearing and the result cap are what keep that costly. Accepted residual risk, noted in the PR.
+- **Retention:** nothing new to purge; the meeting point lives and dies with the session row.
+
+## Clients (iOS first, then Android)
+
+- **Ping button, organiser only, on the map screen** (a button on the right-hand rail) **and the start screen** (on the
+  organiser's session card). Tap = take a fresh fix and set the join location, with a brief "Join location set"
+  confirmation. A small sheet from the same place holds the nearby switch and radius. With one active session per
+  organiser (below) there is never any doubt which session a Ping applies to.
+- **Create is disabled while the organiser has an active session**, with a line saying why ("You already have an active
+  session. End it to create another."). The start screen shows that session in its place, with **End session** on the
+  session card and in the map-screen sheet. End asks for confirmation ("This ends it for everyone. Replay stays
+  available.").
+- **Create screen:** replace the pin/range block with the switch and radius choice; send position with Create (needs
+  when-in-use location permission at that moment, with a fallback explanation if denied: the switch can't be turned on).
+- **Main screen:** while the screen is open and location is granted, request the nearby list on appear and every ~60 s
+  (not in the background). One tile per session, title first, organiser and distance beneath; replaces the single
+  placeholder sign.
+- **Tap a tile:** confirm sheet ("Join Saturday long run, started by Priya, about 150 m away?" with a choice of
+  runner/viewer), then the nearby join call, then the normal session screen.
+- Android: the same, on `DotWatcherApi`/`AppViewModel`; keep response models identical.
+
+## Tasks
+
+- [x] N0 Decided: reuse `events` flag; selectable radius 50/100/250/500 m (default 100); no silence timeout;
+      join location set only by a Ping button (start screen + map screen), no tracking involvement.
+- [ ] N1 Decouple session title (30 chars) from invite code (check create-flow work first).
+- [ ] N2 Schema columns (incl. radius and accuracy) + `CreateSessionRequest` fields + meeting-point seeding.
+- [ ] N3 `PUT /sessions/{id}/nearby` (Ping: set the join location; optional switch and radius; owner only).
+- [ ] N4 List endpoint (per-session radius with accuracy allowance, exclusions, rounding, cap) under the `events` flag
+      (404 when off).
+- [ ] N5 Nearby join endpoint (re-check distance with accuracy allowance, blocked/archived, uniform failure).
+- [ ] N6 Rate limiters for list and join.
+- [ ] N7 Server tests: in/out of radius, accuracy allowance (and its cap), flag off = 404, blocked, already a
+      member, re-ping moves the location, non-owner can't ping, bad-accuracy ping rejected, uniform failure.
+- [ ] N8 Update `docs/api-reference.html` and the mock-up (replace pin/range with switch + radius; show several rows).
+- [ ] N9 iOS: Create switch + radius, Ping button (start + map screen), list on main screen, confirm sheet, join.
+- [ ] N10 Android: the same.
+- [ ] N3b One active session per organiser: 409 on create (events flag only); "active" = not archived and within event
+      length; `POST /sessions/{id}/end` (owner only, archives for everyone); tests for each.
+- [ ] N9b Clients: Create disabled with explanation when an active session exists; End session (confirm) on the
+      start-screen card and map-screen sheet.
+- [ ] N11 Privacy copy: Create explanation, join confirmation, Help text.
+
+## Open questions
+
+1. Should an organiser see who joined by proximity vs by code? (Probably not; members are members.)
+2. Later, optional: should the join location follow the organiser while they track? Left out on purpose.
