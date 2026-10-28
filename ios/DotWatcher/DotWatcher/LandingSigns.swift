@@ -1,7 +1,7 @@
 import CoreText
 import SwiftUI
 
-// The start screen's "sign" buttons: Go, Invite code and Create, plus a placeholder event sign. Laid out
+// The start screen's "sign" buttons: Go, Join and Create, plus a placeholder event sign. Laid out
 // like the Android app's, from the Coffee Go palette in .ai/mockups/landing-signs.html.
 
 /// The sign colours.
@@ -74,7 +74,7 @@ private struct SignContent: View {
     }
 }
 
-/// The ivory sign (Invite code, Create): coffee text and frame.
+/// The ivory sign (Join, Create): coffee text and frame.
 struct SignButton: View {
     let title: String
     let subtitle: String
@@ -164,7 +164,7 @@ struct EventSignButton: View {
 }
 
 /// The invite-code entry that used to be the inline "Have an invite code?" card: paste or type the six
-/// characters, then join. Opened from the Invite code sign.
+/// characters, then join. Opened from the Join sign.
 struct JoinCodeSheet: View {
     @Binding var code: String
     let isBusy: Bool
