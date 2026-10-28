@@ -303,8 +303,8 @@ struct CasualMapScreen: View {
 
     private struct Pin: Identifiable {
         let id: String
-        /// The account's initials, for the letters on the dot; nil falls back to `id`.
-        let initials: String?
+        /// The account's display name, for the letters on the dot; nil falls back to `id`.
+        let displayName: String?
         let coordinate: CLLocationCoordinate2D
         let heading: Double?
         let isSelf: Bool
@@ -319,7 +319,7 @@ struct CasualMapScreen: View {
             .map {
                 Pin(
                     id: $0.runnerName,
-                    initials: $0.initials,
+                    displayName: $0.displayName,
                     coordinate: CLLocationCoordinate2D(latitude: $0.latitude, longitude: $0.longitude),
                     heading: $0.heading,
                     isSelf: false,
@@ -333,7 +333,7 @@ struct CasualMapScreen: View {
         if let coordinate = location.currentCoordinate
             ?? me.map({ CLLocationCoordinate2D(latitude: $0.latitude, longitude: $0.longitude) }) {
             result.append(Pin(
-                id: location.runnerName, initials: nil, coordinate: coordinate,
+                id: location.runnerName, displayName: nil, coordinate: coordinate,
                 heading: location.currentHeading ?? me?.heading,
                 isSelf: true, isLocked: false, timestamp: nil))
         }
@@ -418,7 +418,7 @@ struct CasualMapScreen: View {
                         let age = pin.timestamp.map { context.date.timeIntervalSince($0) }
                         RunnerMapPin(
                             name: pin.id,
-                            label: pin.initials,
+                            label: pin.displayName,
                             isHighlighted: pin.isSelf,
                             heading: pin.heading,
                             isStale: age.map { $0 > MapPinAge.staleAfter } ?? false,

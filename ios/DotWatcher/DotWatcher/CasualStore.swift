@@ -29,9 +29,9 @@ struct CasualPosition: Decodable {
     let timestamp: String
     let inSession: Bool?
     let isSelf: Bool?
-    /// The account's initials, for the letters on the dot. `runnerName` can be a crew nickname, which
+    /// The account's display name (its initials), for the letters on the dot. `runnerName` can be a crew nickname, which
     /// would be cut down to its first two letters. Absent from older servers.
-    let initials: String?
+    let displayName: String?
 }
 
 /// Someone who is not in your crew: a position and nothing else, so there is no name or id to show.
