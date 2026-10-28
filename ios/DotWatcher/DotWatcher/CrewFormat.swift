@@ -30,7 +30,7 @@ enum CrewFormat {
             faces: Array(members.prefix(rowFaces)),
             extra: max(0, members.count - rowFaces),
             title: "Your crew",
-            meta: members.count == 1 ? "1 person" : "\(members.count) people"
+            meta: ""
         )
     }
 

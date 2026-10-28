@@ -93,9 +93,11 @@ struct CrewRow: View {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(summary.title)
                             .font(.headline)
-                        Text(summary.meta)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                        if !summary.meta.isEmpty {
+                            Text(summary.meta)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
                         ForEach(CrewFormat.rowNotes(newMembers: crew.newMemberIds.count, pendingInvites: crew.pendingInvites), id: \.self) { note in
                             Text(note)
                                 .font(.caption.weight(.semibold))

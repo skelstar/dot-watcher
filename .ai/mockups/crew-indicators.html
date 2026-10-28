@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Crew Indicators Mock-up</title>
+<style>
+/* Self-contained mock-up: open in a browser. Nothing here talks to a server. Tap the crew row on the phone to open the crew and clear "new". */
+:root{--bg:#f6f7f6;--fg:#1b2321;--muted:#5a6662;--rule:#d9dedb;--accent:#d9480f;--note:#007aff}
+@media (prefers-color-scheme:dark){:root{--bg:#121715;--fg:#e6ebe9;--muted:#9aa7a2;--rule:#2e3835;--accent:#ff8a4c}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif;padding:32px 16px 64px}
+.page{max-width:900px;margin:0 auto}
+h1{margin:0 0 6px;font-size:clamp(1.7rem,5vw,2.2rem);letter-spacing:-.02em;line-height:1.15}
+h2{font-size:1.05rem;margin:28px 0 10px}
+p{margin:0 0 10px;max-width:62ch}
+.caption{font-size:.85rem;color:var(--muted)}
+button{font-family:inherit;color:inherit;cursor:pointer}
+button:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+
+.layout{display:flex;flex-wrap:wrap;gap:36px;align-items:flex-start;margin-top:22px}
+.side{flex:1 1 280px;min-width:0}
+.ctl{display:flex;flex-direction:column;gap:8px;margin-bottom:18px}
+.ctl button{font-size:.9rem;background:none;border:1px solid var(--rule);border-radius:999px;padding:6px 14px;text-align:left}
+.ctl button[aria-pressed="true"]{border-color:var(--accent);font-weight:700}
+
+/* ---- phone ---- */
+.phone{flex:0 0 auto;width:340px;height:640px;background:#fff;color:#000;border:8px solid #1c1c1e;border-radius:40px;position:relative;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,system-ui,sans-serif;font-size:14px;line-height:1.3}
+.status{position:absolute;top:10px;left:24px;right:24px;display:flex;justify-content:space-between;font-size:12px;font-weight:600}
+.home{position:absolute;inset:0;padding:40px 16px 0}
+.logo{font-size:27px;font-weight:700;margin-top:8px;letter-spacing:-.5px}
+.build{font-size:10px;color:#8e8e93;margin-bottom:10px}
+
+/* crew row */
+.crew{width:100%;border:0;text-align:left;background:#e5e5ea;border-radius:14px;padding:10px 16px;display:flex;align-items:center;gap:12px}
+.faces{display:flex}
+.dot{width:38px;height:38px;border-radius:50%;color:#fff;font-size:13px;font-weight:700;display:grid;place-items:center;border:2px solid #e5e5ea;margin-left:-10px}
+.dot:first-child{margin-left:0}
+.dot.new{box-shadow:0 0 0 2px var(--note)}
+.empty{width:34px;height:34px;border-radius:50%;border:2px solid #8e8e93;color:#8e8e93;display:grid;place-items:center;font-size:20px;line-height:1}
+.crew .txt{flex:1;min-width:0}
+.crew .t{font-weight:600;font-size:17px}
+.crew .m{font-size:12px;color:#8e8e93}
+.crew .n{font-size:12px;font-weight:600;color:var(--note);display:flex;align-items:center;gap:5px}
+.crew .n::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--note)}
+.chev{color:#c7c7cc;font-size:20px}
+.blank{margin-top:12px;height:120px;border-radius:14px;background:#f2f2f7;color:#8e8e93;display:grid;place-items:center;font-size:12px}
+
+/* sheet */
+.sheet{position:absolute;inset:60px 0 0;background:#fff;border-radius:18px 18px 0 0;box-shadow:0 -4px 24px #0004;padding:18px 16px;display:none}
+.sheet.on{display:block}
+.sheet h3{margin:0 0 8px;font-size:20px}
+.sheet .grid{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.sheet .p{width:72px;text-align:center;font-size:11px}
+.sheet .p .dot{margin:0 auto 4px;width:44px;height:44px}
+.sheet .close{position:absolute;top:16px;right:16px;border:0;background:none;color:#007aff;font-size:15px}
+</style>
+</head>
+<body>
+<div class="page">
+  <h1>Crew indicators</h1>
+  <p>Two status lines under the count in the main-screen "Your crew" row: codes you've sent that nobody has used yet, and people who joined since you last opened the crew.</p>
+
+  <div class="layout">
+    <div class="side">
+      <h2 style="margin-top:0">State</h2>
+      <div class="ctl" id="states" role="group" aria-label="Row state"></div>
+      <p class="caption">"Waiting" = a crew code you made that is unused and unexpired. "Joined" = someone redeemed one of your codes; it clears when you open the crew. People you add yourself by entering their code never count as new.</p>
+      <p class="caption">New faces get a blue ring on the row. The ring is an extra cue only; the text line carries the meaning.</p>
+    </div>
+
+    <div class="phone" aria-label="Phone mock-up">
+      <div class="status"><span>9:41</span><span>●●● 100%</span></div>
+      <div class="home">
+        <div class="logo">dot watcher</div>
+        <div class="build">v1.2.3</div>
+        <button class="crew" id="row" aria-label="Open your crew"></button>
+        <div class="blank">rest of the start screen</div>
+      </div>
+      <div class="sheet" id="sheet">
+        <button class="close" id="close">Done</button>
+        <h3>Your crew</h3>
+        <div class="caption" id="sheetCount"></div>
+        <div class="grid" id="sheetGrid"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const PEOPLE=[["PR","#e8590c","Priya"],["TM","#2f9e44","Tom"],["JO","#7048e8","Jo"],["AL","#1c7ed6","Al"],["KB","#c2255c","Kim"]];
+const STATES={
+  "Empty crew":            {members:0,fresh:0,pending:0},
+  "Invite waiting":        {members:2,fresh:0,pending:1},
+  "Someone joined":        {members:3,fresh:1,pending:0},
+  "Both":                  {members:3,fresh:2,pending:2},
+  "Nothing new":           {members:3,fresh:0,pending:0}
+};
+let cur="Both", s;
+const $=id=>document.getElementById(id);
+function notes(f,p){const n=[];
+  if(f===1)n.push("1 new person joined");else if(f>1)n.push(f+" new people joined");
+  if(p===1)n.push("1 invite waiting");else if(p>1)n.push(p+" invites waiting");return n}
+function dots(count,fresh){return PEOPLE.slice(0,count).map((p,i)=>
+  `<span class="dot${i<fresh?" new":""}" style="background:${p[1]}">${p[0]}</span>`).join("")}
+function render(){
+  s={...STATES[cur]};
+  $("states").innerHTML=Object.keys(STATES).map(k=>`<button aria-pressed="${k===cur}" data-k="${k}">${k}</button>`).join("");
+  paintRow(); $("sheet").classList.remove("on");
+}
+function paintRow(){
+  const faces=Math.min(s.members,4);
+  const meta=s.members===0?"Add people that you know":"";
+  $("row").innerHTML=(s.members?`<span class="faces">${dots(faces,s.fresh)}</span>${s.members>4?`<b>+${s.members-4}</b>`:""}`:`<span class="empty">+</span>`)+
+    `<span class="txt"><div class="t">Your crew</div>${meta?`<div class="m">${meta}</div>`:""}${notes(s.fresh,s.pending).map(x=>`<div class="n">${x}</div>`).join("")}</span><span class="chev">›</span>`;
+}
+$("states").onclick=e=>{const k=e.target.dataset.k;if(k){cur=k;render()}};
+$("row").onclick=()=>{
+  $("sheetCount").textContent="In your crew · "+s.members;
+  $("sheetGrid").innerHTML=PEOPLE.slice(0,s.members).map(p=>`<div class="p"><span class="dot" style="background:${p[1]}">${p[0]}</span>${p[2]}</div>`).join("")||"No one yet.";
+  $("sheet").classList.add("on");
+  s.fresh=0; paintRow();   // opening the crew marks everyone as seen
+};
+$("close").onclick=()=>$("sheet").classList.remove("on");
+render();
+</script>
+</body>
+</html>

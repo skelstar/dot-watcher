@@ -38,22 +38,20 @@ class CrewFormatTest {
         assertEquals("Add people that you know", summary.meta)
     }
 
-    @Test fun `one person is singular`() {
-        assertEquals("1 person", crewRowSummary(listOf(member("1"))).meta)
+    @Test fun `a crew row with people has no count line`() {
+        assertEquals("", crewRowSummary(listOf(member("1"))).meta)
     }
 
     @Test fun `up to four faces are shown with no extra`() {
         val summary = crewRowSummary((1..4).map { member("$it") })
         assertEquals(4, summary.faces.size)
         assertEquals(0, summary.extra)
-        assertEquals("4 people", summary.meta)
     }
 
     @Test fun `more than four collapse into a plus count and keep the order given`() {
         val summary = crewRowSummary((1..7).map { member("$it") })
         assertEquals(listOf("1", "2", "3", "4"), summary.faces.map { it.userId })
         assertEquals(3, summary.extra)
-        assertEquals("7 people", summary.meta)
     }
 
     // --- Dates ---------------------------------------------------------------------------

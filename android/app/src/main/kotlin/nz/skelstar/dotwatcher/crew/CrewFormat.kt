@@ -36,7 +36,7 @@ fun crewRowSummary(members: List<CrewMember>): CrewRowSummary =
             faces = members.take(CREW_ROW_FACES),
             extra = (members.size - CREW_ROW_FACES).coerceAtLeast(0),
             title = "Your crew",
-            meta = if (members.size == 1) "1 person" else "${members.size} people",
+            meta = "",
         )
     }
 

@@ -98,11 +98,13 @@ fun CrewRow(state: CrewUiState, onClick: () -> Unit, modifier: Modifier = Modifi
             Spacer(modifier = Modifier.width(14.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(text = summary.title, style = MaterialTheme.typography.titleMedium)
-                Text(
-                    text = summary.meta,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                if (summary.meta.isNotEmpty()) {
+                    Text(
+                        text = summary.meta,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
                 notes.forEach { note ->
                     Text(
                         text = note,
