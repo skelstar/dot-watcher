@@ -83,7 +83,7 @@ chars, `NormalizeSessionName`), so title and code must be decoupled; check how f
 - **List:** `GET /me/events/nearby?lat=&lon=&accuracy=` returns nearby sessions whose own radius covers the caller
   (with the accuracy allowance), excluding sessions the caller is blocked from, archived or ended sessions, and ones
   they already belong to. Capped (proposed 10); distance rounded (proposed to 50 m).
-- **Join:** `POST /nearby/sessions/{sessionId}/join` with `lat`/`lon`/`accuracy`, `displayName`, `role`. Re-checks
+- **Join:** `POST /nearby/sessions/{sessionId}/join` with `lat`/`lon`/`accuracy`, `displayName`. Always joins as a runner (no viewer option: watching is done with the shared watch link). Re-checks
   distance at join time (the server decides, never the client), then joins as an invite join would, returning the same
   response shape so clients reuse their join handling. Failure is uniform ("not available") whether the session is too
   far, non-nearby or unknown, so it can't be probed.
@@ -107,8 +107,10 @@ chars, `NormalizeSessionName`), so title and code must be decoupled; check how f
 - **Main screen:** while the screen is open and location is granted, request the nearby list on appear and every ~60 s
   (not in the background). One tile per session, title first, organiser and distance beneath; replaces the single
   placeholder sign.
-- **Tap a tile:** confirm sheet ("Join Saturday long run, started by Priya, about 150 m away?" with a choice of
-  runner/viewer), then the nearby join call, then the normal session screen.
+- **Tap a tile:** an information sheet, not a choice. It tells the person who will see them (everyone in the run: name and
+  live location), when (only while tracking; they can leave any time), who is in it, and whether replay is kept. Then
+  **Join this run**, the nearby join call, and the normal session screen. No runner/viewer choice: watching without
+  sharing is the existing shared watch link.
 - Android: the same, on `DotWatcherApi`/`AppViewModel`; keep response models identical.
 
 ## Tasks
