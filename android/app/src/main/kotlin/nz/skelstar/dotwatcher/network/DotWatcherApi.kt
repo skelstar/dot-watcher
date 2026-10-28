@@ -154,9 +154,9 @@ data class CasualPosition(
     val isUltraConstrained: Boolean = false,
     val inSession: Boolean = false,
     val isSelf: Boolean = false,
-    /** The account's initials, for the letters on the dot. [runnerName] can be a crew nickname, which
-     *  would be cut down to its first two letters. Absent from older servers. */
-    val initials: String? = null,
+    /** The account's display name (its initials), for the letters on the dot. [runnerName] can be a crew
+     *  nickname, which would be cut down to its first two letters. Absent from older servers. */
+    val displayName: String? = null,
 )
 
 /** Someone who is not in your crew: a position and nothing else, so there is no name or id to show. */
@@ -202,9 +202,9 @@ data class RunnerPosition(
     /** Self-reported by the runner's device; drives the satellite badge on their marker. Absent
      *  from older servers/clients, hence the default. */
     val isUltraConstrained: Boolean = false,
-    /** The account's initials, for the letters on the dot when [runnerName] is a crew nickname.
+    /** The account's display name, for the letters on the dot when [runnerName] is a crew nickname.
      *  Only the casual map sets it; null means draw the letters from [runnerName]. */
-    val initials: String? = null,
+    val displayName: String? = null,
 )
 
 /** A crash saved by [nz.skelstar.dotwatcher.crash.CrashReporter] and uploaded on the next launch.

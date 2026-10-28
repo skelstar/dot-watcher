@@ -101,7 +101,7 @@ public static class CasualVisibility
             RunnerName = name,
             InSession = entry.InSession,
             IsSelf = isSelf,
-            Initials = entry.Position.RunnerName,
+            DisplayName = entry.Position.RunnerName,
         };
 }
 

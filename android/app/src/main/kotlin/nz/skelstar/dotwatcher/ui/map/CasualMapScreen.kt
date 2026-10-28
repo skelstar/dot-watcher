@@ -111,7 +111,7 @@ fun CasualMapScreen(
                                     heading = it.heading,
                                     timestamp = it.timestamp,
                                     isUltraConstrained = it.isUltraConstrained,
-                                    initials = it.initials,
+                                    displayName = it.displayName,
                                 )
                             }
                             locked = everyone.filter { it.inSession }.map { it.runnerName }.toSet()

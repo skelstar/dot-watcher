@@ -22,9 +22,9 @@ public record RunnerPosition(
     // Set only on casual positions (GET /casual/live and the POST /location reply for casual), so
     // one shape serves named and casual sessions; see .ai/plans/unify-position-model.md.
     // InSession is the lock: out in a named session rather than casually. IsSelf marks the caller's
-    // own dot. Initials is always the account's initials, for the letters on the dot, because
+    // own dot. DisplayName is always the account's display name (its initials), for the letters on the dot, because
     // RunnerName can be a crew nickname ("Sean" would be cut down to "SE").
     bool InSession = false,
     bool IsSelf = false,
-    string? Initials = null
+    string? DisplayName = null
 );
