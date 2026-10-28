@@ -28,6 +28,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import nz.skelstar.dotwatcher.crew.CrewUiState
+import nz.skelstar.dotwatcher.crew.crewRowNotes
 import nz.skelstar.dotwatcher.crew.crewRowSummary
 import nz.skelstar.dotwatcher.crew.label
 import nz.skelstar.dotwatcher.ui.CrewDot
@@ -43,6 +44,7 @@ import nz.skelstar.dotwatcher.ui.groupedCardColor
 fun CrewRow(state: CrewUiState, onClick: () -> Unit, modifier: Modifier = Modifier) {
     if (!state.isAvailable) return
     val summary = crewRowSummary(state.members)
+    val notes = crewRowNotes(state.newMemberIds.size, state.pendingInvites)
 
     GroupedCard(
         modifier = modifier
@@ -101,6 +103,13 @@ fun CrewRow(state: CrewUiState, onClick: () -> Unit, modifier: Modifier = Modifi
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                notes.forEach { note ->
+                    Text(
+                        text = note,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                }
             }
             Icon(
                 imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,

@@ -96,6 +96,11 @@ struct CrewRow: View {
                         Text(summary.meta)
                             .font(.caption)
                             .foregroundStyle(.secondary)
+                        ForEach(CrewFormat.rowNotes(newMembers: crew.newMemberIds.count, pendingInvites: crew.pendingInvites), id: \.self) { note in
+                            Text(note)
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(Color.accentColor)
+                        }
                     }
                     Spacer()
                     Image(systemName: "chevron.right")
@@ -213,6 +218,8 @@ struct CrewListView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
+                // Opening the crew is what clears the start screen's "joined" note.
+                Color.clear.frame(height: 0).onAppear { crew.markMembersSeen() }
                 Text("People you have chosen. They see you in their crew too, and you can remove each other at any time. Removing someone takes effect straight away.")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)

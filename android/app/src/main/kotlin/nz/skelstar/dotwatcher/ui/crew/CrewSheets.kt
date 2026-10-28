@@ -114,6 +114,9 @@ fun CrewSheet(
     var confirmRemove by remember { mutableStateOf<CrewMember?>(null) }
     val selected = state.members.firstOrNull { it.userId == selectedId }
 
+    // Opening the crew is what clears the start screen's "joined" note.
+    LaunchedEffect(Unit) { crew.markMembersSeen() }
+
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
         Column(
             modifier = Modifier
