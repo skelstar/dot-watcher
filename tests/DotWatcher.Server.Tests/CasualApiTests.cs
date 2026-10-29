@@ -144,6 +144,10 @@ public class CasualApiTests
         Assert.Contains("Bobby", live.Participants);
         Assert.Empty(live.Nearby);
 
+        // The dot's letters come from the account's display name, whatever the nickname.
+        var bobDot = live.Positions.Select(p => p[0]).Single(p => p.RunnerName == "Bobby");
+        Assert.Equal("BO", bobDot.DisplayName);
+
         var bobSees = await PostCasualOkAsync(client, bob.AccessToken, FarLatitude);
         Assert.Contains("AL", bobSees.Participants);
     }

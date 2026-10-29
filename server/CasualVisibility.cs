@@ -99,7 +99,8 @@ public static class CasualVisibility
         var p = entry.Position;
         return new CasualPosition(
             name, p.Latitude, p.Longitude, p.Heading, p.Timestamp,
-            p.NextExpectedAt, p.IsUltraConstrained, p.BatteryLevel, entry.InSession, isSelf);
+            p.NextExpectedAt, p.IsUltraConstrained, p.BatteryLevel, entry.InSession, isSelf,
+            p.RunnerName);
     }
 }
 
