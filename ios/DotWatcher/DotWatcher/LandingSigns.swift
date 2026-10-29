@@ -2,14 +2,15 @@ import CoreText
 import SwiftUI
 
 // The start screen's "sign" buttons: Go, Invite code and Create, plus a placeholder event sign. Laid out
-// like the Android app's, from the Coffee Go palette in .ai/mockups/landing-signs.html.
+// like the Android app's, from the Berry and cream palette (Palette 5) in .ai/mockups/landing-signs.html.
 
 /// The sign colours.
 enum SignPalette {
-    static let coffee = Color(red: 0x2B / 255, green: 0x21 / 255, blue: 0x18 / 255)
-    static let camel = Color(red: 0xAF / 255, green: 0x91 / 255, blue: 0x64 / 255)
-    static let ivory = Color(red: 0xF7 / 255, green: 0xF3 / 255, blue: 0xE3 / 255)
-    static let lava = Color(red: 0x6F / 255, green: 0x1A / 255, blue: 0x07 / 255)
+    static let berry = Color(red: 0x5A / 255, green: 0x1F / 255, blue: 0x3A / 255)
+    static let honey = Color(red: 0xF6 / 255, green: 0xD5 / 255, blue: 0x8A / 255)
+    static let cream = Color(red: 0xF8 / 255, green: 0xEF / 255, blue: 0xE2 / 255)
+    static let amber = Color(red: 0xE9 / 255, green: 0xB9 / 255, blue: 0x49 / 255)
+    static let plum = Color(red: 0x3D / 255, green: 0x12 / 255, blue: 0x26 / 255)
 }
 
 /// EB Garamond (OFL, ios/third_party) at ExtraBold, the nearest free face to the ITC Garamond on the
@@ -74,7 +75,7 @@ private struct SignContent: View {
     }
 }
 
-/// The ivory sign (Invite code, Create): coffee text and frame.
+/// The cream sign (Invite code, Create): berry text and frame.
 struct SignButton: View {
     let title: String
     let subtitle: String
@@ -82,12 +83,12 @@ struct SignButton: View {
 
     var body: some View {
         Button(action: action) {
-            SignContent(title: title, subtitle: subtitle, titleSize: 26, arrowSize: 24, ink: SignPalette.coffee)
+            SignContent(title: title, subtitle: subtitle, titleSize: 26, arrowSize: 24, ink: SignPalette.berry)
                 .padding(.horizontal, 16)
                 .padding(.vertical, 14)
                 .frame(maxWidth: .infinity)
-                .background(SignPalette.ivory)
-                .overlay(Rectangle().strokeBorder(SignPalette.coffee, lineWidth: signFrameWidth))
+                .background(SignPalette.cream)
+                .overlay(Rectangle().strokeBorder(SignPalette.berry, lineWidth: signFrameWidth))
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -97,7 +98,7 @@ struct SignButton: View {
     }
 }
 
-/// The Go sign, about 2.2x the height of `SignButton` with a lava bar across the top. Held rather than
+/// The Go sign, about 2.2x the height of `SignButton` with a honey bar across the top. Held rather than
 /// tapped, like the round Go button was: a lighter fill sweeps across while it is pressed and
 /// `onComplete` runs when full, so a pocket can't start tracking.
 struct HoldSignButton: View {
@@ -108,18 +109,18 @@ struct HoldSignButton: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            SignPalette.lava.frame(height: signBarHeight * 1.5)
+            SignPalette.honey.frame(height: signBarHeight * 1.5)
             SignContent(
                 title: title, subtitle: subtitle, titleSize: 44, arrowSize: 30,
-                ink: SignPalette.camel, alignBottom: true
+                ink: SignPalette.honey, alignBottom: true
             )
             .padding(.horizontal, 20)
             .padding(.vertical, 18)
             .frame(maxWidth: .infinity, minHeight: 162, alignment: .bottomLeading)
-            .background(SignPalette.coffee)
+            .background(SignPalette.berry)
             .overlay(alignment: .leading) {
                 GeometryReader { proxy in
-                    SignPalette.camel.opacity(0.28)
+                    SignPalette.honey.opacity(0.28)
                         .frame(width: proxy.size.width * progress)
                 }
             }
@@ -133,7 +134,7 @@ struct HoldSignButton: View {
     }
 }
 
-/// A public event happening near the runner, shown under Go in lava with ivory text and a camel bar.
+/// A public event happening near the runner, shown under Go in amber with plum text and a plum bar.
 /// `eyebrow` is the small caps line above the title.
 struct EventSignButton: View {
     let eyebrow: String
@@ -144,16 +145,16 @@ struct EventSignButton: View {
     var body: some View {
         Button(action: action) {
             VStack(spacing: 0) {
-                SignPalette.camel.frame(height: signBarHeight)
+                SignPalette.plum.frame(height: signBarHeight)
                 SignContent(
                     eyebrow: eyebrow, title: title, subtitle: subtitle, titleSize: 28, arrowSize: 24,
-                    ink: SignPalette.ivory
+                    ink: SignPalette.plum
                 )
                 .padding(.horizontal, 16)
                 .padding(.vertical, 12)
                 .frame(maxWidth: .infinity)
             }
-            .background(SignPalette.lava)
+            .background(SignPalette.amber)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
