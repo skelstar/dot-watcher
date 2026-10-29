@@ -17,27 +17,6 @@ public record CasualStartResponse(
 );
 
 /// <summary>
-/// The caller or a crew member. Same fields as <see cref="RunnerPosition"/> (so a client can decode
-/// it as one) plus <see cref="InSession"/> (the lock: out in a named session rather than casually)
-/// and <see cref="IsSelf"/>. <see cref="RunnerName"/> is the crew nickname, else the account's initials.
-/// <see cref="DisplayName"/> is always the account's display name (its initials), for the letters on the dot, so a nickname
-/// such as "Sean" is never cut down to "SE".
-/// </summary>
-public record CasualPosition(
-    string RunnerName,
-    double Latitude,
-    double Longitude,
-    double? Heading,
-    DateTimeOffset Timestamp,
-    DateTimeOffset? NextExpectedAt,
-    bool IsUltraConstrained,
-    int? BatteryLevel,
-    bool InSession,
-    bool IsSelf,
-    string DisplayName
-);
-
-/// <summary>
 /// Someone who isn't crew. Deliberately has no name, no id and no timestamp: nothing here lets a
 /// client tell two polls' dots are the same person or build a track from them.
 /// </summary>
@@ -51,7 +30,7 @@ public record NearbyDot(
 /// <summary>Participants and positions use the same shape as POST /location (positions are one-element arrays).</summary>
 public record CasualLiveResponse(
     IReadOnlyList<string> Participants,
-    IReadOnlyList<CasualPosition[]> Positions,
+    IReadOnlyList<RunnerPosition[]> Positions,
     IReadOnlyList<NearbyDot> Nearby
 );
 
