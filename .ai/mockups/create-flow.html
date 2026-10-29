@@ -1,0 +1,646 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Create Flow Mock-up</title>
+<style>
+/* Self-contained mock-up: open in a browser. Nothing here talks to a server. Tap "Create" on the phone to start. */
+:root{
+  --bg:#f6f7f6; --fg:#1b2321; --muted:#5a6662; --rule:#d9dedb; --accent:#d9480f;
+  --ink:#2c2119; --maroon:#6b1a08; --tan:#b09263; --cream:#f5f0e0; --new:#e8590c;
+}
+@media (prefers-color-scheme:dark){:root{--bg:#121715;--fg:#e6ebe9;--muted:#9aa7a2;--rule:#2e3835;--accent:#ff8a4c}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif;padding:32px 16px 64px}
+.page{max-width:900px;margin:0 auto}
+h1{margin:0 0 6px;font-size:clamp(1.7rem,5vw,2.2rem);letter-spacing:-.02em;line-height:1.15}
+p{margin:0 0 10px;max-width:62ch}
+.layout{display:flex;flex-wrap:wrap;gap:36px;align-items:flex-start;margin-top:22px}
+.side{flex:1 1 280px;min-width:0}
+.side h2{font-size:1.05rem;margin:0 0 8px}
+.side ol{margin:0 0 18px;padding-left:1.2em;display:flex;flex-direction:column;gap:6px;font-size:.95rem}
+.side li[aria-current="step"]{font-weight:700}
+.restart{font:inherit;font-size:.9rem;background:none;color:var(--fg);border:1px solid var(--rule);border-radius:999px;padding:6px 14px;cursor:pointer}
+.restart:focus-visible,button:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.caption{font-size:.85rem;color:var(--muted)}
+
+/* ---- phone ---- */
+.phone{flex:0 0 auto;width:340px;height:700px;background:#fff;color:#000;border:8px solid #1c1c1e;border-radius:40px;position:relative;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,system-ui,sans-serif;font-size:14px;line-height:1.3}
+.status{position:absolute;top:10px;left:24px;right:24px;display:flex;justify-content:space-between;font-size:12px;font-weight:600;z-index:5}
+.view{position:absolute;inset:0;padding:40px 16px 0;display:none;flex-direction:column}
+.view.on{display:flex}
+button{font-family:inherit;color:inherit;cursor:pointer}
+.serif{font-family:"Iowan Old Style","Palatino Linotype",Georgia,serif}
+
+/* home */
+.logo{font-size:27px;font-weight:700;display:flex;align-items:center;letter-spacing:-.5px;margin-top:8px}
+.avatar{width:32px;height:32px;border-radius:50%;background:#007aff;color:#fff;font-size:11px;font-weight:700;display:inline-grid;place-items:center;margin:0 2px}
+.build{font-size:10px;color:#8e8e93;margin-bottom:10px}
+.crew{background:#e5e5ea;border-radius:14px;padding:10px 14px;font-weight:600;display:flex;justify-content:space-between;margin-bottom:8px}
+.crew span{color:#8e8e93;font-weight:400;font-size:12px}
+.tile{display:block;width:100%;text-align:left;border:0;padding:14px 16px;margin-top:10px}
+.go{background:var(--ink);color:var(--tan);height:150px;display:flex;flex-direction:column;justify-content:flex-end;border-top:12px solid var(--maroon);margin-top:26px}
+.go b{font-size:34px}
+.near{background:var(--maroon);color:var(--cream);border-top:8px solid var(--tan)}
+.near small{letter-spacing:.1em;font-size:9px;text-transform:uppercase}
+.near b{display:block;font-size:20px}
+.card{background:var(--cream);border:2px solid var(--ink);color:var(--ink)}
+.card b{display:block;font-size:20px}
+.card.pulse{box-shadow:0 0 0 3px var(--new)}
+
+/* wizard */
+.top{display:flex;justify-content:space-between;align-items:center;margin-top:8px;height:28px}
+.link{background:none;border:0;padding:4px 0;font-size:14px;color:#007aff}
+.link[hidden]{visibility:hidden;display:block}
+.dots{display:flex;gap:6px;margin:10px 0 18px}
+.dots i{flex:1;height:4px;border-radius:2px;background:#d1d1d6}
+.dots i.done{background:var(--maroon)}
+.step{display:none;flex:1;min-height:0;flex-direction:column;gap:12px;overflow-y:auto}
+.step.on{display:flex}
+.step h3{margin:0;font-size:24px;line-height:1.1;color:var(--ink)}
+.step .hint{margin:0;font-size:12.5px;color:#6c6c70}
+.field{border:2px solid var(--ink);background:var(--cream);border-radius:0;padding:12px;font:600 18px Georgia,serif;width:100%;color:var(--ink)}
+.field::placeholder{color:#a99f8a;font-weight:400}
+.sug{display:flex;flex-wrap:wrap;gap:6px}
+.pill{border:1.5px solid var(--ink);background:#fff;border-radius:999px;padding:6px 12px;font-size:12.5px}
+.pill[aria-pressed="true"]{background:var(--ink);color:var(--cream)}
+.lbl{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#6c6c70;margin-top:4px}
+.seg{display:flex;border:2px solid var(--ink)}
+.seg button{flex:1;border:0;background:var(--cream);padding:10px 4px;font-size:13px;font-weight:600;color:var(--ink)}
+.seg button+button{border-left:2px solid var(--ink)}
+.seg button[aria-pressed="true"]{background:var(--ink);color:var(--cream)}
+.when{display:flex;gap:8px}
+.when[hidden]{display:none}
+.end{border:2px dashed var(--ink);padding:10px 12px;font-size:13px;color:var(--ink);display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.end b{font:700 16px Georgia,serif;text-align:right}
+.when .field{font:600 14px system-ui,sans-serif;padding:10px}
+.opt{display:flex;align-items:center;gap:10px;border:2px solid var(--ink);background:var(--cream);padding:10px 12px;text-align:left;width:100%;color:var(--ink)}
+.opt .t{flex:1}
+.opt svg{width:56px;height:40px;border-radius:8px;background:#e6eee3;flex:none}
+.opt{margin-top:0}
+.drop{border:2px dashed var(--ink);background:var(--cream);padding:22px 12px;text-align:center;color:var(--ink);display:flex;flex-direction:column;gap:2px}
+.drop b{font:700 16px Georgia,serif}
+.drop small{color:#5c5144;font-size:12px}
+.drop[hidden]{display:none}
+.file{display:flex;align-items:center;gap:10px;border:2px solid var(--ink);background:var(--cream);padding:10px 12px;color:var(--ink)}
+.file svg{width:56px;height:40px;border-radius:8px;background:#e6eee3;flex:none}
+.file .t{min-width:0}
+.file b{display:block;font-size:14px;overflow-wrap:anywhere}
+.file small{font-size:11.5px;color:#5c5144}
+.file[hidden],#fbtns[hidden]{display:none}
+.note{border-left:3px solid var(--tan);padding-left:8px}
+.linkout{font:12.5px Consolas,monospace;border:2px dashed var(--ink);padding:8px 10px;color:var(--ink);background:#fff;margin-top:-6px}
+.linkout[hidden],#mkStaff[hidden]{display:none}
+#extras{display:flex;flex-direction:column;gap:8px}
+#extras[hidden]{display:none}
+.opt b{display:block;font-size:14px}
+.opt small{font-size:11.5px;color:#5c5144}
+.radio{width:18px;height:18px;border-radius:50%;border:2px solid var(--ink);flex:none}
+.opt[aria-pressed="true"]{background:var(--ink);color:var(--cream)}
+.opt[aria-pressed="true"] small{color:#d8ccb2}
+.opt[aria-pressed="true"] .radio{background:var(--tan);border-color:var(--tan);box-shadow:inset 0 0 0 3px var(--ink)}
+.row{display:flex;justify-content:space-between;align-items:center;padding:6px 0;font-size:13.5px}
+.sw{width:42px;height:25px;border-radius:13px;background:#d1d1d6;border:0;position:relative;flex:none;transition:background .15s}
+.sw::after{content:"";position:absolute;top:2px;left:2px;width:21px;height:21px;border-radius:50%;background:#fff;transition:transform .15s}
+.sw[aria-checked="true"]{background:#34c759}
+.sw[aria-checked="true"]::after{transform:translateX(17px)}
+.foot{padding:12px 0 18px}
+.cta{width:100%;border:0;background:var(--maroon);color:var(--cream);padding:14px;font:700 16px Georgia,serif;letter-spacing:.02em}
+.cta:disabled{background:#cfc6bd;color:#fff}
+.sum{border:2px solid var(--ink);background:var(--cream);padding:10px 12px;font-size:12.5px;color:var(--ink)}
+.sum b{font-size:15px;display:block}
+.code{display:flex;gap:5px;justify-content:center;margin:6px 0}
+.code span{width:34px;height:44px;display:grid;place-items:center;border:2px solid var(--ink);background:var(--cream);font:700 22px Georgia,serif;color:var(--ink)}
+.qr{align-self:center;width:128px;height:128px;border:2px solid var(--ink);padding:8px;background:#fff;display:grid;grid-template-columns:repeat(11,1fr);gap:1px}
+.qr i{background:var(--ink)}
+.qr i.o{background:transparent}
+.two{display:flex;gap:8px}
+.two button{flex:1;border:2px solid var(--ink);background:var(--cream);padding:11px;font-weight:700;color:var(--ink)}
+.toast{position:absolute;left:50%;bottom:92px;transform:translateX(-50%);background:#1c1c1e;color:#fff;font-size:12px;padding:7px 12px;border-radius:999px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:6}
+.toast.on{opacity:1}
+
+/* ---- mock 2: single scrolling page ---- */
+.bscroll{flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:14px;padding:6px 4px 14px;margin-inline:-4px}
+.bscroll>*{flex:none}
+.bsec{display:flex;flex-direction:column;gap:10px;padding-top:16px;border-top:1px solid #d1d1d6}
+.bsec h4{margin:0;font:700 19px Georgia,serif;color:var(--ink)}
+.btitle{margin:0;font:700 26px Georgia,serif;color:var(--ink);line-height:1.1}
+.fade{position:relative}
+.fade::before{content:"";position:absolute;left:0;right:0;top:-18px;height:18px;background:linear-gradient(transparent,#fff);pointer-events:none}
+.badge{font:600 10px system-ui,sans-serif;letter-spacing:.08em;text-transform:uppercase;background:var(--cream);border:1px solid var(--ink);padding:1px 6px;color:var(--ink);vertical-align:middle;margin-left:6px}
+.req{color:var(--maroon)}
+.nmap{border:2px solid var(--ink);overflow:hidden;line-height:0}
+.nmap svg{width:100%;height:auto}
+#b-nearbox{transition:opacity .15s}
+#b-nearbox.off{opacity:.4;pointer-events:none;filter:grayscale(1);user-select:none}
+.bextras{display:flex;flex-direction:column;gap:8px}
+.bextras[hidden],.two[hidden]{display:none}
+.mine{background:var(--maroon);color:var(--cream);border-top:8px solid var(--tan);padding:12px 16px 14px;display:flex;flex-direction:column;gap:2px;margin-top:10px}
+.mine[hidden]{display:none}
+.mine small{letter-spacing:.1em;font-size:9px;text-transform:uppercase}
+.mine b{font-size:21px;line-height:1.15}
+.mine span{font-size:12.5px}
+.mbtns{display:flex;gap:8px;margin-top:10px}
+.mbtns button{flex:1;border:2px solid var(--cream);background:transparent;color:var(--cream);padding:8px;font:700 14px Georgia,serif}
+.mbtns button.pri{background:var(--cream);color:var(--maroon)}
+.dng{border:2px solid #b3261e;background:#fff;color:#b3261e;padding:11px;font-weight:700}
+.opt:disabled{opacity:.4;cursor:not-allowed}
+</style>
+</head>
+<body>
+<div class="page">
+  <h1>Create flow</h1>
+  <p>Proposed: the single "Create a New Session" sheet becomes a five-step wizard. Tap <b>Create</b> on the phone to try it.</p>
+  <div class="layout">
+    <div class="phone" id="phone">
+      <div class="status"><span>9:59</span><span>●●● ▮</span></div>
+
+      <!-- home -->
+      <section class="view on" id="v-home">
+        <div class="logo">d<span class="avatar">SK</span>t-watchr</div>
+        <div class="build">build 711 · a8bb9a3</div>
+        <div class="crew">Your crew <span>3 people ›</span></div>
+        <button class="tile go serif"><b>Go</b><span>Hold to start</span></button>
+        <button class="tile near serif"><small>Happening near you · 2.3 km</small><b>Rogaine event</b><span>Sat 9am · Hunua Ranges · 14 joined</span></button>
+        <button class="tile card serif"><b>Invite code</b><span>Join a run you've been invited to</span></button>
+        <button class="tile card serif pulse" id="open"><b>Create</b><span>Set up a new run for others</span></button>
+      </section>
+
+      <!-- wizard -->
+      <section class="view" id="v-wiz">
+        <div class="top"><button class="link" id="back">‹ Back</button><button class="link" id="cancel">Cancel</button></div>
+        <div class="dots" id="dots"><i></i><i></i><i></i><i></i><i></i><i></i></div>
+
+        <div class="step on" id="s1">
+          <h3 class="serif">Name your run</h3>
+          <p class="hint">Others see this when they get your invite.</p>
+          <input class="field" id="name" placeholder="e.g. Saturday long run" maxlength="40" autocomplete="off">
+          <div class="lbl">Ideas</div>
+          <div class="sug" id="sug"></div>
+        </div>
+
+        <div class="step" id="s2">
+          <h3 class="serif">When &amp; how long</h3>
+          <div class="row sched"><span>Schedule for later</span><button class="sw" id="sched" role="switch" aria-checked="false" aria-label="Schedule for later"></button></div>
+          <div class="when" id="when" hidden>
+            <input class="field" id="d" type="date" value="2026-11-07">
+            <input class="field" id="t" type="time" value="09:00">
+          </div>
+          <div class="lbl">Event length</div>
+          <div class="sug" id="len"></div>
+          <div class="end"><span>Finishes</span><b id="end"></b></div>
+          <p class="hint">Pick the longest it could run. Going over won't stop tracking, but replay will start later.</p>
+        </div>
+
+        <div class="step" id="s3">
+          <h3 class="serif">Who can see who?</h3>
+          <button class="opt" data-g="who" data-v="Everyone sees everyone" aria-pressed="true"><span class="radio"></span><svg viewBox="0 0 60 40" aria-hidden="true"><path d="M5 34 C 20 30, 30 20, 40 14 S 52 6, 57 4" fill="none" stroke="#b9c9b4" stroke-width="5" stroke-linecap="round"/><circle cx="16" cy="29" r="5" fill="#007aff"/><circle cx="30" cy="21" r="5" fill="#e8590c"/><circle cx="43" cy="13" r="5" fill="#2f9e44"/><circle cx="52" cy="7" r="5" fill="#8e44ad"/></svg><span class="t"><b>Everyone sees everyone</b><small>Everyone in the group is named. Best for friends and small clubs.</small></span></button>
+          <button class="opt" data-g="who" data-v="Only crew" aria-pressed="false"><span class="radio"></span><svg viewBox="0 0 60 40" aria-hidden="true"><path d="M5 34 C 20 30, 30 20, 40 14 S 52 6, 57 4" fill="none" stroke="#b9c9b4" stroke-width="5" stroke-linecap="round"/><circle cx="16" cy="29" r="5" fill="#007aff"/><circle cx="30" cy="21" r="3.5" fill="#9aa5a1"/><circle cx="43" cy="13" r="3.5" fill="#9aa5a1"/><circle cx="52" cy="7" r="3.5" fill="#9aa5a1"/></svg><span class="t"><b>Only crew</b><small>Others see me as a grey dot.</small></span></button>
+          <button class="opt" data-g="who" data-v="Race" aria-pressed="false"><span class="radio"></span><svg viewBox="0 0 60 40" aria-hidden="true"><g transform="scale(.48 1)"><path d="M5 34 C 20 30, 30 20, 40 14 S 52 6, 57 4" fill="none" stroke="#b9c9b4" stroke-width="5" stroke-linecap="round"/></g><circle cx="14" cy="21" r="3.8" fill="#007aff"/><line x1="30" y1="3" x2="30" y2="37" stroke="#2c2119" stroke-width="1.2" stroke-dasharray="2 2"/><g transform="translate(31.5 0) scale(.48 1)"><path d="M5 34 C 20 30, 30 20, 40 14 S 52 6, 57 4" fill="none" stroke="#b9c9b4" stroke-width="5" stroke-linecap="round"/></g><circle cx="39" cy="29" r="3.8" fill="#007aff"/><circle cx="46" cy="21" r="3.8" fill="#e8590c"/><circle cx="52" cy="13" r="3.8" fill="#2f9e44"/><circle cx="56" cy="8" r="3.8" fill="#8e44ad"/></svg><span class="t"><b>Race</b><small>No-one sees each other, only the organiser sees everyone.</small></span></button>
+          <p class="hint">You can make this stricter later, never looser.</p>
+        </div>
+
+        <div class="step" id="s4">
+          <h3 class="serif">Options</h3>
+          <div class="row"><span>Members can drop map pins</span><button class="sw" role="switch" aria-checked="false" aria-label="Map pins"></button></div>
+          <div class="row"><span>Allow replay afterwards</span><button class="sw" role="switch" aria-checked="true" aria-label="Replay"></button></div>
+        </div>
+
+        <div class="step" id="s5">
+          <h3 class="serif">Add the course</h3>
+          <p class="hint">Optional. Upload a GPX file so everyone sees the route on the map.</p>
+          <button class="drop" id="drop"><b>Choose a GPX file</b><small>.gpx, up to 10 MB</small></button>
+          <input type="file" id="gpx" accept=".gpx,application/gpx+xml" hidden>
+          <div class="file" id="file" hidden>
+            <svg viewBox="0 0 60 40" aria-hidden="true"><path d="M5 34 C 20 30, 30 20, 40 14 S 52 6, 57 4" fill="none" stroke="#b9c9b4" stroke-width="5" stroke-linecap="round"/></svg>
+            <span class="t"><b id="fname"></b><small id="fmeta"></small></span>
+          </div>
+          <div class="two" id="fbtns" hidden><button id="replace">Replace file</button><button id="remove">Remove</button></div>
+          <p class="hint note">Uploading another file replaces the one already uploaded. A session has one course.</p>
+        </div>
+
+        <div class="step" id="s6">
+          <h3 class="serif" id="doneTitle">You're set</h3>
+          <div class="sum" id="sum"></div>
+          <div class="code" id="code"></div>
+          <div class="qr" id="qr" aria-label="QR code placeholder"></div>
+          <div id="extras">
+            <div class="lbl">Optional extras</div>
+            <button class="opt" id="mkLink"><span class="t"><b>Make a group link</b><small>One link for a WhatsApp group. Max 15 people, expires in 24 hours.</small></span></button>
+            <div class="linkout" id="linkOut" hidden>example.com/g/K7M2QX · 15 people · 24h</div>
+            <button class="opt" id="mkStaff"><span class="t"><b>Get a staff code</b><small>Gives another organiser the same full view as you. They sign in, and runners are told.</small></span></button>
+            <div class="linkout" id="staffOut" hidden>Staff code: <b>ORG-4471</b></div>
+          </div>
+          <div class="two"><button id="copy">Copy code</button><button id="share">Share link</button></div>
+        </div>
+
+        <div class="foot"><button class="cta" id="next">Next</button></div>
+      </section>
+      <div class="toast" id="toast"></div>
+    </div>
+
+    <div class="side">
+      <h2>Steps</h2>
+      <ol id="steps">
+        <li>Name: with quick ideas to tap</li>
+        <li>When &amp; how long: start now or schedule; length as chips</li>
+        <li>Who can see who: drawn with named and grey dots</li>
+        <li>Options: map pins and replay</li>
+        <li>Course: optional GPX upload; a new upload replaces the old one</li>
+        <li>Share: code, QR, link, plus optional group link / staff code for Crew and Race. The session is created when you leave step 5</li>
+      </ol>
+      <p class="caption">Step 3 follows the privacy concept (named vs grey dots). The options on step 4 are suggestions to react to, not committed scope. The group link and staff code are optional extras on the share step, for Crew and Race only (staff code for Race only).</p>
+      <button class="restart" id="restart">Restart mock-up</button>
+    </div>
+  </div>
+
+  <h1 style="margin-top:56px">Create flow: one scrolling page</h1>
+  <p>The same content as a single form instead of steps. Sections run top to bottom, and <b>Create session</b> stays pinned at the bottom. Scroll inside the phone. Start with <b>Create</b>, then use <b>Edit</b> on "Your run" to see the edit path.</p>
+  <div class="layout">
+    <div class="phone" id="phone2">
+      <div class="status"><span>9:59</span><span>●●● ▮</span></div>
+
+      <section class="view on" id="b-home">
+        <div class="logo">d<span class="avatar">SK</span>t-watchr</div>
+        <div class="build">build 711 · a8bb9a3</div>
+        <div class="bscroll" style="margin-top:2px">
+          <button class="tile go serif" style="height:92px;margin-top:6px"><b>Go</b><span>Hold to start</span></button>
+          <div class="mine serif" id="b-mine" hidden>
+            <small>Your run · <span id="b-mst" style="font-size:inherit"></span></small>
+            <b id="b-mname"></b>
+            <span id="b-mmeta"></span>
+            <div class="mbtns"><button class="pri" id="b-edit">Edit</button><button id="b-mshare">Share</button></div>
+          </div>
+          <button class="tile card serif pulse" id="b-new" style="margin-top:0"><b>Create</b><span>Set up a new run for others</span></button>
+        </div>
+      </section>
+
+      <section class="view" id="b-form">
+        <div class="top"><span></span><button class="link" id="b-cancel">Cancel</button></div>
+        <div class="bscroll" id="b-scroll">
+          <h3 class="btitle" id="b-title">Create a run</h3>
+
+          <div class="bsec" style="border:0;padding-top:0">
+            <h4>Name <span class="req" aria-hidden="true">*</span></h4>
+            <input class="field" id="b-name" placeholder="e.g. Saturday long run" maxlength="40" autocomplete="off">
+            <div class="sug" id="b-sug"></div>
+          </div>
+
+          <div class="bsec">
+            <h4>When &amp; how long</h4>
+            <div class="row sched"><span>Schedule for later</span><button class="sw" id="b-sched" role="switch" aria-checked="false" aria-label="Schedule for later"></button></div>
+            <div class="when" id="b-when" hidden>
+              <input class="field" id="b-d" type="date" value="2026-11-07">
+              <input class="field" id="b-t" type="time" value="09:00">
+            </div>
+            <div class="lbl">Event length</div>
+            <div class="sug" id="b-len"></div>
+            <div class="end"><span>Finishes</span><b id="b-end"></b></div>
+            <p class="hint">Pick the longest it could run. Going over won't stop tracking, but replay will start later.</p>
+          </div>
+
+          <div class="bsec">
+            <h4>Who can see who?</h4>
+            <button class="opt" data-g="who2" data-v="Everyone sees everyone" aria-pressed="true"><span class="radio"></span><svg viewBox="0 0 60 40" aria-hidden="true"><path d="M5 34 C 20 30, 30 20, 40 14 S 52 6, 57 4" fill="none" stroke="#b9c9b4" stroke-width="5" stroke-linecap="round"/><circle cx="16" cy="29" r="5" fill="#007aff"/><circle cx="30" cy="21" r="5" fill="#e8590c"/><circle cx="43" cy="13" r="5" fill="#2f9e44"/><circle cx="52" cy="7" r="5" fill="#8e44ad"/></svg><span class="t"><b>Everyone sees everyone</b><small>Everyone in the group is named. Best for friends and small clubs.</small></span></button>
+            <button class="opt" data-g="who2" data-v="Only crew" aria-pressed="false"><span class="radio"></span><svg viewBox="0 0 60 40" aria-hidden="true"><path d="M5 34 C 20 30, 30 20, 40 14 S 52 6, 57 4" fill="none" stroke="#b9c9b4" stroke-width="5" stroke-linecap="round"/><circle cx="16" cy="29" r="5" fill="#007aff"/><circle cx="30" cy="21" r="3.5" fill="#9aa5a1"/><circle cx="43" cy="13" r="3.5" fill="#9aa5a1"/><circle cx="52" cy="7" r="3.5" fill="#9aa5a1"/></svg><span class="t"><b>Only crew</b><small>Others see me as a grey dot.</small></span></button>
+            <button class="opt" data-g="who2" data-v="Race" aria-pressed="false"><span class="radio"></span><svg viewBox="0 0 60 40" aria-hidden="true"><g transform="scale(.48 1)"><path d="M5 34 C 20 30, 30 20, 40 14 S 52 6, 57 4" fill="none" stroke="#b9c9b4" stroke-width="5" stroke-linecap="round"/></g><circle cx="14" cy="21" r="3.8" fill="#007aff"/><line x1="30" y1="3" x2="30" y2="37" stroke="#2c2119" stroke-width="1.2" stroke-dasharray="2 2"/><g transform="translate(31.5 0) scale(.48 1)"><path d="M5 34 C 20 30, 30 20, 40 14 S 52 6, 57 4" fill="none" stroke="#b9c9b4" stroke-width="5" stroke-linecap="round"/></g><circle cx="39" cy="29" r="3.8" fill="#007aff"/><circle cx="46" cy="21" r="3.8" fill="#e8590c"/><circle cx="52" cy="13" r="3.8" fill="#2f9e44"/><circle cx="56" cy="8" r="3.8" fill="#8e44ad"/></svg><span class="t"><b>Race</b><small>No-one sees each other, only the organiser sees everyone.</small></span></button>
+            <p class="hint" id="b-whohint">You can make this stricter later, never looser.</p>
+          </div>
+
+          <div class="bsec">
+            <h4>Options</h4>
+            <div class="row"><span>Members can drop map pins</span><button class="sw" id="b-pins" role="switch" aria-checked="false" aria-label="Map pins"></button></div>
+            <div class="row"><span>Allow replay afterwards</span><button class="sw" id="b-replaysw" role="switch" aria-checked="true" aria-label="Replay"></button></div>
+          </div>
+
+          <div class="bsec">
+            <h4>Show to people nearby</h4>
+            <div class="row"><span>List on nearby main screens</span><button class="sw" id="b-near" role="switch" aria-checked="false" aria-label="List on nearby main screens"></button></div>
+            <div id="b-nearbox" class="off" aria-disabled="true">
+              <div class="nmap" aria-label="Map with the meeting point and range">
+                <svg viewBox="0 0 200 120" aria-hidden="true">
+                  <rect width="200" height="120" fill="#e6eee3"/>
+                  <path d="M0 95 C 40 80, 70 70, 100 55 S 160 30, 200 20" fill="none" stroke="#b9c9b4" stroke-width="9" stroke-linecap="round"/>
+                  <circle id="b-ring" cx="100" cy="60" r="40" fill="rgba(107,26,8,.12)" stroke="#6b1a08" stroke-width="1.5" stroke-dasharray="4 3"/>
+                  <path d="M100 68 C 92 56, 91 50, 91 47 a9 9 0 1 1 18 0 c0 3-1 9-9 21z" fill="#6b1a08"/>
+                  <circle cx="100" cy="47" r="3.2" fill="#f5f0e0"/>
+                </svg>
+              </div>
+              <div class="lbl" style="margin-top:8px">Meeting point</div>
+              <p class="hint" id="b-meet">Starts at your current location. Drag the pin to move it.</p>
+              <div class="lbl" style="margin-top:8px">Shown to people within</div>
+              <div class="sug" id="b-range"></div>
+              <p class="hint note" id="b-nearnote"></p>
+            </div>
+            <p class="hint" id="b-nearoff">Off: this run won't appear on anyone's main screen. People still join with the invite code.</p>
+          </div>
+
+          <div class="bsec">
+            <h4>Course <span class="badge">Optional</span></h4>
+            <button class="drop" id="b-drop"><b>Choose a GPX file</b><small>.gpx, up to 10 MB</small></button>
+            <input type="file" id="b-gpx" accept=".gpx,application/gpx+xml" hidden>
+            <div class="file" id="b-file" hidden>
+              <svg viewBox="0 0 60 40" aria-hidden="true"><path d="M5 34 C 20 30, 30 20, 40 14 S 52 6, 57 4" fill="none" stroke="#b9c9b4" stroke-width="5" stroke-linecap="round"/></svg>
+              <span class="t"><b id="b-fname"></b><small id="b-fmeta"></small></span>
+            </div>
+            <div class="two" id="b-fbtns" hidden><button id="b-replace">Replace file</button><button id="b-remove">Remove</button></div>
+            <p class="hint note">Uploading another file replaces the one already uploaded. A session has one course.</p>
+          </div>
+          <div class="bsec" id="b-danger" hidden>
+            <h4>End this run</h4>
+            <button class="dng" id="b-end">End run now</button>
+            <p class="hint">Stops tracking for everyone and starts replay. Can't be undone.</p>
+          </div>
+        </div>
+        <div class="foot fade"><button class="cta" id="b-create" disabled>Create session</button></div>
+      </section>
+
+      <section class="view" id="b-done">
+        <div class="bscroll">
+          <h3 class="btitle">You're set</h3>
+          <div class="sum" id="b-sum"></div>
+          <div class="code" id="b-code"></div>
+          <div class="qr" id="b-qr" aria-label="QR code placeholder"></div>
+          <div id="b-extras" class="bextras">
+            <div class="lbl">Optional extras</div>
+            <button class="opt" id="b-mkLink"><span class="t"><b>Make a group link</b><small>One link for a WhatsApp group. Max 15 people, expires in 24 hours.</small></span></button>
+            <div class="linkout" id="b-linkOut" hidden>example.com/g/K7M2QX</div>
+            <button class="opt" id="b-mkStaff"><span class="t"><b>Get a staff code</b><small>Gives another organiser the same full view as you. They sign in, and runners are told.</small></span></button>
+            <div class="linkout" id="b-staffOut" hidden>Staff code: <b>ORG-4471</b></div>
+          </div>
+          <div class="two"><button id="b-copy">Copy code</button><button id="b-share">Share link</button></div>
+        </div>
+        <div class="foot"><button class="cta" id="b-done-btn">Done</button></div>
+      </section>
+      <div class="toast" id="b-toast"></div>
+    </div>
+
+    <div class="side">
+      <h2>What changes</h2>
+      <ol>
+        <li>One page, six sections, no Next or Back</li>
+        <li>Name is the only required field. Create stays disabled until it's filled</li>
+        <li>Everything else has a default, so a quick run is: type a name, tap Create</li>
+        <li>Location only decides who sees the run on their main screen. An invite code works from anywhere</li>
+        <li>The share screen still comes after Create</li>
+        <li><b>Editing:</b> once created, the run sits on the organiser's main screen as "Your run" with <b>Edit</b> and <b>Share</b></li>
+        <li>Edit opens the same form, filled in. Privacy can only get stricter (looser options are switched off), a new GPX replaces the old one, and "End run now" is at the bottom</li>
+      </ol>
+      <p class="caption">Trade-off: fewer taps, and you can see everything at once. But the privacy choice, the one that matters most, is further down the page and easier to scroll past than a step of its own.</p>
+      <button class="restart" id="b-restart">Reset this mock-up</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  var $=function(s){return document.querySelector(s)}, $$=function(s){return [].slice.call(document.querySelectorAll(s))};
+  var step=0, S={name:'',start:'now',len:'12 hours',who:'Everyone sees everyone'};
+  var ideas=['Saturday long run','Club night','Rogaine practice','Parkrun warm-up'];
+  var lens=['2 hours','4 hours','8 hours','12 hours','24 hours','48 hours'];
+  var next=$('#next'), back=$('#back'), name=$('#name');
+
+  function mk(host,arr,cb,sel){
+    host.innerHTML='';
+    arr.forEach(function(t){
+      var b=document.createElement('button');b.className='pill';b.textContent=t;
+      b.setAttribute('aria-pressed',String(t===sel));
+      b.onclick=function(){cb(t);$$('#'+host.id+' .pill').forEach(function(p){p.setAttribute('aria-pressed',String(p===b))})};
+      host.appendChild(b);
+    });
+  }
+  mk($('#sug'),ideas,function(t){name.value=t;S.name=t;sync()});
+  mk($('#len'),lens,function(t){S.len=t;upEnd()},S.len);
+
+  function endText(){
+    var st=new Date();
+    if(S.start==='later'){var d=$('#d').value,t=$('#t').value;if(d&&t)st=new Date(d+'T'+t)}
+    var e=new Date(st.getTime()+parseInt(S.len,10)*36e5);
+    var day=S.start==='later'?e.toLocaleDateString('en-NZ',{weekday:'short',day:'numeric',month:'short'})+', ':'';
+    var tm=e.toLocaleTimeString('en-NZ',{hour:'numeric',minute:'2-digit'}).replace(/\s/g,'').toLowerCase();
+    var days=Math.round((new Date(e.toDateString())-new Date(st.toDateString()))/864e5);
+    return day+tm+(days>0&&S.start!=='later'?' (+'+days+(days>1?' days':' day')+')':'');
+  }
+  function upEnd(){$('#end').textContent=endText()}
+  function toast(m){var t=$('#toast');t.textContent=m;t.classList.add('on');setTimeout(function(){t.classList.remove('on')},1400)}
+  function show(id){$$('#phone .view').forEach(function(v){v.classList.toggle('on',v.id===id)})}
+
+  function sync(){
+    S.name=name.value.trim();
+    if(step===0) next.disabled=!S.name;
+  }
+  function render(){
+    $$('#phone .step').forEach(function(s,i){s.classList.toggle('on',i===step)});
+    $$('#dots i').forEach(function(d,i){d.className=i<=step?'done':''});
+    $$('#steps li').forEach(function(l,i){i===step?l.setAttribute('aria-current','step'):l.removeAttribute('aria-current')});
+    back.hidden=step===0||step===5;
+    $('#cancel').hidden=step===5;
+        next.disabled=false;
+    next.textContent=['Next','Next','Next','Next','Create session','Done'][step];
+    if(step===0) sync();
+    if(step===5) finish();
+  }
+  function finish(){
+    $('#extras').hidden=S.who==='Everyone sees everyone';
+    $('#mkStaff').hidden=S.who!=='Race';
+    $('#linkOut').hidden=$('#staffOut').hidden=true;
+    var when=(S.start==='now'?'Starts when you create it':'Starts '+$('#d').value+' '+$('#t').value)+' · ends '+endText()+'<br>';
+    $('#sum').innerHTML='<b>'+esc(S.name)+'</b>'+when+S.len+' · '+S.who+(S.gpx?' · course: '+esc(S.gpx):'');
+    var c='K7M2QX9R';
+    $('#code').innerHTML=c.split('').map(function(ch){return '<span>'+ch+'</span>'}).join('');
+    var q='';for(var i=0;i<121;i++){var r=Math.floor(i/11),k=i%11,fin=(r<3&&(k<3||k>7))||(r>7&&k<3);q+='<i class="'+(fin||(i*7+r*3)%5<2?'':'o')+'"></i>'}
+    $('#qr').innerHTML=q;
+  }
+  function esc(s){return s.replace(/[&<>]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;'}[c]})}
+
+  $('#open').onclick=function(){step=0;name.value='';S.name='';gpxState(null);show('v-wiz');render();name.focus({preventScroll:true})};
+  $('#cancel').onclick=function(){show('v-home')};
+  back.onclick=function(){if(step>0){step--;render()}};
+  next.onclick=function(){
+    if(step<5){step++;render()} else {show('v-home')}
+  };
+  $('#d').onchange=$('#t').onchange=upEnd;
+  upEnd();
+  name.oninput=sync;
+  name.onkeydown=function(e){if(e.key==='Enter'&&S.name)next.click()};
+
+  $('#sched').addEventListener('click',function(){
+    S.start=this.getAttribute('aria-checked')==='true'?'now':'later'; // runs before the generic toggle flips it
+    $('#when').hidden=S.start==='now';upEnd();
+  });
+  $$('.opt[data-g="who"]').forEach(function(b){b.onclick=function(){
+    S.who=b.dataset.v;
+    $$('.opt[data-g="who"]').forEach(function(x){x.setAttribute('aria-pressed',String(x===b))});
+  }});
+  $$('#phone .sw').forEach(function(s){s.onclick=function(){s.setAttribute('aria-checked',String(s.getAttribute('aria-checked')!=='true'))}});
+  function gpxState(f){
+    $('#drop').hidden=!!f;$('#file').hidden=$('#fbtns').hidden=!f;
+    if(f){
+      var kb=f.size/1024;
+      $('#fname').textContent=f.name;
+      $('#fmeta').textContent=(kb>=1024?(kb/1024).toFixed(1)+' MB':Math.max(1,Math.round(kb))+' KB')+' · uploaded just now';
+    }
+    S.gpx=f?f.name:'';
+  }
+  $('#drop').onclick=$('#replace').onclick=function(){$('#gpx').click()};
+  $('#gpx').onchange=function(){
+    var f=this.files[0];
+    if(!f)return;
+    var had=!!S.gpx;
+    gpxState(f);
+    toast(had?'Replaced the previous file':'File uploaded');
+    this.value='';
+  };
+  $('#remove').onclick=function(){gpxState(null);toast('File removed')};
+  $('#mkLink').onclick=function(){$('#linkOut').hidden=false;toast('Group link ready')};
+  $('#mkStaff').onclick=function(){$('#staffOut').hidden=false;toast('Staff code ready')};
+  $('#copy').onclick=function(){toast('Code copied')};
+  $('#share').onclick=function(){toast('Share sheet opens here')};
+  $('#restart').onclick=function(){show('v-home')};
+})();
+
+(function(){
+  var P=document.getElementById('phone2');
+  var q=function(s){return P.querySelector(s)}, qa=function(s){return [].slice.call(P.querySelectorAll(s))};
+  var S={name:'',later:false,len:'12 hours',who:'Everyone sees everyone',gpx:''};
+  var ideas=['Saturday long run','Club night','Rogaine practice','Parkrun warm-up'];
+  var lens=['2 hours','4 hours','8 hours','12 hours','24 hours','48 hours'];
+  var name=q('#b-name'), create=q('#b-create');
+  var saved=null, mode='create';
+  var blank={name:'',later:false,len:'12 hours',who:'Everyone sees everyone',near:false,range:'5 km',gpxf:null,pins:false,replay:true};
+  var RANK={'Everyone sees everyone':0,'Only crew':1,'Race':2};
+
+  function esc(s){return s.replace(/[&<>]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;'}[c]})}
+  function toast(m){var t=q('#b-toast');t.textContent=m;t.classList.add('on');setTimeout(function(){t.classList.remove('on')},1400)}
+  function view(id){qa('.view').forEach(function(v){v.classList.toggle('on',v.id===id)})}
+  function mk(host,arr,cb,sel){
+    host.innerHTML='';
+    arr.forEach(function(t){
+      var b=document.createElement('button');b.className='pill';b.textContent=t;
+      b.setAttribute('aria-pressed',String(t===sel));
+      b.onclick=function(){cb(t);[].forEach.call(host.children,function(p){p.setAttribute('aria-pressed',String(p===b))})};
+      host.appendChild(b);
+    });
+  }
+  function endText(){
+    var st=new Date();
+    if(S.later){var d=q('#b-d').value,t=q('#b-t').value;if(d&&t)st=new Date(d+'T'+t)}
+    var e=new Date(st.getTime()+parseInt(S.len,10)*36e5);
+    var day=S.later?e.toLocaleDateString('en-NZ',{weekday:'short',day:'numeric',month:'short'})+', ':'';
+    var tm=e.toLocaleTimeString('en-NZ',{hour:'numeric',minute:'2-digit'}).replace(/\s/g,'').toLowerCase();
+    var days=Math.round((new Date(e.toDateString())-new Date(st.toDateString()))/864e5);
+    return day+tm+(days>0&&!S.later?' (+'+days+(days>1?' days':' day')+')':'');
+  }
+  function upEnd(){q('#b-end').textContent=endText()}
+  function sync(){S.name=name.value.trim();create.disabled=!S.name}
+
+  mk(q('#b-sug'),ideas,function(t){name.value=t;sync()});
+  mk(q('#b-len'),lens,function(t){S.len=t;upEnd()},S.len);
+  name.oninput=sync;
+  qa('.sw').forEach(function(sw){sw.addEventListener('click',function(){sw.setAttribute('aria-checked',String(sw.getAttribute('aria-checked')!=='true'))})});
+  q('#b-sched').addEventListener('click',function(){
+    S.later=this.getAttribute('aria-checked')==='true';
+    q('#b-when').hidden=!S.later;upEnd();
+  });
+  q('#b-d').onchange=q('#b-t').onchange=upEnd;
+  qa('.opt[data-g="who2"]').forEach(function(b){b.onclick=function(){
+    S.who=b.dataset.v;
+    qa('.opt[data-g="who2"]').forEach(function(x){x.setAttribute('aria-pressed',String(x===b))});
+  }});
+
+  var RANGES=[['500 m',18],['1 km',28],['5 km',40],['25 km',56]];
+  function near(){
+    var on=q('#b-near').getAttribute('aria-checked')==='true';
+    S.near=on;var nb=q('#b-nearbox');nb.classList.toggle('off',!on);nb.setAttribute('aria-disabled',String(!on));
+    qa('#b-range .pill').forEach(function(b){b.disabled=!on});q('#b-nearoff').hidden=on;
+    var rg=RANGES.filter(function(x){return x[0]===S.range})[0]||RANGES[2];
+    q('#b-ring').setAttribute('r',rg[1]);
+    q('#b-nearnote').textContent='People within '+rg[0]+' of the pin see this run on their main screen. Anyone with the invite code can still join from anywhere.';
+    q('#b-meet').textContent=S.gpx?'Set to the start of '+S.gpx+'. Drag the pin to move it.':'Starts at your current location. Drag the pin to move it.';
+  }
+  S.range='5 km';
+  mk(q('#b-range'),RANGES.map(function(x){return x[0]}),function(t){S.range=t;near()},S.range);
+  near();
+  q('#b-near').addEventListener('click',near); // runs after the generic toggle flips it
+  function gpxState(f){
+    q('#b-drop').hidden=!!f;q('#b-file').hidden=q('#b-fbtns').hidden=!f;
+    if(f){
+      var kb=f.size/1024;
+      q('#b-fname').textContent=f.name;
+      q('#b-fmeta').textContent=(kb>=1024?(kb/1024).toFixed(1)+' MB':Math.max(1,Math.round(kb))+' KB')+' · uploaded just now';
+    }
+    S.gpx=f?f.name:'';
+    S.gpxf=f?{name:f.name,size:f.size}:null;
+    near();
+  }
+  q('#b-drop').onclick=q('#b-replace').onclick=function(){q('#b-gpx').click()};
+  q('#b-gpx').onchange=function(){
+    var f=this.files[0];if(!f)return;
+    var had=!!S.gpx;gpxState(f);toast(had?'Replaced the previous file':'File uploaded');this.value='';
+  };
+  q('#b-remove').onclick=function(){gpxState(null);toast('File removed')};
+
+  function showDone(){
+    var when=(S.later?'Starts '+q('#b-d').value+' '+q('#b-t').value:'Starts when you create it')+' · ends '+endText()+'<br>';
+    q('#b-sum').innerHTML='<b>'+esc(S.name)+'</b>'+when+S.len+' · '+S.who+(S.gpx?' · course: '+esc(S.gpx):'')+'<br>'+(S.near?'Listed within '+S.range+' of the meeting point':'Not listed nearby; join by invite code');
+    q('#b-code').innerHTML='K7M2QX9R'.split('').map(function(ch){return '<span>'+ch+'</span>'}).join('');
+    var g='';for(var i=0;i<121;i++){var r=Math.floor(i/11),k=i%11,fin=(r<3&&(k<3||k>7))||(r>7&&k<3);g+='<i class="'+(fin||(i*7+r*3)%5<2?'':'o')+'"></i>'}
+    q('#b-qr').innerHTML=g;
+    q('#b-extras').hidden=S.who==='Everyone sees everyone';
+    q('#b-mkStaff').hidden=S.who!=='Race';
+    q('#b-linkOut').hidden=q('#b-staffOut').hidden=true;
+    view('b-done');
+  }
+  function sw(id,on){q(id).setAttribute('aria-checked',String(on))}
+  function snap(){return {name:S.name,later:S.later,len:S.len,who:S.who,near:S.near,range:S.range,gpxf:S.gpxf||null,
+    pins:q('#b-pins').getAttribute('aria-checked')==='true',replay:q('#b-replaysw').getAttribute('aria-checked')==='true'}}
+  function fillForm(st){
+    name.value=st.name;sync();
+    S.len=st.len;mk(q('#b-len'),lens,function(t){S.len=t;upEnd()},S.len);
+    S.later=st.later;sw('#b-sched',st.later);q('#b-when').hidden=!st.later;
+    S.who=st.who;qa('.opt[data-g="who2"]').forEach(function(x){x.setAttribute('aria-pressed',String(x.dataset.v===st.who))});
+    S.range=st.range;mk(q('#b-range'),RANGES.map(function(x){return x[0]}),function(t){S.range=t;near()},S.range);
+    sw('#b-near',st.near);sw('#b-pins',st.pins);sw('#b-replaysw',st.replay);
+    gpxState(st.gpxf);upEnd();near();
+  }
+  function renderHome(){
+    q('#b-mine').hidden=!saved;
+    if(!saved)return;
+    q('#b-mst').textContent=saved.later?'Scheduled':'Ready to start';
+    q('#b-mname').textContent=saved.name;
+    q('#b-mmeta').textContent=saved.len+' · '+saved.who+' · '+(saved.near?'listed within '+saved.range:'not listed nearby');
+  }
+  function openForm(m){
+    mode=m;fillForm(m==='edit'?saved:blank);
+    q('#b-title').textContent=m==='edit'?'Edit run':'Create a run';
+    create.textContent=m==='edit'?'Save changes':'Create session';
+    q('#b-danger').hidden=m!=='edit';
+    var floor=m==='edit'?RANK[saved.who]:0;
+    qa('.opt[data-g="who2"]').forEach(function(x){x.disabled=RANK[x.dataset.v]<floor});
+    q('#b-whohint').textContent=m==='edit'?'Can only be made stricter. Looser options are switched off.':'You can make this stricter later, never looser.';
+    create.disabled=!S.name;
+    view('b-form');q('#b-scroll').scrollTop=0;
+  }
+  create.onclick=function(){
+    saved=snap();renderHome();
+    if(mode==='edit'){toast('Changes saved');view('b-home')}else{showDone()}
+  };
+  q('#b-new').onclick=function(){openForm('create')};
+  q('#b-edit').onclick=function(){openForm('edit')};
+  q('#b-mshare').onclick=function(){fillForm(saved);showDone()};
+  q('#b-end').onclick=function(){saved=null;renderHome();view('b-home');toast('Run ended')};
+  q('#b-mkLink').onclick=function(){q('#b-linkOut').hidden=false;toast('Group link ready')};
+  q('#b-mkStaff').onclick=function(){q('#b-staffOut').hidden=false;toast('Staff code ready')};
+  q('#b-copy').onclick=function(){toast('Code copied')};
+  q('#b-share').onclick=function(){toast('Share sheet opens here')};
+
+  function reset(){saved=null;fillForm(blank);renderHome();view('b-home')}
+  q('#b-cancel').onclick=function(){view('b-home')};
+  q('#b-done-btn').onclick=function(){renderHome();view('b-home')};
+  document.getElementById('b-restart').onclick=reset;
+  upEnd();
+})();
+</script>
+</body>
+</html>
