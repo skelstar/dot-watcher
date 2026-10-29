@@ -47,7 +47,7 @@ private val FrameWidth = 2.dp
 
 /**
  * A full-width rectangular "sign" button for the start screen: title and a smaller line under it on
- * the left, an arrow on the right. [SignButton] is the cream one (Invite code, Create);
+ * the left, an arrow on the right. [SignButton] is the cream one (Join, Create);
  * [HoldSignButton] is the berry Go sign.
  */
 @Composable
