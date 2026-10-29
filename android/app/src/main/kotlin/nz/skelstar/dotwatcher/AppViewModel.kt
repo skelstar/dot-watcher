@@ -14,6 +14,7 @@ import nz.skelstar.dotwatcher.casual.CasualModel
 import nz.skelstar.dotwatcher.casual.CasualPrefs
 import nz.skelstar.dotwatcher.events.EventsModel
 import nz.skelstar.dotwatcher.crew.CrewModel
+import nz.skelstar.dotwatcher.crew.CrewPrefs
 import nz.skelstar.dotwatcher.data.AuthTokenStore
 import nz.skelstar.dotwatcher.data.DotWatcherRepository
 import nz.skelstar.dotwatcher.data.ShareChoiceStore
@@ -70,7 +71,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     /** The signed-in account's crew. Shares this ViewModel's repository and scope rather than being a
      *  second ViewModel, so there is one network stack (see the class note above). */
-    val crew = CrewModel(repository, viewModelScope)
+    val crew = CrewModel(repository, viewModelScope, CrewPrefs(application))
 
     /** Public events near the signed-in account. */
     val events = EventsModel(repository, viewModelScope)

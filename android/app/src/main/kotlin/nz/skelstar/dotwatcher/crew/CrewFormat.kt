@@ -36,9 +36,16 @@ fun crewRowSummary(members: List<CrewMember>): CrewRowSummary =
             faces = members.take(CREW_ROW_FACES),
             extra = (members.size - CREW_ROW_FACES).coerceAtLeast(0),
             title = "Your crew",
-            meta = if (members.size == 1) "1 person" else "${members.size} people",
+            meta = "",
         )
     }
+
+/** The status lines under the crew row's count: people who joined since the crew was last opened, and
+ *  codes sent out that nobody has used yet. Empty when there is nothing to say. */
+fun crewRowNotes(newMembers: Int, pendingInvites: Int): List<String> = buildList {
+    if (newMembers == 1) add("1 new person joined") else if (newMembers > 1) add("$newMembers new people joined")
+    if (pendingInvites == 1) add("1 invite waiting") else if (pendingInvites > 1) add("$pendingInvites invites waiting")
+}
 
 /** "since March" for this year, "since March 2025" otherwise; [zone] is where "March" is read. */
 fun crewSinceLabel(since: String, now: Instant, zone: ZoneId): String {

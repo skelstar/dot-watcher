@@ -180,11 +180,11 @@ A crew is the people you have chosen: mutual, and tied to your account. The only
 - Codes are shared through `ShareLink`, like invite codes: a message holding `WEB_BASE_URL/crew/{CODE}` and the plain
   code. The QR on the "your code" screen encodes the same link (CoreImage, no dependency). **There is no in-app
   scanner and no camera permission**: people scan with the camera app, which opens the link.
-- `.onOpenURL` handles `/crew/{CODE}` (a link opened while signed out is kept until sign-in). **The link only reaches the
-  app once `/crew/*` is added to `client/public/.well-known/apple-app-site-association`, which is deliberately held until
-  a build with this code is live in the App Store** (otherwise already-installed apps would open on a crew link and do
-  nothing). No entitlement change is needed: the associated domains are the same. Until then the web fallback page shows
-  the code to copy, and typed or pasted codes work regardless.
+- `.onOpenURL` handles `/crew/{CODE}` (a link opened while signed out is kept until sign-in). The link reaches the app
+  because `/crew/*` is in `client/public/.well-known/apple-app-site-association` next to `/join/*`. No entitlement change
+  is needed: the associated domains are the same. **Builds without this code ignore the link** (the app opens and does
+  nothing), so it only fully works once a build with crew is on the App Store. Without the app, the web fallback page
+  shows the code to copy, and typed or pasted codes work regardless.
 - A link, a pasted code and a typed code all end at one "Add X to your crew? They'll see you too." confirmation. Nobody is
   added until Add is tapped.
 - Crew members are shown by an optional nickname (Settings > Crew, or when first showing your code), falling back to

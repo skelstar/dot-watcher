@@ -18,5 +18,13 @@ public record RunnerPosition(
     // Android, the demo runner, or any pre-2026-09 row, and whenever the reporting device's
     // battery monitoring is unavailable — never inferred as a dead battery. See
     // .ai/plans/battery-level-reporting.md.
-    int? BatteryLevel = null
+    int? BatteryLevel = null,
+    // Set only on casual positions (GET /casual/live and the POST /location reply for casual), so
+    // one shape serves named and casual sessions; see .ai/plans/unify-position-model.md.
+    // InSession is the lock: out in a named session rather than casually. IsSelf marks the caller's
+    // own dot. DisplayName is always the account's display name (its initials), for the letters on the dot, because
+    // RunnerName can be a crew nickname ("Sean" would be cut down to "SE").
+    bool InSession = false,
+    bool IsSelf = false,
+    string? DisplayName = null
 );

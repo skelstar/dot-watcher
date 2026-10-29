@@ -30,12 +30,12 @@ export default function LandingPage() {
               <a href={APP_STORE_URL} target="_blank" rel="noopener" style={storeLink}>
                 <img src="/landing/assets/app-store-badge.svg" alt="Download on the App Store" style={heroBadge} />
               </a>
-              {/* Android isn't released yet: shown greyed out and not clickable. */}
+              {/* Android is in closed beta: shown greyed out and not clickable. */}
               <div style={comingSoonWrap} aria-disabled="true">
                 <span style={playBadgeBox}>
-                  <img src="/landing/assets/google-play-badge.png" alt="Get it on Google Play (coming soon)" style={playBadgeImg} />
+                  <img src="/landing/assets/google-play-badge.png" alt="Get it on Google Play (closed beta)" style={playBadgeImg} />
                 </span>
-                <span style={comingSoonLabel}>Coming soon</span>
+                <span style={comingSoonLabel}>Closed beta</span>
               </div>
             </div>
           </div>
@@ -53,22 +53,26 @@ export default function LandingPage() {
         <section id="dw-how" className="dw-section" style={sectionStyle}>
           <h2 style={eyebrowHeading}>How it works</h2>
           <div style={stepList}>
-            <Step n={1} title="Sign in and join a session" body="Some one will have created a session — you'll get a 6-character invite code to enter in the first screen after signing in." />
-            <Step n={2} title="Share the invite with others" body="You can share the invite code with others that want to join. Use WhatsApp, email or whatever options your phone provides." />
-            <Step n={3} title="Start tracking, watch it live" body="Every runner shows up as a dot with heading, updating every 15 seconds." last />
+            <Step n={1} title="Sign in and pick an option" body="After signing in, choose one of three options: Tap Go to start a casual session, join someone else's session using an Invite code, or Create to start your own." />
+            <Step n={2} title="Share the invite with others" body="In the session, click the share button and send an invite code to others using WhatsApp, email or whatever your phone provides." />
+            <Step n={3} title="Watch everyone on one map" body="Every runner shows up as a dot, their position updating every 15 seconds. Tap a dot to lock the map onto that runner." last />
           </div>
         </section>
 
         <section id="dw-features" className="dw-features" style={features}>
           <Feature color="#3B82F6" title="Live map for everyone" body="Named dots, auto-framed bounds — supporters don't need the app to watch." />
-          <Feature color="#22C55E" title="Real compass headings" body="Each dot's arrow points where its runner is actually facing." />
-          <Feature color="#F59E0B" title="One code, easy invites" body="Share it once — rejoin anytime without asking again." />
+          <Feature color="#F59E0B" title="One code, easy invites" body="Share it once — rejoin anytime without asking again." image={{ src: '/landing/assets/invite-code.png', alt: 'The Dot Watcher invite code entry, six boxes with a Paste button and a Join Session button' }} />
+          <Feature color="#A855F7" title="Your crew" body="Add the people you often run with to your “crew.”" image={{ src: '/landing/assets/crew-row.png', alt: 'The Your crew row in the Dot Watcher app, showing four crew dots and 6 people' }} />
+          <Feature color="#EF4444" title="Casual tracking" body="No session needed: hold Go to start, and your crew see you as a named dot. Share a watch link so anyone can follow along in a browser." />
+          <Feature color="#0EA5E9" title="Satellite tracking" body={<>No cell signal? On a <u>supported phone</u> and <u>carrier</u>, your position keeps coming through over satellite, less often to save battery. Your dot shows a satellite indicator when sharing via satellite.<p style={{ margin: '10px 0 0' }}><i>(relies on a clear view of the sky.)</i></p></>} image={{ src: '/landing/assets/satellite-dot.png', alt: 'A runner’s dot on the map with a satellite indicator', fill: true }} />
         </section>
 
         <section id="dw-faq" className="dw-faq" style={faq}>
           <h2 style={eyebrowHeading}>FAQ</h2>
           <div style={stepList}>
-            <FaqItem q="Is it only for iPhone?" a="Right now, yes — runners join from an iPhone. Android support is on the roadmap. Spectators can watch from any browser, no app needed." />
+            <FaqItem q="Is it only for iPhone?" a="Runners can use an iPhone today, and the Android app is in closed beta. Spectators can watch from any browser, no app needed." />
+            <FaqItem q="Can I track without a session?" a="Yes — hold Go on the start screen to start casual tracking. Your crew can see you, and you can share a watch link with anyone else." />
+            <FaqItem q="Who can see where I am?" a="Only the people in the session you joined, your crew, and anyone you give a watch link to. You can stop sharing at any time." />
             <FaqItem q="How accurate is the location?" a="It uses your phone's GPS, updated every 15 seconds. Like any GPS app, accuracy can vary with weather, buildings, or signal." />
             <FaqItem q="How many people can join a session?" a="Sessions support small groups comfortably today — great for a run club outing or a race-day crew." />
             <FaqItem q="Is it free?" a="Yes, free to use." last />
@@ -96,13 +100,14 @@ function Step({ n, title, body, last }: { n: number; title: string; body: string
   )
 }
 
-function Feature({ color, title, body }: { color: string; title: string; body: string }) {
+function Feature({ color, title, body, image }: { color: string; title: string; body: React.ReactNode; image?: { src: string; alt: string; fill?: boolean } }) {
   return (
     <div style={featureCard}>
       <div style={{ height: 5, background: color }} />
       <div style={featureBody}>
         <div style={featureTitle}>{title}</div>
         <div style={featureText}>{body}</div>
+        {image && <img src={image.src} alt={image.alt} style={image.fill ? { ...featureImage, maxWidth: 'none', borderRadius: 10 } : featureImage} />}
       </div>
     </div>
   )
@@ -404,6 +409,14 @@ const featureText: React.CSSProperties = {
   fontSize: 13.5,
   color: '#6B6D77',
   lineHeight: 1.5,
+}
+
+const featureImage: React.CSSProperties = {
+  display: 'block',
+  width: '100%',
+  maxWidth: 282,
+  height: 'auto',
+  marginTop: 16,
 }
 
 const faq: React.CSSProperties = {
