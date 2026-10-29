@@ -167,8 +167,10 @@ fun CasualMapScreen(
     if (showWhoCanSeeMe) {
         WhoCanSeeMeSheet(
             visibleToNonCrew = casualState.visibleToNonCrew,
+            hideStartArea = casualState.hideStartArea,
             error = casualState.error,
             onVisibleChange = casual::setVisibleToNonCrew,
+            onHideStartAreaChange = casual::setHideStartArea,
             onDismiss = {
                 showWhoCanSeeMe = false
                 casual.clearError()
