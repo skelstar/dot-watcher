@@ -404,8 +404,10 @@ public class CasualApiTests
 
         Assert.Contains("participants", json);
         Assert.Contains("positions", json);
+        // Positions share one type with casual (see .ai/plans/unify-position-model.md), so a named
+        // session's positions carry the additive inSession/isSelf/displayName fields; the casual-only
+        // "nearby" list must still be absent.
         Assert.DoesNotContain("nearby", json);
-        Assert.DoesNotContain("inSession", json);
     }
 
     [Fact]
