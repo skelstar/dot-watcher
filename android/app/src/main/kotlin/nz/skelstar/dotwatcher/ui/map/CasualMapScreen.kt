@@ -285,16 +285,16 @@ private fun CountChip(
     }
     Row(
         modifier = modifier
-            .height(36.dp)
+            .height(48.dp)
             .clip(CircleShape)
             .background(GlassColor)
             .then(if (onClick != null) Modifier.clickable(onClickLabel = "Open your crew", onClick = onClick) else Modifier)
-            .padding(horizontal = 14.dp),
+            .padding(horizontal = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         val ink = androidx.compose.ui.graphics.Color(0xFF14181F)
-        Text(text, color = ink, fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold)
+        Text(text, color = ink, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
         if (onClick != null) {
             Icon(
                 imageVector = if (hasNoCrew) Icons.Default.Add else Icons.AutoMirrored.Filled.KeyboardArrowRight,
