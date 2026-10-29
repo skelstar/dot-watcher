@@ -354,7 +354,7 @@ internal fun WordmarkTimerPill(initials: String, tracking: TrackingState.Trackin
                 color = Color.Black,
                 fontSize = 13.sp,
                 fontWeight = FontWeight.Bold,
-                fontFeatureSettings = "tnum",
+                style = TextStyle(fontFeatureSettings = "tnum"),
             )
         }
     }
