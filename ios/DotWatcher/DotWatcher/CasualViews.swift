@@ -495,13 +495,7 @@ struct CasualMapScreen: View {
     // MARK: Controls
 
     private var topLeft: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 8) {
-                MapWordmark(runnerName: location.runnerName)
-                MapCountdown(location: location) { showExtend = true }
-            }
-            EndingSoonPill(location: location)
-        }
+        MapTimerPill(location: location, runnerName: location.runnerName) { showExtend = true }
     }
 
     private var rail: some View {

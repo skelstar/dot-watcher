@@ -200,21 +200,17 @@ fun CasualMapScreen(
             },
         )
 
-        Column(
+        Box(
             modifier = Modifier
                 .align(Alignment.TopStart)
                 .statusBarsPadding()
                 .padding(start = 14.dp, top = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
+            if (tracking != null) {
+                WordmarkTimerPill(displayName.initials(), tracking) { showExtendSheet = true }
+            } else {
                 Wordmark(initials = displayName.initials())
-                tracking?.let { AutoStopTimer(it) { showExtendSheet = true } }
             }
-            tracking?.let { EndingSoonPill(it.expiresAt) }
         }
 
         Column(
