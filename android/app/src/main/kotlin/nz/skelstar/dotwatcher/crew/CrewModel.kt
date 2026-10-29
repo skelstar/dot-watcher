@@ -1,5 +1,6 @@
 package nz.skelstar.dotwatcher.crew
 
+import android.content.Context
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -12,6 +13,23 @@ import nz.skelstar.dotwatcher.network.CrewMember
 import nz.skelstar.dotwatcher.network.errorMessageOrStatus
 import nz.skelstar.dotwatcher.network.networkMessage
 import retrofit2.Response
+
+/** The crew members this phone has already shown the person, so the start screen can say who is new.
+ *  Null until the first load, which becomes the baseline. Plain SharedPreferences: not sensitive. */
+class CrewPrefs(context: Context) {
+    private val prefs = context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+
+    var seenMemberIds: Set<String>?
+        get() = prefs.getStringSet(KEY_SEEN, null)?.toSet()
+        set(value) = prefs.edit().putStringSet(KEY_SEEN, value).apply()
+
+    fun clear() = prefs.edit().clear().apply()
+
+    private companion object {
+        const val PREFS_NAME = "dotwatcher_crew"
+        const val KEY_SEEN = "seen_member_ids"
+    }
+}
 
 /** Whether this server has crew for this account. Until the server is updated, or while the account
  *  hasn't been given the crew feature, `/me/crew` is a 404, and the UI then shows nothing rather
@@ -42,6 +60,10 @@ data class CrewUiState(
     val myCodeError: String? = null,
     val removeError: String? = null,
     val confirm: CrewConfirm? = null,
+    /** People who joined since the crew sheet was last opened (someone redeemed a code of ours). */
+    val newMemberIds: Set<String> = emptySet(),
+    /** Codes we have sent out that nobody has used yet. */
+    val pendingInvites: Int = 0,
 ) {
     val isAvailable: Boolean get() = availability == CrewAvailability.Available
 }
@@ -55,6 +77,7 @@ data class CrewUiState(
 class CrewModel(
     private val repository: DotWatcherRepository,
     private val scope: CoroutineScope,
+    private val prefs: CrewPrefs,
 ) {
     private val _state = MutableStateFlow(CrewUiState())
     val state: StateFlow<CrewUiState> = _state
@@ -73,7 +96,15 @@ class CrewModel(
         when {
             crew.isSuccessful -> {
                 val members = crew.body()?.crew.orEmpty()
-                _state.update { it.copy(availability = CrewAvailability.Available, members = members) }
+                // The first load on this phone is the baseline: everyone already there counts as seen.
+                val seen = prefs.seenMemberIds ?: members.map { it.userId }.toSet().also { prefs.seenMemberIds = it }
+                val newIds = members.map { it.userId }.filterNot { it in seen }.toSet()
+                _state.update {
+                    it.copy(availability = CrewAvailability.Available, members = members, newMemberIds = newIds)
+                }
+                val codes = runCatching { repository.getCrewCodes() }.getOrNull()
+                    ?.takeIf { it.isSuccessful }?.body()
+                if (codes != null) _state.update { it.copy(pendingInvites = codes.size) }
             }
             // 401 means the session ended and 426 is handled app-wide; neither says anything
             // about whether the server has crew. Anything else (404 from a server without it, or
@@ -93,7 +124,15 @@ class CrewModel(
      *  crew behind for whoever signs in next. */
     fun clear() {
         pendingLinkCode = null
+        prefs.clear()
         _state.value = CrewUiState()
+    }
+
+    /** The crew sheet was opened: whoever joined has now been seen. */
+    fun markMembersSeen() {
+        val ids = _state.value.members.map { it.userId }
+        prefs.seenMemberIds = (prefs.seenMemberIds.orEmpty()) + ids
+        _state.update { it.copy(newMemberIds = emptySet()) }
     }
 
     fun setNickname(raw: String, onSaved: () -> Unit = {}) {
@@ -164,6 +203,8 @@ class CrewModel(
                 )
             }
         }
+        // A new code is a new pending invite for the start screen.
+        if (response != null && response.isSuccessful) load()
     }
 
     // --- Adding someone with a code -----------------------------------------------------
@@ -225,6 +266,8 @@ class CrewModel(
             val response = result.getOrNull()
             val member = response?.body()
             if (response != null && response.isSuccessful && member != null) {
+                // Someone we added ourselves isn't news.
+                prefs.seenMemberIds = prefs.seenMemberIds.orEmpty() + member.userId
                 _state.update {
                     it.copy(
                         confirm = CrewConfirm.Done(ready.code, member),
