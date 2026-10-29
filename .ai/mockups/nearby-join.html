@@ -1,0 +1,368 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Nearby Join Mock-up</title>
+<style>
+/* Self-contained mock-up: open in a browser. Nothing here talks to a server. See .ai/plans/nearby-join.md.
+   Visual language follows create-flow.html (Coffee Go palette). Use the buttons on the left to jump to a screen,
+   or just tap through on the phone. */
+:root{
+  --bg:#f6f7f6; --fg:#1b2321; --muted:#5a6662; --rule:#d9dedb; --accent:#d9480f;
+  --ink:#2c2119; --maroon:#6b1a08; --tan:#b09263; --cream:#f5f0e0; --new:#e8590c;
+}
+@media (prefers-color-scheme:dark){:root{--bg:#121715;--fg:#e6ebe9;--muted:#9aa7a2;--rule:#2e3835;--accent:#ff8a4c}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif;padding:32px 16px 64px}
+.page{max-width:900px;margin:0 auto}
+h1{margin:0 0 6px;font-size:clamp(1.7rem,5vw,2.2rem);letter-spacing:-.02em;line-height:1.15}
+p{margin:0 0 10px;max-width:62ch}
+.layout{display:flex;flex-wrap:wrap;gap:36px;align-items:flex-start;margin-top:22px}
+.side{flex:1 1 280px;min-width:0}
+.side h2{font-size:1.05rem;margin:14px 0 8px}
+.side h2:first-child{margin-top:0}
+.nav{display:flex;flex-direction:column;gap:6px;margin:0 0 6px}
+.nav button{font:inherit;font-size:.92rem;text-align:left;background:none;color:var(--fg);border:1px solid var(--rule);border-radius:10px;padding:8px 12px;cursor:pointer}
+.nav button[aria-current="true"]{border-color:var(--accent);font-weight:700}
+.caption{font-size:.85rem;color:var(--muted)}
+button:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+
+/* ---- phone ---- */
+.phone{flex:0 0 auto;width:340px;height:700px;background:#fff;color:#000;border:8px solid #1c1c1e;border-radius:40px;position:relative;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif}
+.status{position:absolute;top:10px;left:24px;right:24px;display:flex;justify-content:space-between;font-size:12px;font-weight:600;z-index:5}
+.view{position:absolute;inset:0;padding:40px 16px 0;display:none;flex-direction:column}
+.view.on{display:flex}
+.phone button{font-family:inherit;color:inherit;cursor:pointer}
+.serif{font-family:"Iowan Old Style","Palatino Linotype",Georgia,serif}
+
+/* home */
+.logo{font-size:27px;font-weight:700;display:flex;align-items:center;letter-spacing:-.5px;margin-top:8px}
+.avatar{width:32px;height:32px;border-radius:50%;background:#007aff;color:#fff;font-size:11px;font-weight:700;display:inline-grid;place-items:center;margin:0 2px}
+.crew{background:#e5e5ea;border-radius:14px;padding:10px 14px;font-weight:600;display:flex;justify-content:space-between;margin:10px 0 4px}
+.crew span{color:#8e8e93;font-weight:400;font-size:12px}
+.homescroll{flex:1;min-height:0;overflow-y:auto;padding-bottom:16px}
+.tile{display:block;width:100%;text-align:left;border:0;padding:14px 16px;margin-top:10px}
+.phone .go{background:var(--ink);color:var(--cream);height:120px;display:flex;flex-direction:column;justify-content:flex-end;border-top:12px solid var(--maroon);margin-top:14px}
+.go b{font-size:32px}
+.phone .near{background:var(--maroon);color:var(--cream);border-top:8px solid var(--tan);padding:11px 16px 12px;margin-top:8px}
+.near small{letter-spacing:.1em;font-size:9px;text-transform:uppercase;display:block}
+.near b{display:block;font-size:19px;line-height:1.2}
+.near span{font-size:12.5px}
+.phone .card{background:var(--cream);border:2px solid var(--ink);color:var(--ink)}
+.card b{display:block;font-size:20px}
+.card:disabled{opacity:.4;cursor:not-allowed}
+.why{font-size:12px;color:#6c6c70;margin:6px 2px 0}
+.sec{letter-spacing:.1em;font-size:10px;text-transform:uppercase;color:#6c6c70;margin:14px 2px 0}
+
+/* organiser's own session card */
+.mine{background:var(--cream);border:2px solid var(--ink);border-top:8px solid var(--maroon);color:var(--ink);padding:11px 16px 14px;margin-top:10px}
+.mine small{letter-spacing:.1em;font-size:9px;text-transform:uppercase;display:block;color:#6c6c70}
+.mine b{display:block;font-size:21px;line-height:1.15}
+.mine span{font-size:12.5px}
+.mbtns{display:flex;gap:8px;margin-top:10px}
+.mbtns button{flex:1;border:2px solid var(--ink);background:transparent;padding:9px;font:700 14px Georgia,serif;color:var(--ink)}
+.mbtns button.pri{background:var(--maroon);border-color:var(--maroon);color:var(--cream)}
+.endlink{background:none;border:0;color:#b3261e;font-size:13px;padding:8px 0 0;text-align:left}
+
+/* forms */
+.top{display:flex;justify-content:space-between;align-items:center;margin-top:8px;height:28px}
+.link{background:none;border:0;padding:4px 0;font-size:14px;color:#007aff}
+.bscroll{flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:14px;padding:6px 4px 14px;margin-inline:-4px}
+.bscroll>*{flex:none}
+.btitle{margin:0;font:700 26px Georgia,serif;color:var(--ink);line-height:1.1}
+.bsec{display:flex;flex-direction:column;gap:10px;padding-top:16px;border-top:1px solid #d1d1d6}
+.bsec h4{margin:0;font:700 19px Georgia,serif;color:var(--ink)}
+.hint{margin:0;font-size:12.5px;color:#6c6c70}
+.note{border-left:3px solid var(--tan);padding-left:8px}
+.field{border:2px solid var(--ink);background:var(--cream);border-radius:0;padding:12px;font:600 18px Georgia,serif;width:100%;color:var(--ink)}
+.field::placeholder{color:#a99f8a;font-weight:400}
+.count{font-size:11.5px;color:#6c6c70;text-align:right;margin-top:-6px}
+.lbl{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#6c6c70}
+.sug{display:flex;flex-wrap:wrap;gap:6px}
+.pill{border:1.5px solid var(--ink);background:#fff;border-radius:999px;padding:6px 12px;font-size:12.5px}
+.pill[aria-pressed="true"]{background:var(--ink);color:var(--cream)}
+.row{display:flex;justify-content:space-between;align-items:center;padding:6px 0;font-size:13.5px}
+.sw{width:42px;height:25px;border-radius:13px;background:#d1d1d6;border:0;position:relative;flex:none;transition:background .15s}
+.sw::after{content:"";position:absolute;top:2px;left:2px;width:21px;height:21px;border-radius:50%;background:#fff;transition:transform .15s}
+.sw[aria-checked="true"]{background:#34c759}
+.sw[aria-checked="true"]::after{transform:translateX(17px)}
+.dim{opacity:.4;pointer-events:none;filter:grayscale(1)}
+.foot{padding:12px 0 18px}
+.cta{width:100%;border:0;background:var(--maroon);color:var(--cream);padding:14px;font:700 16px Georgia,serif;letter-spacing:.02em}
+.cta:disabled{background:#cfc6bd;color:#fff}
+.opt{display:flex;align-items:center;gap:10px;border:2px solid var(--ink);background:var(--cream);padding:10px 12px;text-align:left;width:100%;color:var(--ink)}
+.opt .t{flex:1}
+.opt b{display:block;font-size:14px}
+.opt small{font-size:11.5px;color:#5c5144}
+.radio{width:18px;height:18px;border-radius:50%;border:2px solid var(--ink);flex:none}
+.opt[aria-pressed="true"]{background:var(--ink);color:var(--cream)}
+.opt[aria-pressed="true"] small{color:#d8ccb2}
+.opt[aria-pressed="true"] .radio{background:var(--tan);border-color:var(--tan);box-shadow:inset 0 0 0 3px var(--ink)}
+
+/* map */
+.map{position:absolute;inset:0;background:#e6eee3}
+.map svg{width:100%;height:100%}
+.maptop{position:absolute;top:36px;left:12px;right:12px;display:flex;justify-content:space-between;align-items:flex-start;z-index:2}
+.chip{background:rgba(255,255,255,.92);border-radius:14px;padding:6px 10px;font-size:12px;font-weight:600;box-shadow:0 1px 4px rgba(0,0,0,.2)}
+.rail{position:absolute;right:12px;top:110px;display:flex;flex-direction:column;gap:10px;z-index:2}
+.rb{width:46px;height:46px;border-radius:50%;border:0;background:rgba(255,255,255,.95);box-shadow:0 1px 5px rgba(0,0,0,.28);font-size:18px;display:grid;place-items:center}
+.rb small{display:block;font-size:8.5px;font-weight:700;margin-top:-4px;letter-spacing:.04em}
+.rb.ping{background:#2e9e4f;color:#fff;width:58px;height:58px}
+.rb.ping svg circle:nth-child(2),.rb.ping svg circle:nth-child(3){transform-origin:16px 16px}
+.rb.ping.done svg circle:nth-child(2){animation:pg .9s ease-out}
+.rb.ping.done svg circle:nth-child(3){animation:pg .9s .12s ease-out}
+@keyframes pg{0%{transform:scale(.4);opacity:1}100%{transform:scale(1);opacity:.7}}
+.rb.ping.done{box-shadow:0 0 0 6px rgba(46,158,79,.35)}
+.mapbottom{position:absolute;left:12px;bottom:18px;z-index:2;display:flex;gap:6px}
+.dot{width:30px;height:30px;border-radius:50%;color:#fff;font-size:10px;font-weight:700;display:grid;place-items:center;border:2px solid #fff}
+
+/* sheets */
+.scrim{position:absolute;inset:0;background:rgba(0,0,0,.35);z-index:8;display:none}
+.scrim.on{display:block}
+.sheet{position:absolute;left:0;right:0;bottom:0;background:#fff;border-radius:22px 22px 0 0;padding:14px 18px 22px;z-index:9;display:none;flex-direction:column;gap:12px;box-shadow:0 -4px 20px rgba(0,0,0,.25)}
+.sheet.on{display:flex}
+.sheet .grab{width:38px;height:4px;border-radius:2px;background:#d1d1d6;align-self:center}
+.sheet h3{margin:0;font:700 22px Georgia,serif;color:var(--ink);line-height:1.15}
+.sheet .meta{font-size:13px;color:#6c6c70;margin-top:-6px}
+.two{display:flex;gap:8px}
+.two button{flex:1;border:2px solid var(--ink);background:var(--cream);padding:11px;font-weight:700;color:var(--ink)}
+.info{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
+.info li{border-left:3px solid var(--tan);padding-left:10px;display:flex;flex-direction:column}
+.info b{font-size:13.5px;color:var(--ink)}
+.info span{font-size:12.5px;color:#6c6c70}
+.dng{border:2px solid #b3261e;background:#fff;color:#b3261e;padding:11px;font-weight:700;width:100%}
+.ghost{background:none;border:0;color:#007aff;font-size:14px;padding:4px}
+.toast{position:absolute;left:50%;bottom:92px;transform:translateX(-50%);background:#1c1c1e;color:#fff;font-size:12px;padding:7px 12px;border-radius:999px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:20;white-space:nowrap}
+.toast.on{opacity:1}
+</style>
+</head>
+<body>
+<div class="page">
+  <h1>Nearby join</h1>
+  <p>Mock-up for <code>.ai/plans/nearby-join.md</code>. The organiser creates a session with <b>nearby</b> on and sets the join location with a <b>Ping</b> button. Anyone within the chosen range sees it on their start screen and joins in one tap. One active session per organiser. Pick a screen on the left, or tap through on the phone.</p>
+  <div class="layout">
+    <div class="side">
+      <h2>Organiser</h2>
+      <div class="nav" id="nav-org">
+        <button data-go="home0">1. Start screen, no session</button>
+        <button data-go="create">2. Create (nearby on)</button>
+        <button data-go="home1">3. Start screen, session active</button>
+        <button data-go="map">4. Map screen: Ping and options</button>
+      </div>
+      <h2>Someone nearby</h2>
+      <div class="nav" id="nav-join">
+        <button data-go="homeJ">5. Start screen, runs near you</button>
+        <button data-go="confirm">6. Confirm sheet</button>
+      </div>
+      <p class="caption">Design notes: Create is disabled while you have an active session (End session on the card or the map options sheet). Distance is rounded to 50 m and shown as "about". No coordinates, no bearing. Radius is 50 / 100 / 250 / 500 m because phone GPS is only good to roughly 5 to 50 m.</p>
+    </div>
+
+    <div class="phone" id="phone">
+      <div class="status"><span>9:02</span><span>●●● ▮</span></div>
+
+      <!-- 1/3. organiser start screen -->
+      <section class="view" id="v-home0">
+        <div class="logo">d<span class="avatar">SK</span>t-watchr</div>
+        <div class="crew">Your crew <span>3 people ›</span></div>
+        <div class="homescroll">
+          <button class="tile go serif"><b>Go</b><span>Hold to start</span></button>
+          <button class="tile card serif"><b>Join</b><span>Enter an invite code</span></button>
+          <button class="tile card serif" data-go="create" id="create0"><b>Create</b><span>Set up a new run for others</span></button>
+        </div>
+      </section>
+
+      <section class="view" id="v-home1">
+        <div class="logo">d<span class="avatar">SK</span>t-watchr</div>
+        <div class="crew">Your crew <span>3 people ›</span></div>
+        <div class="homescroll">
+          <button class="tile go serif"><b>Go</b><span>Hold to start</span></button>
+          <div class="mine serif">
+            <small>Your session</small>
+            <b id="m-title">Saturday long run</b>
+            <span id="m-sub">Nearby on · 100 m · join location set 9:02</span>
+            <div class="mbtns">
+              <button class="pri" id="m-ping">Ping here</button>
+              <button data-go="map">Open</button>
+            </div>
+            <button class="endlink" data-sheet="end">End session</button>
+          </div>
+          <button class="tile card serif" disabled><b>Join</b><span>Enter an invite code</span></button>
+          <button class="tile card serif" disabled><b>Create</b><span>Set up a new run for others</span></button>
+          <p class="why">You already have an active session. End it to create another.</p>
+        </div>
+      </section>
+
+      <!-- 2. create -->
+      <section class="view" id="v-create">
+        <div class="top"><span></span><button class="link" data-go="home0">Cancel</button></div>
+        <div class="bscroll">
+          <h2 class="btitle">Create a run</h2>
+          <div class="bsec" style="border-top:0;padding-top:0">
+            <h4>Name <span style="color:var(--maroon)">*</span></h4>
+            <input class="field" id="c-title" maxlength="30" placeholder="e.g. Saturday long run" autocomplete="off" value="Saturday long run">
+            <div class="count"><span id="c-count">18</span> / 30</div>
+          </div>
+          <div class="bsec">
+            <h4>Event length</h4>
+            <div class="sug" id="c-len"></div>
+            <p class="hint">Pick the longest it could run.</p>
+          </div>
+          <div class="bsec">
+            <h4>Let people nearby join</h4>
+            <div class="row"><span>Show on nearby start screens</span><button class="sw" id="c-near" role="switch" aria-checked="true" aria-label="Let people nearby join"></button></div>
+            <div id="c-nearbox">
+              <div class="lbl">Shown to people within</div>
+              <div class="sug" id="c-range" style="margin-top:6px"></div>
+              <p class="hint note" style="margin-top:10px" id="c-note"></p>
+            </div>
+            <p class="hint" id="c-off" hidden>Off: nobody sees this run. People still join with the invite code.</p>
+          </div>
+        </div>
+        <div class="foot"><button class="cta" id="c-go">Create run</button></div>
+      </section>
+
+      <!-- 4. map -->
+      <section class="view" id="v-map" style="padding:0">
+        <div class="map">
+          <svg viewBox="0 0 320 680" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+            <rect width="320" height="680" fill="#e6eee3"/>
+            <path d="M-10 520 C 60 470, 110 430, 160 360 S 250 220, 340 160" fill="none" stroke="#c9d6c4" stroke-width="22" stroke-linecap="round"/>
+            <path d="M-10 520 C 60 470, 110 430, 160 360 S 250 220, 340 160" fill="none" stroke="#b9c9b4" stroke-width="3" stroke-dasharray="6 5"/>
+            <circle id="map-ring" cx="110" cy="440" r="44" fill="rgba(107,26,8,.12)" stroke="#6b1a08" stroke-width="1.5" stroke-dasharray="5 4"/>
+            <g transform="translate(110 440)"><path d="M0 8 C -9 -5, -10 -11, -10 -14 a10 10 0 1 1 20 0 c0 3 -1 9 -10 22z" fill="#6b1a08"/><circle cy="-14" r="3.4" fill="#f5f0e0"/></g>
+          </svg>
+        </div>
+        <div class="maptop"><div class="chip">Saturday long run</div><div class="chip">3 people</div></div>
+        <div class="rail">
+          <button class="rb" aria-label="Share">⇪</button>
+          <button class="rb ping" id="map-ping" aria-label="Ping: set the join location here"><svg viewBox="0 0 32 32" width="34" height="34" aria-hidden="true"><circle cx="16" cy="16" r="3.2" fill="#fff"/><circle cx="16" cy="16" r="8" fill="none" stroke="#fff" stroke-width="2"/><circle cx="16" cy="16" r="13.5" fill="none" stroke="#fff" stroke-width="2" opacity=".7"/></svg></button>
+          <button class="rb" data-sheet="opts" aria-label="Nearby options">⚙</button>
+        </div>
+        <div class="mapbottom"><span class="dot" style="background:#007aff">SK</span><span class="dot" style="background:#e8590c">PR</span><span class="dot" style="background:#2e7d32">TM</span></div>
+      </section>
+
+      <!-- 5. someone nearby -->
+      <section class="view" id="v-homeJ">
+        <div class="logo">d<span class="avatar" style="background:#2e7d32">AK</span>t-watchr</div>
+        <div class="crew">Your crew <span>1 person ›</span></div>
+        <div class="homescroll">
+          <button class="tile go serif"><b>Go</b><span>Hold to start</span></button>
+          <div class="sec">Near you</div>
+          <button class="tile near serif" data-go="confirm" data-pick="0"><small>About 50 m</small><b>Saturday long run</b><span>Started by Sean · 3 joined</span></button>
+          <button class="tile near serif" data-go="confirm" data-pick="1"><small>About 150 m</small><b>Parkrun warm-up</b><span>Started by Tom · 8 joined</span></button>
+          <button class="tile near serif" data-go="confirm" data-pick="2"><small>About 400 m</small><b>Hunua 50k</b><span>Started by Aroha · 21 joined</span></button>
+          <button class="tile card serif"><b>Join</b><span>Enter an invite code</span></button>
+          <button class="tile card serif"><b>Create</b><span>Set up a new run for others</span></button>
+        </div>
+      </section>
+
+      <!-- sheets -->
+      <div class="scrim" id="scrim"></div>
+
+      <div class="sheet" id="sh-opts">
+        <div class="grab"></div>
+        <h3>Nearby</h3>
+        <div class="row"><span>Let people nearby join</span><button class="sw" id="o-near" role="switch" aria-checked="true" aria-label="Let people nearby join"></button></div>
+        <div id="o-box">
+          <div class="lbl">Shown to people within</div>
+          <div class="sug" id="o-range" style="margin-top:6px"></div>
+          <p class="hint" style="margin-top:8px">Join location set 9:02. Tap <b>Ping</b> to move it to where you are now.</p>
+        </div>
+        <button class="dng" data-sheet="end">End session</button>
+        <button class="ghost" data-close>Done</button>
+      </div>
+
+      <div class="sheet" id="sh-end">
+        <div class="grab"></div>
+        <h3>End this session?</h3>
+        <p class="hint" style="font-size:14px">It ends for everyone and nobody new can join. Replay stays available.</p>
+        <button class="dng" id="end-yes">End session</button>
+        <button class="ghost" data-close>Keep it</button>
+      </div>
+
+      <div class="sheet" id="sh-confirm">
+        <div class="grab"></div>
+        <h3 id="j-title">Saturday long run</h3>
+        <div class="meta" id="j-meta">Started by Sean · about 50 m away</div>
+        <div class="lbl">Before you join</div>
+        <ul class="info">
+          <li><b>Who sees you</b><span>Everyone in this run: your name and live location on the map.</span></li>
+          <li><b>When</b><span>Only while you are tracking in this run. You can leave at any time.</span></li>
+          <li><b>Who is in it</b><span>Sean (organiser) and 2 others.</span></li>
+          <li><b>Afterwards</b><span>Replay is available to the group.</span></li>
+        </ul>
+        <button class="cta" id="j-go">Join this run</button>
+        <button class="ghost" data-close>Not now</button>
+      </div>
+
+      <div class="toast" id="toast"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  var q=function(s){return document.querySelector(s)}, qa=function(s){return Array.prototype.slice.call(document.querySelectorAll(s))};
+  var S={active:false,title:'Saturday long run',range:'100 m',near:true,len:'12 hours'};
+  var RANGES=['50 m','100 m','250 m','500 m'], LENS=['12 hours','24 hours','2 days','3 days'];
+  var RUNS=[['Saturday long run','Started by Sean','about 50 m'],['Parkrun warm-up','Started by Tom','about 150 m'],['Hunua 50k','Started by Aroha','about 400 m']];
+  var toastT;
+  function toast(t){var e=q('#toast');e.textContent=t;e.classList.add('on');clearTimeout(toastT);toastT=setTimeout(function(){e.classList.remove('on')},1800)}
+  function closeSheets(){qa('.sheet').forEach(function(s){s.classList.remove('on')});q('#scrim').classList.remove('on')}
+  function openSheet(id){closeSheets();q('#sh-'+id).classList.add('on');q('#scrim').classList.add('on')}
+  function show(id){
+    closeSheets();
+    if(id==='home0'&&S.active)id='home1';
+    if(id==='home1'&&!S.active)id='home0';
+    if(id==='create'&&S.active)id='home1';
+    qa('.view').forEach(function(v){v.classList.toggle('on',v.id==='v-'+id)});
+    qa('.nav button').forEach(function(b){b.setAttribute('aria-current',String(b.dataset.go===id))});
+    if(id==='confirm'){q('#v-homeJ').classList.add('on');openSheet('confirm')}
+  }
+  function pills(host,items,get,set){
+    host.innerHTML='';
+    items.forEach(function(t){var b=document.createElement('button');b.className='pill';b.textContent=t;b.setAttribute('aria-pressed',String(get()===t));
+      b.onclick=function(){set(t);qa('[data-pills]').forEach(function(){});render()};host.appendChild(b)});
+  }
+  function note(){return 'People within '+S.range+' of where you start the session, or send a “ping”, will see this run on their start screen. Phone GPS is only accurate to a few metres, sometimes 30 to 50, so very small ranges can miss people.'}
+  function ringR(){return {'50 m':22,'100 m':44,'250 m':76,'500 m':110}[S.range]}
+  function render(){
+    pills(q('#c-range'),RANGES,function(){return S.range},function(t){S.range=t});
+    pills(q('#o-range'),RANGES,function(){return S.range},function(t){S.range=t;toast('Range set to '+t)});
+    pills(q('#c-len'),LENS,function(){return S.len},function(t){S.len=t});
+    q('#c-note').textContent=note();
+    q('#map-ring').setAttribute('r',ringR());
+    q('#m-sub').textContent=(S.near?'Nearby on · '+S.range+' · join location set '+(S.pinged||'9:02'):'Nearby off · invite code only');
+    q('#m-title').textContent=S.title;
+    [['#c-near','#c-nearbox','#c-off'],['#o-near','#o-box',null]].forEach(function(a){
+      var sw=q(a[0]);sw.setAttribute('aria-checked',String(S.near));q(a[1]).classList.toggle('dim',!S.near);
+      if(a[2])q(a[2]).hidden=S.near;
+    });
+  }
+  // nav + generic [data-go]
+  document.addEventListener('click',function(e){
+    var t=e.target.closest('[data-go],[data-sheet],[data-close],[data-g]');if(!t)return;
+    if(t.dataset.go){
+      if(t.dataset.pick!==undefined){var r=RUNS[+t.dataset.pick];q('#j-title').textContent=r[0];q('#j-meta').textContent=r[1]+' · '+r[2]+' away'}
+      // Jumping straight to the "session active" screens (3, 4) implies a session exists.
+      if((t.dataset.go==='home1'||t.dataset.go==='map')&&!S.active){S.active=true;S.pinged=S.pinged||'9:02';render()}
+      show(t.dataset.go);return;
+    }
+    if(t.dataset.sheet){openSheet(t.dataset.sheet);return}
+    if(t.hasAttribute('data-close')){closeSheets();return}
+    if(t.dataset.g){qa('[data-g="'+t.dataset.g+'"]').forEach(function(b){b.setAttribute('aria-pressed',String(b===t))})}
+  });
+  ['#c-near','#o-near'].forEach(function(id){q(id).onclick=function(){S.near=!S.near;render();if(id==='#o-near')toast(S.near?'Nearby on':'Nearby off')}});
+  q('#c-title').oninput=function(){S.title=this.value||'Untitled';q('#c-count').textContent=this.value.length;q('#c-go').disabled=this.value.trim().length<1};
+  q('#c-go').onclick=function(){S.active=true;S.pinged='9:02';render();show('home1');toast(S.near?'Run created · join location set':'Run created')};
+  function ping(){var d=new Date();S.pinged='9:'+('0'+(3+Math.floor(Math.random()*5))).slice(-2);render();toast('Join location set here');var b=q('#map-ping');b.classList.add('done');setTimeout(function(){b.classList.remove('done')},1500)}
+  q('#m-ping').onclick=ping;q('#map-ping').onclick=ping;
+  q('#end-yes').onclick=function(){S.active=false;show('home0');toast('Session ended')};
+  q('#j-go').onclick=function(){closeSheets();toast('Joined '+q('#j-title').textContent)};
+  q('#scrim').onclick=closeSheets;
+  render();show('home0');
+})();
+</script>
+</body>
+</html>

@@ -2,6 +2,8 @@ import SwiftUI
 
 struct RunnerCircle: View {
     let name: String
+    /// What the label is drawn from, when that isn't `name` (a crew nickname, say). Defaults to `name`.
+    var label: String?
     var size: CGFloat = 40
     var isHighlighted: Bool = false
     /// Overrides the label's font size, decoupling it from `size` (the circle's diameter).
@@ -41,7 +43,7 @@ struct RunnerCircle: View {
                     .fill(color)
                     .frame(width: size, height: size)
             }
-            Text(RunnerCircle.initials(for: name))
+            Text(RunnerCircle.initials(for: label ?? name))
                 .font(.system(size: fontSize ?? size * 0.3, weight: .bold))
                 .foregroundStyle(isDisconnected ? color : (fillColor != nil || isHighlighted ? .white : .primary))
         }

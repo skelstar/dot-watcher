@@ -72,6 +72,10 @@ final class CrewStore {
     /// The code the person is currently offering, if any.
     private(set) var myCode: CrewCode?
     private(set) var isLoadingMyCode = false
+    /// People who joined since the crew sheet was last opened (someone redeemed a code of ours).
+    private(set) var newMemberIds: Set<String> = []
+    /// Codes we have sent out that nobody has used yet.
+    private(set) var pendingInvites = 0
     private(set) var myCodeError: String?
     var removeError: String?
     private(set) var confirm: CrewConfirm?
@@ -101,6 +105,13 @@ final class CrewStore {
             let overview: CrewOverviewResponse = try await location.send(path: "/me/crew")
             availability = .available
             members = overview.crew
+            // The first load on this phone is the baseline: everyone already there counts as seen.
+            let seen = seenMemberIds ?? Set(members.map(\.userId))
+            if seenMemberIds == nil { seenMemberIds = seen }
+            newMemberIds = Set(members.map(\.userId)).subtracting(seen)
+            if let codes: [CrewCode] = try? await location.send(path: "/me/crew/codes") {
+                pendingInvites = codes.count
+            }
             if let profile: ProfileResponse = try? await location.send(path: "/me/profile") {
                 nickname = profile.nickname
             }
@@ -116,11 +127,27 @@ final class CrewStore {
         }
     }
 
+    /// The crew members this phone has already shown the person; nil until the first load. Not
+    /// sensitive, so plain UserDefaults.
+    private var seenMemberIds: Set<String>? {
+        get { UserDefaults.standard.stringArray(forKey: "crew.seenMemberIds").map(Set.init) }
+        set { UserDefaults.standard.set(newValue.map(Array.init), forKey: "crew.seenMemberIds") }
+    }
+
+    /// The crew sheet was opened: whoever joined has now been seen.
+    func markMembersSeen() {
+        seenMemberIds = (seenMemberIds ?? []).union(members.map(\.userId))
+        newMemberIds = []
+    }
+
     /// Forgets everything: signing out or deleting the account must not leave the last person's crew
     /// behind for whoever signs in next.
     func clear() {
         availability = .unknown
         members = []
+        newMemberIds = []
+        pendingInvites = 0
+        seenMemberIds = nil
         nickname = nil
         nicknameError = nil
         myCode = nil
@@ -186,6 +213,8 @@ final class CrewStore {
     private func makeCode(_ location: LocationManager) async {
         do {
             myCode = try await location.send(path: "/me/crew/codes", method: "POST")
+            // A new code is a new pending invite for the start screen.
+            await refresh()
         } catch {
             myCodeError = error.localizedDescription
         }
@@ -250,6 +279,8 @@ final class CrewStore {
             let member: CrewMember = try await location.send(
                 path: "/me/crew/codes/\(code)/redeem", method: "POST")
             members = [member] + members.filter { $0.userId != member.userId }
+            // Someone we added ourselves isn't news.
+            seenMemberIds = (seenMemberIds ?? []).union([member.userId])
             confirm = .done(member)
             await refresh()
         } catch DotWatcherAPIError.badResponse(let status, _) {

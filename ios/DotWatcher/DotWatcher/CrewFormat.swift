@@ -30,8 +30,19 @@ enum CrewFormat {
             faces: Array(members.prefix(rowFaces)),
             extra: max(0, members.count - rowFaces),
             title: "Your crew",
-            meta: members.count == 1 ? "1 person" : "\(members.count) people"
+            meta: ""
         )
+    }
+
+    /// The status lines under the crew row's count: people who joined since the crew was last opened,
+    /// and codes sent out that nobody has used yet. Empty when there is nothing to say.
+    static func rowNotes(newMembers: Int, pendingInvites: Int) -> [String] {
+        var notes: [String] = []
+        if newMembers == 1 { notes.append("1 new person joined") }
+        else if newMembers > 1 { notes.append("\(newMembers) new people joined") }
+        if pendingInvites == 1 { notes.append("1 invite waiting") }
+        else if pendingInvites > 1 { notes.append("\(pendingInvites) invites waiting") }
+        return notes
     }
 
     /// The server writes ISO 8601 with up to 7 fractional digits and an offset ("…10:00:00.1234567+00:00").

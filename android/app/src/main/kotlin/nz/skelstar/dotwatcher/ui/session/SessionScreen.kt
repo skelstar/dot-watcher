@@ -179,8 +179,8 @@ fun SessionScreen(
                 )
             }
             SignButton(
-                title = "Invite code",
-                subtitle = "Join a run you've been invited to",
+                title = "Join",
+                subtitle = "Enter an invite code",
                 enabled = state !is SessionUiState.Loading,
                 onClick = { showJoinDialog = true },
             )
@@ -324,7 +324,7 @@ private fun AppHeader(onAccountClick: () -> Unit) {
 }
 
 /** The invite-code entry that used to be the inline "Join a Session" card: paste or type the six
- *  characters, then join. Opened from the Invite code sign. */
+ *  characters, then join. Opened from the Join sign. */
 @Composable
 private fun JoinSessionDialog(
     enabled: Boolean,

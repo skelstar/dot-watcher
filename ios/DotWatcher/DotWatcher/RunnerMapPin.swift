@@ -13,6 +13,8 @@ import SwiftUI
 /// outline, initials, no pulse — signals the runner likely isn't sending data at all anymore.
 struct RunnerMapPin: View {
     let name: String
+    /// What the letters are drawn from, when that isn't `name` (which also picks the colour).
+    var label: String?
     var size: CGFloat = 36
     var isHighlighted: Bool = false
     var heading: Double?
@@ -33,12 +35,12 @@ struct RunnerMapPin: View {
 
     var body: some View {
         if isDisconnected {
-            RunnerCircle(name: name, size: circleSize, fontSize: size * 0.3, fillColor: dotColor, isDisconnected: true)
+            RunnerCircle(name: name, label: label, size: circleSize, fontSize: size * 0.3, fillColor: dotColor, isDisconnected: true)
         } else if isStale {
-            SleepPin(name: name, size: circleSize, color: dotColor)
+            SleepPin(name: label ?? name, size: circleSize, color: dotColor)
         } else {
             ZStack {
-                RunnerCircle(name: name, size: circleSize, fontSize: size * 0.3, fillColor: dotColor)
+                RunnerCircle(name: name, label: label, size: circleSize, fontSize: size * 0.3, fillColor: dotColor)
                 if let heading {
                     // The chevron sits near the top of a full-pin-size transparent frame, then
                     // the whole frame rotates around its own center — which is the pin's

@@ -144,6 +144,10 @@ public class CasualApiTests
         Assert.Contains("Bobby", live.Participants);
         Assert.Empty(live.Nearby);
 
+        // The dot's letters come from the account's display name, whatever the nickname.
+        var bobDot = live.Positions.Select(p => p[0]).Single(p => p.RunnerName == "Bobby");
+        Assert.Equal("BO", bobDot.DisplayName);
+
         var bobSees = await PostCasualOkAsync(client, bob.AccessToken, FarLatitude);
         Assert.Contains("AL", bobSees.Participants);
     }
@@ -400,8 +404,10 @@ public class CasualApiTests
 
         Assert.Contains("participants", json);
         Assert.Contains("positions", json);
+        // Positions share one type with casual (see .ai/plans/unify-position-model.md), so a named
+        // session's positions carry the additive inSession/isSelf/displayName fields; the casual-only
+        // "nearby" list must still be absent.
         Assert.DoesNotContain("nearby", json);
-        Assert.DoesNotContain("inSession", json);
     }
 
     [Fact]

@@ -225,7 +225,7 @@ struct ContentView: View {
             if let event = events.events.first {
                 EventSignButton(eyebrow: event.eyebrow, title: event.title, subtitle: event.subtitle) {}
             }
-            SignButton(title: "Invite code", subtitle: "Join a run you've been invited to") {
+            SignButton(title: "Join", subtitle: "Enter an invite code") {
                 showJoinSheet = true
             }
             .disabled(isBusy)
