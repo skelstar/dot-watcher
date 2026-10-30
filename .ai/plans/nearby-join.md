@@ -124,7 +124,12 @@ chars, `NormalizeSessionName`), so title and code must be decoupled; check how f
       `server/NearbyJoin.cs`, `SessionStore` migration and `CreateSessionForUser`, `SessionsController.CreateSession`.
       Nearby on create needs the `events` flag, a valid title, radius (default 100) and a position (accuracy <= 100 m).
       Tests: `NearbyCreateTests.cs` (not run locally; CI).
-- [ ] N3 `PUT /sessions/{id}/nearby` (Ping: set the join location; optional switch and radius; owner only).
+- [x] N3 `PUT /sessions/{id}/nearby` (Ping: set the join location; optional switch and radius; owner only).
+      `SessionsController.UpdateNearby` + `SessionStore.UpdateNearby`; tests in `NearbyPingTests.cs` (CI only).
+      401 signed out, 404 without `events`, 403 not the owner or unknown id, 410 ended, 400 bad fix/radius. A fix is
+      required unless the call is only `enabled: false`. Not done: the "old timestamp" check (the request has no
+      timestamp; add one if stale fixes prove a problem). Turning nearby on for a session created without it
+      keeps its legacy upper-cased name as the title; a title field on this call may be needed (open for N9).
 - [ ] N4 List endpoint (per-session radius with accuracy allowance, exclusions, rounding, cap) under the `events` flag
       (404 when off).
 - [ ] N5 Nearby join endpoint (re-check distance with accuracy allowance, blocked/archived, uniform failure).

@@ -102,6 +102,52 @@ public class SessionsController(
     }
 
     /// <summary>
+    /// Owner only. Sets the session's nearby-join meeting point from a fresh fix (the "Ping") and/or
+    /// changes whether people nearby can find it and how far away they can be. Needs no tracking.
+    /// </summary>
+    [HttpPut("/sessions/{sessionId}/nearby")]
+    [ProducesResponseType(typeof(NearbyStatus), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status410Gone)]
+    public IActionResult UpdateNearby(string sessionId, [FromBody] UpdateNearbyRequest? request)
+    {
+        if (!userAuth.TryAuthenticate(Request, out var user))
+            return Unauthorized();
+
+        // 404 (not 403) without the events flag, so the endpoint looks absent to accounts without it.
+        if (!features.IsEnabled(user.UserId, Features.Events))
+            return NotFound();
+
+        request ??= new UpdateNearbyRequest();
+
+        if (request.RadiusMeters is int radius && !NearbyJoin.IsAllowedRadius(radius))
+            return BadRequest(new { error = "Nearby radius must be 50, 100, 250 or 500 metres." });
+
+        // Only switching off may go without a fix; anything else (a Ping, switching on, a new radius
+        // from the same sheet) carries the organiser's position.
+        MeetingPoint? point = null;
+        if (request.Latitude is not null || request.Longitude is not null || request.Enabled != false)
+        {
+            if (request.Latitude is not double latitude || request.Longitude is not double longitude
+                || !NearbyJoin.IsValidPosition(latitude, longitude, request.Accuracy))
+                return BadRequest(new { error = "A valid position (accuracy 100 m or better) is needed." });
+
+            point = new MeetingPoint(latitude, longitude, request.Accuracy);
+        }
+
+        var (outcome, status) = store.UpdateNearby(sessionId, user.UserId, request.Enabled, request.RadiusMeters, point);
+        return outcome switch
+        {
+            NearbyUpdateOutcome.NotOwner => StatusCode(StatusCodes.Status403Forbidden),
+            NearbyUpdateOutcome.Archived => StatusCode(StatusCodes.Status410Gone, new { error = "This session has ended." }),
+            _ => Ok(status),
+        };
+    }
+
+    /// <summary>
     /// Joins a session by invite code and returns the membership, plus a Participants array
     /// (session-joined runners, not just currently-tracking ones) as an additive field.
     /// </summary>

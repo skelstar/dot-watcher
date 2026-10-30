@@ -579,6 +579,66 @@ public partial class SessionStore(string connectionString) : IDisposable
         return new SessionMembership(sessionId, sessionName, inviteCode, "runner", displayName, displayName, now);
     }
 
+    /// <summary>
+    /// The organiser's "Ping": moves the meeting point and/or changes the nearby switch and radius.
+    /// A session that isn't the caller's, doesn't exist or is the casual session all report NotOwner, so
+    /// ids can't be probed. Switching off keeps existing members; it only hides the session from discovery.
+    /// </summary>
+    public (NearbyUpdateOutcome Outcome, NearbyStatus? Status) UpdateNearby(
+        string sessionId, string userId, bool? enabled, int? radiusMeters, MeetingPoint? point)
+    {
+        if (IsCasualSession(sessionId))
+            return (NearbyUpdateOutcome.NotOwner, null);
+
+        using var conn = Connect();
+        using var read = conn.CreateCommand();
+        read.CommandText = """
+            SELECT owner_user_id, archived_at, nearby, nearby_radius_m
+            FROM app_sessions
+            WHERE id = @sessionId
+            """;
+        read.Parameters.AddWithValue("@sessionId", sessionId);
+
+        bool wasOn;
+        int currentRadius;
+        using (var reader = read.ExecuteReader())
+        {
+            if (!reader.Read() || reader.GetString(0) != userId)
+                return (NearbyUpdateOutcome.NotOwner, null);
+
+            if (!reader.IsDBNull(1))
+                return (NearbyUpdateOutcome.Archived, null);
+
+            wasOn = reader.GetBoolean(2);
+            currentRadius = reader.IsDBNull(3) ? NearbyJoin.DefaultRadiusMeters : reader.GetInt16(3);
+        }
+
+        // Giving a radius to a session that has nearby off turns it on, as the plan describes.
+        var nowOn = enabled ?? (wasOn || radiusMeters is not null);
+        var radius = radiusMeters ?? currentRadius;
+
+        using var update = conn.CreateCommand();
+        update.CommandText = """
+            UPDATE app_sessions
+            SET nearby = @nearby,
+                nearby_radius_m = @radius,
+                anchor_lat = COALESCE(@lat, anchor_lat),
+                anchor_lon = COALESCE(@lon, anchor_lon),
+                anchor_accuracy_m = CASE WHEN @lat IS NULL THEN anchor_accuracy_m ELSE @accuracy END
+            WHERE id = @sessionId
+            """;
+        update.Parameters.AddWithValue("@nearby", nowOn);
+        update.Parameters.AddWithValue("@radius", (short)radius);
+        update.Parameters.AddWithValue("@lat", NpgsqlTypes.NpgsqlDbType.Double, (object?)point?.Latitude ?? DBNull.Value);
+        update.Parameters.AddWithValue("@lon", NpgsqlTypes.NpgsqlDbType.Double, (object?)point?.Longitude ?? DBNull.Value);
+        update.Parameters.AddWithValue("@accuracy", NpgsqlTypes.NpgsqlDbType.Real,
+            point?.AccuracyMeters is double accuracy ? (float)accuracy : DBNull.Value);
+        update.Parameters.AddWithValue("@sessionId", sessionId);
+        update.ExecuteNonQuery();
+
+        return (NearbyUpdateOutcome.Ok, new NearbyStatus(nowOn, radius));
+    }
+
     public (SessionMembership? Membership, bool Archived, bool Blocked) JoinSessionByInvite(string inviteCode, string userId, string displayName, string role = "viewer")
     {
         var normalizedInvite = NormalizeSessionName(inviteCode);

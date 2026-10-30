@@ -59,6 +59,15 @@ public record CreateSessionRequest(
     double? Accuracy = null
 );
 
+/// <summary>The organiser's Ping: a fresh fix sets the meeting point; Enabled/RadiusMeters change the nearby setting.</summary>
+public record UpdateNearbyRequest(
+    double? Latitude = null,
+    double? Longitude = null,
+    double? Accuracy = null,
+    bool? Enabled = null,
+    int? RadiusMeters = null
+);
+
 /// <summary>Admin/ops: creates a session owned by an existing account, for callers (e.g. the admin
 /// panel's NDJSON import) that have no session-owning user token of their own.</summary>
 public record AdminCreateSessionRequest(

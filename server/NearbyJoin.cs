@@ -36,5 +36,13 @@ public static class NearbyJoin
         && (accuracy is null or (>= 0 and <= MaxStoredAccuracyMeters));
 }
 
+/// <summary>A GPS fix used as a session's meeting point. Never returned to clients.</summary>
+public record MeetingPoint(double Latitude, double Longitude, double? AccuracyMeters);
+
+public enum NearbyUpdateOutcome { Ok, NotOwner, Archived }
+
+/// <summary>What a client is told about a session's nearby setting (no coordinates).</summary>
+public record NearbyStatus(bool Nearby, int RadiusMeters);
+
 /// <summary>A session's nearby settings and meeting point, as supplied at create time.</summary>
 public record NearbySettings(int RadiusMeters, double Latitude, double Longitude, double? AccuracyMeters);
