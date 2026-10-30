@@ -8,7 +8,8 @@ namespace DotWatcher.Server.Controllers;
 /// predate nearby join keep showing their sign.
 /// </summary>
 [ApiController]
-public class EventsController(UserTokenAuth userAuth, FeatureFlags features, SessionStore store) : ControllerBase
+public class EventsController(UserTokenAuth userAuth, FeatureFlags features, SessionStore store, NearbyLimiter limiter)
+    : ControllerBase
 {
     private static readonly NearbyEvent[] Placeholder =
     [
@@ -21,6 +22,7 @@ public class EventsController(UserTokenAuth userAuth, FeatureFlags features, Ses
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status429TooManyRequests)]
     public IActionResult GetNearby([FromQuery] double? lat, [FromQuery] double? lon, [FromQuery] double? accuracy)
     {
         // 401 when not signed in. 404 (not 403) when the account doesn't have events, so the endpoint
@@ -33,6 +35,10 @@ public class EventsController(UserTokenAuth userAuth, FeatureFlags features, Ses
 
         if (lat is null && lon is null)
             return Ok(Placeholder);
+
+        // Only real lookups count; the position-less placeholder call from older builds is never limited.
+        if (!limiter.TryAcceptList(user.UserId))
+            return StatusCode(StatusCodes.Status429TooManyRequests, new { error = "Too many requests. Try again later." });
 
         if (lat is not double latitude || lon is not double longitude
             || !NearbyJoin.IsValidPosition(latitude, longitude, null) || accuracy is < 0)

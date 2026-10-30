@@ -10,6 +10,7 @@ public class SessionsController(
     UserTokenAuth userAuth,
     RouteUploadTokenAuth routeUploadAuth,
     FeatureFlags features,
+    NearbyLimiter nearbyLimiter,
     ILogger<SessionsController> logger) : ControllerBase
 {
     /// <summary>Lists the caller's active session memberships.</summary>
@@ -217,6 +218,7 @@ public class SessionsController(
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status429TooManyRequests)]
     public IActionResult JoinNearbySession(string sessionId, [FromBody] JoinNearbyRequest? request)
     {
         if (!userAuth.TryAuthenticate(Request, out var user))
@@ -224,6 +226,9 @@ public class SessionsController(
 
         if (!features.IsEnabled(user.UserId, Features.Events))
             return NotFound();
+
+        if (!nearbyLimiter.TryAcceptJoin(user.UserId))
+            return StatusCode(StatusCodes.Status429TooManyRequests, new { error = "Too many attempts. Try again later." });
 
         request ??= new JoinNearbyRequest();
 

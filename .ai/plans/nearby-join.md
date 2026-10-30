@@ -143,7 +143,9 @@ chars, `NormalizeSessionName`), so title and code must be decoupled; check how f
       too far are all the same 404 `{ "error": "This session isn't available." }` (blocked is 404 here, not the invite
       join's 403, so a blocked user can't tell the session exists). 404 without `events`, 401 signed out, 400 bad
       position. Tests in `NearbyJoinApiTests.cs` (CI only).
-- [ ] N6 Rate limiters for list and join.
+- [x] N6 Rate limiters for list and join. `server/NearbyLimiter.cs`: 120 list requests and 20 join attempts per
+      account per hour, separate budgets, 429 when spent. The position-less placeholder call is never limited.
+      Tests in `NearbyLimiterTests.cs` (CI only). Ping is not limited (owner-only, one session per organiser).
 - [ ] N7 Server tests: in/out of radius, accuracy allowance (and its cap), flag off = 404, blocked, already a
       member, re-ping moves the location, non-owner can't ping, bad-accuracy ping rejected, uniform failure.
 - [ ] N8 Update `docs/api-reference.html` and the mock-up (replace pin/range with switch + radius; show several rows).
