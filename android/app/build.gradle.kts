@@ -42,8 +42,8 @@ android {
         applicationId = "nz.skelstar.dotwatcher"
         minSdk = 26
         targetSdk = 36
-        versionCode = 22
-        versionName = "1.2.3"
+        versionCode = 23
+        versionName = "1.2.4"
 
         buildConfigField("String", "LINZ_API_KEY", "\"$linzApiKey\"")
         // Used only to build the "join my session" share link (WEB_BASE_URL + "/code/" +
