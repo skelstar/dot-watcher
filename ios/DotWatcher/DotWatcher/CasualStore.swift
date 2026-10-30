@@ -17,6 +17,8 @@ private struct CasualWatchLinkResponse: Decodable {
 
 private struct CasualSettings: Decodable {
     let visibleToNonCrew: Bool
+    /// Absent from an older server, which always hides the start area.
+    let hideStartArea: Bool?
 }
 
 /// Yourself or someone in your crew who is out casually. The same fields as `RunnerPositionResponse`
@@ -69,6 +71,9 @@ final class CasualStore {
     private(set) var availability: Availability = .unknown
     /// "Show me to people nearby". Off until the person turns it on, then remembered.
     private(set) var visibleToNonCrew = UserDefaults.standard.bool(forKey: CasualStore.visibleKey)
+    /// "Hide my start area": people who aren't in the crew don't see the person until they are 300 m from where
+    /// the run began. On unless the person turns it off; the server holds the value.
+    private(set) var hideStartArea = true
     /// How many of the person's crew are out right now; nil until first loaded.
     private(set) var crewOut: Int?
     var settingsError: String?
@@ -110,6 +115,7 @@ final class CasualStore {
             availability = .available
             visibleToNonCrew = settings.visibleToNonCrew
             UserDefaults.standard.set(settings.visibleToNonCrew, forKey: Self.visibleKey)
+            hideStartArea = settings.hideStartArea ?? true
             await loadLive()
         } catch DotWatcherAPIError.badResponse(let status, _) {
             // 401 means the session ended and 426 is handled app-wide; neither says anything about
@@ -140,6 +146,7 @@ final class CasualStore {
         availability = .unknown
         visibleToNonCrew = false
         UserDefaults.standard.removeObject(forKey: Self.visibleKey)
+        hideStartArea = true
         crewOut = nil
         people = []
         nearby = []
@@ -168,6 +175,21 @@ final class CasualStore {
         } catch {
             visibleToNonCrew = before
             UserDefaults.standard.set(before, forKey: Self.visibleKey)
+            settingsError = error.localizedDescription
+        }
+    }
+
+    /// Turns "Hide my start area" on or off. Shown at once; put back if the server refuses it.
+    func setHideStartArea(_ hide: Bool) async {
+        guard let location else { return }
+        let before = hideStartArea
+        hideStartArea = hide
+        settingsError = nil
+        do {
+            let _: CasualSettings = try await location.send(
+                path: "/me/casual/settings", method: "PUT", body: ["hideStartArea": hide])
+        } catch {
+            hideStartArea = before
             settingsError = error.localizedDescription
         }
     }

@@ -165,7 +165,10 @@ class DotWatcherRepository(
     suspend fun getCasualSettings(): Response<CasualSettings> = api.getCasualSettings(bearer(requireToken()))
 
     suspend fun setCasualVisibleToNonCrew(visible: Boolean): Response<CasualSettings> =
-        api.updateCasualSettings(bearer(requireToken()), UpdateCasualSettingsRequest(visible))
+        api.updateCasualSettings(bearer(requireToken()), UpdateCasualSettingsRequest(visibleToNonCrew = visible))
+
+    suspend fun setCasualHideStartArea(hide: Boolean): Response<CasualSettings> =
+        api.updateCasualSettings(bearer(requireToken()), UpdateCasualSettingsRequest(hideStartArea = hide))
 
     suspend fun getProfile(): Response<ProfileResponse> = api.getProfile(bearer(requireToken()))
 

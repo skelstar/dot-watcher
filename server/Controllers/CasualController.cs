@@ -112,10 +112,20 @@ public class CasualController(
         if (Gate(out var user) is { } denied)
             return denied;
 
-        return Ok(new CasualSettings(store.GetCasualVisibleToNonCrew(user.UserId)));
+        return Ok(SettingsFor(user.UserId));
     }
 
-    /// <summary>Sets whether people who aren't in the caller's crew can see them. Omitted fields are left alone.</summary>
+    private CasualSettings SettingsFor(string userId)
+    {
+        var account = store.GetCasualAccount(userId);
+        return new CasualSettings(account.VisibleToNonCrew, account.HideStartArea);
+    }
+
+    /// <summary>
+    /// Sets whether people who aren't in the caller's crew can see them, and whether they stay hidden
+    /// from non-crew until 300 m from where the run began (on by default; crew are never affected).
+    /// Omitted fields are left alone.
+    /// </summary>
     [HttpPut("/me/casual/settings")]
     [ProducesResponseType(typeof(CasualSettings), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
@@ -127,8 +137,10 @@ public class CasualController(
 
         if (request?.VisibleToNonCrew is { } visible)
             store.SetCasualVisibleToNonCrew(user.UserId, visible);
+        if (request?.HideStartArea is { } hide)
+            store.SetCasualHideStartArea(user.UserId, hide);
 
-        return Ok(new CasualSettings(store.GetCasualVisibleToNonCrew(user.UserId)));
+        return Ok(SettingsFor(user.UserId));
     }
 
     // 401 when not signed in. 404 (not 403) when the account doesn't have casual yet, so the

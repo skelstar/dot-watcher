@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Who can see me: start area</title>
+<style>
+  :root {
+    --bg: #f2f2f7; --card: #fff; --text: #111; --muted: #6b6b73; --line: #e3e3e8;
+    --on: #34c759; --off: #c7c7cc; --accent: #0a7aff; --warn: #b45309; --warnbg: #fff4e0;
+    --map: #e8efe6; --route: #0a7aff; --fuzz: rgba(10,122,255,.16);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#000; --card:#1c1c1e; --text:#f2f2f7; --muted:#9a9aa2; --line:#2c2c2e;
+            --off:#48484a; --warn:#fbbf24; --warnbg:#3a2a08; --map:#1d2a1f; --fuzz: rgba(10,122,255,.25); }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; padding:24px 16px 48px; background:var(--bg); color:var(--text);
+         font:16px/1.4 -apple-system, system-ui, "Segoe UI", sans-serif; }
+  h1 { font-size:22px; margin:0 0 4px; }
+  p.lede { color:var(--muted); margin:0 0 24px; max-width:60ch; }
+  .row { display:flex; flex-wrap:wrap; gap:24px; align-items:flex-start; }
+  figure { margin:0; width:340px; max-width:100%; }
+  figcaption { font-size:13px; color:var(--muted); margin:0 0 8px; }
+  .sheet { background:var(--card); border-radius:20px; padding:24px; border:1px solid var(--line); }
+  .sheet h2 { font-size:30px; margin:0 0 18px; }
+  .item { display:flex; justify-content:space-between; gap:14px; align-items:center; padding:10px 0; }
+  .item + .item { border-top:1px solid var(--line); }
+  .item b { display:block; font-size:17px; }
+  .item span.sub { display:block; color:var(--muted); font-size:14px; }
+  .switch { flex:none; width:51px; height:31px; border-radius:16px; background:var(--off); position:relative; }
+  .switch::after { content:""; position:absolute; top:2px; left:2px; width:27px; height:27px; border-radius:50%;
+                   background:#fff; box-shadow:0 1px 3px rgba(0,0,0,.3); transition:left .15s; }
+  .switch.on { background:var(--on); }
+  .switch.on::after { left:22px; }
+  .switch.locked { opacity:.45; }
+  .foot { color:var(--muted); font-size:13px; margin-top:12px; }
+  .callout { margin-top:10px; padding:10px 12px; border-radius:10px; background:var(--warnbg); color:var(--warn);
+             font-size:13px; }
+  .tag { display:inline-block; font-size:11px; font-weight:600; letter-spacing:.03em; text-transform:uppercase;
+         color:var(--accent); margin-bottom:2px; }
+</style>
+</head>
+<body>
+<h1>Who can see me: start area</h1>
+<p class="lede">A third row on the card for the 300 m "hidden start area". Today it is silent: strangers don't see you until you are 300 m from where you began, and nothing says so. The new row names it and lets you turn it off.</p>
+
+<div class="row">
+  <figure>
+    <figcaption>1. On (default). Same as today, now stated.</figcaption>
+    <div class="sheet">
+      <h2>Who can see me</h2>
+      <div class="item"><div><b>My crew</b><span class="sub">Always. They see your name.</span></div><div class="switch on locked"></div></div>
+      <div class="item"><div><b>Show me to people nearby</b><span class="sub">A grey dot with no name, within 5 km.</span></div><div class="switch on"></div></div>
+      <div class="item"><div><span class="tag">New</span><b>Hide my start area</b><span class="sub">People <u>who aren't in your crew</u> don't see you until you are 300 m from where you started.</span></div><div class="switch on"></div></div>
+      <div class="foot">Only people who have also turned on "Show me to people nearby" can be seen, and you see them. Your choices are remembered next time.</div>
+    </div>
+  </figure>
+
+  <figure>
+    <figcaption>2. Turned off. Strangers see you from the first position.</figcaption>
+    <div class="sheet">
+      <h2>Who can see me</h2>
+      <div class="item"><div><b>My crew</b><span class="sub">Always. They see your name.</span></div><div class="switch on locked"></div></div>
+      <div class="item"><div><b>Show me to people nearby</b><span class="sub">A grey dot with no name, within 5 km.</span></div><div class="switch on"></div></div>
+      <div class="item"><div><b>Hide my start area</b><span class="sub">People <u>who aren't in your crew</u> don't see you until you are 300 m from where you started.</span></div><div class="switch"></div></div>
+      <div class="callout">Anyone nearby can see where you set off from, which may be your home.</div>
+      <div class="foot">Only people who have also turned on "Show me to people nearby" can be seen, and you see them. Your choices are remembered next time.</div>
+    </div>
+  </figure>
+
+  <figure>
+    <figcaption>3. "Show me to people nearby" is off. The new row is greyed out and has no effect.</figcaption>
+    <div class="sheet">
+      <h2>Who can see me</h2>
+      <div class="item"><div><b>My crew</b><span class="sub">Always. They see your name.</span></div><div class="switch on locked"></div></div>
+      <div class="item"><div><b>Show me to people nearby</b><span class="sub">A grey dot with no name, within 5 km.</span></div><div class="switch"></div></div>
+      <div class="item" style="opacity:.45"><div><b>Hide my start area</b><span class="sub">Only applies when you are shown to people nearby.</span></div><div class="switch on"></div></div>
+      <div class="foot">Only people who have also turned on "Show me to people nearby" can be seen, and you see them. Your choices are remembered next time.</div>
+    </div>
+  </figure>
+</div>
+
+<ul class="notes">
+  <li>Default stays on, so nobody's start is exposed until they choose.</li>
+  <li>Crew are unaffected: they already see everything, from the first position.</li>
+  <li>Needs a per-account column (like <code>casual_visible_to_non_crew</code>), exposed in <code>/me/casual/settings</code>, and checked in <code>CasualVisibility.ForViewer</code> against the <em>runner's</em> setting, since it is their start being protected. Old clients leave the field out, so it stays on.</li>
+  <li>The same wording could go in the "Before you go" sheet, since that is where a first run starts.</li>
+</ul>
+</body>
+</html>
