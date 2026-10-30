@@ -159,7 +159,7 @@ chars, `NormalizeSessionName`), so title and code must be decoupled; check how f
       toolchain here and `AGENTS.md` leaves verification to CI/Xcode. `NearbyJoinViews.swift` (new),
       `LocationManager` (when-in-use permission, `currentFix()`, `createSession(nearby:)`, `joinNearby`,
       `pingNearby`, `endSession`, the 409 as `activeSessionExists`), `EventsStore` (position-aware list, polls
-      every 60 s while the landing screen is up), `ContentView` (signs, join sheet, Create wiring),
+      every 3 minutes while the app is in front, and on pull-down), `ContentView` (signs, join sheet, Create wiring),
       `CreateSessionView`, `SessionMapScreen` (join-location button: tap = Ping, hold = settings / End).
       Deviations from the plan, because the app leaves old sessions on relaunch (`leaveStaleSessions`) and leaving
       archives a session once the last runner goes: (1) no persistent "your active session" card on the start

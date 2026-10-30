@@ -66,9 +66,11 @@ final class EventsStore {
 }
 
 /// Loads the events when the app opens, on sign-in, when it comes to the front, when location is allowed,
-/// and once a minute while the landing screen is up (not while tracking).
+/// when the landing screen is pulled down (`ContentView`'s `.refreshable`), and every few minutes while the app
+/// is in front and not tracking. The slow refresh only stops a screen left open from going stale; each one takes
+/// a one-off GPS fix, so it is not frequent. It does nothing in the background or with the phone locked.
 struct EventsHost: ViewModifier {
-    private static let refreshSeconds = 60
+    private static let refreshSeconds = 3 * 60
 
     var events: EventsStore
     var location: LocationManager
