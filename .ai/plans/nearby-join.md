@@ -155,7 +155,19 @@ chars, `NormalizeSessionName`), so title and code must be decoupled; check how f
       columns). The N3b 409 and `POST /sessions/{id}/end` are documented too. Still to do: the mock-up
       `.ai/mockups/create-flow.html`.
 - [ ] N9 iOS: Create switch + radius, Ping button (start + map screen), list on main screen, confirm sheet, join.
-- [ ] N10 Android: the same.
+- [~] N10 Android: the same. Written on branch `nearby-join-android` (stacked on `nearby-join-server`), **not built
+      or run**: no Android toolchain here and `AGENTS.md` leaves verification to CI/Android Studio.
+      `NearbyFixSource` (one-off fix; the app already asks for foreground location at launch, so there is no new
+      permission moment), wire models and four calls in `DotWatcherApi`/`DotWatcherRepository`, `EventsModel`
+      (position-aware list, `isAvailable`), `AppViewModel` (create with nearby, the 409 hand-off, `joinNearby`,
+      `pingJoinLocation`, `stopShowingNearby`, `endSession`), `ui/nearby/NearbyJoinSheets.kt` (join sheet, Create
+      switch and range, organiser sheet, one-session prompt), `SessionScreen`, `LiveMapScreen` (a pin button on the
+      rail, for the organiser only), `NearbyWireTest`. Differences from iOS: the map's pin button opens the
+      organiser sheet (Set join location here, range, stop showing, End session) rather than Pinging on tap, and
+      there is no "allow location" sign because Android asks at launch; with precise location off the Create
+      switch explains why it can't be used. Same departures from the plan as iOS (no persistent active-session
+      card; controls only for a session this device made nearby in this run). Still to do: the Android strings
+      for N11 (Help text).
 - [x] N3b One active session per organiser: 409 on create (events flag only); "active" = not archived and within event
       length; `POST /sessions/{id}/end` (owner only, archives for everyone); tests for each.
       `SessionStore.FindActiveOwnedSessionId` / `EndSession`, `SessionsController.CreateSession` / `EndSession`.

@@ -26,9 +26,11 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -40,7 +42,12 @@ import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleResumeEffect
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import nz.skelstar.dotwatcher.AccountInfo
 import nz.skelstar.dotwatcher.BuildConfig
 import nz.skelstar.dotwatcher.SessionUiState
@@ -58,6 +65,16 @@ import nz.skelstar.dotwatcher.ui.crew.CrewStage
 import nz.skelstar.dotwatcher.ui.landing.EventSignButton
 import nz.skelstar.dotwatcher.ui.landing.HoldSignButton
 import nz.skelstar.dotwatcher.ui.landing.SignButton
+import nz.skelstar.dotwatcher.nearby.ActiveSessionConflict
+import nz.skelstar.dotwatcher.nearby.NEARBY_MAX_TITLE_LENGTH
+import nz.skelstar.dotwatcher.nearby.NearbyDraft
+import nz.skelstar.dotwatcher.network.NearbyEvent
+import nz.skelstar.dotwatcher.ui.nearby.ActiveSessionDialog
+import nz.skelstar.dotwatcher.ui.nearby.NearbyCreateSection
+import nz.skelstar.dotwatcher.ui.nearby.NearbyJoinSheet
+
+/** How often the nearby list refreshes while the start screen is showing, matching iOS. */
+private const val EVENTS_REFRESH_MS = 60_000L
 
 /**
  * Lets a signed-in runner either start a new session ([POST /sessions]) or join an existing one
@@ -83,7 +100,7 @@ import nz.skelstar.dotwatcher.ui.landing.SignButton
 @Composable
 fun SessionScreen(
     state: SessionUiState,
-    onCreateSession: (sessionName: String?) -> Unit,
+    onCreateSession: (sessionName: String?, nearby: NearbyDraft?) -> Unit,
     onJoinSession: (inviteCode: String) -> Unit,
     onSignOut: () -> Unit,
     account: AccountInfo,
@@ -92,8 +109,16 @@ fun SessionScreen(
     casual: CasualModel,
     events: EventsModel,
     onStartCasual: (Duration) -> Unit,
+    onJoinNearby: (sessionId: String) -> Unit,
+    activeSessionConflict: ActiveSessionConflict?,
+    onEndActiveSessionAndCreate: () -> Unit,
+    onDismissActiveSessionConflict: () -> Unit,
+    hasPreciseLocation: Boolean,
 ) {
     var showJoinDialog by remember { mutableStateOf(false) }
+    // A nearby run the person tapped, showing its join sheet; null when none is up.
+    var nearbyCandidate by remember { mutableStateOf<NearbyEvent?>(null) }
+    var joinAttempted by remember { mutableStateOf(false) }
     var showBeforeYouGo by remember { mutableStateOf(false) }
     var showWhoCanSeeMe by remember { mutableStateOf(false) }
     val casualState by casual.state.collectAsState()
@@ -110,6 +135,18 @@ fun SessionScreen(
         casual.refresh()
         events.refresh()
         onPauseOrDispose { }
+    }
+
+    // Runs near the person change as people arrive and the organiser moves the join location, so keep the list
+    // fresh while this screen is showing (not while tracking: the map has replaced it then).
+    val lifecycleOwner = LocalLifecycleOwner.current
+    LaunchedEffect(lifecycleOwner) {
+        lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            while (isActive) {
+                delay(EVENTS_REFRESH_MS)
+                events.refresh()
+            }
+        }
     }
 
     // Header, crew and any error scroll; the three sign buttons stay pinned to the bottom where a
@@ -169,14 +206,28 @@ fun SessionScreen(
                     onComplete = { showBeforeYouGo = true },
                 )
             }
-            // Only when the server has events for this account (the "events" feature).
-            eventsState.events.firstOrNull()?.let { event ->
+            // Only when the server has events for this account (the "events" feature): the runs people
+            // nearby can join, or the placeholder while there's no position to look near.
+            eventsState.joinable.forEach { event ->
                 EventSignButton(
                     eyebrow = event.eyebrow,
                     title = event.title,
                     subtitle = event.subtitle,
-                    onClick = {},
+                    onClick = {
+                        joinAttempted = false
+                        nearbyCandidate = event
+                    },
                 )
+            }
+            if (eventsState.joinable.isEmpty()) {
+                eventsState.events.firstOrNull()?.let { event ->
+                    EventSignButton(
+                        eyebrow = event.eyebrow,
+                        title = event.title,
+                        subtitle = event.subtitle,
+                        onClick = {},
+                    )
+                }
             }
             SignButton(
                 title = "Join",
@@ -238,6 +289,27 @@ fun SessionScreen(
 
     CrewFlow(crew = crew, state = crewState, stage = crewStage, onStage = { crewStage = it })
 
+    nearbyCandidate?.let { event ->
+        NearbyJoinSheet(
+            event = event,
+            state = if (joinAttempted) state else SessionUiState.Idle,
+            onJoin = {
+                event.sessionId?.let {
+                    joinAttempted = true
+                    onJoinNearby(it)
+                }
+            },
+            onDismiss = { nearbyCandidate = null },
+        )
+    }
+
+    if (activeSessionConflict != null) {
+        ActiveSessionDialog(
+            onEndAndCreate = onEndActiveSessionAndCreate,
+            onDismiss = onDismissActiveSessionConflict,
+        )
+    }
+
     if (showJoinDialog) {
         JoinSessionDialog(
             enabled = state !is SessionUiState.Loading,
@@ -252,9 +324,11 @@ fun SessionScreen(
     if (showCreateDialog) {
         CreateSessionDialog(
             enabled = state !is SessionUiState.Loading,
-            onCreate = { sessionName ->
+            nearbyAvailable = eventsState.isAvailable,
+            hasPreciseLocation = hasPreciseLocation,
+            onCreate = { sessionName, nearby ->
                 showCreateDialog = false
-                onCreateSession(sessionName)
+                onCreateSession(sessionName, nearby)
             },
             onCancel = { showCreateDialog = false },
         )
@@ -395,10 +469,15 @@ private fun JoinSessionDialog(
 @Composable
 private fun CreateSessionDialog(
     enabled: Boolean,
-    onCreate: (sessionName: String?) -> Unit,
+    nearbyAvailable: Boolean,
+    hasPreciseLocation: Boolean,
+    onCreate: (sessionName: String?, nearby: NearbyDraft?) -> Unit,
     onCancel: () -> Unit,
 ) {
     var sessionName by remember { mutableStateOf("") }
+    var nearby by remember { mutableStateOf(NearbyDraft()) }
+    // With nearby on the name becomes a public title and the code-style box goes away.
+    val nearbyIsOn = nearbyAvailable && nearby.isOn
 
     Dialog(onDismissRequest = onCancel) {
         Column(
@@ -406,6 +485,7 @@ private fun CreateSessionDialog(
             modifier = Modifier
                 .fillMaxWidth()
                 .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(20.dp))
+                .verticalScroll(rememberScrollState())
                 .padding(24.dp),
         ) {
             Text(
@@ -414,22 +494,50 @@ private fun CreateSessionDialog(
                 style = MaterialTheme.typography.titleLarge,
             )
             Spacer(modifier = Modifier.height(12.dp))
-            Text(
-                text = "Give your session a name. You'll get an invite code to share with others.",
-                textAlign = TextAlign.Center,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Spacer(modifier = Modifier.height(20.dp))
-            CodeBoxField(
-                value = sessionName,
-                onValueChange = { sessionName = it },
-                length = 8,
-                modifier = Modifier.fillMaxWidth(),
-            )
+            if (nearbyIsOn) {
+                Text(
+                    text = "Give your run a title. People nearby will see it. You'll still get an invite code to share.",
+                    textAlign = TextAlign.Center,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(modifier = Modifier.height(20.dp))
+                OutlinedTextField(
+                    value = nearby.title,
+                    onValueChange = { if (it.length <= NEARBY_MAX_TITLE_LENGTH) nearby = nearby.copy(title = it) },
+                    label = { Text("Title") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            } else {
+                Text(
+                    text = "Give your session a name. You'll get an invite code to share with others.",
+                    textAlign = TextAlign.Center,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(modifier = Modifier.height(20.dp))
+                CodeBoxField(
+                    value = sessionName,
+                    onValueChange = { sessionName = it },
+                    length = 8,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+            if (nearbyAvailable) {
+                Spacer(modifier = Modifier.height(20.dp))
+                NearbyCreateSection(
+                    draft = nearby,
+                    onChange = { nearby = it },
+                    hasPreciseLocation = hasPreciseLocation,
+                )
+            }
             Spacer(modifier = Modifier.height(20.dp))
             Button(
-                onClick = { onCreate(sessionName.ifBlank { null }) },
-                enabled = enabled && (sessionName.isEmpty() || sessionName.length >= 4),
+                onClick = { onCreate(sessionName.ifBlank { null }, nearby.takeIf { nearbyIsOn }) },
+                enabled = enabled && if (nearbyIsOn) {
+                    nearby.trimmedTitle.isNotEmpty() && hasPreciseLocation
+                } else {
+                    sessionName.isEmpty() || sessionName.length >= 4
+                },
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Text("Create Session")

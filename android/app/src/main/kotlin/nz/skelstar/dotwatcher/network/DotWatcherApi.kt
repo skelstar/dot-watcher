@@ -21,6 +21,7 @@ import retrofit2.http.Header
 import retrofit2.http.POST
 import retrofit2.http.PUT
 import retrofit2.http.Path
+import retrofit2.http.Query
 
 /**
  * Every request from the app must carry X-Api-Version, matching iOS and web (see
@@ -66,6 +67,13 @@ data class CreateSessionRequest(
     val sessionName: String? = null,
     val displayName: String? = null,
     val maxLengthHours: Int? = null,
+    // Nearby join (see .ai/plans/nearby-join.md): with [nearby] the name is a public title and a position is
+    // required, which becomes the first join location. All absent for an ordinary session.
+    val nearby: Boolean? = null,
+    val nearbyRadiusMeters: Int? = null,
+    val latitude: Double? = null,
+    val longitude: Double? = null,
+    val accuracy: Double? = null,
 )
 
 @Serializable
@@ -138,9 +146,42 @@ data class UpdateCasualSettingsRequest(val visibleToNonCrew: Boolean)
 
 // --- Events near you (server: Controllers/EventsController.cs) --------------------------
 
-/** A public event shown on the start screen. [eyebrow] is the small line above the title. */
+/** A public event shown on the start screen. [eyebrow] is the small line above the title. [sessionId] is set
+ *  when this is a session the person can join from where they are; null for the placeholder. */
 @Serializable
-data class NearbyEvent(val id: String, val eyebrow: String, val title: String, val subtitle: String)
+data class NearbyEvent(
+    val id: String,
+    val eyebrow: String,
+    val title: String,
+    val subtitle: String,
+    val sessionId: String? = null,
+)
+
+// --- Nearby join (server: Controllers/SessionsController.cs) ---------------------------
+
+/** Joining a session from the nearby list; the server checks the position against the session's radius. */
+@Serializable
+data class JoinNearbyRequest(
+    val latitude: Double,
+    val longitude: Double,
+    val accuracy: Double? = null,
+    val displayName: String? = null,
+)
+
+/** The organiser's Ping: a fresh fix sets the join location; [enabled] and [radiusMeters] change the setting.
+ *  Switching off needs no fix. */
+@Serializable
+data class UpdateNearbyRequest(
+    val latitude: Double? = null,
+    val longitude: Double? = null,
+    val accuracy: Double? = null,
+    val enabled: Boolean? = null,
+    val radiusMeters: Int? = null,
+)
+
+/** A session's nearby setting as the server reports it. No coordinates: they never leave the server. */
+@Serializable
+data class NearbyStatus(val nearby: Boolean, val radiusMeters: Int)
 
 /** Yourself or someone in your crew, out casually. The same fields as [RunnerPosition] plus
  *  [inSession] (they are in a named session rather than out casually: the lock) and [isSelf]. */
@@ -231,23 +272,28 @@ data class LocationPostResponse(
  *  server-declared contract type (those controllers return anonymous objects), just this
  *  client's model of the convention. */
 @Serializable
-data class ApiErrorResponse(val error: String? = null)
+data class ApiErrorResponse(
+    val error: String? = null,
+    /** Only on the 409 for "you already have an active session": that session's id. */
+    val sessionId: String? = null,
+)
+
+/**
+ * The failed response's body as [ApiErrorResponse], or null if it isn't that shape (e.g. a proxy's HTML
+ * error page, or a genuinely empty body). A response body can be read once, so a caller that needs more
+ * than the message reads it here and keeps the result.
+ */
+fun Response<*>.parsedError(): ApiErrorResponse? =
+    errorBody()?.string()?.let {
+        runCatching { Json { ignoreUnknownKeys = true }.decodeFromString<ApiErrorResponse>(it) }.getOrNull()
+    }
 
 /**
  * Best-effort extraction of the server's own error message from a failed response, falling back
- * to the HTTP status code alone if the body isn't the expected shape (e.g. a proxy's HTML error
- * page, or a genuinely empty body) — better UX than always showing a bare status code, without
- * assuming the body is well-formed.
+ * to the HTTP status code alone if the body isn't the expected shape — better UX than always
+ * showing a bare status code, without assuming the body is well-formed.
  */
-fun Response<*>.errorMessageOrStatus(): String {
-    val bodyText = errorBody()?.string()
-    val parsedMessage = bodyText?.let {
-        runCatching { Json { ignoreUnknownKeys = true }.decodeFromString<ApiErrorResponse>(it) }
-            .getOrNull()
-            ?.error
-    }
-    return parsedMessage ?: "Request failed (${code()})."
-}
+fun Response<*>.errorMessageOrStatus(): String = parsedError()?.error ?: "Request failed (${code()})."
 
 // Paths below are deliberately relative (no leading "/"): Retrofit resolves them against
 // baseUrl with normal URL-relative semantics, and a leading "/" would resolve against the
@@ -409,12 +455,43 @@ interface DotWatcherApi {
         @Header("X-Api-Version") apiVersion: String = API_VERSION,
     ): Response<CasualLiveResponse>
 
-    /** 404 on a server without events, or for an account that hasn't been given the feature. */
+    /** 404 on a server without events, or for an account that hasn't been given the feature. With [lat]
+     *  and [lon] the server lists the runs the person can join from there; without them it sends its
+     *  placeholder. 429 after too many lookups. */
     @GET("me/events/nearby")
     suspend fun getNearbyEvents(
         @Header("Authorization") bearerToken: String,
+        @Query("lat") lat: Double? = null,
+        @Query("lon") lon: Double? = null,
+        @Query("accuracy") accuracy: Double? = null,
         @Header("X-Api-Version") apiVersion: String = API_VERSION,
     ): Response<List<NearbyEvent>>
+
+    /** Joins a session from the nearby list as a runner. Every refusal is the same 404. */
+    @POST("nearby/sessions/{sessionId}/join")
+    suspend fun joinNearbySession(
+        @Path("sessionId") sessionId: String,
+        @Header("Authorization") bearerToken: String,
+        @Body request: JoinNearbyRequest,
+        @Header("X-Api-Version") apiVersion: String = API_VERSION,
+    ): Response<SessionMembership>
+
+    /** Owner only: set the join location and/or change the nearby switch and range. */
+    @PUT("sessions/{sessionId}/nearby")
+    suspend fun updateNearby(
+        @Path("sessionId") sessionId: String,
+        @Header("Authorization") bearerToken: String,
+        @Body request: UpdateNearbyRequest,
+        @Header("X-Api-Version") apiVersion: String = API_VERSION,
+    ): Response<NearbyStatus>
+
+    /** Owner only: ends the session for everyone. Replay stays. */
+    @POST("sessions/{sessionId}/end")
+    suspend fun endSession(
+        @Path("sessionId") sessionId: String,
+        @Header("Authorization") bearerToken: String,
+        @Header("X-Api-Version") apiVersion: String = API_VERSION,
+    ): Response<Unit>
 
     /** 404 on a server without casual, or for an account that hasn't been given it. */
     @GET("me/casual/settings")

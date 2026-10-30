@@ -9,6 +9,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import nz.skelstar.dotwatcher.casual.CasualModel
 import nz.skelstar.dotwatcher.casual.CasualPrefs
@@ -19,12 +20,21 @@ import nz.skelstar.dotwatcher.data.AuthTokenStore
 import nz.skelstar.dotwatcher.data.DotWatcherRepository
 import nz.skelstar.dotwatcher.data.ShareChoiceStore
 import nz.skelstar.dotwatcher.location.CASUAL_SESSION_ID
+import nz.skelstar.dotwatcher.location.Fix
 import nz.skelstar.dotwatcher.location.LocationTrackingService
+import nz.skelstar.dotwatcher.location.NearbyFixSource
 import nz.skelstar.dotwatcher.location.TrackingState
+import nz.skelstar.dotwatcher.nearby.ActiveSessionConflict
+import nz.skelstar.dotwatcher.nearby.NEARBY_DEFAULT_RADIUS_METRES
+import nz.skelstar.dotwatcher.nearby.NearbyCreate
+import nz.skelstar.dotwatcher.nearby.NearbyDraft
+import nz.skelstar.dotwatcher.nearby.isUsableForJoinLocation
 import nz.skelstar.dotwatcher.network.DotWatcherApiClient
+import nz.skelstar.dotwatcher.network.NearbyStatus
 import nz.skelstar.dotwatcher.network.SessionMembership
 import nz.skelstar.dotwatcher.network.errorMessageOrStatus
 import nz.skelstar.dotwatcher.network.networkMessage
+import nz.skelstar.dotwatcher.network.parsedError
 import retrofit2.Response
 import java.time.Duration
 import java.time.Instant
@@ -73,8 +83,25 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
      *  second ViewModel, so there is one network stack (see the class note above). */
     val crew = CrewModel(repository, viewModelScope, CrewPrefs(application))
 
-    /** Public events near the signed-in account. */
-    val events = EventsModel(repository, viewModelScope)
+    /** One-off positions for nearby join; never starts tracking. */
+    private val nearbyFix = NearbyFixSource(application)
+
+    /** Public events near the signed-in account: the runs people nearby can join. */
+    val events = EventsModel(repository, viewModelScope, nearbyFix::current)
+
+    /** Whether the Create dialog can place a nearby run: location allowed, and precise. */
+    val hasPreciseLocation: Boolean get() = nearbyFix.hasPreciseLocation
+
+    /** Nearby settings of sessions this device made nearby in this run, as last reported by the server. Only
+     *  the creator can Ping or End, and the app leaves old sessions on relaunch, so remembering them here is
+     *  enough. */
+    private val _nearbyStatuses = MutableStateFlow<Map<String, NearbyStatus>>(emptyMap())
+    val nearbyStatuses: StateFlow<Map<String, NearbyStatus>> = _nearbyStatuses
+
+    /** Set when creating was refused because the person already has a session running (409); the start
+     *  screen asks whether to end it. */
+    private val _activeSessionConflict = MutableStateFlow<ActiveSessionConflict?>(null)
+    val activeSessionConflict: StateFlow<ActiveSessionConflict?> = _activeSessionConflict
 
     /** Casual tracking: start tracking without creating or joining a session. */
     val casual = CasualModel(repository, viewModelScope, CasualPrefs(application))
@@ -271,12 +298,150 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     /** No displayName param: matches iOS's common path, which auto-fills the per-session
      *  display name from the account's own registered display name rather than asking again
      *  (see SessionScreen.kt's kdoc) — the server already defaults to that when none is sent. */
-    fun createSession(sessionName: String?) {
+    fun createSession(sessionName: String?, nearby: NearbyDraft? = null) {
         viewModelScope.launch {
             _sessionState.value = SessionUiState.Loading
-            val result = runCatching { repository.createSession(sessionName?.ifBlank { null }, displayName = null) }
-            _sessionState.value = handleSessionResult(result)
+
+            // With nearby on, the name is a public title and the organiser's position becomes the first
+            // join location, so a usable fix comes first.
+            val draft = nearby?.takeIf { it.isOn }
+            var nearbyCreate: NearbyCreate? = null
+            if (draft != null) {
+                val fix = nearbyFix.current()
+                if (fix == null || !fix.isUsableForJoinLocation()) {
+                    _sessionState.value = SessionUiState.Error(
+                        if (nearbyFix.hasPreciseLocation) {
+                            "Couldn't get an accurate location, so the run can't be shown nearby. " +
+                                "Try again with a clear view of the sky."
+                        } else {
+                            "Turn on precise location for Dot Watcher in Settings to show a run nearby."
+                        }
+                    )
+                    return@launch
+                }
+                nearbyCreate = NearbyCreate(draft.radiusMeters, fix)
+            }
+
+            val name = if (draft != null) draft.trimmedTitle else sessionName?.ifBlank { null }
+            val result = runCatching { repository.createSession(name, displayName = null, nearby = nearbyCreate) }
+
+            val response = result.getOrNull()
+            if (response != null && response.code() == 409) {
+                val error = response.parsedError()
+                val activeId = error?.sessionId
+                if (activeId == null) {
+                    _sessionState.value = SessionUiState.Error(error?.error ?: "Request failed (409).")
+                } else {
+                    // What was entered is kept, so ending the old session can carry straight on.
+                    _activeSessionConflict.value = ActiveSessionConflict(activeId, sessionName, nearby)
+                    _sessionState.value = SessionUiState.Idle
+                }
+                return@launch
+            }
+
+            val created = nearbyCreate
+            _sessionState.value = handleSessionResult(result) { membership ->
+                if (created != null) {
+                    setNearbyStatus(membership.sessionId, NearbyStatus(nearby = true, radiusMeters = created.radiusMeters))
+                }
+            }
         }
+    }
+
+    /** The person chose to end the session that was in the way, then create the new one with what they entered. */
+    fun endActiveSessionAndCreate() {
+        val conflict = _activeSessionConflict.value ?: return
+        _activeSessionConflict.value = null
+        viewModelScope.launch {
+            _sessionState.value = SessionUiState.Loading
+            val result = runCatching { repository.endSession(conflict.sessionId) }
+            val response = result.getOrNull()
+            if (response == null || !response.isSuccessful) {
+                _sessionState.value = SessionUiState.Error(
+                    response?.errorMessageOrStatus() ?: (result.exceptionOrNull()?.networkMessage() ?: "Network error.")
+                )
+                return@launch
+            }
+            createSession(conflict.sessionName, conflict.nearby)
+        }
+    }
+
+    fun dismissActiveSessionConflict() {
+        _activeSessionConflict.value = null
+    }
+
+    /** Joins a run from the nearby list. The server re-checks the position, and every refusal is the same 404. */
+    fun joinNearby(sessionId: String) {
+        viewModelScope.launch {
+            _sessionState.value = SessionUiState.Loading
+            val fix = nearbyFix.current()
+            if (fix == null) {
+                _sessionState.value = SessionUiState.Error(
+                    "Couldn't get your location. Check that Location is allowed for Dot Watcher and try again."
+                )
+                return@launch
+            }
+            val result = runCatching { repository.joinNearbySession(sessionId, fix, displayName = null) }
+            _sessionState.value = when (result.getOrNull()?.code()) {
+                // One answer for every refusal, by design: too far, ended, switched off or gone.
+                404 -> SessionUiState.Error("You can't join this run from here. Move closer to the start and try again.")
+                429 -> SessionUiState.Error("Too many attempts. Try again in a little while.")
+                else -> handleSessionResult(result)
+            }
+        }
+    }
+
+    private fun setNearbyStatus(sessionId: String, status: NearbyStatus) {
+        _nearbyStatuses.update { it + (sessionId to status) }
+    }
+
+    /** The organiser's Ping: takes a fresh fix and makes it the session's join location. [radiusMeters] null
+     *  keeps the session's current range. Returns words for the person, whether it worked or not. */
+    suspend fun pingJoinLocation(sessionId: String, radiusMeters: Int? = null): String {
+        val fix = nearbyFix.current()
+        if (fix == null || !fix.isUsableForJoinLocation()) {
+            return "Couldn't get an accurate location. Try again with a clear view of the sky."
+        }
+        val radius = radiusMeters ?: _nearbyStatuses.value[sessionId]?.radiusMeters ?: NEARBY_DEFAULT_RADIUS_METRES
+        return updateNearby(sessionId, fix, enabled = true, radiusMeters = radius, done = "Join location set")
+    }
+
+    /** Stops the session being shown nearby; members stay. */
+    suspend fun stopShowingNearby(sessionId: String): String =
+        updateNearby(sessionId, fix = null, enabled = false, radiusMeters = null, done = "No longer shown nearby")
+
+    private suspend fun updateNearby(
+        sessionId: String,
+        fix: Fix?,
+        enabled: Boolean?,
+        radiusMeters: Int?,
+        done: String,
+    ): String {
+        val result = runCatching { repository.updateNearby(sessionId, fix, enabled, radiusMeters) }
+        val response = result.getOrElse { return it.networkMessage() }
+        val status = response.body()
+        return when {
+            response.isSuccessful && status != null -> {
+                setNearbyStatus(sessionId, status)
+                done
+            }
+            response.code() == 410 -> "This session has ended."
+            else -> response.errorMessageOrStatus()
+        }
+    }
+
+    /** Ends the session for everyone (owner only), then returns to the start screen. Null on success;
+     *  otherwise words for what went wrong, and the person stays on the map. */
+    suspend fun endSession(membership: SessionMembership): String? {
+        val result = runCatching { repository.endSession(membership.sessionId) }
+        val response = result.getOrElse { return it.networkMessage() }
+        if (!response.isSuccessful) return response.errorMessageOrStatus()
+        LocationTrackingService.stop(getApplication())
+        shareChoices.clear()
+        _nearbyStatuses.update { it - membership.sessionId }
+        _sessionState.value = SessionUiState.Idle
+        _destination.value = Destination.Session
+        return null
     }
 
     fun joinSession(inviteCode: String) {
@@ -289,12 +454,14 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun handleSessionResult(
         result: Result<Response<SessionMembership>>,
+        onSuccess: (SessionMembership) -> Unit = {},
     ): SessionUiState {
         val response = result.getOrElse {
             return SessionUiState.Error(it.networkMessage())
         }
         val membership = response.body()
         return if (response.isSuccessful && membership != null) {
+            onSuccess(membership)
             _destination.value = Destination.Consent(membership)
             SessionUiState.Idle
         } else {
@@ -325,6 +492,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         shareChoices.clear()
         viewModelScope.launch {
             runCatching { repository.leaveSession(membership.sessionId) }
+            _nearbyStatuses.update { it - membership.sessionId }
             _sessionState.value = SessionUiState.Idle
             _destination.value = Destination.Session
         }
@@ -347,6 +515,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     shareChoices.clear()
                     crew.clear()
                     casual.clear()
+                    events.clear()
+                    _nearbyStatuses.value = emptyMap()
                     _destination.value = Destination.Auth
                 }
                 response != null -> onError(response.errorMessageOrStatus())
@@ -361,6 +531,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         shareChoices.clear()
         crew.clear()
         casual.clear()
+        events.clear()
+        _nearbyStatuses.value = emptyMap()
         viewModelScope.launch {
             // Take the person off the map before the token goes; the server would only drop them
             // after its stale timeout otherwise.
