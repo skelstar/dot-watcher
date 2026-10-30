@@ -51,7 +51,12 @@ public record ValidatedUserToken(
 public record CreateSessionRequest(
     string? SessionName = null,
     string? DisplayName = null,
-    int? MaxLengthHours = null
+    int? MaxLengthHours = null,
+    bool? Nearby = null,
+    int? NearbyRadiusMeters = null,
+    double? Latitude = null,
+    double? Longitude = null,
+    double? Accuracy = null
 );
 
 /// <summary>Admin/ops: creates a session owned by an existing account, for callers (e.g. the admin

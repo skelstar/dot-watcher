@@ -144,6 +144,19 @@ public partial class SessionStore(string connectionString) : IDisposable
             """;
         addMaxLengthColumn.ExecuteNonQuery();
 
+        // Nearby join (see .ai/plans/nearby-join.md). Additive and defaulted/nullable: Staging and
+        // Production share this database and an older build names its columns explicitly, so it
+        // never sees these. anchor_* is the meeting point, never returned to clients.
+        using var addNearbyColumns = conn.CreateCommand();
+        addNearbyColumns.CommandText = """
+            ALTER TABLE app_sessions ADD COLUMN IF NOT EXISTS nearby BOOLEAN NOT NULL DEFAULT FALSE;
+            ALTER TABLE app_sessions ADD COLUMN IF NOT EXISTS nearby_radius_m SMALLINT;
+            ALTER TABLE app_sessions ADD COLUMN IF NOT EXISTS anchor_lat DOUBLE PRECISION;
+            ALTER TABLE app_sessions ADD COLUMN IF NOT EXISTS anchor_lon DOUBLE PRECISION;
+            ALTER TABLE app_sessions ADD COLUMN IF NOT EXISTS anchor_accuracy_m REAL;
+            """;
+        addNearbyColumns.ExecuteNonQuery();
+
         // Crew (see .ai/plans/crew-management.md). Every foreign key cascades on purpose: Staging
         // and Production share this database, and a Production build that predates crew still does
         // a plain DELETE FROM users when someone deletes their account. With a non-cascading FK that
@@ -526,9 +539,14 @@ public partial class SessionStore(string connectionString) : IDisposable
     }
 
     public SessionMembership CreateSessionForUser(
-        string userId, string displayName, string? requestedName = null, int? maxLengthHours = null)
+        string userId, string displayName, string? requestedName = null, int? maxLengthHours = null,
+        NearbySettings? nearby = null)
     {
-        var sessionName = NormalizeSessionName(requestedName) ?? requestedName?.Trim() ?? "Session";
+        // A nearby session's title is public text and keeps its case; the legacy name is upper-cased.
+        // Neither is the invite code, which is always generated below.
+        var sessionName = nearby is not null
+            ? NearbyJoin.NormalizeTitle(requestedName) ?? "Session"
+            : NormalizeSessionName(requestedName) ?? requestedName?.Trim() ?? "Session";
         var sessionId = Guid.NewGuid().ToString();
         var inviteCode = GenerateCode(6);
         var now = DateTimeOffset.UtcNow.ToString("O");
@@ -537,9 +555,17 @@ public partial class SessionStore(string connectionString) : IDisposable
 
         using var sessionCmd = conn.CreateCommand();
         sessionCmd.CommandText = """
-            INSERT INTO app_sessions (id, session_name, invite_code, owner_user_id, created_at, max_length_hours)
-            VALUES (@sessionId, @sessionName, @inviteCode, @ownerUserId, @createdAt, @maxLengthHours)
+            INSERT INTO app_sessions (id, session_name, invite_code, owner_user_id, created_at, max_length_hours,
+                                      nearby, nearby_radius_m, anchor_lat, anchor_lon, anchor_accuracy_m)
+            VALUES (@sessionId, @sessionName, @inviteCode, @ownerUserId, @createdAt, @maxLengthHours,
+                    @nearby, @radius, @anchorLat, @anchorLon, @anchorAccuracy)
             """;
+        sessionCmd.Parameters.AddWithValue("@nearby", nearby is not null);
+        sessionCmd.Parameters.AddWithValue("@radius", nearby is null ? DBNull.Value : (short)nearby.RadiusMeters);
+        sessionCmd.Parameters.AddWithValue("@anchorLat", nearby is null ? DBNull.Value : nearby.Latitude);
+        sessionCmd.Parameters.AddWithValue("@anchorLon", nearby is null ? DBNull.Value : nearby.Longitude);
+        sessionCmd.Parameters.AddWithValue("@anchorAccuracy",
+            nearby?.AccuracyMeters is double accuracy ? (float)accuracy : DBNull.Value);
         sessionCmd.Parameters.AddWithValue("@sessionId", sessionId);
         sessionCmd.Parameters.AddWithValue("@sessionName", sessionName);
         sessionCmd.Parameters.AddWithValue("@inviteCode", inviteCode);

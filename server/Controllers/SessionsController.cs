@@ -9,6 +9,7 @@ public class SessionsController(
     BearerTokenAuth auth,
     UserTokenAuth userAuth,
     RouteUploadTokenAuth routeUploadAuth,
+    FeatureFlags features,
     ILogger<SessionsController> logger) : ControllerBase
 {
     /// <summary>Lists the caller's active session memberships.</summary>
@@ -59,8 +60,32 @@ public class SessionsController(
 
         request ??= new CreateSessionRequest();
 
-        if (request.SessionName is not null && SessionStore.NormalizeSessionName(request.SessionName) is null)
+        var wantsNearby = request.Nearby == true;
+        NearbySettings? nearby = null;
+
+        if (wantsNearby)
+        {
+            // Same rule as /me/events/nearby: a feature the account doesn't have is simply unavailable.
+            if (!features.IsEnabled(user.UserId, Features.Events))
+                return BadRequest(new { error = "Nearby join isn't available for this account." });
+
+            if (NearbyJoin.NormalizeTitle(request.SessionName) is null)
+                return BadRequest(new { error = $"A nearby session needs a title of 1-{NearbyJoin.MaxTitleLength} characters." });
+
+            var radius = request.NearbyRadiusMeters ?? NearbyJoin.DefaultRadiusMeters;
+            if (!NearbyJoin.IsAllowedRadius(radius))
+                return BadRequest(new { error = "Nearby radius must be 50, 100, 250 or 500 metres." });
+
+            if (request.Latitude is not double latitude || request.Longitude is not double longitude
+                || !NearbyJoin.IsValidPosition(latitude, longitude, request.Accuracy))
+                return BadRequest(new { error = "A nearby session needs a valid position (accuracy 100 m or better)." });
+
+            nearby = new NearbySettings(radius, latitude, longitude, request.Accuracy);
+        }
+        else if (request.SessionName is not null && SessionStore.NormalizeSessionName(request.SessionName) is null)
+        {
             return BadRequest(new { error = "Session name must be 4-8 letters, numbers, dashes, or underscores." });
+        }
 
         var displayName = string.IsNullOrWhiteSpace(request.DisplayName)
             ? user.DisplayName
@@ -72,7 +97,7 @@ public class SessionsController(
         if (request.MaxLengthHours is int maxLengthHours && (maxLengthHours < 1 || maxLengthHours > 240))
             return BadRequest(new { error = "Max length must be between 1 and 240 hours." });
 
-        var membership = store.CreateSessionForUser(user.UserId, displayName, request.SessionName, request.MaxLengthHours);
+        var membership = store.CreateSessionForUser(user.UserId, displayName, request.SessionName, request.MaxLengthHours, nearby);
         return Ok(membership);
     }
 

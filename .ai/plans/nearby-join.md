@@ -117,8 +117,13 @@ chars, `NormalizeSessionName`), so title and code must be decoupled; check how f
 
 - [x] N0 Decided: reuse `events` flag; selectable radius 50/100/250/500 m (default 100); no silence timeout;
       join location set only by a Ping button (start screen + map screen), no tracking involvement.
-- [ ] N1 Decouple session title (30 chars) from invite code (check create-flow work first).
-- [ ] N2 Schema columns (incl. radius and accuracy) + `CreateSessionRequest` fields + meeting-point seeding.
+- [x] N1 Decouple session title (30 chars) from invite code. The invite code was already generated separately
+      (`GenerateCode`); only the controller's 4-8 char name rule tied them. A nearby session now validates its title with
+      `NearbyJoin.NormalizeTitle` (1-30 chars, keeps case and spaces); sessions without nearby keep the legacy rule.
+- [x] N2 Schema columns (incl. radius and accuracy) + `CreateSessionRequest` fields + meeting-point seeding.
+      `server/NearbyJoin.cs`, `SessionStore` migration and `CreateSessionForUser`, `SessionsController.CreateSession`.
+      Nearby on create needs the `events` flag, a valid title, radius (default 100) and a position (accuracy <= 100 m).
+      Tests: `NearbyCreateTests.cs` (not run locally; CI).
 - [ ] N3 `PUT /sessions/{id}/nearby` (Ping: set the join location; optional switch and radius; owner only).
 - [ ] N4 List endpoint (per-session radius with accuracy allowance, exclusions, rounding, cap) under the `events` flag
       (404 when off).
