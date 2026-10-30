@@ -30,6 +30,29 @@ public static class NearbyJoin
         return title.Any(char.IsControl) ? null : title;
     }
 
+    /// <summary>How much of each fix's error is forgiven when judging the radius.</summary>
+    public const double MaxForgivenAccuracyMeters = 50;
+
+    /// <summary>The most sessions one list request returns.</summary>
+    public const int MaxListed = 10;
+
+    /// <summary>Distances shown to people are rounded to this, never the real figure.</summary>
+    public const int DistanceRoundingMeters = 50;
+
+    /// <summary>
+    /// Whether a person is close enough to a meeting point. Phone GPS is off by 5-50 m and both fixes
+    /// are, so each fix's accuracy is forgiven (capped, so a terrible fix can't open the gate wide).
+    /// A missing accuracy forgives nothing.
+    /// </summary>
+    public static bool IsWithinRadius(double distanceMeters, int radiusMeters, double? joinerAccuracy, double? anchorAccuracy) =>
+        distanceMeters - Forgiven(joinerAccuracy) - Forgiven(anchorAccuracy) <= radiusMeters;
+
+    public static int RoundDistance(double distanceMeters) =>
+        (int)(Math.Round(distanceMeters / DistanceRoundingMeters, MidpointRounding.AwayFromZero) * DistanceRoundingMeters);
+
+    private static double Forgiven(double? accuracy) =>
+        accuracy is double a ? Math.Clamp(a, 0, MaxForgivenAccuracyMeters) : 0;
+
     public static bool IsValidPosition(double? latitude, double? longitude, double? accuracy) =>
         latitude is >= -90 and <= 90
         && longitude is >= -180 and <= 180

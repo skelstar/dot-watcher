@@ -130,8 +130,13 @@ chars, `NormalizeSessionName`), so title and code must be decoupled; check how f
       required unless the call is only `enabled: false`. Not done: the "old timestamp" check (the request has no
       timestamp; add one if stale fixes prove a problem). Turning nearby on for a session created without it
       keeps its legacy upper-cased name as the title; a title field on this call may be needed (open for N9).
-- [ ] N4 List endpoint (per-session radius with accuracy allowance, exclusions, rounding, cap) under the `events` flag
-      (404 when off).
+- [x] N4 List endpoint (per-session radius with accuracy allowance, exclusions, rounding, cap) under the `events` flag
+      (404 when off). `GET /me/events/nearby?lat=&lon=&accuracy=` (`EventsController`, `SessionStore.FindNearbySessions`,
+      `NearbyJoin.IsWithinRadius`). Entries reuse `NearbyEvent` plus a new `sessionId` (null on the placeholder), so
+      clients tell joinable rows apart. With no `lat`/`lon` it still returns the placeholder, so installed builds are
+      unchanged. Excludes: switched off, archived, past event length (created_at + max length, default 24 h), caller
+      already a member, blocked either way with the organiser. Distance rounded to 50 m ("here" at 0), cap 10.
+      Tests in `NearbyListTests.cs` (CI only).
 - [ ] N5 Nearby join endpoint (re-check distance with accuracy allowance, blocked/archived, uniform failure).
 - [ ] N6 Rate limiters for list and join.
 - [ ] N7 Server tests: in/out of radius, accuracy allowance (and its cap), flag off = 404, blocked, already a

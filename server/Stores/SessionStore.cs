@@ -639,6 +639,63 @@ public partial class SessionStore(string connectionString) : IDisposable
         return (NearbyUpdateOutcome.Ok, new NearbyStatus(nowOn, radius));
     }
 
+    /// <summary>
+    /// Nearby sessions the caller could join from where they are, nearest first. A session is listed
+    /// when nearby is on, it isn't archived or past its event length, the caller isn't already in it
+    /// or blocked with its organiser, and the caller is inside its radius (see
+    /// <see cref="NearbyJoin.IsWithinRadius"/>). The exact distance stays server-side.
+    /// </summary>
+    public IReadOnlyList<NearbySessionMatch> FindNearbySessions(
+        string userId, double latitude, double longitude, double? accuracy, DateTimeOffset now)
+    {
+        // A cheap latitude band so we don't measure every nearby session on earth: the largest radius
+        // (500 m) plus the forgiven accuracy (2 x 50 m) is about 0.0054 degrees of latitude.
+        const double LatitudeBand = 0.01;
+
+        using var conn = Connect();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = """
+            SELECT s.id, s.session_name, owner.display_name, s.nearby_radius_m,
+                   s.anchor_lat, s.anchor_lon, s.anchor_accuracy_m, s.created_at, s.max_length_hours
+            FROM app_sessions s
+            JOIN session_members owner ON owner.session_id = s.id AND owner.user_id = s.owner_user_id
+            WHERE s.nearby
+              AND s.archived_at IS NULL
+              AND s.anchor_lat BETWEEN @minLat AND @maxLat
+              AND NOT EXISTS (
+                  SELECT 1 FROM session_members me
+                  WHERE me.session_id = s.id AND me.user_id = @userId AND me.left_at IS NULL
+              )
+              AND NOT EXISTS (
+                  SELECT 1 FROM blocked_users b
+                  WHERE (b.blocker_user_id = @userId AND b.blocked_user_id = s.owner_user_id)
+                     OR (b.blocker_user_id = s.owner_user_id AND b.blocked_user_id = @userId)
+              )
+            """;
+        cmd.Parameters.AddWithValue("@userId", userId);
+        cmd.Parameters.AddWithValue("@minLat", latitude - LatitudeBand);
+        cmd.Parameters.AddWithValue("@maxLat", latitude + LatitudeBand);
+
+        var matches = new List<NearbySessionMatch>();
+        using var reader = cmd.ExecuteReader();
+        while (reader.Read())
+        {
+            var maxLengthHours = reader.IsDBNull(8) ? DefaultMaxLengthHours : reader.GetInt16(8);
+            if (DateTimeOffset.Parse(reader.GetString(7)).AddHours(maxLengthHours) <= now)
+                continue;
+
+            var distance = GeoMath.DistanceMeters(latitude, longitude, reader.GetDouble(4), reader.GetDouble(5));
+            var radius = reader.IsDBNull(3) ? NearbyJoin.DefaultRadiusMeters : reader.GetInt16(3);
+            double? anchorAccuracy = reader.IsDBNull(6) ? null : reader.GetFloat(6);
+            if (!NearbyJoin.IsWithinRadius(distance, radius, accuracy, anchorAccuracy))
+                continue;
+
+            matches.Add(new NearbySessionMatch(reader.GetString(0), reader.GetString(1), reader.GetString(2), distance));
+        }
+
+        return matches.OrderBy(m => m.DistanceMeters).Take(NearbyJoin.MaxListed).ToList();
+    }
+
     public (SessionMembership? Membership, bool Archived, bool Blocked) JoinSessionByInvite(string inviteCode, string userId, string displayName, string role = "viewer")
     {
         var normalizedInvite = NormalizeSessionName(inviteCode);
