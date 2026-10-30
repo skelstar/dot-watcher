@@ -495,13 +495,7 @@ struct CasualMapScreen: View {
     // MARK: Controls
 
     private var topLeft: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 8) {
-                MapWordmark(runnerName: location.runnerName)
-                MapCountdown(location: location) { showExtend = true }
-            }
-            EndingSoonPill(location: location)
-        }
+        MapTimerPill(location: location, runnerName: location.runnerName) { showExtend = true }
     }
 
     private var rail: some View {
@@ -532,10 +526,10 @@ struct CasualMapScreen: View {
                     .font(.system(size: 11, weight: .bold))
                     .accessibilityHidden(true)
             }
-            .font(.system(size: 12.5, weight: .semibold))
+            .font(.system(size: 15, weight: .semibold))
             .foregroundStyle(.black)
-            .padding(.horizontal, 14)
-            .frame(height: 36)
+            .padding(.horizontal, 16)
+            .frame(height: 48)
             .background(Color.white.opacity(0.85), in: Capsule())
             .shadow(color: .black.opacity(0.18), radius: 2, y: 1)
         }
