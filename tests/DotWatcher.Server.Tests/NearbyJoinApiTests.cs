@@ -61,11 +61,14 @@ public class NearbyJoinApiTests
         var bob = await AuthTestHelpers.RegisterWithResponseAsync(client, "bob", "BO");
         var carol = await AuthTestHelpers.RegisterAsync(client, "carol", "Carol");
 
+        // One active session per organiser, so each case gets its own organiser.
+        var dave = await AuthTestHelpers.RegisterAsync(client, "dave", "Dave");
+        var erin = await AuthTestHelpers.RegisterAsync(client, "erin", "Erin");
         var nearby = await CreateNearbyAsync(client, aliceLogin.AccessToken);
-        var switchedOff = await CreateNearbyAsync(client, aliceLogin.AccessToken);
-        await SendAsync(client, HttpMethod.Put, $"/sessions/{switchedOff.SessionId}/nearby", aliceLogin.AccessToken,
+        var switchedOff = await CreateNearbyAsync(client, dave);
+        await SendAsync(client, HttpMethod.Put, $"/sessions/{switchedOff.SessionId}/nearby", dave,
             new { enabled = false });
-        var notNearby = await SendAsync(client, HttpMethod.Post, "/sessions", aliceLogin.AccessToken,
+        var notNearby = await SendAsync(client, HttpMethod.Post, "/sessions", erin,
             new { sessionName = "plain01" });
         var plain = (await notNearby.Content.ReadFromJsonAsync<SessionMembership>())!;
 

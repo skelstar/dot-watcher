@@ -8,7 +8,7 @@ namespace DotWatcher.Server.Controllers;
 /// predate nearby join keep showing their sign.
 /// </summary>
 [ApiController]
-public class EventsController(UserTokenAuth userAuth, FeatureFlags features, SessionStore store, NearbyLimiter limiter)
+public class EventsController(UserTokenAuth userAuth, FeatureFlags features, SessionStore store, NearbyLimiter limiter, TimeProvider timeProvider)
     : ControllerBase
 {
     private static readonly NearbyEvent[] Placeholder =
@@ -44,7 +44,7 @@ public class EventsController(UserTokenAuth userAuth, FeatureFlags features, Ses
             || !NearbyJoin.IsValidPosition(latitude, longitude, null) || accuracy is < 0)
             return BadRequest(new { error = "lat and lon must be a valid position, and accuracy cannot be negative." });
 
-        var sessions = store.FindNearbySessions(user.UserId, latitude, longitude, accuracy, DateTimeOffset.UtcNow);
+        var sessions = store.FindNearbySessions(user.UserId, latitude, longitude, accuracy, timeProvider.GetUtcNow());
         var events = sessions.Select(match =>
         {
             var rounded = NearbyJoin.RoundDistance(match.DistanceMeters);

@@ -640,6 +640,83 @@ public partial class SessionStore(string connectionString) : IDisposable
     }
 
     /// <summary>
+    /// The id of the user's active session, if they have one: owned by them, not archived and still
+    /// within its event length (created_at + max length, default 24 h), so an organiser who abandons a
+    /// session is never locked out of creating another. Several can exist for owners from before the
+    /// one-active-session rule; this returns the newest.
+    /// </summary>
+    public string? FindActiveOwnedSessionId(string ownerUserId, DateTimeOffset now)
+    {
+        using var conn = Connect();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = """
+            SELECT id, created_at, max_length_hours
+            FROM app_sessions
+            WHERE owner_user_id = @ownerUserId AND archived_at IS NULL AND id <> @casualSessionId
+            ORDER BY created_at DESC
+            """;
+        cmd.Parameters.AddWithValue("@ownerUserId", ownerUserId);
+        cmd.Parameters.AddWithValue("@casualSessionId", CasualSessionId);
+        using var reader = cmd.ExecuteReader();
+        while (reader.Read())
+        {
+            var maxLengthHours = reader.IsDBNull(2) ? DefaultMaxLengthHours : reader.GetInt16(2);
+            if (DateTimeOffset.Parse(reader.GetString(1)).AddHours(maxLengthHours) > now)
+                return reader.GetString(0);
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// The owner ends a session for everyone: it is archived (nobody can join or rejoin, nearby listing
+    /// stops) and every current member is marked as having left. Recording and replay stay. Ending an
+    /// already-ended session succeeds. False when the session isn't the caller's, doesn't exist or is
+    /// the casual session, so ids can't be probed.
+    /// </summary>
+    public bool EndSession(string sessionId, string userId)
+    {
+        if (IsCasualSession(sessionId))
+            return false;
+
+        var now = DateTimeOffset.UtcNow.ToString("O");
+
+        using var conn = Connect();
+        using var tx = conn.BeginTransaction();
+
+        using (var owner = conn.CreateCommand())
+        {
+            owner.Transaction = tx;
+            owner.CommandText = "SELECT owner_user_id FROM app_sessions WHERE id = @sessionId";
+            owner.Parameters.AddWithValue("@sessionId", sessionId);
+            if (owner.ExecuteScalar() as string != userId)
+                return false;
+        }
+
+        using (var archive = conn.CreateCommand())
+        {
+            archive.Transaction = tx;
+            archive.CommandText = "UPDATE app_sessions SET archived_at = @now WHERE id = @sessionId AND archived_at IS NULL";
+            archive.Parameters.AddWithValue("@now", now);
+            archive.Parameters.AddWithValue("@sessionId", sessionId);
+            archive.ExecuteNonQuery();
+        }
+
+        using (var leave = conn.CreateCommand())
+        {
+            leave.Transaction = tx;
+            leave.CommandText = "UPDATE session_members SET left_at = @now WHERE session_id = @sessionId AND left_at IS NULL";
+            leave.Parameters.AddWithValue("@now", now);
+            leave.Parameters.AddWithValue("@sessionId", sessionId);
+            leave.ExecuteNonQuery();
+        }
+
+        tx.Commit();
+        _sessions.TryRemove(sessionId, out _);
+        return true;
+    }
+
+    /// <summary>
     /// Nearby sessions the caller could join from where they are, nearest first. A session is listed
     /// when nearby is on, it isn't archived or past its event length, the caller isn't already in it
     /// or blocked with its organiser, and the caller is inside its radius (see

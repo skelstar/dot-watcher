@@ -11,6 +11,7 @@ public class SessionsController(
     RouteUploadTokenAuth routeUploadAuth,
     FeatureFlags features,
     NearbyLimiter nearbyLimiter,
+    TimeProvider timeProvider,
     ILogger<SessionsController> logger) : ControllerBase
 {
     /// <summary>Lists the caller's active session memberships.</summary>
@@ -54,6 +55,7 @@ public class SessionsController(
     [ProducesResponseType(typeof(SessionMembership), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
     public IActionResult CreateSession([FromBody] CreateSessionRequest? request)
     {
         if (!userAuth.TryAuthenticate(Request, out var user))
@@ -98,8 +100,36 @@ public class SessionsController(
         if (request.MaxLengthHours is int maxLengthHours && (maxLengthHours < 1 || maxLengthHours > 240))
             return BadRequest(new { error = "Max length must be between 1 and 240 hours." });
 
+        // One active session per organiser, for accounts with the events feature only, so older builds
+        // and accounts without it behave exactly as before. Best-effort: Staging and Production share a
+        // database and an older Production build can still create a second session.
+        if (features.IsEnabled(user.UserId, Features.Events)
+            && store.FindActiveOwnedSessionId(user.UserId, timeProvider.GetUtcNow()) is { } activeSessionId)
+            return Conflict(new { error = "You already have an active session. End it to create another.", sessionId = activeSessionId });
+
         var membership = store.CreateSessionForUser(user.UserId, displayName, request.SessionName, request.MaxLengthHours, nearby);
         return Ok(membership);
+    }
+
+    /// <summary>
+    /// Owner only. Ends the session for everyone: it is archived, so nobody can join or rejoin and it
+    /// stops appearing nearby, and every member is marked as having left. Replay and the recording stay.
+    /// </summary>
+    [HttpPost("/sessions/{sessionId}/end")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public IActionResult EndSession(string sessionId)
+    {
+        if (!userAuth.TryAuthenticate(Request, out var user))
+            return Unauthorized();
+
+        // 404 (not 403) without the events feature, so the endpoint looks absent to accounts without it.
+        if (!features.IsEnabled(user.UserId, Features.Events))
+            return NotFound();
+
+        return store.EndSession(sessionId, user.UserId) ? NoContent() : StatusCode(StatusCodes.Status403Forbidden);
     }
 
     /// <summary>
@@ -244,7 +274,7 @@ public class SessionsController(
             return BadRequest(new { error = "Display name must be 1-80 characters." });
 
         var membership = store.JoinNearbySession(
-            sessionId, user.UserId, displayName, latitude, longitude, request.Accuracy, DateTimeOffset.UtcNow);
+            sessionId, user.UserId, displayName, latitude, longitude, request.Accuracy, timeProvider.GetUtcNow());
 
         if (membership is null)
             return NotFound(new { error = "This session isn't available." });

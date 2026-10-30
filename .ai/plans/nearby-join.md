@@ -149,14 +149,21 @@ chars, `NormalizeSessionName`), so title and code must be decoupled; check how f
 - [x] N7 Server tests: in/out of radius, accuracy allowance (and its cap), flag off = 404, blocked, already a
       member, re-ping moves the location, non-owner can't ping, bad-accuracy ping rejected, uniform failure.
       Spread over `NearbyCreateTests`, `NearbyPingTests`, `NearbyListTests`, `NearbyJoinApiTests`,
-      `NearbyLimiterTests` (CI only). Still to add with N3b: one-active-session and End session.
+      `NearbyLimiterTests`, `NearbyActiveSessionTests` (CI only).
 - [~] N8 Update `docs/api-reference.html` and the mock-up (replace pin/range with switch + radius; show several rows).
       Done: `docs/api-reference.html` (create fields, Ping, list, join) and `docs/database-schema.html` (new
-      columns). Still to do: the mock-up `.ai/mockups/create-flow.html`, and the API docs for N3b when it lands.
+      columns). The N3b 409 and `POST /sessions/{id}/end` are documented too. Still to do: the mock-up
+      `.ai/mockups/create-flow.html`.
 - [ ] N9 iOS: Create switch + radius, Ping button (start + map screen), list on main screen, confirm sheet, join.
 - [ ] N10 Android: the same.
-- [ ] N3b One active session per organiser: 409 on create (events flag only); "active" = not archived and within event
+- [x] N3b One active session per organiser: 409 on create (events flag only); "active" = not archived and within event
       length; `POST /sessions/{id}/end` (owner only, archives for everyone); tests for each.
+      `SessionStore.FindActiveOwnedSessionId` / `EndSession`, `SessionsController.CreateSession` / `EndSession`.
+      409 body carries `sessionId` of the existing session. End archives, marks every member as left (so it leaves
+      their lists), drops live positions, keeps replay; owner only (403, same for unknown ids), 404 without `events`,
+      idempotent. The controllers now read the injected `TimeProvider` so expiry is testable. Tests in
+      `NearbyActiveSessionTests.cs` (CI only). The check-then-create is not atomic and older builds bypass it, as
+      the decision above accepts.
 - [ ] N9b Clients: Create disabled with explanation when an active session exists; End session (confirm) on the
       start-screen card and map-screen sheet.
 - [ ] N11 Privacy copy: Create explanation, join confirmation, Help text.

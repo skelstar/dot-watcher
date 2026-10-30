@@ -390,7 +390,7 @@
         <span class="path">/sessions</span>
         <span class="auth-badge auth-required">Bearer token</span>
       </div>
-      <p class="purpose">Create a new session. The caller becomes the owner. An invite code is generated server-side and returned in the response. With <code>"nearby": true</code> (accounts with the <code>events</code> feature only; 400 otherwise) people near the caller can find and join the session without a code: <code>sessionName</code> then becomes a public title of 1&ndash;30 characters (case and spaces kept, not the invite code), and a position is required, which becomes the first meeting point. Without <code>nearby</code>, <code>sessionName</code> keeps its 4&ndash;8 character rule.</p>
+      <p class="purpose">Create a new session. The caller becomes the owner. An invite code is generated server-side and returned in the response. With <code>"nearby": true</code> (accounts with the <code>events</code> feature only; 400 otherwise) people near the caller can find and join the session without a code: <code>sessionName</code> then becomes a public title of 1&ndash;30 characters (case and spaces kept, not the invite code), and a position is required, which becomes the first meeting point. Without <code>nearby</code>, <code>sessionName</code> keeps its 4&ndash;8 character rule. For accounts with the <code>events</code> feature an organiser can have one active session at a time (owned by them, not ended, and within its <code>maxLengthHours</code>, default 24): creating another returns <code>409</code> with <code>{ "error": "...", "sessionId": "&lt;the existing session&gt;" }</code>. Accounts without the feature are not limited.</p>
       <div class="details">
         <div class="detail-block">
           <h4>Request Body</h4>
@@ -442,6 +442,25 @@
   "role": "runner" | "viewer",
   "displayName": "string"
 }</pre>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="endpoint-header">
+        <span class="method method-post">POST</span>
+        <span class="path">/sessions/<span class="param">{sessionId}</span>/end</span>
+        <span class="auth-badge auth-required">Bearer token</span>
+      </div>
+      <p class="purpose">Owner only. Ends the session for everyone: it is archived (nobody can join or rejoin, and it stops appearing nearby) and every member is marked as having left, so it leaves their session lists. Replay and the recording stay. Ending an already-ended session succeeds. 204 on success; 404 without the <code>events</code> feature; 403 if the caller isn't the owner or the id is unknown.</p>
+      <div class="details">
+        <div class="detail-block">
+          <h4>Request Body</h4>
+          <p class="none-label">Empty</p>
+        </div>
+        <div class="detail-block">
+          <h4>Response</h4>
+          <p class="none-label">Empty</p>
         </div>
       </div>
     </div>
