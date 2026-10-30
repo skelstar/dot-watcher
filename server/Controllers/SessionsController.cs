@@ -206,6 +206,57 @@ public class SessionsController(
         });
     }
 
+    /// <summary>
+    /// Joins a session found in the nearby list, as a runner, with no invite code. The server re-checks
+    /// the caller's position against the session's radius. Every refusal is the same 404, so it can't
+    /// be used to find out whether a session exists, is nearby or why it said no. Returns the same shape
+    /// as the invite join.
+    /// </summary>
+    [HttpPost("/nearby/sessions/{sessionId}/join")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public IActionResult JoinNearbySession(string sessionId, [FromBody] JoinNearbyRequest? request)
+    {
+        if (!userAuth.TryAuthenticate(Request, out var user))
+            return Unauthorized();
+
+        if (!features.IsEnabled(user.UserId, Features.Events))
+            return NotFound();
+
+        request ??= new JoinNearbyRequest();
+
+        if (request.Latitude is not double latitude || request.Longitude is not double longitude
+            || !NearbyJoin.IsValidPosition(latitude, longitude, null) || request.Accuracy is < 0)
+            return BadRequest(new { error = "A valid position is needed to join." });
+
+        var displayName = string.IsNullOrWhiteSpace(request.DisplayName)
+            ? user.DisplayName
+            : request.DisplayName.Trim();
+
+        if (displayName.Length is < 1 or > 80)
+            return BadRequest(new { error = "Display name must be 1-80 characters." });
+
+        var membership = store.JoinNearbySession(
+            sessionId, user.UserId, displayName, latitude, longitude, request.Accuracy, DateTimeOffset.UtcNow);
+
+        if (membership is null)
+            return NotFound(new { error = "This session isn't available." });
+
+        var participants = store.GetSessionRunners(membership.SessionId, user.UserId);
+        return Ok(new
+        {
+            membership.SessionId,
+            membership.SessionName,
+            membership.InviteCode,
+            membership.Role,
+            membership.DisplayName,
+            membership.OwnerDisplayName,
+            Participants = participants,
+        });
+    }
+
     /// <summary>Gets basic public info (session name, creator) for a session, by invite code. No auth required.</summary>
     [HttpGet("/session-invites/{inviteCode}")]
     [ProducesResponseType(typeof(SessionInfo), StatusCodes.Status200OK)]

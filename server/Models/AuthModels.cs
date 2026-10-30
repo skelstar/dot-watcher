@@ -68,6 +68,14 @@ public record UpdateNearbyRequest(
     int? RadiusMeters = null
 );
 
+/// <summary>Joining a nearby session: the joiner's current fix, which the server checks against the radius.</summary>
+public record JoinNearbyRequest(
+    double? Latitude = null,
+    double? Longitude = null,
+    double? Accuracy = null,
+    string? DisplayName = null
+);
+
 /// <summary>Admin/ops: creates a session owned by an existing account, for callers (e.g. the admin
 /// panel's NDJSON import) that have no session-owning user token of their own.</summary>
 public record AdminCreateSessionRequest(

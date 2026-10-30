@@ -696,6 +696,52 @@ public partial class SessionStore(string connectionString) : IDisposable
         return matches.OrderBy(m => m.DistanceMeters).Take(NearbyJoin.MaxListed).ToList();
     }
 
+    /// <summary>
+    /// Joins a nearby session as a runner. The server decides: the caller must be inside the session's
+    /// radius right now (same rule as the list). Returns null for every refusal - unknown, not nearby,
+    /// switched off, ended, blocked, too far - so a caller can't tell which and can't probe ids.
+    /// </summary>
+    public SessionMembership? JoinNearbySession(
+        string sessionId, string userId, string displayName,
+        double latitude, double longitude, double? accuracy, DateTimeOffset now)
+    {
+        using var conn = Connect();
+        using var lookup = conn.CreateCommand();
+        lookup.CommandText = """
+            SELECT invite_code, owner_user_id, nearby_radius_m, anchor_lat, anchor_lon, anchor_accuracy_m,
+                   created_at, max_length_hours
+            FROM app_sessions
+            WHERE id = @sessionId AND nearby AND archived_at IS NULL AND anchor_lat IS NOT NULL
+            """;
+        lookup.Parameters.AddWithValue("@sessionId", sessionId);
+
+        string inviteCode, ownerUserId;
+        using (var reader = lookup.ExecuteReader())
+        {
+            if (!reader.Read())
+                return null;
+
+            var maxLengthHours = reader.IsDBNull(7) ? DefaultMaxLengthHours : reader.GetInt16(7);
+            if (DateTimeOffset.Parse(reader.GetString(6)).AddHours(maxLengthHours) <= now)
+                return null;
+
+            var radius = reader.IsDBNull(2) ? NearbyJoin.DefaultRadiusMeters : reader.GetInt16(2);
+            double? anchorAccuracy = reader.IsDBNull(5) ? null : reader.GetFloat(5);
+            var distance = GeoMath.DistanceMeters(latitude, longitude, reader.GetDouble(3), reader.GetDouble(4));
+            if (!NearbyJoin.IsWithinRadius(distance, radius, accuracy, anchorAccuracy))
+                return null;
+
+            inviteCode = reader.GetString(0);
+            ownerUserId = reader.GetString(1);
+        }
+
+        if (AreBlocked(conn, ownerUserId, userId))
+            return null;
+
+        UpsertMembership(conn, sessionId, userId, "runner", displayName, now.ToString("O"));
+        return GetMembership(conn, sessionId, userId, inviteCode);
+    }
+
     public (SessionMembership? Membership, bool Archived, bool Blocked) JoinSessionByInvite(string inviteCode, string userId, string displayName, string role = "viewer")
     {
         var normalizedInvite = NormalizeSessionName(inviteCode);

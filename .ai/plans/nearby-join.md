@@ -137,7 +137,12 @@ chars, `NormalizeSessionName`), so title and code must be decoupled; check how f
       unchanged. Excludes: switched off, archived, past event length (created_at + max length, default 24 h), caller
       already a member, blocked either way with the organiser. Distance rounded to 50 m ("here" at 0), cap 10.
       Tests in `NearbyListTests.cs` (CI only).
-- [ ] N5 Nearby join endpoint (re-check distance with accuracy allowance, blocked/archived, uniform failure).
+- [x] N5 Nearby join endpoint (re-check distance with accuracy allowance, blocked/archived, uniform failure).
+      `POST /nearby/sessions/{id}/join` (`SessionsController.JoinNearbySession`, `SessionStore.JoinNearbySession`).
+      Always a runner; same response shape as the invite join. Unknown, not nearby, switched off, ended, blocked and
+      too far are all the same 404 `{ "error": "This session isn't available." }` (blocked is 404 here, not the invite
+      join's 403, so a blocked user can't tell the session exists). 404 without `events`, 401 signed out, 400 bad
+      position. Tests in `NearbyJoinApiTests.cs` (CI only).
 - [ ] N6 Rate limiters for list and join.
 - [ ] N7 Server tests: in/out of radius, accuracy allowance (and its cap), flag off = 404, blocked, already a
       member, re-ping moves the location, non-owner can't ping, bad-accuracy ping rejected, uniform failure.
