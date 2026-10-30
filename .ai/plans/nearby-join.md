@@ -104,8 +104,9 @@ chars, `NormalizeSessionName`), so title and code must be decoupled; check how f
   available.").
 - **Create screen:** replace the pin/range block with the switch and radius choice; send position with Create (needs
   when-in-use location permission at that moment, with a fallback explanation if denied: the switch can't be turned on).
-- **Main screen:** while the screen is open and location is granted, request the nearby list on appear and every ~60 s
-  (not in the background). One tile per session, title first, organiser and distance beneath; replaces the single
+- **Main screen:** while the screen is open and location is granted, request the nearby list on appear, when the app
+  comes to the front, when pulled down, and every 3 minutes while the app is visible (not in the background or
+  while tracking; each refresh takes a one-off GPS fix). One tile per session, title first, organiser and distance beneath; replaces the single
   placeholder sign.
 - **Tap a tile:** an information sheet, not a choice. It tells the person who will see them (everyone in the run: name and
   live location), when (only while tracking; they can leave any time), who is in it, and whether replay is kept. Then

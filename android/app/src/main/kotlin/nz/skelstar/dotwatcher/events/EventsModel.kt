@@ -35,17 +35,20 @@ class EventsModel(
 
     /** Reloads the list. Safe to call often: a network failure keeps what is already shown. */
     fun refresh() {
-        scope.launch {
-            val fix = currentFix()
-            val response = runCatching { repository.getNearbyEvents(fix) }.getOrNull() ?: return@launch
-            when {
-                response.isSuccessful ->
-                    _state.update { it.copy(events = response.body().orEmpty(), isAvailable = true) }
-                // 401 means the session ended, 426 is handled app-wide and 429 means slow down; none says
-                // anything about whether the account has events. Anything else (404) hides the sign quietly.
-                response.code() == 401 || response.code() == 426 || response.code() == 429 -> Unit
-                else -> _state.update { it.copy(events = emptyList(), isAvailable = false) }
-            }
+        scope.launch { refreshNow() }
+    }
+
+    /** [refresh], but returns when the list has loaded, so a pull-to-refresh spinner can end with it. */
+    suspend fun refreshNow() {
+        val fix = currentFix()
+        val response = runCatching { repository.getNearbyEvents(fix) }.getOrNull() ?: return
+        when {
+            response.isSuccessful ->
+                _state.update { it.copy(events = response.body().orEmpty(), isAvailable = true) }
+            // 401 means the session ended, 426 is handled app-wide and 429 means slow down; none says
+            // anything about whether the account has events. Anything else (404) hides the sign quietly.
+            response.code() == 401 || response.code() == 426 || response.code() == 429 -> Unit
+            else -> _state.update { it.copy(events = emptyList(), isAvailable = false) }
         }
     }
 
