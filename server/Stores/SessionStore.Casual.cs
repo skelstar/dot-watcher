@@ -96,12 +96,24 @@ public partial class SessionStore
     {
         using var conn = Connect();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "SELECT casual_visible_to_non_crew, features FROM users WHERE id = @userId";
+        cmd.CommandText = "SELECT casual_visible_to_non_crew, features, casual_hide_start_area FROM users WHERE id = @userId";
         cmd.Parameters.AddWithValue("@userId", userId);
         using var reader = cmd.ExecuteReader();
         return reader.Read()
-            ? new CasualAccount(reader.GetBoolean(0), ParseFeatures(reader.GetString(1)))
+            ? new CasualAccount(reader.GetBoolean(0), ParseFeatures(reader.GetString(1)), reader.GetBoolean(2))
             : new CasualAccount(false, []);
+    }
+
+    public bool SetCasualHideStartArea(string userId, bool hide)
+    {
+        using var conn = Connect();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "UPDATE users SET casual_hide_start_area = @hide WHERE id = @userId";
+        cmd.Parameters.AddWithValue("@hide", hide);
+        cmd.Parameters.AddWithValue("@userId", userId);
+        var changed = cmd.ExecuteNonQuery() > 0;
+        InvalidateCasualSnapshot();
+        return changed;
     }
 
     public bool SetCasualVisibleToNonCrew(string userId, bool visible)
@@ -451,7 +463,7 @@ public partial class SessionStore
             SELECT DISTINCT ON (l.runner_user_id)
                    l.runner_user_id, l.runner_name, l.latitude, l.longitude, l.heading, l.timestamp,
                    l.next_expected_at, l.is_ultra_constrained, l.battery_level, l.in_session, l.received_at,
-                   u.casual_visible_to_non_crew, r.start_lat, r.start_lon
+                   u.casual_visible_to_non_crew, r.start_lat, r.start_lon, u.casual_hide_start_area
             FROM location_updates l
             JOIN casual_runs r ON r.id = l.casual_run_id AND r.ended_at IS NULL
             JOIN users u ON u.id = l.runner_user_id
@@ -479,7 +491,8 @@ public partial class SessionStore
                 reader.GetBoolean(11),
                 reader.IsDBNull(12) ? null : reader.GetDouble(12),
                 reader.IsDBNull(13) ? null : reader.GetDouble(13),
-                DateTimeOffset.Parse(reader.GetString(10))));
+                DateTimeOffset.Parse(reader.GetString(10)),
+                reader.GetBoolean(14)));
         }
         return entries;
     }

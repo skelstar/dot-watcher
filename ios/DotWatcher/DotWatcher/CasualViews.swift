@@ -186,6 +186,15 @@ struct BeforeYouGoSheet: View {
 struct WhoCanSeeMeSheet: View {
     var casual: CasualStore
 
+    /// "who aren't in your crew" is underlined: it is the group the setting is about.
+    private static let hideStartAreaCaption: AttributedString = {
+        var text = AttributedString("People who aren't in your crew don't see you until you are 300 m from where you started.")
+        if let range = text.range(of: "who aren't in your crew") {
+            text[range].underlineStyle = .single
+        }
+        return text
+    }()
+
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             Text("Who can see me")
@@ -206,7 +215,23 @@ struct WhoCanSeeMeSheet: View {
                     Text("A grey dot with no name, within 5 km.").font(.subheadline).foregroundStyle(.secondary)
                 }
             }
-            Text("Only people who have also turned this on can be seen, and you see them. Your choice is remembered next time.")
+            Toggle(isOn: Binding(
+                get: { casual.hideStartArea },
+                set: { hide in Task { await casual.setHideStartArea(hide) } }
+            )) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Hide my start area").font(.headline)
+                    Text(Self.hideStartAreaCaption)
+                        .font(.subheadline).foregroundStyle(.secondary)
+                }
+            }
+            .disabled(!casual.visibleToNonCrew)
+            if casual.visibleToNonCrew && !casual.hideStartArea {
+                Text("Anyone nearby can see where you set off from, which may be your home.")
+                    .font(.footnote)
+                    .foregroundStyle(.orange)
+            }
+            Text("Only people who have also turned on \"Show me to people nearby\" can be seen, and you see them. Your choices are remembered next time.")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
             if let error = casual.settingsError {

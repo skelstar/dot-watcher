@@ -191,6 +191,7 @@ public partial class SessionStore(string connectionString) : IDisposable
         using var addCasual = conn.CreateCommand();
         addCasual.CommandText = """
             ALTER TABLE users ADD COLUMN IF NOT EXISTS casual_visible_to_non_crew BOOLEAN NOT NULL DEFAULT FALSE;
+            ALTER TABLE users ADD COLUMN IF NOT EXISTS casual_hide_start_area BOOLEAN NOT NULL DEFAULT TRUE;
             ALTER TABLE location_updates ADD COLUMN IF NOT EXISTS in_session BOOLEAN NOT NULL DEFAULT FALSE;
             -- Which run a casual position belongs to, and when the server received it. Liveness uses
             -- the server's clock (received_at), never the phone's, which can be wrong. A null

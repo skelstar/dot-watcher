@@ -28,7 +28,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import nz.skelstar.dotwatcher.location.TRACKING_DURATION_OPTIONS
 import java.time.Duration
@@ -114,6 +119,13 @@ private fun Point(title: String, body: String) {
     }
 }
 
+/** "who aren't in your crew" is underlined: it is the group the setting is about. */
+private val HIDE_START_AREA_BODY = buildAnnotatedString {
+    append("People ")
+    withStyle(SpanStyle(textDecoration = TextDecoration.Underline)) { append("who aren't in your crew") }
+    append(" don't see you until you are 300 m from where you started.")
+}
+
 /**
  * Who can see a casual run. Crew always can. The switch controls strangers nearby: off until the
  * person turns it on, then remembered. Only people who have also turned it on can be seen, and
@@ -123,8 +135,10 @@ private fun Point(title: String, body: String) {
 @Composable
 fun WhoCanSeeMeSheet(
     visibleToNonCrew: Boolean,
+    hideStartArea: Boolean,
     error: String?,
     onVisibleChange: (Boolean) -> Unit,
+    onHideStartAreaChange: (Boolean) -> Unit,
     onDismiss: () -> Unit,
 ) {
     ModalBottomSheet(onDismissRequest = onDismiss) {
@@ -135,21 +149,35 @@ fun WhoCanSeeMeSheet(
             Text("Who can see me", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
             SwitchRow(
                 title = "My crew",
-                body = "Always. They see your name.",
+                body = AnnotatedString("Always. They see your name."),
                 checked = true,
                 enabled = false,
                 onCheckedChange = {},
             )
             SwitchRow(
                 title = "Show me to people nearby",
-                body = "A grey dot with no name, within 5 km.",
+                body = AnnotatedString("A grey dot with no name, within 5 km."),
                 checked = visibleToNonCrew,
                 enabled = true,
                 onCheckedChange = onVisibleChange,
             )
+            SwitchRow(
+                title = "Hide my start area",
+                body = HIDE_START_AREA_BODY,
+                checked = hideStartArea,
+                enabled = visibleToNonCrew,
+                onCheckedChange = onHideStartAreaChange,
+            )
+            if (visibleToNonCrew && !hideStartArea) {
+                Text(
+                    text = "Anyone nearby can see where you set off from, which may be your home.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
             Text(
-                text = "Only people who have also turned this on can be seen, and you see them. " +
-                    "Your choice is remembered next time.",
+                text = "Only people who have also turned on \"Show me to people nearby\" can be seen, and you " +
+                    "see them. Your choices are remembered next time.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -163,7 +191,7 @@ fun WhoCanSeeMeSheet(
 @Composable
 private fun SwitchRow(
     title: String,
-    body: String,
+    body: AnnotatedString,
     checked: Boolean,
     enabled: Boolean,
     onCheckedChange: (Boolean) -> Unit,

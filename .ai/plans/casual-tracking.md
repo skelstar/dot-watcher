@@ -29,6 +29,8 @@ nothing below is verified locally.
 - **Named-session runners appear in casual automatically** (when the toggle is on), with a **lock indicator** on their
   dot meaning "in a private session". Only a boolean is sent; never the session name or id.
 - **Start/end fuzz is in v1:** the first and last ~300 m of a run are hidden from non-crew. Crew see everything.
+  The runner can turn it off with **"Hide my start area"** (`users.casual_hide_start_area`, default on; `hideStartArea`
+  on `/me/casual/settings`). It is checked against the runner's own setting, and crew are never affected.
 - **Retention is 7 days** (replay window and purge). Stale cutoff stays 10 min.
 
 ## Implementation status
@@ -93,7 +95,9 @@ server; unit tests pass (`CasualWireTest`). Not yet on a real phone. Decisions f
   now), fit-all, an eye for Who can see me, a "N crew out · M nearby" chip, grey dots for nearby people with a padlock
   for those in a session, and **Hold to stop**.
 - **Who can see me**: crew always; "Show me to people nearby" off by default, remembered on the phone (the server is
-  the source of truth).
+  the source of truth). Below it, "Hide my start area" (on by default, greyed out while the nearby switch is off; the
+  wording underlines "who aren't in your crew"), with a warning when it is turned off. Mock-up:
+  `.ai/mockups/start-area-toggle.html`.
 - **Hidden unless the server has it**: the start screen probes `GET /me/casual/settings`; a 404 (older server, or an
   account without the `casual` feature) shows nothing, as crew does. Verified: an account without the feature sees
   the unchanged start screen.
@@ -171,7 +175,7 @@ the rule lives in one place (and can later move to a "presence" model without to
 |---|---|---|
 | The viewer themselves | yes | named (own name) |
 | Crew (mutual link), not blocked | yes, any distance | named: crew nickname, else initials (as in crew) |
-| Non-crew, within 5 km of viewer, **and** both of you have the toggle on, and not in the hidden start/end ~300 m | yes | anonymous grey dot (lat, lon, heading, `inSession` lock flag) |
+| Non-crew, within 5 km of viewer, **and** both of you have the toggle on, and not in the hidden start/end ~300 m (unless they turned "Hide my start area" off) | yes | anonymous grey dot (lat, lon, heading, `inSession` lock flag) |
 | Anyone blocked either way (`AreBlocked`) | never | n/a |
 | Everyone else | no | n/a |
 
