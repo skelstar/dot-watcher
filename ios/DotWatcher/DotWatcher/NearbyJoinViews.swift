@@ -225,6 +225,57 @@ struct NearbyJoinSheet: View {
 
 // MARK: - Organiser controls
 
+/// What the map screen adds for the organiser of a nearby session: a short note under the top edge (the
+/// join-location button's confirmation), the settings sheet, and the End session confirmation. A modifier
+/// of its own so the map's already long chain of sheets and dialogs stays within the type-checker's budget.
+struct NearbyOrganiserControls: ViewModifier {
+    var location: LocationManager
+    /// The session the controls apply to; nil when the person isn't its nearby organiser.
+    let sessionId: String?
+    @Binding var showSettings: Bool
+    @Binding var showEndSession: Bool
+    let note: String?
+    let onEnd: () async -> Void
+
+    func body(content: Content) -> some View {
+        content
+            .overlay(alignment: .top) {
+                if let note {
+                    Text(note)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.black)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 8)
+                        .background(Color.white.opacity(0.92), in: Capsule())
+                        .shadow(color: .black.opacity(0.18), radius: 2, y: 1)
+                        .padding(.top, 70)
+                        .transition(.opacity)
+                        .allowsHitTesting(false)
+                }
+            }
+            .sheet(isPresented: $showSettings) {
+                if let sessionId {
+                    NearbySettingsSheet(location: location, sessionId: sessionId) {
+                        // Wait for the sheet to finish dismissing before asking, or the dialog is dropped.
+                        Task {
+                            try? await Task.sleep(for: .milliseconds(400))
+                            showEndSession = true
+                        }
+                    }
+                    .presentationDetents([.medium, .large])
+                }
+            }
+            .confirmationDialog("End this session?", isPresented: $showEndSession, titleVisibility: .visible) {
+                Button("End session", role: .destructive) {
+                    Task { await onEnd() }
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("This ends it for everyone. Replay stays available.")
+            }
+    }
+}
+
 /// The organiser's nearby settings, from the map's join-location button: range, Ping, stop showing the
 /// session nearby, and End session.
 struct NearbySettingsSheet: View {
