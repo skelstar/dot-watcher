@@ -390,13 +390,19 @@
         <span class="path">/sessions</span>
         <span class="auth-badge auth-required">Bearer token</span>
       </div>
-      <p class="purpose">Create a new session. The caller becomes the owner. An invite code is generated server-side and returned in the response.</p>
+      <p class="purpose">Create a new session. The caller becomes the owner. An invite code is generated server-side and returned in the response. With <code>"nearby": true</code> (accounts with the <code>events</code> feature only; 400 otherwise) people near the caller can find and join the session without a code: <code>sessionName</code> then becomes a public title of 1&ndash;30 characters (case and spaces kept, not the invite code), and a position is required, which becomes the first meeting point. Without <code>nearby</code>, <code>sessionName</code> keeps its 4&ndash;8 character rule.</p>
       <div class="details">
         <div class="detail-block">
           <h4>Request Body</h4>
           <pre>{
   "sessionName": "string | null",
-  "displayName": "string | null"
+  "displayName": "string | null",
+  "maxLengthHours": 1&ndash;240 | null,
+  "nearby": true | null,
+  "nearbyRadiusMeters": 50 | 100 | 250 | 500 | null,   // default 100
+  "latitude": number | null,    // required with nearby
+  "longitude": number | null,   // required with nearby
+  "accuracy": number | null     // metres; 100 or better with nearby
 }</pre>
         </div>
         <div class="detail-block">
@@ -435,6 +441,91 @@
   "inviteCode": "string",
   "role": "runner" | "viewer",
   "displayName": "string"
+}</pre>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="endpoint-header">
+        <span class="method method-put">PUT</span>
+        <span class="path">/sessions/<span class="param">{sessionId}</span>/nearby</span>
+        <span class="auth-badge auth-required">Bearer token</span>
+      </div>
+      <p class="purpose">Owner only. The organiser's &ldquo;Ping&rdquo;: a fresh fix moves the session's meeting point (it never moves on its own and needs no tracking), and <code>enabled</code> / <code>radiusMeters</code> change whether people nearby can find the session and how far away they can be. A fix is required unless the call is only <code>"enabled": false</code>. Giving a radius to a session with nearby off turns it on. Switching off hides the session from discovery; existing members stay. 404 without the <code>events</code> feature; 403 if the caller isn't the owner or the id is unknown; 410 if the session has ended; 400 for a bad fix (accuracy worse than 100 m) or radius. Coordinates are never returned.</p>
+      <div class="details">
+        <div class="detail-block">
+          <h4>Request Body</h4>
+          <pre>{
+  "latitude": number | null,
+  "longitude": number | null,
+  "accuracy": number | null,
+  "enabled": true | false | null,
+  "radiusMeters": 50 | 100 | 250 | 500 | null
+}</pre>
+        </div>
+        <div class="detail-block">
+          <h4>Response</h4>
+          <pre>{
+  "nearby": true | false,
+  "radiusMeters": 100
+}</pre>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="endpoint-header">
+        <span class="method method-get">GET</span>
+        <span class="path">/me/events/nearby?lat=&amp;lon=&amp;accuracy=</span>
+        <span class="auth-badge auth-required">Bearer token</span>
+      </div>
+      <p class="purpose">What is happening near the caller. With <code>lat</code> and <code>lon</code>, lists sessions the caller can join from where they are, nearest first, at most 10. A session is listed when nearby is on, it hasn't ended, and the caller is inside its radius (each fix's <code>accuracy</code>, in metres, is forgiven up to 50 m; a missing accuracy forgives nothing). Sessions the caller is already in, or whose organiser they are blocked with either way, are left out. Distance is rounded to 50 m and no coordinates are returned. Without <code>lat</code>/<code>lon</code> it returns the old single placeholder event. 404 without the <code>events</code> feature; 400 for an invalid position; 429 after 120 lookups per user per hour (position-less calls are never limited).</p>
+      <div class="details">
+        <div class="detail-block">
+          <h4>Request Body</h4>
+          <p class="none-label">None</p>
+        </div>
+        <div class="detail-block">
+          <h4>Response</h4>
+          <pre>[{
+  "id": "session-&lt;sessionId&gt;",
+  "eyebrow": "Happening near you · 100 m",
+  "title": "Sunday long run",
+  "subtitle": "Organised by Alice",
+  "sessionId": "string | null"   // null on the placeholder, which can't be joined
+}]</pre>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="endpoint-header">
+        <span class="method method-post">POST</span>
+        <span class="path">/nearby/sessions/<span class="param">{sessionId}</span>/join</span>
+        <span class="auth-badge auth-required">Bearer token</span>
+      </div>
+      <p class="purpose">Joins a session from the nearby list, as a <code>runner</code>, with no invite code. The server re-checks the caller's position against the session's radius. Every refusal (unknown, not nearby, switched off, ended, blocked, too far) is the same 404 so it can't be used to probe. 404 without the <code>events</code> feature; 400 for a missing or invalid position; 429 after 20 attempts per user per hour.</p>
+      <div class="details">
+        <div class="detail-block">
+          <h4>Request Body</h4>
+          <pre>{
+  "latitude": number,
+  "longitude": number,
+  "accuracy": number | null,
+  "displayName": "string | null"
+}</pre>
+        </div>
+        <div class="detail-block">
+          <h4>Response — same shape as the invite join</h4>
+          <pre>{
+  "sessionId": "string",
+  "sessionName": "string",
+  "inviteCode": "string",
+  "role": "runner",
+  "displayName": "string",
+  "ownerDisplayName": "string",
+  "participants": [...]
 }</pre>
         </div>
       </div>

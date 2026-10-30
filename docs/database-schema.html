@@ -420,6 +420,30 @@
             <td class="col-constraints"><span class="tag tag-nn">NOT NULL</span></td>
             <td class="col-notes">ISO 8601. Used by browse query to filter to "today" only</td>
           </tr>
+          <tr>
+            <td class="col-name">nearby</td>
+            <td class="col-type">BOOLEAN</td>
+            <td class="col-constraints"><span class="tag tag-nn">NOT NULL</span></td>
+            <td class="col-notes">Default <code>FALSE</code>. When true, people near the meeting point can find and join the session (see <code>.ai/plans/nearby-join.md</code>). For a nearby session <code>session_name</code> is a free-text public title (1&ndash;30 chars), not normalised</td>
+          </tr>
+          <tr>
+            <td class="col-name">nearby_radius_m</td>
+            <td class="col-type">SMALLINT</td>
+            <td class="col-constraints"></td>
+            <td class="col-notes">50, 100, 250 or 500; null when the session was never nearby</td>
+          </tr>
+          <tr>
+            <td class="col-name">anchor_lat, anchor_lon</td>
+            <td class="col-type">DOUBLE PRECISION</td>
+            <td class="col-constraints"></td>
+            <td class="col-notes">The meeting point, set by the organiser's Ping. Never returned to clients</td>
+          </tr>
+          <tr>
+            <td class="col-name">anchor_accuracy_m</td>
+            <td class="col-type">REAL</td>
+            <td class="col-constraints"></td>
+            <td class="col-notes">Accuracy of the meeting-point fix; used to forgive GPS error when judging the radius</td>
+          </tr>
         </tbody>
       </table>
       <div class="indexes">

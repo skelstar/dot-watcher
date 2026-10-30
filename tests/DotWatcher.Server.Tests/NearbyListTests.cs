@@ -72,6 +72,29 @@ public class NearbyListTests
     }
 
     [Fact]
+    public async Task List_FollowsTheMeetingPoint_WhenTheOrganiserPingsAgain()
+    {
+        using var factory = new DotWatcherApiFactory { EnabledForAll = ["events"] };
+        using var client = factory.CreateClient();
+        var organiser = await AuthTestHelpers.RegisterAsync(client, "alice", "Alice");
+        var session = await CreateNearbyAsync(client, organiser, radius: 100);
+        var joiner = await AuthTestHelpers.RegisterAsync(client, "bob", "Bob");
+        var finish = Lat + 50 * About100m; // about 5 km further on
+
+        var atStartBefore = await ListAsync(client, joiner, Lat, Lon, accuracy: 5);
+        var atFinishBefore = await ListAsync(client, joiner, finish, Lon, accuracy: 5);
+        await SendAsync(client, HttpMethod.Put, $"/sessions/{session.SessionId}/nearby", organiser,
+            new { latitude = finish, longitude = Lon, accuracy = 5 });
+        var atStartAfter = await ListAsync(client, joiner, Lat, Lon, accuracy: 5);
+        var atFinishAfter = await ListAsync(client, joiner, finish, Lon, accuracy: 5);
+
+        Assert.Single(await atStartBefore.Content.ReadFromJsonAsync<JsonElement[]>() ?? []);
+        Assert.Empty(await atFinishBefore.Content.ReadFromJsonAsync<JsonElement[]>() ?? []);
+        Assert.Empty(await atStartAfter.Content.ReadFromJsonAsync<JsonElement[]>() ?? []);
+        Assert.Single(await atFinishAfter.Content.ReadFromJsonAsync<JsonElement[]>() ?? []);
+    }
+
+    [Fact]
     public async Task List_ExcludesSwitchedOffSessions()
     {
         using var factory = new DotWatcherApiFactory { EnabledForAll = ["events"] };

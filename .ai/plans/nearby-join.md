@@ -146,9 +146,13 @@ chars, `NormalizeSessionName`), so title and code must be decoupled; check how f
 - [x] N6 Rate limiters for list and join. `server/NearbyLimiter.cs`: 120 list requests and 20 join attempts per
       account per hour, separate budgets, 429 when spent. The position-less placeholder call is never limited.
       Tests in `NearbyLimiterTests.cs` (CI only). Ping is not limited (owner-only, one session per organiser).
-- [ ] N7 Server tests: in/out of radius, accuracy allowance (and its cap), flag off = 404, blocked, already a
+- [x] N7 Server tests: in/out of radius, accuracy allowance (and its cap), flag off = 404, blocked, already a
       member, re-ping moves the location, non-owner can't ping, bad-accuracy ping rejected, uniform failure.
-- [ ] N8 Update `docs/api-reference.html` and the mock-up (replace pin/range with switch + radius; show several rows).
+      Spread over `NearbyCreateTests`, `NearbyPingTests`, `NearbyListTests`, `NearbyJoinApiTests`,
+      `NearbyLimiterTests` (CI only). Still to add with N3b: one-active-session and End session.
+- [~] N8 Update `docs/api-reference.html` and the mock-up (replace pin/range with switch + radius; show several rows).
+      Done: `docs/api-reference.html` (create fields, Ping, list, join) and `docs/database-schema.html` (new
+      columns). Still to do: the mock-up `.ai/mockups/create-flow.html`, and the API docs for N3b when it lands.
 - [ ] N9 iOS: Create switch + radius, Ping button (start + map screen), list on main screen, confirm sheet, join.
 - [ ] N10 Android: the same.
 - [ ] N3b One active session per organiser: 409 on create (events flag only); "active" = not archived and within event
