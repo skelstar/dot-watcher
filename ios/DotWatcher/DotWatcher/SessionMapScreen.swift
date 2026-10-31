@@ -194,6 +194,13 @@ struct SessionMapScreen: View {
                     MapPolyline(coordinates: location.routeCoordinates)
                         .stroke(Color(red: 252 / 255, green: 76 / 255, blue: 2 / 255).opacity(0.9), lineWidth: 5) // Strava orange
                 }
+                // The organiser's join range: a dotted ring around the join location while nearby is on.
+                if let id = nearbySessionId, let status = location.nearbyStatuses[id], status.nearby,
+                   let center = location.nearbyMeetingPoints[id] {
+                    MapCircle(center: center, radius: CLLocationDistance(status.radiusMeters))
+                        .foregroundStyle(Color.black.opacity(0.04))
+                        .stroke(Color.black, style: StrokeStyle(lineWidth: 1, dash: [5, 5]))
+                }
                 ForEach(pins) { pin in
                     Annotation("", coordinate: pin.coordinate) {
                         let age = pin.timestamp.map { context.date.timeIntervalSince($0) }

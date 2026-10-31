@@ -167,6 +167,9 @@ final class LocationManager {
     private(set) var ownedSessionIds: Set<String> = []
     /// Nearby settings of sessions this device made nearby in this run, as last reported by the server.
     private(set) var nearbyStatuses: [String: NearbyJoinStatus] = [:]
+    /// Where the organiser last set each of those sessions' join location: the fix this device sent, kept only
+    /// to draw the range on the map (the server never returns it).
+    private(set) var nearbyMeetingPoints: [String: CLLocationCoordinate2D] = [:]
     private var lastParticipantCount = 0
     private var isLoadingSessions = false
     fileprivate var latestLocation: CLLocation?
@@ -520,6 +523,7 @@ final class LocationManager {
         ownedSessionIds.insert(membership.sessionId)
         if let nearby {
             nearbyStatuses[membership.sessionId] = NearbyJoinStatus(nearby: true, radiusMeters: nearby.radiusMeters)
+            nearbyMeetingPoints[membership.sessionId] = nearby.fix.coordinate
         }
         upsertMembership(membership)
         selectSession(membership)
@@ -591,6 +595,7 @@ final class LocationManager {
         if let enabled { body["enabled"] = enabled }
         let status: NearbyJoinStatus = try await send(path: "/sessions/\(targetId)/nearby", method: "PUT", body: body)
         nearbyStatuses[targetId] = status
+        if let fix { nearbyMeetingPoints[targetId] = fix.coordinate }
         return status
     }
 
@@ -600,6 +605,7 @@ final class LocationManager {
         try await sendAuthorizedEmpty(path: "/sessions/\(targetId)/end", method: "POST")
         ownedSessionIds.remove(targetId)
         nearbyStatuses.removeValue(forKey: targetId)
+        nearbyMeetingPoints.removeValue(forKey: targetId)
         memberships.removeAll { $0.sessionId == targetId }
         if sessionId == targetId {
             sessionId = ""
@@ -695,6 +701,7 @@ final class LocationManager {
         try await sendEmpty(path: "/me/sessions/\(code)/membership", method: "DELETE", token: token)
         ownedSessionIds.remove(code)
         nearbyStatuses.removeValue(forKey: code)
+        nearbyMeetingPoints.removeValue(forKey: code)
         memberships.removeAll { $0.sessionId == code }
         if sessionId == code {
             sessionId = ""
