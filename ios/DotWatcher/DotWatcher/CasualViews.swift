@@ -318,6 +318,8 @@ struct CasualMapScreen: View {
 
     @Environment(\.scenePhase) private var scenePhase
     @State private var camera: MapCameraPosition = .automatic
+    /// While set, the map re-frames everyone as positions move; fit-all sets it, dragging the map clears it.
+    @State private var fitLocked = true
     @State private var stopProgress: CGFloat = 0
     @State private var showExtend = false
     @State private var showWhoCanSeeMe = false
@@ -455,19 +457,29 @@ struct CasualMapScreen: View {
                     }
                 }
             }
+            .onChange(of: context.date) { _, _ in
+                if fitLocked { frameEveryone() }
+            }
+            .onChange(of: camera.positionedByUser) { _, byUser in
+                if byUser { fitLocked = false }
+            }
         }
         .ignoresSafeArea()
         .onChange(of: pins.count + casual.nearby.count) { _, count in
-            // Frame everyone whenever someone arrives or leaves; the fit-all button does it on demand.
-            if count != fittedCount {
-                fittedCount = count
-                fitAll()
-            }
+            // Frame everyone whenever someone arrives (not when they leave); the fit-all button does it on demand.
+            let arrived = count > fittedCount
+            fittedCount = count
+            if arrived { fitAll() }
         }
         .onAppear { fitAll() }
     }
 
     private func fitAll() {
+        fitLocked = true
+        frameEveryone()
+    }
+
+    private func frameEveryone() {
         // Everyone on the map, anonymous dots included: they are why the person opened it.
         let coordinates = pins.map(\.coordinate)
             + casual.nearby.map { CLLocationCoordinate2D(latitude: $0.latitude, longitude: $0.longitude) }
