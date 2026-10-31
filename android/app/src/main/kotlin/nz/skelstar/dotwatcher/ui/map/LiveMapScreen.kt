@@ -10,16 +10,12 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.size
@@ -43,7 +39,6 @@ import androidx.compose.ui.graphics.vector.PathParser
 import androidx.core.net.toUri
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
@@ -222,23 +217,19 @@ fun LiveMapScreen(
             },
         )
 
-        // Top-left: wordmark, then the auto-stop countdown while this device is sharing; in the
-        // last 30 minutes a pill underneath spells out the time left.
-        Column(
+        // Top-left: the wordmark, which becomes the auto-stop timer pill while this device is sharing.
+        Box(
             modifier = Modifier
                 .align(Alignment.TopStart)
                 .statusBarsPadding()
                 .padding(start = 14.dp, top = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
+            val tracking = trackingState as? TrackingState.Tracking
+            if (tracking != null) {
+                WordmarkTimerPill(membership.displayName.initials(), tracking) { showExtendSheet = true }
+            } else {
                 Wordmark(initials = membership.displayName.initials())
-                (trackingState as? TrackingState.Tracking)?.let { AutoStopTimer(it) { showExtendSheet = true } }
             }
-            (trackingState as? TrackingState.Tracking)?.let { EndingSoonPill(it.expiresAt) }
         }
 
         // Right rail: share, fit all, web map, invite code, and an overflow menu holding Leave.
@@ -321,14 +312,14 @@ internal fun String.initials(): String = initialsFor(this)
 
 /** The dot-watchr wordmark with the runner's initials as the "o", drawn straight on the map. */
 @Composable
-internal fun Wordmark(initials: String) {
-    val halo = Shadow(color = Color.White, blurRadius = 8f)
+internal fun Wordmark(initials: String, halo: Boolean = true) {
+    val shadow = if (halo) Shadow(color = Color.White, blurRadius = 8f) else null
     val textStyle = TextStyle(
         color = Color.Black,
         fontSize = 19.sp,
         fontWeight = FontWeight.ExtraBold,
         letterSpacing = (-0.6).sp,
-        shadow = halo,
+        shadow = shadow,
     )
     Row(verticalAlignment = Alignment.CenterVertically) {
         Text("d", style = textStyle)
@@ -342,45 +333,50 @@ internal fun Wordmark(initials: String) {
     }
 }
 
-/** Circular countdown to the sharing cap: arc is remaining ÷ the session's total (original
- *  choice plus extensions); turns amber and flashes in the last 30 minutes. Tap to extend. */
+/** How long before the auto-stop the timer bar turns red. */
+private val RED_ZONE = Duration.ofMinutes(5)
+
+/** The wordmark in a frosted pill that doubles as the auto-stop timer, like a fuel gauge on its
+ *  side: a solid bar (remaining ÷ the session's total, original choice plus extensions) fills the
+ *  pill at the start and drains right to left, with the time left at the right end. The bar turns
+ *  red for the last [RED_ZONE]. Tap to extend. */
 @Composable
-internal fun AutoStopTimer(tracking: TrackingState.Tracking, onClick: () -> Unit) {
-    val expiresAt = tracking.expiresAt
+internal fun WordmarkTimerPill(initials: String, tracking: TrackingState.Tracking, onClick: () -> Unit) {
     val now by rememberSecondClock()
     val total = tracking.totalDuration.coerceAtLeast(Duration.ofSeconds(1))
-    val remaining = Duration.between(now, expiresAt).coerceAtLeast(Duration.ZERO)
+    val remaining = Duration.between(now, tracking.expiresAt).coerceAtLeast(Duration.ZERO)
     val fraction = (remaining.seconds.toFloat() / total.seconds.toFloat()).coerceIn(0f, 1f)
-    val low = remaining <= ENDING_SOON
-    val arcColor = if (low) Color(0xFFE08A00) else Color(0xFF30A14E)
-
-    val flash by rememberInfiniteTransition(label = "flash").animateFloat(
-        initialValue = 0f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(tween(1000), RepeatMode.Reverse),
-        label = "flash",
-    )
-    val background = if (low) lerp(GlassColor, Color(0xF2FFD666), flash) else GlassColor
+    val barColor = if (remaining <= RED_ZONE) Color(0xFFE5372D) else Color.White.copy(alpha = 0.9f)
 
     Box(
-        modifier = Modifier.size(46.dp).clip(CircleShape).background(background)
+        modifier = Modifier.width(204.dp).height(44.dp).clip(CircleShape)
+            .background(Color.White.copy(alpha = 0.3f))
             .clickable(onClick = onClick)
-            .semantics { contentDescription = "Auto-stops in ${remaining.toMinutes()} minutes" },
-        contentAlignment = Alignment.Center,
+            .semantics { contentDescription = "Auto-stops in ${(remaining.seconds + 59) / 60} minutes" },
     ) {
-        Canvas(Modifier.fillMaxSize().padding(2.dp)) {
-            val stroke = Stroke(width = 3.dp.toPx(), cap = StrokeCap.Round)
-            drawArc(Color.Black.copy(alpha = 0.08f), 0f, 360f, false, style = stroke)
-            drawArc(arcColor, -90f, 360f * fraction, false, style = stroke)
+        Box(Modifier.fillMaxHeight().fillMaxWidth(fraction).background(barColor))
+        Row(
+            modifier = Modifier.fillMaxSize().padding(horizontal = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Wordmark(initials = initials, halo = false)
+            Spacer(Modifier.weight(1f))
+            Text(
+                text = timeLeftLabel(remaining),
+                color = Color.Black,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Bold,
+                style = TextStyle(fontFeatureSettings = "tnum"),
+            )
         }
-        Text(
-            text = "%d:%02d".format(remaining.toHours(), remaining.toMinutes() % 60),
-            fontSize = 11.sp,
-            fontWeight = FontWeight.Bold,
-            fontFamily = FontFamily.Monospace,
-            color = if (low) Color(0xFFA35F00) else Color(0xFF14181F),
-        )
     }
+}
+
+/** "1h 20m" from an hour up, "29m" under it, whole seconds ("35s") in the last minute. */
+internal fun timeLeftLabel(remaining: Duration): String {
+    if (remaining.seconds < 60) return "${remaining.seconds + if (remaining.nano > 0) 1 else 0}s"
+    val minutes = (remaining.seconds + 59) / 60
+    return if (minutes >= 60) "${minutes / 60}h ${minutes % 60}m" else "${minutes}m"
 }
 
 /** Rail glyphs: the 24×24 stroke paths from the redesign mock, so they match it exactly. */
@@ -443,32 +439,6 @@ internal fun ExtendSessionSheet(
                 Text("Stop now", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
             }
         }
-    }
-}
-
-/** How long before the auto-stop the countdown starts flashing and [EndingSoonPill] appears. */
-private val ENDING_SOON = Duration.ofMinutes(30)
-
-/** "Auto-stops in 8 min" — shown only inside the last [ENDING_SOON] of a sharing session, next to
- *  the flashing countdown, so the amber circle has words behind it. */
-@Composable
-internal fun EndingSoonPill(expiresAt: Instant) {
-    val now by rememberSecondClock()
-    val remaining = Duration.between(now, expiresAt)
-    if (remaining > ENDING_SOON || remaining.isNegative || remaining.isZero) return
-
-    val minutes = (remaining.seconds + 59) / 60 // round up: "1 min" until it actually stops
-    Box(
-        modifier = Modifier.height(36.dp).clip(CircleShape).background(Color(0xF0FFF4D6))
-            .padding(horizontal = 13.dp),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(
-            text = "Auto-stops in $minutes min",
-            color = Color(0xFF7A4D00),
-            fontSize = 12.5.sp,
-            fontWeight = FontWeight.SemiBold,
-        )
     }
 }
 

@@ -139,10 +139,18 @@ data class CasualStartResponse(val sessionId: String, val runId: String)
 
 /** Whether people outside the caller's crew can see them, as an anonymous dot. Off by default. */
 @Serializable
-data class CasualSettings(val visibleToNonCrew: Boolean = false)
+data class CasualSettings(
+    val visibleToNonCrew: Boolean = false,
+    /** People who aren't in the crew don't see the caller until 300 m from where the run began. On by default. */
+    val hideStartArea: Boolean = true,
+)
 
+/** Fields left null are left alone by the server. */
 @Serializable
-data class UpdateCasualSettingsRequest(val visibleToNonCrew: Boolean)
+data class UpdateCasualSettingsRequest(
+    val visibleToNonCrew: Boolean? = null,
+    val hideStartArea: Boolean? = null,
+)
 
 // --- Events near you (server: Controllers/EventsController.cs) --------------------------
 

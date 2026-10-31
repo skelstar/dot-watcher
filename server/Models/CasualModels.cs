@@ -3,12 +3,17 @@ namespace DotWatcher.Server;
 // Casual tracking (see .ai/plans/casual-tracking.md). Every shape here is new and only reached by
 // accounts with the "casual" feature, so none of it changes what an installed build already sees.
 
+// HideStartArea: people who aren't in the runner's crew don't see them until they are
+// CasualVisibility.StartFuzzMeters from where the run began. On unless the runner turns it off; crew
+// are never affected.
 public record CasualSettings(
-    bool VisibleToNonCrew
+    bool VisibleToNonCrew,
+    bool HideStartArea = true
 );
 
 public record UpdateCasualSettingsRequest(
-    bool? VisibleToNonCrew = null
+    bool? VisibleToNonCrew = null,
+    bool? HideStartArea = null
 );
 
 public record CasualStartResponse(
@@ -44,7 +49,9 @@ public record CasualLiveEntry(
     double? StartLongitude,
     // When the server received the position. "Out" is judged from this, never from the phone's
     // own clock (Position.Timestamp), which can be wrong.
-    DateTimeOffset ReceivedAt
+    DateTimeOffset ReceivedAt,
+    // The runner's own setting: when true, non-crew don't see them near where the run began.
+    bool HideStartArea = true
 );
 
 public enum CasualPostOutcome
@@ -61,7 +68,7 @@ public enum CasualPostOutcome
 public record CasualPostResult(CasualPostOutcome Outcome, CasualLiveEntry? Self = null);
 
 /// <summary>What the casual endpoints need to know about an account, read in one query.</summary>
-public record CasualAccount(bool VisibleToNonCrew, IReadOnlyList<string> GrantedFeatures);
+public record CasualAccount(bool VisibleToNonCrew, IReadOnlyList<string> GrantedFeatures, bool HideStartArea = true);
 
 /// <summary>A new watch link for the caller's current run. <see cref="Path"/> is relative to the web
 /// site (<c>/watch/{token}</c>); each client builds the full link with its own web base URL.</summary>

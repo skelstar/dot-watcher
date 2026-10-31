@@ -22,6 +22,9 @@ data class CasualUiState(
     val availability: CasualAvailability = CasualAvailability.Unknown,
     /** "Show me to people nearby". Off until the person turns it on, then remembered. */
     val visibleToNonCrew: Boolean = false,
+    /** "Hide my start area": people who aren't in the crew don't see the person until they are 300 m
+     *  from where the run began. On unless the person turns it off; the server holds the value. */
+    val hideStartArea: Boolean = true,
     /** How many of the person's crew are out right now; null until first loaded. */
     val crewOut: Int? = null,
     val error: String? = null,
@@ -54,8 +57,11 @@ class CasualModel(
         when {
             settings.isSuccessful -> {
                 val visible = settings.body()?.visibleToNonCrew ?: false
+                val hide = settings.body()?.hideStartArea ?: true
                 prefs.visibleToNonCrew = visible
-                _state.update { it.copy(availability = CasualAvailability.Available, visibleToNonCrew = visible) }
+                _state.update {
+                    it.copy(availability = CasualAvailability.Available, visibleToNonCrew = visible, hideStartArea = hide)
+                }
             }
             // 401 means the session ended and 426 is handled app-wide; neither says anything about
             // whether the server has casual. Anything else (404) hides the feature quietly.
@@ -86,6 +92,25 @@ class CasualModel(
                 _state.update {
                     it.copy(
                         visibleToNonCrew = before,
+                        error = response?.errorMessageOrStatus()
+                            ?: (result.exceptionOrNull()?.networkMessage() ?: "Network error. Try again."),
+                    )
+                }
+            }
+        }
+    }
+
+    /** Turns "Hide my start area" on or off. Shown at once; put back if the server refuses it. */
+    fun setHideStartArea(hide: Boolean) {
+        val before = _state.value.hideStartArea
+        _state.update { it.copy(hideStartArea = hide, error = null) }
+        scope.launch {
+            val result = runCatching { repository.setCasualHideStartArea(hide) }
+            val response = result.getOrNull()
+            if (response == null || !response.isSuccessful) {
+                _state.update {
+                    it.copy(
+                        hideStartArea = before,
                         error = response?.errorMessageOrStatus()
                             ?: (result.exceptionOrNull()?.networkMessage() ?: "Network error. Try again."),
                     )

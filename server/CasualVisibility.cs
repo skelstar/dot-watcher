@@ -9,7 +9,8 @@ namespace DotWatcher.Server;
 /// <item>Crew are named (nickname, else initials) at any distance, whatever their toggle says.</item>
 /// <item>Anyone else is an anonymous dot, only if both they and the viewer have the toggle on, they are
 /// within <see cref="NearbyRadiusMeters"/> of the viewer, and they are not within
-/// <see cref="StartFuzzMeters"/> of where their own run began.</item>
+/// <see cref="StartFuzzMeters"/> of where their own run began (unless they turned
+/// <see cref="CasualLiveEntry.HideStartArea"/> off).</item>
 /// <item>Blocked people never appear.</item>
 /// </list>
 /// </summary>
@@ -84,7 +85,7 @@ public static class CasualVisibility
             if (GeoMath.DistanceMeters(here.Latitude, here.Longitude, p.Latitude, p.Longitude) > NearbyRadiusMeters)
                 continue;
 
-            if (entry.StartLatitude is { } startLat && entry.StartLongitude is { } startLon
+            if (entry.HideStartArea && entry.StartLatitude is { } startLat && entry.StartLongitude is { } startLon
                 && GeoMath.DistanceMeters(startLat, startLon, p.Latitude, p.Longitude) < StartFuzzMeters)
                 continue;
 

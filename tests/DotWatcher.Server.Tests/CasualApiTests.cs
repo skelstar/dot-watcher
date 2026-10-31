@@ -287,6 +287,30 @@ public class CasualApiTests
     }
 
     [Fact]
+    public async Task HideStartArea_DefaultsOn_AndTurningItOffShowsNonCrewFromTheFirstPosition()
+    {
+        using var factory = CasualFactory();
+        using var client = factory.CreateClient();
+        var alice = await RegisterAsync(client, "alice", "AL");
+        var bob = await RegisterAsync(client, "bob", "BO");
+        Assert.True((await GetSettingsAsync(client, bob.AccessToken)).HideStartArea);
+
+        await SetVisibleAsync(client, bob.AccessToken, true);
+        await SetVisibleAsync(client, alice.AccessToken, true);
+        await StartAsync(client, bob.AccessToken);
+        await PostCasualOkAsync(client, bob.AccessToken, NearLatitude + 0.001);
+        await StartAsync(client, alice.AccessToken);
+        Assert.Empty((await PostCasualOkAsync(client, alice.AccessToken, HereLatitude)).Nearby);
+
+        var off = await SendAsync(client, HttpMethod.Put, "/me/casual/settings", bob.AccessToken, new { hideStartArea = false });
+        Assert.Equal(HttpStatusCode.OK, off.StatusCode);
+        Assert.False((await GetSettingsAsync(client, bob.AccessToken)).HideStartArea);
+        Assert.True((await GetSettingsAsync(client, bob.AccessToken)).VisibleToNonCrew);
+
+        Assert.Single((await PostCasualOkAsync(client, alice.AccessToken, HereLatitude)).Nearby);
+    }
+
+    [Fact]
     public async Task Stop_RemovesTheRunnerFromEveryonesMap()
     {
         using var factory = CasualFactory();
