@@ -17,6 +17,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.viewmodel.compose.viewModel
+import nz.skelstar.dotwatcher.nearby.NearbyOrganiser
 import nz.skelstar.dotwatcher.network.SessionMembership
 import nz.skelstar.dotwatcher.network.UpdateRequiredState
 import nz.skelstar.dotwatcher.ui.crew.CrewConfirmDialog
@@ -61,6 +62,7 @@ fun DotWatcherApp(hasBackgroundLocationPermission: Boolean) {
     val authState by viewModel.authState.collectAsState()
     val sessionState by viewModel.sessionState.collectAsState()
     val crewState by viewModel.crew.state.collectAsState()
+    val activeSessionConflict by viewModel.activeSessionConflict.collectAsState()
     // Holding Go needs "all the time" location, as sharing in a session does.
     var casualNeedsLocationPermission by remember { mutableStateOf(false) }
 
@@ -104,6 +106,11 @@ fun DotWatcherApp(hasBackgroundLocationPermission: Boolean) {
                     crew = viewModel.crew,
                     casual = viewModel.casual,
                     events = viewModel.events,
+                    onJoinNearby = viewModel::joinNearby,
+                    activeSessionConflict = activeSessionConflict,
+                    onEndActiveSessionAndCreate = viewModel::endActiveSessionAndCreate,
+                    onDismissActiveSessionConflict = viewModel::dismissActiveSessionConflict,
+                    hasPreciseLocation = viewModel.hasPreciseLocation,
                     onStartCasual = { duration ->
                         if (hasBackgroundLocationPermission) {
                             casualNeedsLocationPermission = false
@@ -161,11 +168,26 @@ fun DotWatcherApp(hasBackgroundLocationPermission: Boolean) {
 /** The session map, with the "share your location?" sheet over it until the runner answers. */
 @Composable
 private fun SessionMapDestination(membership: SessionMembership, asking: Boolean, viewModel: AppViewModel) {
+    // The join-location controls belong to the organiser of a session made nearby in this run: only those
+    // have a status.
+    val nearbyStatuses by viewModel.nearbyStatuses.collectAsState()
+    val meetingPoints by viewModel.nearbyMeetingPoints.collectAsState()
+    val nearbyOrganiser = nearbyStatuses[membership.sessionId]?.let { status ->
+        NearbyOrganiser(
+            status = status,
+            meetingPoint = meetingPoints[membership.sessionId],
+            setJoinLocation = { radius -> viewModel.pingJoinLocation(membership.sessionId, radius) },
+            stopShowing = { viewModel.stopShowingNearby(membership.sessionId) },
+            endSession = { viewModel.endSession(membership) },
+        )
+    }
+
     Box(modifier = Modifier.fillMaxSize()) {
         LiveMapScreen(
             membership = membership,
             repository = viewModel.repository,
             onLeaveSession = { viewModel.leaveSession(membership) },
+            nearbyOrganiser = nearbyOrganiser,
         )
         if (asking) {
             ShareLocationSheet(

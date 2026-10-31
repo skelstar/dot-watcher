@@ -65,9 +65,11 @@ import nz.skelstar.dotwatcher.data.DotWatcherRepository
 import nz.skelstar.dotwatcher.location.LocationTrackingService
 import nz.skelstar.dotwatcher.location.POST_INTERVAL_SECONDS
 import nz.skelstar.dotwatcher.location.TrackingState
+import nz.skelstar.dotwatcher.nearby.NearbyOrganiser
 import nz.skelstar.dotwatcher.network.RunnerPosition
 import nz.skelstar.dotwatcher.network.SessionMembership
 import nz.skelstar.dotwatcher.ui.casual.HoldToStopPill
+import nz.skelstar.dotwatcher.ui.nearby.NearbyOrganiserSheet
 import java.time.Duration
 import java.time.Instant
 
@@ -91,9 +93,12 @@ fun LiveMapScreen(
     membership: SessionMembership,
     repository: DotWatcherRepository,
     onLeaveSession: () -> Unit,
+    /** The nearby controls for the organiser of a session made nearby; null for everyone else. */
+    nearbyOrganiser: NearbyOrganiser? = null,
 ) {
     val context = LocalContext.current
     var positions by remember { mutableStateOf<List<RunnerPosition>>(emptyList()) }
+    var showNearby by remember { mutableStateOf(false) }
     var showPeople by remember { mutableStateOf(false) }
     var showInviteCode by remember { mutableStateOf(false) }
     var showExtendSheet by remember { mutableStateOf(false) }
@@ -179,6 +184,10 @@ fun LiveMapScreen(
         )
     }
 
+    if (showNearby && nearbyOrganiser != null) {
+        NearbyOrganiserSheet(organiser = nearbyOrganiser, onDismiss = { showNearby = false })
+    }
+
     if (showInviteCode) {
         InviteCodeDialog(
             code = membership.inviteCode,
@@ -197,6 +206,10 @@ fun LiveMapScreen(
             fitAllTick = fitAllTick,
             sendIntervalSeconds = POST_INTERVAL_SECONDS,
             ownPaused = pausedForBattery,
+            joinRange = nearbyOrganiser
+                ?.takeIf { it.status.nearby }
+                ?.meetingPoint
+                ?.let { JoinRange(it.latitude, it.longitude, nearbyOrganiser.status.radiusMeters) },
             onRunnerTapped = { name ->
                 // Tapping the runner you're following lets go again.
                 followedRunner = if (name == followedRunner) null else name
@@ -239,6 +252,9 @@ fun LiveMapScreen(
             }
             RailButton(RailIcon.Globe, "Open web map") { context.openWebMap(membership) }
             RailButton(RailIcon.Hash, "Invite code") { showInviteCode = true }
+            if (nearbyOrganiser != null) {
+                RailButton(RailIcon.Pin, "Nearby join") { showNearby = true }
+            }
         }
 
         // While paused for battery, the card below carries its own Stop and takes the bottom edge. Nothing
@@ -373,6 +389,7 @@ internal enum class RailIcon(val paths: List<String>) {
     Fit(listOf("M4 9V5a1 1 0 0 1 1-1h4M15 4h4a1 1 0 0 1 1 1v4M20 15v4a1 1 0 0 1-1 1h-4M9 20H5a1 1 0 0 1-1-1v-4")),
     Globe(listOf("M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18M3 12h18M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18")),
     Hash(listOf("M5 9h14M5 15h14M10 4L8 20M16 4l-2 16")),
+    Pin(listOf("M12 21s-6-5.2-6-10a6 6 0 0 1 12 0c0 4.8-6 10-6 10zM12 8.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5")),
     More(listOf("M5 12h.01M12 12h.01M19 12h.01")),
     Eye(listOf("M2 12s3.6-6.5 10-6.5S22 12 22 12s-3.6 6.5-10 6.5S2 12 2 12zM12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6")),
     Battery(listOf("M4 7h13a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2zM22 11v2M6 10v4")),
