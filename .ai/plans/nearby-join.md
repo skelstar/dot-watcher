@@ -157,7 +157,19 @@ chars, `NormalizeSessionName`), so title and code must be decoupled; check how f
       Done: `docs/api-reference.html` (create fields, Ping, list, join) and `docs/database-schema.html` (new
       columns). The N3b 409 and `POST /sessions/{id}/end` are documented too. Still to do: the mock-up
       `.ai/mockups/create-flow.html`.
-- [ ] N9 iOS: Create switch + radius, Ping button (start + map screen), list on main screen, confirm sheet, join.
+- [~] N9 iOS: Create switch + radius, Ping button (start + map screen), list on main screen, confirm sheet, join.
+      Written on branch `nearby-join-ios` (stacked on `nearby-join-server`), **not built or run**: no Swift
+      toolchain here and `AGENTS.md` leaves verification to CI/Xcode. `NearbyJoinViews.swift` (new),
+      `LocationManager` (when-in-use permission, `currentFix()`, `createSession(nearby:)`, `joinNearby`,
+      `pingNearby`, `endSession`, the 409 as `activeSessionExists`), `EventsStore` (position-aware list, polls
+      every 3 minutes while the app is in front, and on pull-down), `ContentView` (signs, join sheet, Create wiring),
+      `CreateSessionView`, `SessionMapScreen` (join-location button: tap = Ping, hold = settings / End).
+      Deviations from the plan, because the app leaves old sessions on relaunch (`leaveStaleSessions`) and leaving
+      archives a session once the last runner goes: (1) no persistent "your active session" card on the start
+      screen; the 409 raises an "End it and create this one" prompt instead, and keeps the Create entries.
+      (2) The map's Ping/End controls show only for a session this device created nearby in this run (remembered in
+      memory), which also avoids turning nearby on for a session with a code-style title. Joiners with no location
+      permission see a "Find runs near you" sign that asks for it; with it denied they see nothing.
 - [~] N10 Android: the same. Written on branch `nearby-join-android` (stacked on `nearby-join-server`), **not built
       or run**: no Android toolchain here and `AGENTS.md` leaves verification to CI/Android Studio.
       `NearbyFixSource` (one-off fix; the app already asks for foreground location at launch, so there is no new
@@ -179,9 +191,13 @@ chars, `NormalizeSessionName`), so title and code must be decoupled; check how f
       idempotent. The controllers now read the injected `TimeProvider` so expiry is testable. Tests in
       `NearbyActiveSessionTests.cs` (CI only). The check-then-create is not atomic and older builds bypass it, as
       the decision above accepts.
-- [ ] N9b Clients: Create disabled with explanation when an active session exists; End session (confirm) on the
-      start-screen card and map-screen sheet.
-- [ ] N11 Privacy copy: Create explanation, join confirmation, Help text.
+- [~] N9b Clients: Create disabled with explanation when an active session exists; End session (confirm) on the
+      start-screen card and map-screen sheet. iOS: End session (with confirmation) is in the map's join-location
+      menu and settings sheet; Create is not disabled but answers a 409 with an "End it and create this one"
+      prompt (see N9). Android not started.
+- [~] N11 Privacy copy: Create explanation, join confirmation, Help text. iOS has the Create explanation, the
+      join sheet ("who sees what, when") and an updated when-in-use purpose string in `Info.plist`. Still to do:
+      `Help.md` and the Android strings.
 
 ## Open questions
 
