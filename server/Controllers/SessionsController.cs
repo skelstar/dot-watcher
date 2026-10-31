@@ -9,6 +9,9 @@ public class SessionsController(
     BearerTokenAuth auth,
     UserTokenAuth userAuth,
     RouteUploadTokenAuth routeUploadAuth,
+    FeatureFlags features,
+    NearbyLimiter nearbyLimiter,
+    TimeProvider timeProvider,
     ILogger<SessionsController> logger) : ControllerBase
 {
     /// <summary>Lists the caller's active session memberships.</summary>
@@ -52,6 +55,7 @@ public class SessionsController(
     [ProducesResponseType(typeof(SessionMembership), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
     public IActionResult CreateSession([FromBody] CreateSessionRequest? request)
     {
         if (!userAuth.TryAuthenticate(Request, out var user))
@@ -59,8 +63,32 @@ public class SessionsController(
 
         request ??= new CreateSessionRequest();
 
-        if (request.SessionName is not null && SessionStore.NormalizeSessionName(request.SessionName) is null)
+        var wantsNearby = request.Nearby == true;
+        NearbySettings? nearby = null;
+
+        if (wantsNearby)
+        {
+            // Same rule as /me/events/nearby: a feature the account doesn't have is simply unavailable.
+            if (!features.IsEnabled(user.UserId, Features.Events))
+                return BadRequest(new { error = "Nearby join isn't available for this account." });
+
+            if (NearbyJoin.NormalizeTitle(request.SessionName) is null)
+                return BadRequest(new { error = $"A nearby session needs a title of 1-{NearbyJoin.MaxTitleLength} characters." });
+
+            var radius = request.NearbyRadiusMeters ?? NearbyJoin.DefaultRadiusMeters;
+            if (!NearbyJoin.IsAllowedRadius(radius))
+                return BadRequest(new { error = "Nearby radius must be 50, 100, 250 or 500 metres." });
+
+            if (request.Latitude is not double latitude || request.Longitude is not double longitude
+                || !NearbyJoin.IsValidPosition(latitude, longitude, request.Accuracy))
+                return BadRequest(new { error = "A nearby session needs a valid position (accuracy 100 m or better)." });
+
+            nearby = new NearbySettings(radius, latitude, longitude, request.Accuracy);
+        }
+        else if (request.SessionName is not null && SessionStore.NormalizeSessionName(request.SessionName) is null)
+        {
             return BadRequest(new { error = "Session name must be 4-8 letters, numbers, dashes, or underscores." });
+        }
 
         var displayName = string.IsNullOrWhiteSpace(request.DisplayName)
             ? user.DisplayName
@@ -72,8 +100,82 @@ public class SessionsController(
         if (request.MaxLengthHours is int maxLengthHours && (maxLengthHours < 1 || maxLengthHours > 240))
             return BadRequest(new { error = "Max length must be between 1 and 240 hours." });
 
-        var membership = store.CreateSessionForUser(user.UserId, displayName, request.SessionName, request.MaxLengthHours);
+        // One active session per organiser, for accounts with the events feature only, so older builds
+        // and accounts without it behave exactly as before. Best-effort: Staging and Production share a
+        // database and an older Production build can still create a second session.
+        if (features.IsEnabled(user.UserId, Features.Events)
+            && store.FindActiveOwnedSessionId(user.UserId, timeProvider.GetUtcNow()) is { } activeSessionId)
+            return Conflict(new { error = "You already have an active session. End it to create another.", sessionId = activeSessionId });
+
+        var membership = store.CreateSessionForUser(user.UserId, displayName, request.SessionName, request.MaxLengthHours, nearby);
         return Ok(membership);
+    }
+
+    /// <summary>
+    /// Owner only. Ends the session for everyone: it is archived, so nobody can join or rejoin and it
+    /// stops appearing nearby, and every member is marked as having left. Replay and the recording stay.
+    /// </summary>
+    [HttpPost("/sessions/{sessionId}/end")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public IActionResult EndSession(string sessionId)
+    {
+        if (!userAuth.TryAuthenticate(Request, out var user))
+            return Unauthorized();
+
+        // 404 (not 403) without the events feature, so the endpoint looks absent to accounts without it.
+        if (!features.IsEnabled(user.UserId, Features.Events))
+            return NotFound();
+
+        return store.EndSession(sessionId, user.UserId) ? NoContent() : StatusCode(StatusCodes.Status403Forbidden);
+    }
+
+    /// <summary>
+    /// Owner only. Sets the session's nearby-join meeting point from a fresh fix (the "Ping") and/or
+    /// changes whether people nearby can find it and how far away they can be. Needs no tracking.
+    /// </summary>
+    [HttpPut("/sessions/{sessionId}/nearby")]
+    [ProducesResponseType(typeof(NearbyStatus), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status410Gone)]
+    public IActionResult UpdateNearby(string sessionId, [FromBody] UpdateNearbyRequest? request)
+    {
+        if (!userAuth.TryAuthenticate(Request, out var user))
+            return Unauthorized();
+
+        // 404 (not 403) without the events flag, so the endpoint looks absent to accounts without it.
+        if (!features.IsEnabled(user.UserId, Features.Events))
+            return NotFound();
+
+        request ??= new UpdateNearbyRequest();
+
+        if (request.RadiusMeters is int radius && !NearbyJoin.IsAllowedRadius(radius))
+            return BadRequest(new { error = "Nearby radius must be 50, 100, 250 or 500 metres." });
+
+        // Only switching off may go without a fix; anything else (a Ping, switching on, a new radius
+        // from the same sheet) carries the organiser's position.
+        MeetingPoint? point = null;
+        if (request.Latitude is not null || request.Longitude is not null || request.Enabled != false)
+        {
+            if (request.Latitude is not double latitude || request.Longitude is not double longitude
+                || !NearbyJoin.IsValidPosition(latitude, longitude, request.Accuracy))
+                return BadRequest(new { error = "A valid position (accuracy 100 m or better) is needed." });
+
+            point = new MeetingPoint(latitude, longitude, request.Accuracy);
+        }
+
+        var (outcome, status) = store.UpdateNearby(sessionId, user.UserId, request.Enabled, request.RadiusMeters, point);
+        return outcome switch
+        {
+            NearbyUpdateOutcome.NotOwner => StatusCode(StatusCodes.Status403Forbidden),
+            NearbyUpdateOutcome.Archived => StatusCode(StatusCodes.Status410Gone, new { error = "This session has ended." }),
+            _ => Ok(status),
+        };
     }
 
     /// <summary>
@@ -122,6 +224,61 @@ public class SessionsController(
         // joined-runners roster (GetSessionRunners, userId + displayName), not GetParticipants
         // (who's actively posting) — the point is for a new joiner to immediately see everyone
         // already in the session, even ones who haven't started tracking yet.
+        var participants = store.GetSessionRunners(membership.SessionId, user.UserId);
+        return Ok(new
+        {
+            membership.SessionId,
+            membership.SessionName,
+            membership.InviteCode,
+            membership.Role,
+            membership.DisplayName,
+            membership.OwnerDisplayName,
+            Participants = participants,
+        });
+    }
+
+    /// <summary>
+    /// Joins a session found in the nearby list, as a runner, with no invite code. The server re-checks
+    /// the caller's position against the session's radius. Every refusal is the same 404, so it can't
+    /// be used to find out whether a session exists, is nearby or why it said no. Returns the same shape
+    /// as the invite join.
+    /// </summary>
+    [HttpPost("/nearby/sessions/{sessionId}/join")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status429TooManyRequests)]
+    public IActionResult JoinNearbySession(string sessionId, [FromBody] JoinNearbyRequest? request)
+    {
+        if (!userAuth.TryAuthenticate(Request, out var user))
+            return Unauthorized();
+
+        if (!features.IsEnabled(user.UserId, Features.Events))
+            return NotFound();
+
+        if (!nearbyLimiter.TryAcceptJoin(user.UserId))
+            return StatusCode(StatusCodes.Status429TooManyRequests, new { error = "Too many attempts. Try again later." });
+
+        request ??= new JoinNearbyRequest();
+
+        if (request.Latitude is not double latitude || request.Longitude is not double longitude
+            || !NearbyJoin.IsValidPosition(latitude, longitude, null) || request.Accuracy is < 0)
+            return BadRequest(new { error = "A valid position is needed to join." });
+
+        var displayName = string.IsNullOrWhiteSpace(request.DisplayName)
+            ? user.DisplayName
+            : request.DisplayName.Trim();
+
+        if (displayName.Length is < 1 or > 80)
+            return BadRequest(new { error = "Display name must be 1-80 characters." });
+
+        var membership = store.JoinNearbySession(
+            sessionId, user.UserId, displayName, latitude, longitude, request.Accuracy, timeProvider.GetUtcNow());
+
+        if (membership is null)
+            return NotFound(new { error = "This session isn't available." });
+
         var participants = store.GetSessionRunners(membership.SessionId, user.UserId);
         return Ok(new
         {

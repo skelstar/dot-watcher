@@ -144,6 +144,19 @@ public partial class SessionStore(string connectionString) : IDisposable
             """;
         addMaxLengthColumn.ExecuteNonQuery();
 
+        // Nearby join (see .ai/plans/nearby-join.md). Additive and defaulted/nullable: Staging and
+        // Production share this database and an older build names its columns explicitly, so it
+        // never sees these. anchor_* is the meeting point, never returned to clients.
+        using var addNearbyColumns = conn.CreateCommand();
+        addNearbyColumns.CommandText = """
+            ALTER TABLE app_sessions ADD COLUMN IF NOT EXISTS nearby BOOLEAN NOT NULL DEFAULT FALSE;
+            ALTER TABLE app_sessions ADD COLUMN IF NOT EXISTS nearby_radius_m SMALLINT;
+            ALTER TABLE app_sessions ADD COLUMN IF NOT EXISTS anchor_lat DOUBLE PRECISION;
+            ALTER TABLE app_sessions ADD COLUMN IF NOT EXISTS anchor_lon DOUBLE PRECISION;
+            ALTER TABLE app_sessions ADD COLUMN IF NOT EXISTS anchor_accuracy_m REAL;
+            """;
+        addNearbyColumns.ExecuteNonQuery();
+
         // Crew (see .ai/plans/crew-management.md). Every foreign key cascades on purpose: Staging
         // and Production share this database, and a Production build that predates crew still does
         // a plain DELETE FROM users when someone deletes their account. With a non-cascading FK that
@@ -527,9 +540,14 @@ public partial class SessionStore(string connectionString) : IDisposable
     }
 
     public SessionMembership CreateSessionForUser(
-        string userId, string displayName, string? requestedName = null, int? maxLengthHours = null)
+        string userId, string displayName, string? requestedName = null, int? maxLengthHours = null,
+        NearbySettings? nearby = null)
     {
-        var sessionName = NormalizeSessionName(requestedName) ?? requestedName?.Trim() ?? "Session";
+        // A nearby session's title is public text and keeps its case; the legacy name is upper-cased.
+        // Neither is the invite code, which is always generated below.
+        var sessionName = nearby is not null
+            ? NearbyJoin.NormalizeTitle(requestedName) ?? "Session"
+            : NormalizeSessionName(requestedName) ?? requestedName?.Trim() ?? "Session";
         var sessionId = Guid.NewGuid().ToString();
         var inviteCode = GenerateCode(6);
         var now = DateTimeOffset.UtcNow.ToString("O");
@@ -538,9 +556,17 @@ public partial class SessionStore(string connectionString) : IDisposable
 
         using var sessionCmd = conn.CreateCommand();
         sessionCmd.CommandText = """
-            INSERT INTO app_sessions (id, session_name, invite_code, owner_user_id, created_at, max_length_hours)
-            VALUES (@sessionId, @sessionName, @inviteCode, @ownerUserId, @createdAt, @maxLengthHours)
+            INSERT INTO app_sessions (id, session_name, invite_code, owner_user_id, created_at, max_length_hours,
+                                      nearby, nearby_radius_m, anchor_lat, anchor_lon, anchor_accuracy_m)
+            VALUES (@sessionId, @sessionName, @inviteCode, @ownerUserId, @createdAt, @maxLengthHours,
+                    @nearby, @radius, @anchorLat, @anchorLon, @anchorAccuracy)
             """;
+        sessionCmd.Parameters.AddWithValue("@nearby", nearby is not null);
+        sessionCmd.Parameters.AddWithValue("@radius", nearby is null ? DBNull.Value : (short)nearby.RadiusMeters);
+        sessionCmd.Parameters.AddWithValue("@anchorLat", nearby is null ? DBNull.Value : nearby.Latitude);
+        sessionCmd.Parameters.AddWithValue("@anchorLon", nearby is null ? DBNull.Value : nearby.Longitude);
+        sessionCmd.Parameters.AddWithValue("@anchorAccuracy",
+            nearby?.AccuracyMeters is double accuracy ? (float)accuracy : DBNull.Value);
         sessionCmd.Parameters.AddWithValue("@sessionId", sessionId);
         sessionCmd.Parameters.AddWithValue("@sessionName", sessionName);
         sessionCmd.Parameters.AddWithValue("@inviteCode", inviteCode);
@@ -552,6 +578,246 @@ public partial class SessionStore(string connectionString) : IDisposable
         UpsertMembership(conn, sessionId, userId, "runner", displayName, now);
 
         return new SessionMembership(sessionId, sessionName, inviteCode, "runner", displayName, displayName, now);
+    }
+
+    /// <summary>
+    /// The organiser's "Ping": moves the meeting point and/or changes the nearby switch and radius.
+    /// A session that isn't the caller's, doesn't exist or is the casual session all report NotOwner, so
+    /// ids can't be probed. Switching off keeps existing members; it only hides the session from discovery.
+    /// </summary>
+    public (NearbyUpdateOutcome Outcome, NearbyStatus? Status) UpdateNearby(
+        string sessionId, string userId, bool? enabled, int? radiusMeters, MeetingPoint? point)
+    {
+        if (IsCasualSession(sessionId))
+            return (NearbyUpdateOutcome.NotOwner, null);
+
+        using var conn = Connect();
+        using var read = conn.CreateCommand();
+        read.CommandText = """
+            SELECT owner_user_id, archived_at, nearby, nearby_radius_m
+            FROM app_sessions
+            WHERE id = @sessionId
+            """;
+        read.Parameters.AddWithValue("@sessionId", sessionId);
+
+        bool wasOn;
+        int currentRadius;
+        using (var reader = read.ExecuteReader())
+        {
+            if (!reader.Read() || reader.GetString(0) != userId)
+                return (NearbyUpdateOutcome.NotOwner, null);
+
+            if (!reader.IsDBNull(1))
+                return (NearbyUpdateOutcome.Archived, null);
+
+            wasOn = reader.GetBoolean(2);
+            currentRadius = reader.IsDBNull(3) ? NearbyJoin.DefaultRadiusMeters : reader.GetInt16(3);
+        }
+
+        // Giving a radius to a session that has nearby off turns it on, as the plan describes.
+        var nowOn = enabled ?? (wasOn || radiusMeters is not null);
+        var radius = radiusMeters ?? currentRadius;
+
+        using var update = conn.CreateCommand();
+        update.CommandText = """
+            UPDATE app_sessions
+            SET nearby = @nearby,
+                nearby_radius_m = @radius,
+                anchor_lat = COALESCE(@lat, anchor_lat),
+                anchor_lon = COALESCE(@lon, anchor_lon),
+                anchor_accuracy_m = CASE WHEN @lat IS NULL THEN anchor_accuracy_m ELSE @accuracy END
+            WHERE id = @sessionId
+            """;
+        update.Parameters.AddWithValue("@nearby", nowOn);
+        update.Parameters.AddWithValue("@radius", (short)radius);
+        update.Parameters.AddWithValue("@lat", NpgsqlTypes.NpgsqlDbType.Double, (object?)point?.Latitude ?? DBNull.Value);
+        update.Parameters.AddWithValue("@lon", NpgsqlTypes.NpgsqlDbType.Double, (object?)point?.Longitude ?? DBNull.Value);
+        update.Parameters.AddWithValue("@accuracy", NpgsqlTypes.NpgsqlDbType.Real,
+            point?.AccuracyMeters is double accuracy ? (float)accuracy : DBNull.Value);
+        update.Parameters.AddWithValue("@sessionId", sessionId);
+        update.ExecuteNonQuery();
+
+        return (NearbyUpdateOutcome.Ok, new NearbyStatus(nowOn, radius));
+    }
+
+    /// <summary>
+    /// The id of the user's active session, if they have one: owned by them, not archived and still
+    /// within its event length (created_at + max length, default 24 h), so an organiser who abandons a
+    /// session is never locked out of creating another. Several can exist for owners from before the
+    /// one-active-session rule; this returns the newest.
+    /// </summary>
+    public string? FindActiveOwnedSessionId(string ownerUserId, DateTimeOffset now)
+    {
+        using var conn = Connect();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = """
+            SELECT id, created_at, max_length_hours
+            FROM app_sessions
+            WHERE owner_user_id = @ownerUserId AND archived_at IS NULL AND id <> @casualSessionId
+            ORDER BY created_at DESC
+            """;
+        cmd.Parameters.AddWithValue("@ownerUserId", ownerUserId);
+        cmd.Parameters.AddWithValue("@casualSessionId", CasualSessionId);
+        using var reader = cmd.ExecuteReader();
+        while (reader.Read())
+        {
+            var maxLengthHours = reader.IsDBNull(2) ? DefaultMaxLengthHours : reader.GetInt16(2);
+            if (DateTimeOffset.Parse(reader.GetString(1)).AddHours(maxLengthHours) > now)
+                return reader.GetString(0);
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// The owner ends a session for everyone: it is archived (nobody can join or rejoin, nearby listing
+    /// stops) and every current member is marked as having left. Recording and replay stay. Ending an
+    /// already-ended session succeeds. False when the session isn't the caller's, doesn't exist or is
+    /// the casual session, so ids can't be probed.
+    /// </summary>
+    public bool EndSession(string sessionId, string userId)
+    {
+        if (IsCasualSession(sessionId))
+            return false;
+
+        var now = DateTimeOffset.UtcNow.ToString("O");
+
+        using var conn = Connect();
+        using var tx = conn.BeginTransaction();
+
+        using (var owner = conn.CreateCommand())
+        {
+            owner.Transaction = tx;
+            owner.CommandText = "SELECT owner_user_id FROM app_sessions WHERE id = @sessionId";
+            owner.Parameters.AddWithValue("@sessionId", sessionId);
+            if (owner.ExecuteScalar() as string != userId)
+                return false;
+        }
+
+        using (var archive = conn.CreateCommand())
+        {
+            archive.Transaction = tx;
+            archive.CommandText = "UPDATE app_sessions SET archived_at = @now WHERE id = @sessionId AND archived_at IS NULL";
+            archive.Parameters.AddWithValue("@now", now);
+            archive.Parameters.AddWithValue("@sessionId", sessionId);
+            archive.ExecuteNonQuery();
+        }
+
+        using (var leave = conn.CreateCommand())
+        {
+            leave.Transaction = tx;
+            leave.CommandText = "UPDATE session_members SET left_at = @now WHERE session_id = @sessionId AND left_at IS NULL";
+            leave.Parameters.AddWithValue("@now", now);
+            leave.Parameters.AddWithValue("@sessionId", sessionId);
+            leave.ExecuteNonQuery();
+        }
+
+        tx.Commit();
+        _sessions.TryRemove(sessionId, out _);
+        return true;
+    }
+
+    /// <summary>
+    /// Nearby sessions the caller could join from where they are, nearest first. A session is listed
+    /// when nearby is on, it isn't archived or past its event length, the caller isn't already in it
+    /// or blocked with its organiser, and the caller is inside its radius (see
+    /// <see cref="NearbyJoin.IsWithinRadius"/>). The exact distance stays server-side.
+    /// </summary>
+    public IReadOnlyList<NearbySessionMatch> FindNearbySessions(
+        string userId, double latitude, double longitude, double? accuracy, DateTimeOffset now)
+    {
+        // A cheap latitude band so we don't measure every nearby session on earth: the largest radius
+        // (500 m) plus the forgiven accuracy (2 x 50 m) is about 0.0054 degrees of latitude.
+        const double LatitudeBand = 0.01;
+
+        using var conn = Connect();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = """
+            SELECT s.id, s.session_name, owner.display_name, s.nearby_radius_m,
+                   s.anchor_lat, s.anchor_lon, s.anchor_accuracy_m, s.created_at, s.max_length_hours
+            FROM app_sessions s
+            JOIN session_members owner ON owner.session_id = s.id AND owner.user_id = s.owner_user_id
+            WHERE s.nearby
+              AND s.archived_at IS NULL
+              AND s.anchor_lat BETWEEN @minLat AND @maxLat
+              AND NOT EXISTS (
+                  SELECT 1 FROM session_members me
+                  WHERE me.session_id = s.id AND me.user_id = @userId AND me.left_at IS NULL
+              )
+              AND NOT EXISTS (
+                  SELECT 1 FROM blocked_users b
+                  WHERE (b.blocker_user_id = @userId AND b.blocked_user_id = s.owner_user_id)
+                     OR (b.blocker_user_id = s.owner_user_id AND b.blocked_user_id = @userId)
+              )
+            """;
+        cmd.Parameters.AddWithValue("@userId", userId);
+        cmd.Parameters.AddWithValue("@minLat", latitude - LatitudeBand);
+        cmd.Parameters.AddWithValue("@maxLat", latitude + LatitudeBand);
+
+        var matches = new List<NearbySessionMatch>();
+        using var reader = cmd.ExecuteReader();
+        while (reader.Read())
+        {
+            var maxLengthHours = reader.IsDBNull(8) ? DefaultMaxLengthHours : reader.GetInt16(8);
+            if (DateTimeOffset.Parse(reader.GetString(7)).AddHours(maxLengthHours) <= now)
+                continue;
+
+            var distance = GeoMath.DistanceMeters(latitude, longitude, reader.GetDouble(4), reader.GetDouble(5));
+            var radius = reader.IsDBNull(3) ? NearbyJoin.DefaultRadiusMeters : reader.GetInt16(3);
+            double? anchorAccuracy = reader.IsDBNull(6) ? null : reader.GetFloat(6);
+            if (!NearbyJoin.IsWithinRadius(distance, radius, accuracy, anchorAccuracy))
+                continue;
+
+            matches.Add(new NearbySessionMatch(reader.GetString(0), reader.GetString(1), reader.GetString(2), distance));
+        }
+
+        return matches.OrderBy(m => m.DistanceMeters).Take(NearbyJoin.MaxListed).ToList();
+    }
+
+    /// <summary>
+    /// Joins a nearby session as a runner. The server decides: the caller must be inside the session's
+    /// radius right now (same rule as the list). Returns null for every refusal - unknown, not nearby,
+    /// switched off, ended, blocked, too far - so a caller can't tell which and can't probe ids.
+    /// </summary>
+    public SessionMembership? JoinNearbySession(
+        string sessionId, string userId, string displayName,
+        double latitude, double longitude, double? accuracy, DateTimeOffset now)
+    {
+        using var conn = Connect();
+        using var lookup = conn.CreateCommand();
+        lookup.CommandText = """
+            SELECT invite_code, owner_user_id, nearby_radius_m, anchor_lat, anchor_lon, anchor_accuracy_m,
+                   created_at, max_length_hours
+            FROM app_sessions
+            WHERE id = @sessionId AND nearby AND archived_at IS NULL AND anchor_lat IS NOT NULL
+            """;
+        lookup.Parameters.AddWithValue("@sessionId", sessionId);
+
+        string inviteCode, ownerUserId;
+        using (var reader = lookup.ExecuteReader())
+        {
+            if (!reader.Read())
+                return null;
+
+            var maxLengthHours = reader.IsDBNull(7) ? DefaultMaxLengthHours : reader.GetInt16(7);
+            if (DateTimeOffset.Parse(reader.GetString(6)).AddHours(maxLengthHours) <= now)
+                return null;
+
+            var radius = reader.IsDBNull(2) ? NearbyJoin.DefaultRadiusMeters : reader.GetInt16(2);
+            double? anchorAccuracy = reader.IsDBNull(5) ? null : reader.GetFloat(5);
+            var distance = GeoMath.DistanceMeters(latitude, longitude, reader.GetDouble(3), reader.GetDouble(4));
+            if (!NearbyJoin.IsWithinRadius(distance, radius, accuracy, anchorAccuracy))
+                return null;
+
+            inviteCode = reader.GetString(0);
+            ownerUserId = reader.GetString(1);
+        }
+
+        if (AreBlocked(conn, ownerUserId, userId))
+            return null;
+
+        UpsertMembership(conn, sessionId, userId, "runner", displayName, now.ToString("O"));
+        return GetMembership(conn, sessionId, userId, inviteCode);
     }
 
     public (SessionMembership? Membership, bool Archived, bool Blocked) JoinSessionByInvite(string inviteCode, string userId, string displayName, string role = "viewer")

@@ -119,20 +119,53 @@ chars, `NormalizeSessionName`), so title and code must be decoupled; check how f
 
 - [x] N0 Decided: reuse `events` flag; selectable radius 50/100/250/500 m (default 100); no silence timeout;
       join location set only by a Ping button (start screen + map screen), no tracking involvement.
-- [ ] N1 Decouple session title (30 chars) from invite code (check create-flow work first).
-- [ ] N2 Schema columns (incl. radius and accuracy) + `CreateSessionRequest` fields + meeting-point seeding.
-- [ ] N3 `PUT /sessions/{id}/nearby` (Ping: set the join location; optional switch and radius; owner only).
-- [ ] N4 List endpoint (per-session radius with accuracy allowance, exclusions, rounding, cap) under the `events` flag
-      (404 when off).
-- [ ] N5 Nearby join endpoint (re-check distance with accuracy allowance, blocked/archived, uniform failure).
-- [ ] N6 Rate limiters for list and join.
-- [ ] N7 Server tests: in/out of radius, accuracy allowance (and its cap), flag off = 404, blocked, already a
+- [x] N1 Decouple session title (30 chars) from invite code. The invite code was already generated separately
+      (`GenerateCode`); only the controller's 4-8 char name rule tied them. A nearby session now validates its title with
+      `NearbyJoin.NormalizeTitle` (1-30 chars, keeps case and spaces); sessions without nearby keep the legacy rule.
+- [x] N2 Schema columns (incl. radius and accuracy) + `CreateSessionRequest` fields + meeting-point seeding.
+      `server/NearbyJoin.cs`, `SessionStore` migration and `CreateSessionForUser`, `SessionsController.CreateSession`.
+      Nearby on create needs the `events` flag, a valid title, radius (default 100) and a position (accuracy <= 100 m).
+      Tests: `NearbyCreateTests.cs` (not run locally; CI).
+- [x] N3 `PUT /sessions/{id}/nearby` (Ping: set the join location; optional switch and radius; owner only).
+      `SessionsController.UpdateNearby` + `SessionStore.UpdateNearby`; tests in `NearbyPingTests.cs` (CI only).
+      401 signed out, 404 without `events`, 403 not the owner or unknown id, 410 ended, 400 bad fix/radius. A fix is
+      required unless the call is only `enabled: false`. Not done: the "old timestamp" check (the request has no
+      timestamp; add one if stale fixes prove a problem). Turning nearby on for a session created without it
+      keeps its legacy upper-cased name as the title; a title field on this call may be needed (open for N9).
+- [x] N4 List endpoint (per-session radius with accuracy allowance, exclusions, rounding, cap) under the `events` flag
+      (404 when off). `GET /me/events/nearby?lat=&lon=&accuracy=` (`EventsController`, `SessionStore.FindNearbySessions`,
+      `NearbyJoin.IsWithinRadius`). Entries reuse `NearbyEvent` plus a new `sessionId` (null on the placeholder), so
+      clients tell joinable rows apart. With no `lat`/`lon` it still returns the placeholder, so installed builds are
+      unchanged. Excludes: switched off, archived, past event length (created_at + max length, default 24 h), caller
+      already a member, blocked either way with the organiser. Distance rounded to 50 m ("here" at 0), cap 10.
+      Tests in `NearbyListTests.cs` (CI only).
+- [x] N5 Nearby join endpoint (re-check distance with accuracy allowance, blocked/archived, uniform failure).
+      `POST /nearby/sessions/{id}/join` (`SessionsController.JoinNearbySession`, `SessionStore.JoinNearbySession`).
+      Always a runner; same response shape as the invite join. Unknown, not nearby, switched off, ended, blocked and
+      too far are all the same 404 `{ "error": "This session isn't available." }` (blocked is 404 here, not the invite
+      join's 403, so a blocked user can't tell the session exists). 404 without `events`, 401 signed out, 400 bad
+      position. Tests in `NearbyJoinApiTests.cs` (CI only).
+- [x] N6 Rate limiters for list and join. `server/NearbyLimiter.cs`: 120 list requests and 20 join attempts per
+      account per hour, separate budgets, 429 when spent. The position-less placeholder call is never limited.
+      Tests in `NearbyLimiterTests.cs` (CI only). Ping is not limited (owner-only, one session per organiser).
+- [x] N7 Server tests: in/out of radius, accuracy allowance (and its cap), flag off = 404, blocked, already a
       member, re-ping moves the location, non-owner can't ping, bad-accuracy ping rejected, uniform failure.
-- [ ] N8 Update `docs/api-reference.html` and the mock-up (replace pin/range with switch + radius; show several rows).
+      Spread over `NearbyCreateTests`, `NearbyPingTests`, `NearbyListTests`, `NearbyJoinApiTests`,
+      `NearbyLimiterTests`, `NearbyActiveSessionTests` (CI only).
+- [~] N8 Update `docs/api-reference.html` and the mock-up (replace pin/range with switch + radius; show several rows).
+      Done: `docs/api-reference.html` (create fields, Ping, list, join) and `docs/database-schema.html` (new
+      columns). The N3b 409 and `POST /sessions/{id}/end` are documented too. Still to do: the mock-up
+      `.ai/mockups/create-flow.html`.
 - [ ] N9 iOS: Create switch + radius, Ping button (start + map screen), list on main screen, confirm sheet, join.
 - [ ] N10 Android: the same.
-- [ ] N3b One active session per organiser: 409 on create (events flag only); "active" = not archived and within event
+- [x] N3b One active session per organiser: 409 on create (events flag only); "active" = not archived and within event
       length; `POST /sessions/{id}/end` (owner only, archives for everyone); tests for each.
+      `SessionStore.FindActiveOwnedSessionId` / `EndSession`, `SessionsController.CreateSession` / `EndSession`.
+      409 body carries `sessionId` of the existing session. End archives, marks every member as left (so it leaves
+      their lists), drops live positions, keeps replay; owner only (403, same for unknown ids), 404 without `events`,
+      idempotent. The controllers now read the injected `TimeProvider` so expiry is testable. Tests in
+      `NearbyActiveSessionTests.cs` (CI only). The check-then-create is not atomic and older builds bypass it, as
+      the decision above accepts.
 - [ ] N9b Clients: Create disabled with explanation when an active session exists; End session (confirm) on the
       start-screen card and map-screen sheet.
 - [ ] N11 Privacy copy: Create explanation, join confirmation, Help text.
