@@ -82,11 +82,16 @@ private struct LocationPostResponse: Codable {
 
 private struct ServerErrorBody: Decodable {
     let error: String
+    /// Only on the 409 for "you already have an active session": that session's id.
+    let sessionId: String?
 }
 
 enum DotWatcherAPIError: LocalizedError {
     case missingToken
     case badResponse(Int, String?)
+    /// Creating a session was refused because the person already has one running (409). Ending that
+    /// session, `sessionId`, lets them create another.
+    case activeSessionExists(sessionId: String, message: String?)
     /// The request never got a usable answer from the server (unlike `badResponse`, where the server answered
     /// with an error). `detail` says in words what went wrong; nil gives the generic message.
     case network(String? = nil)
@@ -97,6 +102,8 @@ enum DotWatcherAPIError: LocalizedError {
             return "Sign in required."
         case .badResponse(_, let message):
             return message ?? "Something went wrong. Please try again."
+        case .activeSessionExists(_, let message):
+            return message ?? "You already have an active session. End it to create another."
         case .network(let detail):
             return detail ?? "Network error."
         }
@@ -152,6 +159,17 @@ final class LocationManager {
     /// name-keyed everywhere else, so this is looked up alongside them rather than replacing them.
     private(set) var participantUserIds: [String: String] = [:]
     private(set) var blockedUsers: Set<BlockedUser> = []
+    /// Where location permission stands, for features that need a position before tracking starts
+    /// (nearby join). Kept current by the CoreLocation delegate.
+    fileprivate(set) var locationAuthorization: CLAuthorizationStatus = .notDetermined
+    /// Sessions this device created in this run. Only the creator can Ping or End, and the app leaves old
+    /// sessions on relaunch (`ContentView.leaveStaleSessions`), so remembering them here is enough.
+    private(set) var ownedSessionIds: Set<String> = []
+    /// Nearby settings of sessions this device made nearby in this run, as last reported by the server.
+    private(set) var nearbyStatuses: [String: NearbyJoinStatus] = [:]
+    /// Where the organiser last set each of those sessions' join location: the fix this device sent, kept only
+    /// to draw the range on the map (the server never returns it).
+    private(set) var nearbyMeetingPoints: [String: CLLocationCoordinate2D] = [:]
     private var lastParticipantCount = 0
     private var isLoadingSessions = false
     fileprivate var latestLocation: CLLocation?
@@ -311,6 +329,7 @@ final class LocationManager {
 
         locationDelegate.owner = self
         clManager.delegate = locationDelegate
+        locationAuthorization = clManager.authorizationStatus
         clManager.desiredAccuracy = kCLLocationAccuracyNearestTenMeters
         clManager.distanceFilter = Self.normalDistanceFilter
         clManager.activityType = .fitness
@@ -483,19 +502,116 @@ final class LocationManager {
         }
     }
 
-    func createSession(name: String, displayName: String?, maxLengthHours: Int) async throws {
+    /// `nearby` lets people near the organiser find and join the session (see `NearbyJoinSettings`); `name`
+    /// is then its public title rather than the code-like name.
+    func createSession(
+        name: String, displayName: String?, maxLengthHours: Int, nearby: NearbyJoinSettings? = nil
+    ) async throws {
         let requestedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
         let dispName = displayName?.trimmingCharacters(in: .whitespacesAndNewlines)
-        let membership: SessionMembership = try await send(
-            path: "/sessions",
-            method: "POST",
-            body: [
-                "sessionName": requestedName.isEmpty ? NSNull() : requestedName,
-                "displayName": (dispName?.isEmpty ?? true) ? NSNull() : dispName!,
-                "maxLengthHours": maxLengthHours,
-            ])
+        var body: [String: Any] = [
+            "sessionName": requestedName.isEmpty ? NSNull() : requestedName,
+            "displayName": (dispName?.isEmpty ?? true) ? NSNull() : dispName!,
+            "maxLengthHours": maxLengthHours,
+        ]
+        if let nearby {
+            body["nearby"] = true
+            body["nearbyRadiusMeters"] = nearby.radiusMeters
+            body.merge(Self.positionBody(nearby.fix)) { _, new in new }
+        }
+        let membership: SessionMembership = try await send(path: "/sessions", method: "POST", body: body)
+        ownedSessionIds.insert(membership.sessionId)
+        if let nearby {
+            nearbyStatuses[membership.sessionId] = NearbyJoinStatus(nearby: true, radiusMeters: nearby.radiusMeters)
+            nearbyMeetingPoints[membership.sessionId] = nearby.fix.coordinate
+        }
         upsertMembership(membership)
         selectSession(membership)
+    }
+
+    // MARK: - Nearby join (server: SessionsController, EventsController; plan: .ai/plans/nearby-join.md)
+
+    private static func positionBody(_ fix: CLLocation) -> [String: Any] {
+        var body: [String: Any] = [
+            "latitude": fix.coordinate.latitude,
+            "longitude": fix.coordinate.longitude,
+        ]
+        if fix.horizontalAccuracy >= 0 { body["accuracy"] = fix.horizontalAccuracy }
+        return body
+    }
+
+    var canUseLocationNow: Bool {
+        locationAuthorization == .authorizedWhenInUse || locationAuthorization == .authorizedAlways
+    }
+
+    var isLocationDenied: Bool {
+        locationAuthorization == .denied || locationAuthorization == .restricted
+    }
+
+    /// Whether this device created the session it's in, so it may Ping and End it.
+    var ownsActiveSession: Bool { ownedSessionIds.contains(sessionId) }
+
+    /// Asks for the in-use permission, once, when it hasn't been asked yet. The answer arrives through
+    /// `locationAuthorization`. Nothing here starts tracking.
+    func requestWhenInUseAuthorizationIfNeeded() {
+        guard locationAuthorization == .notDetermined else { return }
+        clManager.requestWhenInUseAuthorization()
+    }
+
+    /// One current position for a nearby-join call, or nil without permission or when none arrives. Only
+    /// used on demand while the app is open: it never starts continuous updates.
+    func currentFix() async -> CLLocation? {
+        guard canUseLocationNow else { return nil }
+        if let cached = clManager.location, Self.isFresh(cached) { return cached }
+        // One request at a time: a second would replace the first's continuation and leave it waiting forever.
+        guard oneShotLocationContinuation == nil else { return nil }
+        return await requestOneShotLocation()
+    }
+
+    /// Joins a session from the nearby list. The server re-checks the position; a refusal of any kind
+    /// comes back as the same 404.
+    func joinNearby(sessionId targetId: String, fix: CLLocation, displayName: String?) async throws {
+        let name = displayName?.trimmingCharacters(in: .whitespacesAndNewlines)
+        var body = Self.positionBody(fix)
+        body["displayName"] = (name?.isEmpty ?? true) ? NSNull() : name!
+        let membership: SessionMembership = try await send(
+            path: "/nearby/sessions/\(targetId)/join", method: "POST", body: body)
+        upsertMembership(membership)
+        selectSession(membership)
+        if let joinParticipants = membership.participants {
+            participants = Array(Set(joinParticipants.map(\.displayName))).sorted()
+            for runner in joinParticipants { participantUserIds[runner.displayName] = runner.userId }
+        }
+    }
+
+    /// The organiser's Ping: a fresh fix becomes the session's join location. `radiusMeters` and `enabled`
+    /// change the setting from the same call; switching off needs no fix.
+    @discardableResult
+    func pingNearby(
+        sessionId targetId: String, fix: CLLocation?, radiusMeters: Int? = nil, enabled: Bool? = nil
+    ) async throws -> NearbyJoinStatus {
+        var body: [String: Any] = fix.map(Self.positionBody) ?? [:]
+        if let radiusMeters { body["radiusMeters"] = radiusMeters }
+        if let enabled { body["enabled"] = enabled }
+        let status: NearbyJoinStatus = try await send(path: "/sessions/\(targetId)/nearby", method: "PUT", body: body)
+        nearbyStatuses[targetId] = status
+        if let fix { nearbyMeetingPoints[targetId] = fix.coordinate }
+        return status
+    }
+
+    /// Ends a session for everyone (owner only). Replay stays on the server.
+    func endSession(sessionId targetId: String) async throws {
+        if isTracking && sessionId == targetId { stop() }
+        try await sendAuthorizedEmpty(path: "/sessions/\(targetId)/end", method: "POST")
+        ownedSessionIds.remove(targetId)
+        nearbyStatuses.removeValue(forKey: targetId)
+        nearbyMeetingPoints.removeValue(forKey: targetId)
+        memberships.removeAll { $0.sessionId == targetId }
+        if sessionId == targetId {
+            sessionId = ""
+            participants = []
+            status = "Idle"
+        }
     }
 
     func joinInvite(code: String, displayName: String?) async throws {
@@ -583,6 +699,9 @@ final class LocationManager {
         if isTracking && sessionId == code { stop() }
         guard let token = accessToken else { throw DotWatcherAPIError.missingToken }
         try await sendEmpty(path: "/me/sessions/\(code)/membership", method: "DELETE", token: token)
+        ownedSessionIds.remove(code)
+        nearbyStatuses.removeValue(forKey: code)
+        nearbyMeetingPoints.removeValue(forKey: code)
         memberships.removeAll { $0.sessionId == code }
         if sessionId == code {
             sessionId = ""
@@ -1129,6 +1248,9 @@ final class LocationManager {
             guard (200..<300).contains(statusCode) else {
                 if statusCode == 426 { updateRequired = true }
                 let message = try? JSONDecoder().decode(ServerErrorBody.self, from: data)
+                if statusCode == 409, let activeId = message?.sessionId {
+                    throw DotWatcherAPIError.activeSessionExists(sessionId: activeId, message: message?.error)
+                }
                 throw DotWatcherAPIError.badResponse(statusCode, message?.error)
             }
             do {
@@ -1405,5 +1527,10 @@ private final class LocationDelegate: NSObject, CLLocationManagerDelegate {
         }
     }
 
-    func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {}
+    func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
+        let status = manager.authorizationStatus
+        Task { @MainActor [weak self] in
+            self?.owner?.locationAuthorization = status
+        }
+    }
 }

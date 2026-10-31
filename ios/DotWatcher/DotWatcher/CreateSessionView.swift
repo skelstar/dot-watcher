@@ -10,10 +10,23 @@ struct CreateSessionView: View {
 
     @Binding var sessionCode: String
     @Binding var maxLengthHours: Int
+    /// The nearby-join choices; only offered when `nearbyAvailable` (the account has the events feature).
+    @Binding var nearby: NearbyCreateDraft
+    let nearbyAvailable: Bool
+    let locationState: NearbyLocationState
+    let onAllowLocation: () -> Void
     let isBusy: Bool
     let isOffline: Bool
     let onCreate: () -> Void
     @Environment(\.dismiss) private var dismiss
+
+    private var nearbyIsOn: Bool { nearbyAvailable && nearby.isOn }
+
+    private var canCreate: Bool {
+        if isBusy || isOffline { return false }
+        if nearbyIsOn { return !nearby.trimmedTitle.isEmpty && locationState == .ready }
+        return sessionCode.count >= 4
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -29,50 +42,73 @@ struct CreateSessionView: View {
                     .background(Color.red)
             }
 
-            VStack(spacing: 24) {
-                Text("Create a New Session")
-                    .font(.title2.bold())
+            ScrollView {
+                VStack(spacing: 24) {
+                    Text("Create a New Session")
+                        .font(.title2.bold())
 
-                Text("Give your session a name. You'll get an invite code to share with others.")
-                    .multilineTextAlignment(.center)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .foregroundStyle(.secondary)
+                    if nearbyIsOn {
+                        Text("Give your run a title. People nearby will see it. You'll still get an invite code to share.")
+                            .multilineTextAlignment(.center)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .foregroundStyle(.secondary)
 
-                CodeBoxField(text: $sessionCode, length: 8)
-
-                VStack(spacing: 6) {
-                    HStack {
-                        Text("Event length")
-                            .foregroundStyle(.primary)
-                        Spacer()
-                        Picker("Event length", selection: $maxLengthHours) {
-                            ForEach(Self.lengthOptions, id: \.hours) { option in
-                                Text(option.label).tag(option.hours)
+                        TextField("Title", text: $nearby.title)
+                            .textFieldStyle(.roundedBorder)
+                            .submitLabel(.done)
+                            .onChange(of: nearby.title) { _, title in
+                                if title.count > NearbyCreateDraft.maxTitleLength {
+                                    nearby.title = String(title.prefix(NearbyCreateDraft.maxTitleLength))
+                                }
                             }
-                        }
-                        .pickerStyle(.menu)
+                    } else {
+                        Text("Give your session a name. You'll get an invite code to share with others.")
+                            .multilineTextAlignment(.center)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .foregroundStyle(.secondary)
+
+                        CodeBoxField(text: $sessionCode, length: 8)
                     }
-                    Text("Pick the longest your event could run. Going over won't stop tracking, but replay will start later.")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                        .multilineTextAlignment(.leading)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
 
-                Button("Create Session") {
-                    onCreate()
-                    dismiss()
-                }
-                .buttonStyle(.borderedProminent)
-                .disabled(isBusy || isOffline || sessionCode.count < 4)
+                    VStack(spacing: 6) {
+                        HStack {
+                            Text("Event length")
+                                .foregroundStyle(.primary)
+                            Spacer()
+                            Picker("Event length", selection: $maxLengthHours) {
+                                ForEach(Self.lengthOptions, id: \.hours) { option in
+                                    Text(option.label).tag(option.hours)
+                                }
+                            }
+                            .pickerStyle(.menu)
+                        }
+                        Text("Pick the longest your event could run. Going over won't stop tracking, but replay will start later.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                            .multilineTextAlignment(.leading)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
 
-                Button("Cancel", role: .cancel) {
-                    dismiss()
+                    if nearbyAvailable {
+                        NearbyCreateSection(
+                            draft: $nearby, locationState: locationState, onAllowLocation: onAllowLocation)
+                    }
+
+                    Button("Create Session") {
+                        onCreate()
+                        dismiss()
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(!canCreate)
+
+                    Button("Cancel", role: .cancel) {
+                        dismiss()
+                    }
+                    .foregroundStyle(.secondary)
                 }
-                .foregroundStyle(.secondary)
+                .padding(32)
             }
-            .padding(32)
         }
     }
 }
