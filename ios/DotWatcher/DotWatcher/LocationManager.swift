@@ -161,7 +161,7 @@ final class LocationManager {
     private(set) var blockedUsers: Set<BlockedUser> = []
     /// Where location permission stands, for features that need a position before tracking starts
     /// (nearby join). Kept current by the CoreLocation delegate.
-    private(set) var locationAuthorization: CLAuthorizationStatus = .notDetermined
+    fileprivate(set) var locationAuthorization: CLAuthorizationStatus = .notDetermined
     /// Sessions this device created in this run. Only the creator can Ping or End, and the app leaves old
     /// sessions on relaunch (`ContentView.leaveStaleSessions`), so remembering them here is enough.
     private(set) var ownedSessionIds: Set<String> = []
