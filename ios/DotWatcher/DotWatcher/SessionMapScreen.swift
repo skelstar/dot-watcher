@@ -59,16 +59,12 @@ struct SessionMapScreen: View {
             map
             VStack {
                 HStack(alignment: .top) {
-                    VStack(alignment: .leading, spacing: 10) {
-                        HStack(spacing: 8) {
-                            MapWordmark(runnerName: location.runnerName)
-                            // Nothing to count down until sharing starts: the map is also the backdrop for
-                            // the "share your location?" dialog.
-                            if location.isTracking {
-                                MapCountdown(location: location) { showExtend = true }
-                            }
-                        }
-                        EndingSoonPill(location: location)
+                    // Nothing to count down until sharing starts: the map is also the backdrop for
+                    // the "share your location?" dialog.
+                    if location.isTracking {
+                        MapTimerPill(location: location, runnerName: location.runnerName) { showExtend = true }
+                    } else {
+                        MapWordmark(runnerName: location.runnerName)
                     }
                     Spacer()
                     rail

@@ -1,6 +1,7 @@
 # Nearby join — Plan
 
-*DotWatcher — plan, October 2026. Status: drafted, not started.*
+*DotWatcher — plan, October 2026. Status: built on three open PRs (#254 server, #255 iOS, #256 Android), not yet
+verified on a device or merged. **Start with [Handover](#handover-30-october-2026) at the end of this file.***
 
 Goal: an organiser at the start of a trail creates a session; anyone physically near the organiser sees it on their
 main screen and joins in one tap, with no invite code. Related: [`casual-tracking.md`](casual-tracking.md),
@@ -8,7 +9,8 @@ main screen and joins in one tap, with no invite code. Related: [`casual-trackin
 [`landing-signs.html`](../mockups/landing-signs.html).
 
 Tick boxes as work lands: `- [ ]` → `- [x]`. Per `AGENTS.md`, build/test verification is left to CI on the PR;
-nothing below is verified locally.
+nothing below is verified locally. The ticks in the task list are updated on the feature branches, so on `staging`
+they lag until the PRs merge: the Handover section is the current picture.
 
 ---
 
@@ -188,3 +190,110 @@ chars, `NormalizeSessionName`), so title and code must be decoupled; check how f
 
 1. Should an organiser see who joined by proximity vs by code? (Probably not; members are members.)
 2. Later, optional: should the join location follow the organiser while they track? Left out on purpose.
+
+---
+
+## Handover (30 October 2026)
+
+Written so work can resume from a fresh session. Everything below was true when it was written; check the PRs
+(`gh pr list`) before trusting the state.
+
+### Where the code is
+
+All of it is on three open PRs against `staging`. The two client branches are **stacked on the server branch**, so
+until #254 merges their diffs also show the server commits.
+
+| PR | Branch | Contains | CI at time of writing |
+|---|---|---|---|
+| #254 | `nearby-join-server` | Server API, tests, API and schema docs, this plan's server ticks (N1 to N8, N3b) | Server .NET: build, publish and tests **pass** |
+| #255 | `nearby-join-ios` | iOS client (N9, iOS half of N9b and N11) | Server job passes. **Nothing builds iOS** |
+| #256 | `nearby-join-android` | Android client (N10, Android half of N9b), `NearbyWireTest` | Server job passes. Android Gradle runs `assembleDebug` only: it compiles, it does **not** run unit tests |
+
+Merge order: #254 first, then #255 and #256 in either order. Both client PRs edit the task list in this file (N9,
+N9b, N10, N11), so expect a small conflict on the second one. #252 and #253 are unrelated open PRs.
+
+### Task status
+
+| Task | State |
+|---|---|
+| N0 decisions, N1 title vs code, N2 schema and create fields | Done (server) |
+| N3 Ping, N4 list, N5 join, N6 rate limits | Done (server) |
+| N3b one active session, End session | Done (server) |
+| N7 server tests | Done: `NearbyCreateTests`, `NearbyPingTests`, `NearbyListTests`, `NearbyJoinApiTests`, `NearbyLimiterTests`, `NearbyActiveSessionTests` |
+| N8 docs | Partly: `docs/api-reference.html` and `docs/database-schema.html` done. **`.ai/mockups/create-flow.html` still shows the old pin and range design** |
+| N9, N9b iOS | Written, **never built or run** |
+| N10, N9b Android | Written, **never built (CI compile pending) or run** |
+| N11 privacy copy | iOS: Create text, join sheet, `Info.plist` when-in-use string. **Not done: `Help.md` (iOS), Android help text** |
+
+### What was built, and where
+
+- **Server:** `server/NearbyJoin.cs` (rules, radii, accuracy forgiveness), `NearbyLimiter.cs`;
+  `SessionStore.cs` (`UpdateNearby`, `FindNearbySessions`, `JoinNearbySession`, `FindActiveOwnedSessionId`,
+  `EndSession`, five `app_sessions` columns); `SessionsController.cs` (`PUT /sessions/{id}/nearby`,
+  `POST /nearby/sessions/{id}/join`, `POST /sessions/{id}/end`, nearby fields and the 409 on `POST /sessions`);
+  `EventsController.cs` (`GET /me/events/nearby?lat=&lon=&accuracy=`). Wire shapes: `docs/api-reference.html`.
+- **iOS:** `NearbyJoinViews.swift` (new), `LocationManager.swift` (when-in-use permission, `currentFix()`, nearby
+  calls, `activeSessionExists` error), `EventsStore.swift`, `ContentView.swift`, `CreateSessionView.swift`,
+  `SessionMapScreen.swift`. Xcode uses synchronized folders, so new Swift files need no project edit.
+- **Android:** `location/NearbyFix.kt`, `nearby/NearbyJoin.kt`, `ui/nearby/NearbyJoinSheets.kt`, `AppViewModel.kt`,
+  `EventsModel.kt`, `DotWatcherApi.kt` / `DotWatcherRepository.kt`, `SessionScreen.kt`, `LiveMapScreen.kt`.
+
+### Behaviour worth knowing
+
+- Everything is behind the `events` feature flag (admin Users table checkbox). Without it the new endpoints are 404,
+  and `POST /sessions` ignores the nearby rules. Older builds are unaffected.
+- Limits: 120 list requests and 20 join attempts per account per hour (429). A request with no position gets the old
+  placeholder event and is never limited.
+- The radius test forgives GPS error: `distance - joiner accuracy - meeting-point accuracy <= radius`, each accuracy
+  capped at 50 m, a missing accuracy counts as 0. A join location needs accuracy of 100 m or better.
+- Every refusal on nearby join (too far, ended, switched off, unknown, blocked) is the same 404. Blocked is 404 here,
+  not the invite join's 403, so a blocked person can't tell the session exists.
+- One active session per organiser applies only to `events` accounts: "active" means owned, not ended and within its
+  event length (default 24 h). The 409 body carries the existing `sessionId`. The check is not atomic and an older
+  Production build can bypass it.
+- The apps refresh the nearby list on open, on returning to the front, on pull-down, and every **3 minutes** while
+  the app is visible and not tracking. Each refresh takes a one-off GPS fix.
+
+### Deliberate departures from the plan above
+
+- **No persistent "your active session" card on the start screen.** Both apps leave old sessions on relaunch
+  (`leaveStaleSessions` on iOS, `restoreActiveSession` on Android), and leaving archives a session once the last
+  runner goes, so a card would rarely have anything to show. A 409 on Create shows "End it and create this one"
+  instead and keeps what was typed.
+- **Map controls only for a session this phone created nearby in this run** (kept in memory). That also avoids
+  turning nearby on for a session whose title is a code-style name, which would be shown to strangers.
+- **iOS** Pings on a tap of the map's join-location button (hold for settings and End). **Android** opens the sheet.
+- iOS asks for when-in-use location from a "Find runs near you" sign. Android already asks at launch.
+
+### Verify before shipping (nothing here has been run)
+
+1. Read CI on all three PRs. Run the Android unit tests locally or in Android Studio (`./gradlew testDebugUnitTest`);
+   CI does not.
+2. Build iOS in Xcode. Likeliest compile trouble: the `ContentView` alert using `presenting:`, `Menu(primaryAction:)`
+   in `SessionMapScreen`, and `LocationManager` using the new file's types.
+3. Likeliest Android compile trouble: `PullToRefreshBox` and its opt-in, `FilterChip`, `HorizontalDivider`,
+   `nearbyFix::current` as a suspend reference.
+4. Two-phone test with the `events` flag on both accounts: create nearby on phone A, see it on phone B (location
+   allowed), join, move the join location, switch off, End session, then create again. Also check: a joiner outside the
+   range gets the "can't join from here" message; a second Create while one is active shows the prompt; location denied
+   or precise location off shows the explanation; pull-down refreshes.
+
+### Still to do
+
+- Update `.ai/mockups/create-flow.html` (switch and range instead of the pin and map; show several nearby rows).
+- Help text: `ios/.../Help.md` and the Android equivalent. Check the App Store and Play location declarations, since
+  the apps now use location on the start screen and not only while tracking.
+- Refresh the stale parts of `docs/database-schema.html` (`max_length_hours`, `archived_at`, the old name rule).
+- Server follow-ups, all optional: a stale-fix check on Ping (the request has no timestamp); a `title` field on the
+  Ping call so an existing session can be turned nearby safely; a rate limit on Ping; contract tests for the new
+  endpoints in `ContractTests.cs`; remove the placeholder event once nothing depends on it.
+- iOS has no tests of its own for this, and there are no UI tests on either client.
+- The two open questions above are still open.
+
+### Working notes for the next session
+
+- `AGENTS.md`: do not build, publish or test locally; CI does it. The machine this was written on (Windows) has no
+  Swift or Android toolchain, so client code was written without compiling it.
+- Server tests: the test factory enables only `crew` for everyone, so nearby tests set `EnabledForAll = ["events"]`.
+  With `events` on, a user can have one active session, so a test that needs two sessions needs two organisers.
+- Branch from `nearby-join-server` for client work; branch from `staging` for anything unrelated.

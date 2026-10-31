@@ -9,6 +9,16 @@ struct MapWordmark: View {
     let runnerName: String
 
     var body: some View {
+        WordmarkText(runnerName: runnerName)
+            .shadow(color: .white, radius: 4)
+    }
+}
+
+/// The "dot-watchr" lettering itself, shared by the bare wordmark and the timer pill.
+private struct WordmarkText: View {
+    let runnerName: String
+
+    var body: some View {
         HStack(spacing: 1) {
             Text("d").font(.system(size: 19, weight: .heavy))
             Text(RunnerCircle.initials(for: runnerName))
@@ -18,47 +28,61 @@ struct MapWordmark: View {
                 .background(Circle().fill(RunnerColorPalette.currentUser))
             Text("t-watchr").font(.system(size: 19, weight: .heavy))
         }
-        .shadow(color: .white, radius: 4)
         .foregroundStyle(.black)
     }
 }
 
-/// The ring and "h:mm" until tracking stops by itself. Tapping it opens the "add time or stop" sheet.
-struct MapCountdown: View {
+/// The wordmark in a frosted pill that doubles as the auto-stop timer, like a fuel gauge on its side:
+/// a solid bar fills the pill at the start and drains right to left, with the time left at the right
+/// end. The bar turns red for the last 5 minutes. Tapping it opens the "add time or stop" sheet.
+struct MapTimerPill: View {
     var location: LocationManager
+    let runnerName: String
     let onTap: () -> Void
+
+    private static let redZone: TimeInterval = 5 * 60
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 1)) { context in
             let remaining = max(0, (location.trackingExpiresAt ?? context.date).timeIntervalSince(context.date))
             let total = max(1, location.trackingTotalDuration)
-            let low = remaining <= 30 * 60
-            let tint = low ? Color(red: 0xE0 / 255, green: 0x8A / 255, blue: 0) : Color(red: 0x30 / 255, green: 0xA1 / 255, blue: 0x4E / 255)
+            let fraction = min(1, remaining / total)
+            let bar = remaining <= Self.redZone
+                ? Color(red: 0xE5 / 255, green: 0x37 / 255, blue: 0x2D / 255)
+                : Color.white.opacity(0.9)
             Button(action: onTap) {
-                ZStack {
-                    Circle().stroke(Color.black.opacity(0.08), lineWidth: 3)
-                    Circle()
-                        .trim(from: 0, to: min(1, remaining / total))
-                        .stroke(tint, style: StrokeStyle(lineWidth: 3, lineCap: .round))
-                        .rotationEffect(.degrees(-90))
-                    Text(Self.hoursMinutes(remaining))
-                        .font(.system(size: 11, weight: .bold, design: .monospaced))
-                        .foregroundStyle(low ? Color(red: 0xA3 / 255, green: 0x5F / 255, blue: 0) : .black)
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Color.white.opacity(0.3))
+                    GeometryReader { geometry in
+                        Rectangle().fill(bar).frame(width: geometry.size.width * fraction)
+                    }
+                    HStack(spacing: 0) {
+                        WordmarkText(runnerName: runnerName)
+                        Spacer(minLength: 10)
+                        Text(Self.timeLeft(remaining))
+                            .font(.system(size: 13, weight: .bold))
+                            .monospacedDigit()
+                            .foregroundStyle(.black)
+                    }
+                    .padding(.horizontal, 14)
                 }
-                .padding(2)
-                .frame(width: 46, height: 46)
-                .background(low ? Color(red: 1, green: 0.88, blue: 0.54) : Color.white.opacity(0.85), in: Circle())
-                .shadow(color: .black.opacity(0.18), radius: 2, y: 1)
+                .frame(width: 204, height: 44)
+                .background(.ultraThinMaterial, in: Capsule())
+                .clipShape(Capsule())
+                .overlay(Capsule().strokeBorder(Color.white.opacity(0.45), lineWidth: 1))
+                .shadow(color: .black.opacity(0.18), radius: 3, y: 1)
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("Auto-stops in \(Int(remaining / 60)) minutes")
+            .accessibilityLabel("Auto-stops in \(Int((remaining + 59) / 60)) minutes")
             .accessibilityHint("Add time or stop now")
         }
     }
 
-    static func hoursMinutes(_ seconds: TimeInterval) -> String {
-        let total = Int(seconds)
-        return "\(total / 3600):" + String(format: "%02d", (total % 3600) / 60)
+    /// "1h 20m" from an hour up, "29m" under it, whole seconds ("35s") in the last minute.
+    static func timeLeft(_ seconds: TimeInterval) -> String {
+        if seconds < 60 { return "\(Int(seconds.rounded(.up)))s" }
+        let minutes = Int((seconds + 59) / 60)
+        return minutes >= 60 ? "\(minutes / 60)h \(minutes % 60)m" : "\(minutes)m"
     }
 }
 
@@ -107,25 +131,6 @@ struct HoldToStopPill: View {
         .holdToComplete(progress: $progress, onComplete: onComplete)
         .accessibilityLabel("Stop")
         .accessibilityHint("Hold to stop tracking")
-    }
-}
-
-/// "Auto-stops in 8 min": only inside the last 30 minutes, next to the amber countdown.
-struct EndingSoonPill: View {
-    var location: LocationManager
-
-    var body: some View {
-        TimelineView(.periodic(from: .now, by: 1)) { context in
-            let remaining = (location.trackingExpiresAt ?? context.date).timeIntervalSince(context.date)
-            if remaining > 0, remaining <= 30 * 60 {
-                Text("Auto-stops in \(Int((remaining + 59) / 60)) min")
-                    .font(.system(size: 12.5, weight: .semibold))
-                    .foregroundStyle(Color(red: 0x7A / 255, green: 0x4D / 255, blue: 0))
-                    .padding(.horizontal, 13)
-                    .frame(height: 36)
-                    .background(Color(red: 1, green: 0.96, blue: 0.84), in: Capsule())
-            }
-        }
     }
 }
 

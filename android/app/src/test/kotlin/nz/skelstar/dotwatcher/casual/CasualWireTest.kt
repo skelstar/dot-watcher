@@ -72,12 +72,27 @@ class CasualWireTest {
         assertTrue(live.nearby.isEmpty())
     }
 
-    @Test fun `settings round trip the one field the server expects`() {
+    @Test fun `settings round trip the fields the server expects`() {
         assertEquals(true, json.decodeFromString<CasualSettings>("""{"visibleToNonCrew":true}""").visibleToNonCrew)
         assertEquals(false, json.decodeFromString<CasualSettings>("{}").visibleToNonCrew)
         assertEquals(
             """{"visibleToNonCrew":true}""",
-            json.encodeToString(UpdateCasualSettingsRequest.serializer(), UpdateCasualSettingsRequest(true)),
+            json.encodeToString(
+                UpdateCasualSettingsRequest.serializer(),
+                UpdateCasualSettingsRequest(visibleToNonCrew = true),
+            ),
+        )
+    }
+
+    @Test fun `hide start area is on unless the server says otherwise, and is sent alone`() {
+        assertTrue(json.decodeFromString<CasualSettings>("{}").hideStartArea)
+        assertFalse(json.decodeFromString<CasualSettings>("""{"visibleToNonCrew":true,"hideStartArea":false}""").hideStartArea)
+        assertEquals(
+            """{"hideStartArea":false}""",
+            json.encodeToString(
+                UpdateCasualSettingsRequest.serializer(),
+                UpdateCasualSettingsRequest(hideStartArea = false),
+            ),
         )
     }
 
