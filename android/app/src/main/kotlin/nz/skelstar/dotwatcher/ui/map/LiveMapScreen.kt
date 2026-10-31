@@ -206,6 +206,10 @@ fun LiveMapScreen(
             fitAllTick = fitAllTick,
             sendIntervalSeconds = POST_INTERVAL_SECONDS,
             ownPaused = pausedForBattery,
+            joinRange = nearbyOrganiser
+                ?.takeIf { it.status.nearby }
+                ?.meetingPoint
+                ?.let { JoinRange(it.latitude, it.longitude, nearbyOrganiser.status.radiusMeters) },
             onRunnerTapped = { name ->
                 // Tapping the runner you're following lets go again.
                 followedRunner = if (name == followedRunner) null else name

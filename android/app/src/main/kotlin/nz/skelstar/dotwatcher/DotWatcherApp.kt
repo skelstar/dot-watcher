@@ -171,9 +171,11 @@ private fun SessionMapDestination(membership: SessionMembership, asking: Boolean
     // The join-location controls belong to the organiser of a session made nearby in this run: only those
     // have a status.
     val nearbyStatuses by viewModel.nearbyStatuses.collectAsState()
+    val meetingPoints by viewModel.nearbyMeetingPoints.collectAsState()
     val nearbyOrganiser = nearbyStatuses[membership.sessionId]?.let { status ->
         NearbyOrganiser(
             status = status,
+            meetingPoint = meetingPoints[membership.sessionId],
             setJoinLocation = { radius -> viewModel.pingJoinLocation(membership.sessionId, radius) },
             stopShowing = { viewModel.stopShowingNearby(membership.sessionId) },
             endSession = { viewModel.endSession(membership) },

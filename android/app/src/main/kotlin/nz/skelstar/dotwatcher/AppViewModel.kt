@@ -98,6 +98,11 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     private val _nearbyStatuses = MutableStateFlow<Map<String, NearbyStatus>>(emptyMap())
     val nearbyStatuses: StateFlow<Map<String, NearbyStatus>> = _nearbyStatuses
 
+    /** Where the organiser last set each nearby session's join location: the fix this device sent, kept only to
+     *  draw the range on the map (the server never returns it). */
+    private val _nearbyMeetingPoints = MutableStateFlow<Map<String, Fix>>(emptyMap())
+    val nearbyMeetingPoints: StateFlow<Map<String, Fix>> = _nearbyMeetingPoints
+
     /** Set when creating was refused because the person already has a session running (409); the start
      *  screen asks whether to end it. */
     private val _activeSessionConflict = MutableStateFlow<ActiveSessionConflict?>(null)
@@ -343,6 +348,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             _sessionState.value = handleSessionResult(result) { membership ->
                 if (created != null) {
                     setNearbyStatus(membership.sessionId, NearbyStatus(nearby = true, radiusMeters = created.radiusMeters))
+                    _nearbyMeetingPoints.update { it + (membership.sessionId to created.fix) }
                 }
             }
         }
@@ -423,6 +429,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         return when {
             response.isSuccessful && status != null -> {
                 setNearbyStatus(sessionId, status)
+                if (fix != null) _nearbyMeetingPoints.update { it + (sessionId to fix) }
                 done
             }
             response.code() == 410 -> "This session has ended."
@@ -439,6 +446,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         LocationTrackingService.stop(getApplication())
         shareChoices.clear()
         _nearbyStatuses.update { it - membership.sessionId }
+        _nearbyMeetingPoints.update { it - membership.sessionId }
         _sessionState.value = SessionUiState.Idle
         _destination.value = Destination.Session
         return null
@@ -493,6 +501,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             runCatching { repository.leaveSession(membership.sessionId) }
             _nearbyStatuses.update { it - membership.sessionId }
+        _nearbyMeetingPoints.update { it - membership.sessionId }
             _sessionState.value = SessionUiState.Idle
             _destination.value = Destination.Session
         }
@@ -517,6 +526,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     casual.clear()
                     events.clear()
                     _nearbyStatuses.value = emptyMap()
+        _nearbyMeetingPoints.value = emptyMap()
                     _destination.value = Destination.Auth
                 }
                 response != null -> onError(response.errorMessageOrStatus())
@@ -533,6 +543,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         casual.clear()
         events.clear()
         _nearbyStatuses.value = emptyMap()
+        _nearbyMeetingPoints.value = emptyMap()
         viewModelScope.launch {
             // Take the person off the map before the token goes; the server would only drop them
             // after its stale timeout otherwise.

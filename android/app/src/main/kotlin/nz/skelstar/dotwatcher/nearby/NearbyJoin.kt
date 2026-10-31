@@ -49,6 +49,8 @@ data class ActiveSessionConflict(
  */
 class NearbyOrganiser(
     val status: NearbyStatus,
+    /** Where the join location was last set from this device (the server never returns it); null if unknown. */
+    val meetingPoint: Fix?,
     /** Takes a fresh fix and makes it the join location; [radiusMeters] null keeps the current range.
      *  Returns words for the person, whether it worked or not. */
     val setJoinLocation: suspend (radiusMeters: Int?) -> String,
