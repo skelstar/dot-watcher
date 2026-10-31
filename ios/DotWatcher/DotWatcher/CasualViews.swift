@@ -542,22 +542,25 @@ struct CasualMapScreen: View {
 
 // MARK: - Map pieces
 
-/// A person who is not in the crew: a grey dot with a white edge, and a padlock when they are in a named
-/// session. No name, initials or colour: nothing that says who it is.
+/// A person who is not in the crew: a grey dot with a white edge and "??" for initials, and a padlock
+/// when they are in a named session. Nothing that says who it is. 80% of a normal dot (27 pt).
 private struct NearbyDotView: View {
     let isLocked: Bool
+
+    private let size: CGFloat = 27 * 0.8
 
     var body: some View {
         Circle()
             .fill(Color(red: 0x9E / 255, green: 0xA3 / 255, blue: 0xA8 / 255))
             .overlay(Circle().stroke(.white, lineWidth: 2))
-            .frame(width: 18, height: 18)
+            .frame(width: size, height: size)
             .overlay {
-                if isLocked {
-                    Image(systemName: "lock.fill")
-                        .font(.system(size: 8, weight: .bold))
-                        .foregroundStyle(.white)
-                }
+                Text("??")
+                    .font(.system(size: size * 0.4, weight: .bold))
+                    .foregroundStyle(.white)
+            }
+            .overlay(alignment: .bottomTrailing) {
+                if isLocked { LockBadge().offset(x: 4, y: 4) }
             }
             .accessibilityLabel(isLocked ? "Someone nearby, in a session" : "Someone nearby")
     }
