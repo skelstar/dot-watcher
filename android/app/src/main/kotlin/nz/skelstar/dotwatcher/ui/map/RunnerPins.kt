@@ -249,25 +249,34 @@ private fun drawLock(canvas: Canvas, cx: Float, cy: Float, radius: Float, discCo
     canvas.drawArc(shackle, 180f, 180f, false, white)
 }
 
-/** A person who is not in the crew: a grey dot with a white edge, and a padlock when they are in a
- *  named session. No name, initials or colour: nothing that says who it is. */
+/** A person who is not in the crew: a grey dot with a white edge and "??" for initials, and a padlock
+ *  badge when they are in a named session. Nothing that says who it is. 80% of a normal pin
+ *  (r 17.5 dp, 12.5 dp text). */
 fun nearbyBitmap(locked: Boolean, density: Float): Bitmap {
     fun dp(v: Float) = v * density
-    val size = dp(28f).toInt()
+    val size = dp(40f).toInt()
     val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
     val canvas = Canvas(bitmap)
     val cx = size / 2f
     val cy = size / 2f
-    canvas.drawCircle(cx, cy, dp(9f), Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFF9EA3A8.toInt() })
+    val r = dp(17.5f * 0.8f)
+    canvas.drawCircle(cx, cy, r, Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFF9EA3A8.toInt() })
     canvas.drawCircle(
-        cx, cy, dp(9f),
+        cx, cy, r,
         Paint(Paint.ANTI_ALIAS_FLAG).apply {
             style = Paint.Style.STROKE
-            strokeWidth = dp(2f)
+            strokeWidth = dp(3f)
             color = 0xFFFFFFFF.toInt()
         },
     )
-    if (locked) drawLock(canvas, cx, cy, dp(6.5f), 0xFF5D6675.toInt(), density)
+    val text = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = 0xFFFFFFFF.toInt()
+        textSize = dp(12.5f * 0.8f)
+        isFakeBoldText = true
+        textAlign = Paint.Align.CENTER
+    }
+    canvas.drawText("??", cx, cy - (text.descent() + text.ascent()) / 2, text)
+    if (locked) drawLock(canvas, cx + r * 0.78f, cy + r * 0.78f, dp(8.5f * 0.8f), 0xFF14181F.toInt(), density)
     return bitmap
 }
 
