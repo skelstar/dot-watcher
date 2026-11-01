@@ -71,22 +71,22 @@ that as "use the built-in colours".
 ## Server
 
 ### S1. Config and validation
-- [ ] `Palette` section in `appsettings.json` with the eight keys and `Version`, bound to a small options record.
-- [ ] Validate once at start-up: every colour matches `^#[0-9a-fA-F]{6}$`, and the three text-on-background pairs
+- [x] `Palette` config section (the eight keys and `Version`) read by `PaletteProvider`. Deliberately not added to `appsettings.json` yet: rollout step 1 merges with no palette.
+- [x] Validate once at start-up: every colour matches `^#[0-9a-fA-F]{6}$`, and the three text-on-background pairs
       (`goFg` on `goBg`, `altFg` on `altBg`, `accentInk` on `accent`) have contrast of at least 4.5:1. If it fails,
       log a warning and serve no palette, so a typo in config means built-in colours rather than unreadable buttons.
 - [ ] The same check runs in the playground as the contrast badge, so a value that looks fine there passes here.
 
 ### S2. Exposing it
-- [ ] `AuthenticatedUser` gains an optional `Config` (null for users read from a bearer token, like `Features`).
+- [x] `AuthenticatedUser` gains an optional `Config` (null for users read from a bearer token, like `Features`).
       Filled in by login, register and `GET /me` in `AuthController`.
-- [ ] `docs/api-reference.html` (login response and `GET /me`) and `server/README.md` updated.
-- [ ] `Config` is a record with an optional `Palette` so a later setting adds a property, not a new response shape.
+- [x] `docs/api-reference.html` (login response and `GET /me`) and `server/README.md` updated.
+- [x] `Config` is a record with an optional `Palette` so a later setting adds a property, not a new response shape.
 
 ### S3. Tests (`tests/DotWatcher.Server.Tests`)
-- [ ] `GET /me`, login and register include `config.palette` when configured and omit it when not.
-- [ ] An invalid hex, or a pair under 4.5:1, results in no palette (and not a failed response).
-- [ ] `DotWatcherApiFactory` default config has no palette, so existing tests are unchanged.
+- [x] `GET /me`, login and register include `config.palette` when configured and omit it when not.
+- [x] An invalid hex, or a pair under 4.5:1, results in no palette (and not a failed response).
+- [x] `DotWatcherApiFactory` default config has no palette, so existing tests are unchanged.
 - [ ] CI is the first run of any of this.
 
 ## Clients (separate PRs)
