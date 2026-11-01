@@ -6,6 +6,7 @@ namespace DotWatcher.Server.Controllers;
 public class LocationsController(
     SessionStore store,
     UserTokenAuth userAuth,
+    FeatureFlags features,
     TimeProvider timeProvider,
     ILogger<LocationsController> logger) : ControllerBase
 {
@@ -69,7 +70,7 @@ public class LocationsController(
         try
         {
             var account = store.GetCasualAccount(user.UserId);
-            if (!account.VisibleToNonCrew)
+            if (!account.VisibleToNonCrew || !features.IsOn(Features.Casual))
                 return;
 
             store.AddCasualPosition(
@@ -87,6 +88,9 @@ public class LocationsController(
 
     private IActionResult AddCasualLocation(LocationUpdate update, AuthenticatedUser user)
     {
+        if (!features.IsOn(Features.Casual))
+            return StatusCode(StatusCodes.Status403Forbidden);
+
         var account = store.GetCasualAccount(user.UserId);
         var storedUpdate = update with
         {
@@ -109,7 +113,7 @@ public class LocationsController(
         return Ok(store.GetCasualLive(
             user.UserId,
             account.VisibleToNonCrew,
-            true,
+            features.IsOn(Features.Crew),
             result.Self,
             now));
     }

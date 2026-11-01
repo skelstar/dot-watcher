@@ -422,10 +422,13 @@ Full request/response shapes are in `docs/api-reference.html`.
 
 **Auth:** User access token for all of them.
 
-**Feature flag removed.** Every signed-in account can use crew; a signed-out caller gets `401`. The per-account
-`features` list (`PUT /admin/users/{userId}/features`, `Features:EnabledForAll`) is still stored and returned as
-`features` on `AuthenticatedUser` and on each row of `GET /admin/users`, but nothing gates on it. History:
-`.ai/plans/crew-feature-flag.md`.
+**Kill switch.** Crew is on for every signed-in account (a signed-out caller gets `401`) unless an admin switches it off
+for everyone: `PUT /admin/features/crew` with the admin bearer token and body `{ "enabled": false }` (`GET /admin/features`
+lists crew, casual and events with their state). While off, every endpoint in this section returns `404`, so shipped iOS
+builds hide crew quietly. Casual and events use the same switch, and the Features section of `/admin` toggles them. The
+state is a row per feature in `feature_switches` (no row means on) and is cached for about five seconds. The older
+per-account `features` list (`PUT /admin/users/{userId}/features`, `Features:EnabledForAll`) is still stored and returned
+as `features` on `AuthenticatedUser`, but nothing gates on it. History: `.ai/plans/crew-feature-flag.md`.
 
 **Code rules.** 8 characters from `ABCDEFGHJKMNPQRSTUVWXYZ23456789` (no `0/O/1/I/L`), valid 24 hours, usable once.
 If several people hold the same code the first to redeem wins; the claim is a single conditional `UPDATE`, so

@@ -35,6 +35,11 @@ type MemberStatsState = AdminMemberStats[] | 'loading' | { error: string }
 // session (deleting it would delete the session; the server refuses too).
 const PROTECTED_USERNAMES = new Set(['dw-demo', 'dw-casual'])
 
+// Global kill switches (server: GET/PUT /admin/features). A feature is on unless switched off here;
+// off makes its endpoints return 404 for every account.
+type FeatureSwitch = { feature: string; enabled: boolean }
+const FEATURE_LABELS: Record<string, string> = { crew: 'Crew', casual: 'Casual tracking', events: 'Events' }
+
 const BEARER_TOKEN_KEY = 'adminBearerToken'
 const APP_VERSION = import.meta.env.VITE_APP_VERSION ?? 'v-local'
 // Matches the simulator's own VITE_CLIENT_URL convention (tools/simulator/.env.example) —
@@ -66,6 +71,8 @@ export default function AdminPanel({ serverUrl }: { serverUrl: string }) {
   const [sessionActionId, setSessionActionId] = useState<string | null>(null)
   const [logLines, setLogLines] = useState<string[] | null>(null)
   const [logBusy, setLogBusy] = useState(false)
+  const [featureSwitches, setFeatureSwitches] = useState<FeatureSwitch[]>([])
+  const [switchBusy, setSwitchBusy] = useState<string | null>(null)
 
   useLayoutEffect(() => {
     const root = document.getElementById('root')
@@ -85,10 +92,11 @@ export default function AdminPanel({ serverUrl }: { serverUrl: string }) {
     setError(null)
     try {
       const headers = apiHeaders(bearerToken, 'web-admin')
-      const [usersRes, sessionsRes, recordedRes] = await Promise.all([
+      const [usersRes, sessionsRes, recordedRes, switchesRes] = await Promise.all([
         fetch(`${serverUrl}/admin/users`, { headers }),
         fetch(`${serverUrl}/admin/sessions`, { headers }),
         fetch(`${serverUrl}/sessions`, { headers }),
+        fetch(`${serverUrl}/admin/features`, { headers }),
       ])
       if (usersRes.status === 401 || sessionsRes.status === 401 || recordedRes.status === 401) {
         setError('Invalid bearer token.')
@@ -99,6 +107,8 @@ export default function AdminPanel({ serverUrl }: { serverUrl: string }) {
         return
       }
       setUsers(await usersRes.json() as AdminUser[])
+      // Absent on an older server; the switches section then stays empty.
+      setFeatureSwitches(switchesRes.ok ? await switchesRes.json() as FeatureSwitch[] : [])
       setSessions(await sessionsRes.json() as AdminSession[])
       setRecordedSessionIds(new Set(await recordedRes.json() as string[]))
       setSelectedUserIds(new Set())
@@ -145,6 +155,28 @@ export default function AdminPanel({ serverUrl }: { serverUrl: string }) {
 
   function toggleAllSessionsSelected() {
     setSelectedSessionIds(prev => prev.size === sessions.length ? new Set() : new Set(sessions.map(s => s.sessionId)))
+  }
+
+  async function handleToggleSwitch(sw: FeatureSwitch) {
+    setSwitchBusy(sw.feature)
+    setError(null)
+    try {
+      const r = await fetch(`${serverUrl}/admin/features/${sw.feature}`, {
+        method: 'PUT',
+        headers: { ...apiHeaders(token, 'web-admin'), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled: !sw.enabled }),
+      })
+      if (!r.ok) {
+        setError(`Failed to update ${sw.feature} (HTTP ${r.status}).`)
+        return
+      }
+      const saved = await r.json() as FeatureSwitch
+      setFeatureSwitches(prev => prev.map(x => x.feature === saved.feature ? saved : x))
+    } catch {
+      setError('Network error.')
+    } finally {
+      setSwitchBusy(null)
+    }
   }
 
   async function handleBulkDeleteUsers() {
@@ -492,6 +524,31 @@ export default function AdminPanel({ serverUrl }: { serverUrl: string }) {
       )}
 
       {error && <p style={errorText}>{error}</p>}
+
+      {featureSwitches.length > 0 && (
+        <>
+          <h2 style={subheadingNoMargin}>Features</h2>
+          <table style={{ ...table, marginBottom: 24 }}>
+            <tbody>
+              {featureSwitches.map(sw => (
+                <tr key={sw.feature}>
+                  <td style={td}>{FEATURE_LABELS[sw.feature] ?? sw.feature}</td>
+                  <td style={td}>{sw.enabled ? 'On' : 'Off for everyone'}</td>
+                  <td style={td}>
+                    <button
+                      style={sw.enabled ? deleteBtn : secondaryBtn}
+                      onClick={() => void handleToggleSwitch(sw)}
+                      disabled={switchBusy === sw.feature}
+                    >
+                      {sw.enabled ? 'Switch off' : 'Switch on'}
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </>
+      )}
 
       <div style={subheadingRow}>
         <h2 style={subheadingNoMargin}>Users</h2>

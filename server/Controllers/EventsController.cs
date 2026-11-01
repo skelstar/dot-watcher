@@ -8,7 +8,7 @@ namespace DotWatcher.Server.Controllers;
 /// predate nearby join keep showing their sign.
 /// </summary>
 [ApiController]
-public class EventsController(UserTokenAuth userAuth, SessionStore store, NearbyLimiter limiter, TimeProvider timeProvider)
+public class EventsController(UserTokenAuth userAuth, FeatureFlags features, SessionStore store, NearbyLimiter limiter, TimeProvider timeProvider)
     : ControllerBase
 {
     private static readonly NearbyEvent[] Placeholder =
@@ -25,8 +25,13 @@ public class EventsController(UserTokenAuth userAuth, SessionStore store, Nearby
     [ProducesResponseType(StatusCodes.Status429TooManyRequests)]
     public IActionResult GetNearby([FromQuery] double? lat, [FromQuery] double? lon, [FromQuery] double? accuracy)
     {
+        // 401 when not signed in. 404 (not 403) when an admin has switched events off, so the endpoint
+        // looks absent to a build that doesn't know about it - same rule as crew and casual.
         if (!userAuth.TryAuthenticate(Request, out var user))
             return Unauthorized();
+
+        if (!features.IsOn(Features.Events))
+            return NotFound();
 
         if (lat is null && lon is null)
             return Ok(Placeholder);

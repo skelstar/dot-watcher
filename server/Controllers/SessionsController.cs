@@ -9,6 +9,7 @@ public class SessionsController(
     BearerTokenAuth auth,
     UserTokenAuth userAuth,
     RouteUploadTokenAuth routeUploadAuth,
+    FeatureFlags features,
     NearbyLimiter nearbyLimiter,
     TimeProvider timeProvider,
     ILogger<SessionsController> logger) : ControllerBase
@@ -67,6 +68,9 @@ public class SessionsController(
 
         if (wantsNearby)
         {
+            if (!features.IsOn(Features.Events))
+                return BadRequest(new { error = "Nearby join isn't available right now." });
+
             if (NearbyJoin.NormalizeTitle(request.SessionName) is null)
                 return BadRequest(new { error = $"A nearby session needs a title of 1-{NearbyJoin.MaxTitleLength} characters." });
 
@@ -118,6 +122,9 @@ public class SessionsController(
         if (!userAuth.TryAuthenticate(Request, out var user))
             return Unauthorized();
 
+        if (!features.IsOn(Features.Events))
+            return NotFound();
+
         return store.EndSession(sessionId, user.UserId) ? NoContent() : StatusCode(StatusCodes.Status403Forbidden);
     }
 
@@ -136,6 +143,9 @@ public class SessionsController(
     {
         if (!userAuth.TryAuthenticate(Request, out var user))
             return Unauthorized();
+
+        if (!features.IsOn(Features.Events))
+            return NotFound();
 
         request ??= new UpdateNearbyRequest();
 
@@ -238,6 +248,9 @@ public class SessionsController(
     {
         if (!userAuth.TryAuthenticate(Request, out var user))
             return Unauthorized();
+
+        if (!features.IsOn(Features.Events))
+            return NotFound();
 
         if (!nearbyLimiter.TryAcceptJoin(user.UserId))
             return StatusCode(StatusCodes.Status429TooManyRequests, new { error = "Too many attempts. Try again later." });

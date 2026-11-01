@@ -10,6 +10,7 @@ namespace DotWatcher.Server.Controllers;
 public class CrewController(
     SessionStore store,
     UserTokenAuth userAuth,
+    FeatureFlags features,
     CrewCodeLimiter limiter,
     TimeProvider timeProvider) : ControllerBase
 {
@@ -168,9 +169,16 @@ public class CrewController(
         return Ok(new ProfileResponse(nickname));
     }
 
-    // 401 when not signed in.
-    private IActionResult? Gate(out AuthenticatedUser user) =>
-        userAuth.TryAuthenticate(Request, out user) ? null : Unauthorized();
+    // 401 when not signed in. 404 (not 403) when an admin has switched crew off, so the endpoints
+    // look absent: shipped iOS builds treat any status except 401/426 from /me/crew as "this server
+    // has no crew" and hide it quietly, whereas a 401 would be handled as a signed-out session.
+    private IActionResult? Gate(out AuthenticatedUser user)
+    {
+        if (!userAuth.TryAuthenticate(Request, out user))
+            return Unauthorized();
+
+        return features.IsOn(Features.Crew) ? null : NotFound();
+    }
 
     private ObjectResult InvalidCode() =>
         NotFound(new { error = "That crew code isn't valid any more." });

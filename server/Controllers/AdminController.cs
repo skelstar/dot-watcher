@@ -3,7 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 namespace DotWatcher.Server.Controllers;
 
 [ApiController]
-public class AdminController(SessionStore store, BearerTokenAuth auth) : ControllerBase
+public class AdminController(SessionStore store, BearerTokenAuth auth, FeatureFlags features) : ControllerBase
 {
     /// <summary>Admin/ops: lists all registered user accounts.</summary>
     [HttpGet("/admin/users")]
@@ -36,6 +36,40 @@ public class AdminController(SessionStore store, BearerTokenAuth auth) : Control
             return BadRequest(new { error = "Feature names can't contain commas." });
 
         return store.SetUserFeatures(userId, features) ? Ok(features) : NotFound();
+    }
+
+    /// <summary>Admin/ops: the global kill switch for each feature. A feature is on unless switched off here.</summary>
+    [HttpGet("/admin/features")]
+    [ProducesResponseType(typeof(IReadOnlyList<FeatureSwitch>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public IActionResult GetFeatureSwitches()
+    {
+        if (!auth.IsAuthorized(Request))
+            return Unauthorized();
+
+        var off = features.SwitchedOff();
+        return Ok(Features.All.Select(f => new FeatureSwitch(f, !off.Contains(f))).ToList());
+    }
+
+    /// <summary>Admin/ops: switches a feature on or off for every account. Off makes its endpoints look absent (404).</summary>
+    [HttpPut("/admin/features/{feature}")]
+    [ProducesResponseType(typeof(FeatureSwitch), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public IActionResult SetFeatureSwitch(string feature, [FromBody] SetFeatureSwitchRequest? request)
+    {
+        if (!auth.IsAuthorized(Request))
+            return Unauthorized();
+
+        if (request?.Enabled is not bool enabled)
+            return BadRequest(new { error = "enabled is required." });
+
+        if (!Features.All.Contains(feature))
+            return NotFound();
+
+        features.SetSwitch(feature, enabled);
+        return Ok(new FeatureSwitch(feature, enabled));
     }
 
     /// <summary>Admin/ops: deletes a user account.</summary>

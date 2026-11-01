@@ -10,6 +10,7 @@ namespace DotWatcher.Server.Controllers;
 public class CasualController(
     SessionStore store,
     UserTokenAuth userAuth,
+    FeatureFlags features,
     TimeProvider timeProvider) : ControllerBase
 {
     /// <summary>
@@ -61,7 +62,7 @@ public class CasualController(
         return Ok(store.GetCasualLive(
             user.UserId,
             account.VisibleToNonCrew,
-            true,
+            features.IsOn(Features.Crew),
             self: null,
             timeProvider.GetUtcNow()));
     }
@@ -142,7 +143,13 @@ public class CasualController(
         return Ok(SettingsFor(user.UserId));
     }
 
-    // 401 when not signed in.
-    private IActionResult? Gate(out AuthenticatedUser user) =>
-        userAuth.TryAuthenticate(Request, out user) ? null : Unauthorized();
+    // 401 when not signed in. 404 (not 403) when an admin has switched casual off, so the endpoints
+    // look absent to a build that doesn't know about them - same rule as crew.
+    private IActionResult? Gate(out AuthenticatedUser user)
+    {
+        if (!userAuth.TryAuthenticate(Request, out user))
+            return Unauthorized();
+
+        return features.IsOn(Features.Casual) ? null : NotFound();
+    }
 }
