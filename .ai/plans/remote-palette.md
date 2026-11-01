@@ -5,7 +5,7 @@
 Goal: change the start-screen button colours (Go, Invite code, Create, the event sign, the screen background) without
 shipping an app release. The server holds the palette; both apps read it, cache the last good copy, and fall back to
 the colours built into the app. Related: [`crew-feature-flag.md`](crew-feature-flag.md) (the same "config, not a
-release" idea for features) and the colour playground at `.ai/mockups/button-colours.html`.
+release" idea for features) and the colour playground at `client/public/palette-playground.html` (the Palette tab on `/admin`).
 
 Tick boxes as work lands: `- [ ]` → `- [x]`. Per `AGENTS.md`, build/test verification is left to CI on the PR;
 nothing below is verified locally. Nothing in this plan is built yet.
@@ -106,7 +106,7 @@ events nearby, casual settings), so this adds one call, not a new kind of traffi
 
 ## Playground
 
-- [x] Add a "JSON" tab to Copy values in `button-colours.html`, emitting the palette block above, ready to paste into
+- [x] Add a "JSON" tab to Copy values in `palette-playground.html`, emitting the palette block above, ready to paste into
       `appsettings.json`.
 
 ## Backwards compatibility (old app builds)
