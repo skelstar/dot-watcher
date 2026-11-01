@@ -1198,8 +1198,10 @@ public class SessionsApiTests
         using var factory = new DotWatcherApiFactory();
         using var client = factory.CreateClient();
         var ownerToken = await AuthTestHelpers.RegisterAsync(client, "owner", "Owner");
+        var otherOwnerToken = await AuthTestHelpers.RegisterAsync(client, "other", "Other");
         var first = await AuthTestHelpers.CreateSessionAsync(client, ownerToken, "FIRST23");
-        var second = await AuthTestHelpers.CreateSessionAsync(client, ownerToken, "SECOND23");
+        // A second owner: an organiser can only have one active session.
+        var second = await AuthTestHelpers.CreateSessionAsync(client, otherOwnerToken, "SECOND23");
 
         var tokenResponse = await SendWithUserTokenAsync(
             client, HttpMethod.Post, $"/sessions/{first.SessionId}/route-upload-token", ownerToken);
