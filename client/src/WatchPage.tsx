@@ -3,6 +3,8 @@ import { MapLibreMap, Marker, NavigationControl } from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import { MAP_STYLES, DEFAULT_MAP_STYLE_ID, LINZ_ATTRIBUTION, LEGAL_LINKS_ATTRIBUTION, type MapStyleId } from './map/mapStyle.ts'
 import MapStyleToggle from './MapStyleToggle.tsx'
+import Terrain3DToggle from './Terrain3DToggle.tsx'
+import { useTerrain3d, TERRAIN_MAX_PITCH } from './useTerrain3d.ts'
 import { page, card, icon, headline, body } from './cardPageStyles.ts'
 import { initialsFor } from './components/InitialsBadge.tsx'
 import { statusLine, watchState, type WatchViewDto } from './watchView.ts'
@@ -31,6 +33,7 @@ export default function WatchPage({ serverUrl, token }: Props) {
   const [mapFailed, setMapFailed] = useState(false)
   const [nowMs, setNowMs] = useState(Date.now())
   const [mapStyleId, setMapStyleId] = useState<MapStyleId>(DEFAULT_MAP_STYLE_ID)
+  const { enabled: terrainOn, toggle: toggleTerrain, attach: attachTerrain } = useTerrain3d(mapRef)
 
   // Keeps the link out of search results and out of the Referer header sent to other sites.
   useEffect(() => {
@@ -101,6 +104,7 @@ export default function WatchPage({ serverUrl, token }: Props) {
         style: MAP_STYLES[DEFAULT_MAP_STYLE_ID].url,
         center: [174.7762, -41.2865],
         zoom: 15,
+        maxPitch: TERRAIN_MAX_PITCH,
         attributionControl: { compact: false, customAttribution: [LEGAL_LINKS_ATTRIBUTION, LINZ_ATTRIBUTION] },
       })
     } catch {
@@ -108,6 +112,7 @@ export default function WatchPage({ serverUrl, token }: Props) {
       return
     }
     map.addControl(new NavigationControl({ showZoom: false }), 'top-right')
+    attachTerrain(map)
     // Only a person's own gesture carries an originalEvent; the camera following the runner does not.
     map.on('dragstart', e => {
       if (!e.originalEvent) return
@@ -120,7 +125,7 @@ export default function WatchPage({ serverUrl, token }: Props) {
       mapRef.current = null
       markerRef.current = null
     }
-  }, [hasMap])
+  }, [hasMap, attachTerrain])
 
   // Move the runner's dot, and the camera while following.
   const position = view?.position ?? null
@@ -210,6 +215,7 @@ export default function WatchPage({ serverUrl, token }: Props) {
         </div>
       </div>}
       {!mapFailed && <MapStyleToggle styleId={mapStyleId} onToggle={handleToggleMapStyle} top={86} />}
+      {!mapFailed && <Terrain3DToggle enabled={terrainOn} onToggle={toggleTerrain} top={121} />}
       {!mapFailed && !following && position && (
         <button type="button" style={recenterButton} onClick={recenter}>Recenter</button>
       )}
