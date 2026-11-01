@@ -1,17 +1,19 @@
 interface Props {
   enabled: boolean
   onToggle: () => void
+  // Distance from the top of the map; the default sits below the style toggle on the session map.
+  top?: number
 }
 
 // Experimental 3D terrain toggle, stacked directly below MapStyleToggle in the top-right column.
-export default function Terrain3DToggle({ enabled, onToggle }: Props) {
+export default function Terrain3DToggle({ enabled, onToggle, top = 158 }: Props) {
   const label = enabled ? 'Switch to flat 2D map' : 'Switch to 3D terrain'
 
   return (
     <button
       type="button"
       onClick={onToggle}
-      style={{ ...button, background: enabled ? '#fc4c02' : '#fff' }}
+      style={{ ...button, top, background: enabled ? '#fc4c02' : '#fff' }}
       title={label}
       aria-label={label}
       aria-pressed={enabled}
