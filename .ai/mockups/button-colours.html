@@ -333,11 +333,7 @@
       out = ORDER.map(function (k) { return 'static let landing' + kt(k) + ' = Color(hex: 0x' + s[k].slice(1).toUpperCase() + ')'; }).join('\n');
     } else if (fmt === 'json') {
       // The Palette section for server/appsettings.json (PaletteProvider reads these keys).
-      out = '"Palette": {
-  "Version": 1,
-' + ORDER.map(function (k) { return '  "' + kt(k) + '": "' + s[k].toLowerCase() + '"'; }).join(',
-') + '
-}';
+      out = '"Palette": {\n  "Version": 1,\n' + ORDER.map(function (k) { return '  "' + kt(k) + '": "' + s[k].toLowerCase() + '"'; }).join(',\n') + '\n}';
     } else {
       out = ':root {\n' + TOKENS.map(function (t) { return '  ' + t[3] + ': ' + s[t[0]] + ';'; }).join('\n') + '\n}';
     }
