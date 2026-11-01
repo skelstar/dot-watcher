@@ -62,7 +62,7 @@ public class CasualController(
         return Ok(store.GetCasualLive(
             user.UserId,
             account.VisibleToNonCrew,
-            features.ForGranted(account.GrantedFeatures).Contains(Features.Crew),
+            features.IsOn(Features.Crew),
             self: null,
             timeProvider.GetUtcNow()));
     }
@@ -143,13 +143,13 @@ public class CasualController(
         return Ok(SettingsFor(user.UserId));
     }
 
-    // 401 when not signed in. 404 (not 403) when the account doesn't have casual yet, so the
-    // endpoints look absent to a build that doesn't know about them - same rule as crew.
+    // 401 when not signed in. 404 (not 403) when an admin has switched casual off, so the endpoints
+    // look absent to a build that doesn't know about them - same rule as crew.
     private IActionResult? Gate(out AuthenticatedUser user)
     {
         if (!userAuth.TryAuthenticate(Request, out user))
             return Unauthorized();
 
-        return features.IsEnabled(user.UserId, Features.Casual) ? null : NotFound();
+        return features.IsOn(Features.Casual) ? null : NotFound();
     }
 }

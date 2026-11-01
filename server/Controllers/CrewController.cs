@@ -169,7 +169,7 @@ public class CrewController(
         return Ok(new ProfileResponse(nickname));
     }
 
-    // 401 when not signed in. 404 (not 403) when the account doesn't have crew yet, so the endpoints
+    // 401 when not signed in. 404 (not 403) when an admin has switched crew off, so the endpoints
     // look absent: shipped iOS builds treat any status except 401/426 from /me/crew as "this server
     // has no crew" and hide it quietly, whereas a 401 would be handled as a signed-out session.
     private IActionResult? Gate(out AuthenticatedUser user)
@@ -177,7 +177,7 @@ public class CrewController(
         if (!userAuth.TryAuthenticate(Request, out user))
             return Unauthorized();
 
-        return features.IsEnabled(user.UserId, Features.Crew) ? null : NotFound();
+        return features.IsOn(Features.Crew) ? null : NotFound();
     }
 
     private ObjectResult InvalidCode() =>

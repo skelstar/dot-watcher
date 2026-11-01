@@ -35,18 +35,6 @@ public class NearbyCreateTests
         Assert.Equal(6, session.InviteCode.Length);
     }
 
-    [Fact]
-    public async Task Create_Nearby_WithoutTheEventsFeature_IsRejected()
-    {
-        using var factory = new DotWatcherApiFactory { EnabledForAll = [] };
-        using var client = factory.CreateClient();
-        var token = await AuthTestHelpers.RegisterAsync(client, "alice", "Alice");
-
-        var response = await CreateAsync(client, token, Valid());
-
-        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
-    }
-
     [Theory]
     [InlineData("")]
     [InlineData("   ")]

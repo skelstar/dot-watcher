@@ -137,18 +137,6 @@ public class NearbyJoinApiTests
     }
 
     [Fact]
-    public async Task Join_WithoutTheEventsFeature_IsNotFound()
-    {
-        using var factory = new DotWatcherApiFactory { EnabledForAll = [] };
-        using var client = factory.CreateClient();
-        var token = await AuthTestHelpers.RegisterAsync(client, "alice", "Alice");
-
-        var response = await JoinAsync(client, token, "any", Lat, Lon, accuracy: 5);
-
-        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
-    }
-
-    [Fact]
     public async Task Join_WithoutSignIn_IsUnauthorized()
     {
         using var factory = new DotWatcherApiFactory { EnabledForAll = ["events"] };

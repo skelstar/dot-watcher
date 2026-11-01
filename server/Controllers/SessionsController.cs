@@ -68,9 +68,8 @@ public class SessionsController(
 
         if (wantsNearby)
         {
-            // Same rule as /me/events/nearby: a feature the account doesn't have is simply unavailable.
-            if (!features.IsEnabled(user.UserId, Features.Events))
-                return BadRequest(new { error = "Nearby join isn't available for this account." });
+            if (!features.IsOn(Features.Events))
+                return BadRequest(new { error = "Nearby join isn't available right now." });
 
             if (NearbyJoin.NormalizeTitle(request.SessionName) is null)
                 return BadRequest(new { error = $"A nearby session needs a title of 1-{NearbyJoin.MaxTitleLength} characters." });
@@ -100,11 +99,9 @@ public class SessionsController(
         if (request.MaxLengthHours is int maxLengthHours && (maxLengthHours < 1 || maxLengthHours > 240))
             return BadRequest(new { error = "Max length must be between 1 and 240 hours." });
 
-        // One active session per organiser, for accounts with the events feature only, so older builds
-        // and accounts without it behave exactly as before. Best-effort: Staging and Production share a
-        // database and an older Production build can still create a second session.
-        if (features.IsEnabled(user.UserId, Features.Events)
-            && store.FindActiveOwnedSessionId(user.UserId, timeProvider.GetUtcNow()) is { } activeSessionId)
+        // One active session per organiser. Best-effort: Staging and Production share a database and
+        // an older Production build can still create a second session.
+        if (store.FindActiveOwnedSessionId(user.UserId, timeProvider.GetUtcNow()) is { } activeSessionId)
             return Conflict(new { error = "You already have an active session. End it to create another.", sessionId = activeSessionId });
 
         var membership = store.CreateSessionForUser(user.UserId, displayName, request.SessionName, request.MaxLengthHours, nearby);
@@ -125,8 +122,7 @@ public class SessionsController(
         if (!userAuth.TryAuthenticate(Request, out var user))
             return Unauthorized();
 
-        // 404 (not 403) without the events feature, so the endpoint looks absent to accounts without it.
-        if (!features.IsEnabled(user.UserId, Features.Events))
+        if (!features.IsOn(Features.Events))
             return NotFound();
 
         return store.EndSession(sessionId, user.UserId) ? NoContent() : StatusCode(StatusCodes.Status403Forbidden);
@@ -148,8 +144,7 @@ public class SessionsController(
         if (!userAuth.TryAuthenticate(Request, out var user))
             return Unauthorized();
 
-        // 404 (not 403) without the events flag, so the endpoint looks absent to accounts without it.
-        if (!features.IsEnabled(user.UserId, Features.Events))
+        if (!features.IsOn(Features.Events))
             return NotFound();
 
         request ??= new UpdateNearbyRequest();
@@ -254,7 +249,7 @@ public class SessionsController(
         if (!userAuth.TryAuthenticate(Request, out var user))
             return Unauthorized();
 
-        if (!features.IsEnabled(user.UserId, Features.Events))
+        if (!features.IsOn(Features.Events))
             return NotFound();
 
         if (!nearbyLimiter.TryAcceptJoin(user.UserId))

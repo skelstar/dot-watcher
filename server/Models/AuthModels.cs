@@ -12,6 +12,10 @@ public record AuthenticatedUser(
 /// <summary>Admin/ops: replaces the features granted to an account.</summary>
 public record SetFeaturesRequest(IReadOnlyList<string>? Features);
 
+public record SetFeatureSwitchRequest(bool? Enabled);
+
+public record FeatureSwitch(string Feature, bool Enabled);
+
 public record UserAccount(
     string Id,
     string Username,
