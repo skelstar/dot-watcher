@@ -4,6 +4,9 @@ import 'maplibre-gl/dist/maplibre-gl.css'
 import { MAP_STYLES, DEFAULT_MAP_STYLE_ID, LINZ_ATTRIBUTION, LEGAL_LINKS_ATTRIBUTION, type MapStyleId } from './map/mapStyle.ts'
 import MapStyleToggle from './MapStyleToggle.tsx'
 import Terrain3DToggle from './Terrain3DToggle.tsx'
+import AccountButton from './AccountButton.tsx'
+import SignInPanel from './SignInPanel.tsx'
+import { useAuthSession } from './useAuthSession.ts'
 import { useTerrain3d, TERRAIN_MAX_PITCH } from './useTerrain3d.ts'
 import { page, card, icon, headline, body } from './cardPageStyles.ts'
 import { initialsFor } from './components/InitialsBadge.tsx'
@@ -33,6 +36,10 @@ export default function WatchPage({ serverUrl, token }: Props) {
   const [mapFailed, setMapFailed] = useState(false)
   const [nowMs, setNowMs] = useState(Date.now())
   const [mapStyleId, setMapStyleId] = useState<MapStyleId>(DEFAULT_MAP_STYLE_ID)
+  // Optional sign-in, as on the session map. It changes nothing on this page: the link is the whole
+  // credential, and a signed-in viewer sees the same initials as anyone else.
+  const authSession = useAuthSession()
+  const [accountOpen, setAccountOpen] = useState(false)
   const { enabled: terrainOn, toggle: toggleTerrain, attach: attachTerrain } = useTerrain3d(mapRef)
 
   // Keeps the link out of search results and out of the Referer header sent to other sites.
@@ -214,8 +221,10 @@ export default function WatchPage({ serverUrl, token }: Props) {
           {offline && state?.kind !== 'ended' ? ' · reconnecting…' : ''}
         </div>
       </div>}
+      {!mapFailed && <AccountButton displayName={authSession?.user.displayName ?? null} onClick={() => setAccountOpen(true)} />}
       {!mapFailed && <MapStyleToggle styleId={mapStyleId} onToggle={handleToggleMapStyle} top={86} />}
       {!mapFailed && <Terrain3DToggle enabled={terrainOn} onToggle={toggleTerrain} top={121} />}
+      {accountOpen && <SignInPanel serverUrl={serverUrl} onClose={() => setAccountOpen(false)} />}
       {!mapFailed && !following && position && (
         <button type="button" style={recenterButton} onClick={recenter}>Recenter</button>
       )}
