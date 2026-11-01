@@ -874,16 +874,21 @@ export default function AdminPanel({ serverUrl }: { serverUrl: string }) {
           <p style={featuresNote}>
             Try start-screen colours and copy the JSON tab into the server's <code>Palette</code> config section.
           </p>
-          {/* Same-origin static page (client/public), so its height can follow its content. */}
+          {/* Same-origin static page (client/public), so the frame can follow its content's height. */}
           <iframe
             ref={playgroundRef}
             src="/palette-playground.html"
             title="Palette playground"
             style={playgroundFrame}
+            scrolling="no"
             onLoad={() => {
               const f = playgroundRef.current
-              const h = f?.contentDocument?.documentElement.scrollHeight
-              if (f && h) f.style.height = `${h}px`
+              const doc = f?.contentDocument
+              if (!f || !doc) return
+              const fit = () => { f.style.height = `${doc.documentElement.scrollHeight}px` }
+              fit()
+              // Content height changes after load (fonts, snapshots, the layout going single-column).
+              new ResizeObserver(fit).observe(doc.body)
             }}
           />
         </>
