@@ -154,7 +154,7 @@ public class NearbyListTests
     }
 
     [Fact]
-    public async Task List_WithoutAPosition_StillReturnsThePlaceholder()
+    public async Task List_WithoutAPosition_ReturnsAnEmptyList()
     {
         using var factory = new DotWatcherApiFactory { EnabledForAll = ["events"] };
         using var client = factory.CreateClient();
@@ -162,8 +162,7 @@ public class NearbyListTests
 
         var response = await SendAsync(client, HttpMethod.Get, "/me/events/nearby", token);
 
-        var item = Assert.Single(await response.Content.ReadFromJsonAsync<JsonElement[]>() ?? []);
-        Assert.Equal("placeholder-rogaine", item.GetProperty("id").GetString());
+        Assert.Empty(await response.Content.ReadFromJsonAsync<JsonElement[]>() ?? []);
     }
 
     [Theory]
@@ -179,18 +178,6 @@ public class NearbyListTests
         var response = await SendAsync(client, HttpMethod.Get, $"/me/events/nearby?{query}", token);
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
-    }
-
-    [Fact]
-    public async Task List_WithoutTheEventsFeature_IsNotFound()
-    {
-        using var factory = new DotWatcherApiFactory { EnabledForAll = [] };
-        using var client = factory.CreateClient();
-        var token = await AuthTestHelpers.RegisterAsync(client, "alice", "Alice");
-
-        var response = await ListAsync(client, token, Lat, Lon, accuracy: 5);
-
-        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
 
     [Fact]

@@ -17,18 +17,6 @@ public class CasualWatchTests
         new() { EnabledForAll = [Features.Crew, Features.Casual] };
 
     [Fact]
-    public async Task CreateLink_WithoutTheFeature_LooksAbsent()
-    {
-        using var factory = new DotWatcherApiFactory { EnabledForAll = [Features.Crew] };
-        using var client = factory.CreateClient();
-        var alice = await RegisterAsync(client, "alice", "AL");
-
-        var response = await SendAsync(client, HttpMethod.Post, "/casual/watch-link", alice.AccessToken);
-
-        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
-    }
-
-    [Fact]
     public async Task CreateLink_WhenNotOut_IsAConflict()
     {
         using var factory = CasualFactory();

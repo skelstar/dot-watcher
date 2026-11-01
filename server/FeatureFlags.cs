@@ -3,6 +3,8 @@ namespace DotWatcher.Server;
 /// <summary>Names of the features that can be switched on per account. See .ai/plans/crew-feature-flag.md.</summary>
 public static class Features
 {
+    public static readonly IReadOnlyList<string> All = [Crew, Casual, Events];
+
     public const string Crew = "crew";
     public const string Casual = "casual";
     public const string Events = "events";
@@ -17,6 +19,9 @@ public sealed class FeatureFlags
 {
     private readonly SessionStore _store;
     private readonly IReadOnlyList<string> _enabledForAll;
+    private const long SwitchCacheMs = 5000;
+    private volatile IReadOnlyList<string>? _switchedOff;
+    private long _switchedOffAt;
 
     public FeatureFlags(IConfiguration configuration, SessionStore store)
     {
@@ -33,6 +38,31 @@ public sealed class FeatureFlags
     /// </summary>
     public IReadOnlyList<string> ForGranted(IEnumerable<string> granted) =>
         Normalize(_enabledForAll.Concat(granted));
+
+    /// <summary>
+    /// Whether a feature is switched on globally. Everything is on unless an admin has switched it off
+    /// (PUT /admin/features/{feature}); this is the kill switch and it overrides per-account grants.
+    /// The answer is cached for a few seconds so hot paths like POST /location don't read the database.
+    /// </summary>
+    public bool IsOn(string feature) => !SwitchedOff().Contains(feature);
+
+    public IReadOnlyList<string> SwitchedOff()
+    {
+        var cached = _switchedOff;
+        if (cached is not null && Environment.TickCount64 - _switchedOffAt < SwitchCacheMs)
+            return cached;
+
+        var fresh = _store.GetSwitchedOffFeatures();
+        _switchedOff = fresh;
+        _switchedOffAt = Environment.TickCount64;
+        return fresh;
+    }
+
+    public void SetSwitch(string feature, bool enabled)
+    {
+        _store.SetFeatureSwitch(feature, enabled);
+        _switchedOff = null;
+    }
 
     public bool IsEnabled(string userId, string feature) =>
         _enabledForAll.Contains(feature) || _store.GetUserFeatures(userId).Contains(feature);

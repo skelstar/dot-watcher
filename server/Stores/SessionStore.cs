@@ -196,6 +196,11 @@ public partial class SessionStore(string connectionString) : IDisposable
         addFeatures.CommandText = "ALTER TABLE users ADD COLUMN IF NOT EXISTS features TEXT NOT NULL DEFAULT ''";
         addFeatures.ExecuteNonQuery();
 
+        // Global kill switches, one row per feature. A feature with no row is on.
+        using var addSwitches = conn.CreateCommand();
+        addSwitches.CommandText = "CREATE TABLE IF NOT EXISTS feature_switches (feature TEXT PRIMARY KEY, enabled BOOLEAN NOT NULL)";
+        addSwitches.ExecuteNonQuery();
+
         // Casual tracking (see .ai/plans/casual-tracking.md). Same rules as crew above: everything
         // is additive and every foreign key cascades, because Staging and Production share this
         // database and a build that predates casual still does a plain DELETE FROM users and
@@ -402,6 +407,32 @@ public partial class SessionStore(string connectionString) : IDisposable
         cmd.Parameters.AddWithValue("@features", string.Join(',', features));
         cmd.Parameters.AddWithValue("@userId", userId);
         return cmd.ExecuteNonQuery() > 0;
+    }
+
+    /// <summary>The features an admin has switched off for everyone.</summary>
+    public IReadOnlyList<string> GetSwitchedOffFeatures()
+    {
+        using var conn = Connect();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT feature FROM feature_switches WHERE enabled = FALSE";
+        using var reader = cmd.ExecuteReader();
+        var features = new List<string>();
+        while (reader.Read())
+            features.Add(reader.GetString(0));
+        return features;
+    }
+
+    public void SetFeatureSwitch(string feature, bool enabled)
+    {
+        using var conn = Connect();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = """
+            INSERT INTO feature_switches (feature, enabled) VALUES (@feature, @enabled)
+            ON CONFLICT (feature) DO UPDATE SET enabled = EXCLUDED.enabled
+            """;
+        cmd.Parameters.AddWithValue("@feature", feature);
+        cmd.Parameters.AddWithValue("@enabled", enabled);
+        cmd.ExecuteNonQuery();
     }
 
     public bool UserExists(string userId)

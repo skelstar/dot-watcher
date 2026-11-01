@@ -1,5 +1,8 @@
 # Crew feature flag — Plan
 
+> **Superseded.** The crew, casual and events gates were removed (branch `remove-feature-flags`); every signed-in account
+> now has them. The `features` storage, admin endpoint and response field remain but gate nothing.
+
 *DotWatcher — plan, October 2026*
 
 Goal: let the owner switch Crew on for chosen accounts only, then turn it on for everyone later without shipping new
