@@ -4,12 +4,14 @@ import { MAP_STYLES, otherMapStyleId } from './map/mapStyle.ts'
 interface Props {
   styleId: MapStyleId
   onToggle: (next: MapStyleId) => void
+  // Distance from the top of the map; the default sits under the account and help buttons.
+  top?: number
 }
 
 // A small square button matching LegendHelp's "?" button, stacked directly below it — both sit
 // under AccountButton and MapLibre's top-right compass (see LegendHelp.tsx).
 // Shows the style you'd switch *to*, not the one currently active.
-export default function MapStyleToggle({ styleId, onToggle }: Props) {
+export default function MapStyleToggle({ styleId, onToggle, top = 123 }: Props) {
   const nextId = otherMapStyleId(styleId)
   const nextLabel = MAP_STYLES[nextId].label
 
@@ -17,7 +19,7 @@ export default function MapStyleToggle({ styleId, onToggle }: Props) {
     <button
       type="button"
       onClick={() => onToggle(nextId)}
-      style={button}
+      style={{ ...button, top }}
       title={`Switch to ${nextLabel} map`}
       aria-label={`Switch to ${nextLabel} map`}
     >

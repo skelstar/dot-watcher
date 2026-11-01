@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import { MapLibreMap, Marker, NavigationControl } from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
-import { MAP_STYLES, DEFAULT_MAP_STYLE_ID, LINZ_ATTRIBUTION, LEGAL_LINKS_ATTRIBUTION } from './map/mapStyle.ts'
+import { MAP_STYLES, DEFAULT_MAP_STYLE_ID, LINZ_ATTRIBUTION, LEGAL_LINKS_ATTRIBUTION, type MapStyleId } from './map/mapStyle.ts'
+import MapStyleToggle from './MapStyleToggle.tsx'
 import { page, card, icon, headline, body } from './cardPageStyles.ts'
 import { initialsFor } from './components/InitialsBadge.tsx'
 import { statusLine, watchState, type WatchViewDto } from './watchView.ts'
@@ -29,6 +30,7 @@ export default function WatchPage({ serverUrl, token }: Props) {
   // A browser with no WebGL can't draw the map; the page then falls back to the position as text.
   const [mapFailed, setMapFailed] = useState(false)
   const [nowMs, setNowMs] = useState(Date.now())
+  const [mapStyleId, setMapStyleId] = useState<MapStyleId>(DEFAULT_MAP_STYLE_ID)
 
   // Keeps the link out of search results and out of the Referer header sent to other sites.
   useEffect(() => {
@@ -148,6 +150,12 @@ export default function WatchPage({ serverUrl, token }: Props) {
     if (followingRef.current) map.easeTo({ center: lngLat, duration: 800 })
   }, [position?.latitude, position?.longitude, position?.heading, view?.live, view?.label])
 
+  // Swaps the live map's style in place; the runner's dot is a DOM marker, so it is untouched.
+  function handleToggleMapStyle(next: MapStyleId) {
+    setMapStyleId(next)
+    mapRef.current?.setStyle(MAP_STYLES[next].url)
+  }
+
   function recenter() {
     followingRef.current = true
     setFollowing(true)
@@ -201,6 +209,7 @@ export default function WatchPage({ serverUrl, token }: Props) {
           {offline && state?.kind !== 'ended' ? ' · reconnecting…' : ''}
         </div>
       </div>}
+      {!mapFailed && <MapStyleToggle styleId={mapStyleId} onToggle={handleToggleMapStyle} top={49} />}
       {!mapFailed && !following && position && (
         <button type="button" style={recenterButton} onClick={recenter}>Recenter</button>
       )}
