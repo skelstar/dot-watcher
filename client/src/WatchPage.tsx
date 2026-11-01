@@ -209,7 +209,7 @@ export default function WatchPage({ serverUrl, token }: Props) {
           {offline && state?.kind !== 'ended' ? ' · reconnecting…' : ''}
         </div>
       </div>}
-      {!mapFailed && <MapStyleToggle styleId={mapStyleId} onToggle={handleToggleMapStyle} top={49} />}
+      {!mapFailed && <MapStyleToggle styleId={mapStyleId} onToggle={handleToggleMapStyle} top={86} />}
       {!mapFailed && !following && position && (
         <button type="button" style={recenterButton} onClick={recenter}>Recenter</button>
       )}
