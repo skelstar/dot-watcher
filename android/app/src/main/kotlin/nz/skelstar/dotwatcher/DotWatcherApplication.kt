@@ -7,7 +7,9 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import nz.skelstar.dotwatcher.crash.CrashReporter
+import nz.skelstar.dotwatcher.data.PaletteStore
 import nz.skelstar.dotwatcher.network.DotWatcherApiClient
+import nz.skelstar.dotwatcher.ui.theme.AppliedSignColors
 
 /** Installs the crash reporter before anything else runs, and sends any crash saved by the
  *  previous run (or noticed from Android's exit records) once the app has had a moment to start. */
@@ -15,6 +17,8 @@ class DotWatcherApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         CrashReporter.install(this)
+        // The start screen's colours for this run: the last palette the server sent, if any.
+        AppliedSignColors.palette = PaletteStore(this).applied
 
         CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
             // Not on the critical path of startup, and a crash loop shouldn't hammer the network.

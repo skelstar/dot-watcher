@@ -18,6 +18,7 @@ import nz.skelstar.dotwatcher.crew.CrewModel
 import nz.skelstar.dotwatcher.crew.CrewPrefs
 import nz.skelstar.dotwatcher.data.AuthTokenStore
 import nz.skelstar.dotwatcher.data.DotWatcherRepository
+import nz.skelstar.dotwatcher.data.PaletteStore
 import nz.skelstar.dotwatcher.data.ShareChoiceStore
 import nz.skelstar.dotwatcher.location.CASUAL_SESSION_ID
 import nz.skelstar.dotwatcher.location.Fix
@@ -77,7 +78,15 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     private val tokenStore = AuthTokenStore(application)
     private val shareChoices = ShareChoiceStore(application)
     private val api = DotWatcherApiClient.create(BuildConfig.API_BASE_URL, application)
-    val repository = DotWatcherRepository(api, tokenStore)
+    private val paletteStore = PaletteStore(application)
+    val repository = DotWatcherRepository(api, tokenStore, paletteStore)
+
+    /** Picks up a changed palette from the server (on launch and when the app comes back to the front). It is
+     *  saved for the next launch; the colours on screen do not change (see AppliedSignColors). */
+    fun refreshPalette() {
+        if (!tokenStore.isSignedIn) return
+        viewModelScope.launch { runCatching { repository.refreshPalette() } }
+    }
 
     /** The signed-in account's crew. Shares this ViewModel's repository and scope rather than being a
      *  second ViewModel, so there is one network stack (see the class note above). */

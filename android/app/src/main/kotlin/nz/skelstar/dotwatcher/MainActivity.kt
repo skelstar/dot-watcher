@@ -104,6 +104,8 @@ class MainActivity : ComponentActivity() {
         // the "allow all the time" explainer without a relaunch.
         hasBackgroundLocationPermission =
             isForegroundLocationGranted() && isBackgroundLocationGranted()
+        // On launch and each return to the front: fetch the server's start-screen palette for the next launch.
+        appViewModel.refreshPalette()
     }
 
     private fun requestBackgroundLocationIfNeeded() {

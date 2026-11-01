@@ -68,6 +68,7 @@ import nz.skelstar.dotwatcher.ui.crew.CrewRow
 import nz.skelstar.dotwatcher.ui.crew.CrewStage
 import nz.skelstar.dotwatcher.ui.landing.EventSignButton
 import nz.skelstar.dotwatcher.ui.landing.HoldSignButton
+import nz.skelstar.dotwatcher.ui.theme.AppliedSignColors
 import nz.skelstar.dotwatcher.ui.landing.SignButton
 import nz.skelstar.dotwatcher.nearby.ActiveSessionConflict
 import nz.skelstar.dotwatcher.nearby.NEARBY_MAX_TITLE_LENGTH
@@ -164,7 +165,13 @@ fun SessionScreen(
     // Header, crew and any error scroll; the three sign buttons stay pinned to the bottom where a
     // thumb reaches them. Kept inside the system bars: with three-button navigation the bottom button
     // would otherwise run under the nav bar (the map screens allow for the bars themselves).
-    Column(modifier = Modifier.fillMaxSize().safeDrawingPadding()) {
+    val screenColor = AppliedSignColors.palette?.screen
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .then(if (screenColor != null) Modifier.background(screenColor) else Modifier)
+            .safeDrawingPadding(),
+    ) {
         PullToRefreshBox(
             isRefreshing = refreshing,
             onRefresh = {
@@ -381,17 +388,19 @@ private fun AppHeader(onAccountClick: () -> Unit) {
         Column {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(text = "dot", style = MaterialTheme.typography.headlineLarge)
+                // The dot is the Go colour with the initials in the Sign background colour, when the server has a palette.
+                val palette = AppliedSignColors.palette
                 Box(
                     modifier = Modifier
                         .padding(horizontal = 4.dp)
                         .size(32.dp)
-                        .background(MaterialTheme.colorScheme.primary, CircleShape),
+                        .background(palette?.goBg ?: MaterialTheme.colorScheme.primary, CircleShape),
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(
                         text = "DW",
                         style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onPrimary,
+                        color = palette?.altBg ?: MaterialTheme.colorScheme.onPrimary,
                     )
                 }
                 Text(text = "watchr", style = MaterialTheme.typography.headlineLarge)

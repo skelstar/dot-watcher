@@ -38,6 +38,8 @@ import retrofit2.Response
 class DotWatcherRepository(
     private val api: DotWatcherApi,
     private val tokenStore: AuthTokenStore,
+    // Null where nothing shows the palette (the tracking service).
+    private val paletteStore: PaletteStore? = null,
 ) {
     /** Who is signed in, for the account sheet. */
     val username: String? get() = tokenStore.username
@@ -50,6 +52,7 @@ class DotWatcherRepository(
             tokenStore.userId = auth.user.userId
             tokenStore.displayName = auth.user.displayName
             tokenStore.username = auth.user.username
+            paletteStore?.save(auth.user.config)
         }
         return stripBody(response)
     }
@@ -61,8 +64,15 @@ class DotWatcherRepository(
             tokenStore.userId = auth.user.userId
             tokenStore.displayName = auth.user.displayName
             tokenStore.username = auth.user.username
+            paletteStore?.save(auth.user.config)
         }
         return stripBody(response)
+    }
+
+    /** Fetches the account and saves its palette for the next launch. A failed request changes nothing. */
+    suspend fun refreshPalette() {
+        val response = api.getMe(bearer(requireToken()))
+        response.body()?.let { paletteStore?.save(it.config) }
     }
 
     suspend fun logout() {

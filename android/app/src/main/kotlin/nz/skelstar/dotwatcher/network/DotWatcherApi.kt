@@ -8,6 +8,7 @@ import com.jakewharton.retrofit2.converter.kotlinx.serialization.asConverterFact
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
 import nz.skelstar.dotwatcher.BuildConfig
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -53,6 +54,9 @@ data class AuthenticatedUser(
     val userId: String,
     val username: String,
     val displayName: String,
+    // Server-driven settings, e.g. config.palette (see data/RemotePalette.kt). Kept as raw JSON so an
+    // unexpected shape in here can never fail a sign-in; null from a server that does not send it.
+    val config: JsonObject? = null,
 )
 
 @Serializable
@@ -327,6 +331,13 @@ interface DotWatcherApi {
         @Body report: ClientErrorReport,
         @Header("X-Api-Version") apiVersion: String = API_VERSION,
     ): Response<Unit>
+
+    /** The caller's account, including the server's `config` (the palette). */
+    @GET("me")
+    suspend fun getMe(
+        @Header("Authorization") bearerToken: String,
+        @Header("X-Api-Version") apiVersion: String = API_VERSION,
+    ): Response<AuthenticatedUser>
 
     @POST("auth/logout")
     suspend fun logout(

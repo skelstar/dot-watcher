@@ -26,3 +26,42 @@ val SignFontFamily = FontFamily(
         variationSettings = FontVariation.Settings(FontVariation.weight(800)),
     ),
 )
+
+/**
+ * Every colour the start screen's signs and background use. The built-in set is [BuiltInSignColors];
+ * a palette from the server (see data/RemotePalette.kt) replaces it as a whole, never in part.
+ * [screen] is null for the built-in colours, which leave the theme's own background alone.
+ */
+data class SignColors(
+    val goBg: Color,
+    val goFg: Color,
+    val goBar: Color,
+    val altBg: Color,
+    val altFg: Color,
+    val accent: Color,
+    val accentInk: Color,
+    val screen: Color? = null,
+)
+
+val BuiltInSignColors = SignColors(
+    goBg = SignPalette.Navy,
+    goFg = SignPalette.Sand,
+    goBar = SignPalette.Sand,
+    altBg = SignPalette.Cream,
+    altFg = SignPalette.Navy,
+    accent = SignPalette.Orange,
+    accentInk = SignPalette.Ink,
+)
+
+/**
+ * The server's palette for this run of the app, or null to use [BuiltInSignColors]. Set once, in
+ * [nz.skelstar.dotwatcher.DotWatcherApplication.onCreate], before any screen draws, so a new palette shows from
+ * the next launch and never changes part-way through.
+ */
+object AppliedSignColors {
+    @Volatile
+    var palette: SignColors? = null
+}
+
+val currentSignColors: SignColors
+    get() = AppliedSignColors.palette ?: BuiltInSignColors
