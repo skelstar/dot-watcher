@@ -6,6 +6,7 @@ import SwiftUI
 /// screen, where the invite code, participants and Leave still live. See `MapChrome.swift`.
 struct SessionMapScreen: View {
     var location: LocationManager
+    var crew: CrewStore
 
     @State private var camera: MapCameraPosition = .userLocation(fallback: .automatic)
     @State private var stopProgress: CGFloat = 0
@@ -162,7 +163,11 @@ struct SessionMapScreen: View {
                 Button("Cancel", role: .cancel) {}
             }
         } message: {
-            Text("They'll be removed from this session and won't be able to join any of your sessions again.")
+            let inCrew = blockCandidate
+                .flatMap { location.participantUserIds[$0] }
+                .map { id in crew.members.contains { $0.userId == id } } ?? false
+            Text("They'll be removed from this session and won't be able to join any of your sessions again."
+                + (inCrew ? " They'll also be removed from your crew." : ""))
         }
         .alert("Couldn't block user", isPresented: Binding(
             get: { blockError != nil },
@@ -394,6 +399,8 @@ struct SessionMapScreen: View {
         }
         do {
             try await location.blockUser(userId: userId, displayName: name)
+            // The server also ends any crew link with them, so reload rather than show a stale crew.
+            await crew.refresh()
         } catch {
             blockError = error.localizedDescription
         }
@@ -556,6 +563,7 @@ private struct ParticipantsSheet: View {
 /// landing screen too.
 struct SessionMapCover: ViewModifier {
     var location: LocationManager
+    var crew: CrewStore
     var casualMapPresented: Bool
     @Binding var showShareConsent: Bool
 
@@ -565,7 +573,7 @@ struct SessionMapCover: ViewModifier {
                 get: { location.activeMembership != nil && (location.isTracking || showShareConsent) && !casualMapPresented },
                 set: { _ in }
             )) {
-                SessionMapScreen(location: location)
+                SessionMapScreen(location: location, crew: crew)
                     .preferredColorScheme(location.appearanceMode.colorScheme)
                     .sheet(isPresented: $showShareConsent) {
                         if let membership = location.activeMembership {

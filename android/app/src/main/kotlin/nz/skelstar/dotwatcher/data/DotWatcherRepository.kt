@@ -1,6 +1,8 @@
 package nz.skelstar.dotwatcher.data
 
+import nz.skelstar.dotwatcher.network.BlockedUser
 import nz.skelstar.dotwatcher.network.CasualLiveResponse
+import nz.skelstar.dotwatcher.network.SessionRunner
 import nz.skelstar.dotwatcher.network.CasualSettings
 import nz.skelstar.dotwatcher.network.CasualWatchLinkResponse
 import nz.skelstar.dotwatcher.network.NearbyEvent
@@ -42,6 +44,13 @@ class DotWatcherRepository(
     /** Who is signed in, for the account sheet. */
     val username: String? get() = tokenStore.username
     val displayName: String? get() = tokenStore.displayName
+
+    /** Changes the initials this phone sends when creating or joining a session, as iOS does: it is not
+     *  an account change, so the server's own copy (crew and casual dots) is untouched, and the next
+     *  sign-in puts the account's initials back. */
+    fun setDisplayName(initials: String) {
+        tokenStore.displayName = initials
+    }
 
     suspend fun register(username: String, password: String, displayName: String): Response<Unit> {
         val response = api.register(RegisterRequest(username, password, displayName))
@@ -144,6 +153,17 @@ class DotWatcherRepository(
         val token = requireToken()
         return api.leaveSession(sessionId, bearer(token))
     }
+
+    // --- Blocking ----------------------------------------------------------------------
+
+    suspend fun getSessionRunners(sessionId: String): Response<List<SessionRunner>> =
+        api.getSessionRunners(sessionId, bearer(requireToken()))
+
+    suspend fun getBlockedUsers(): Response<List<BlockedUser>> = api.getBlockedUsers(bearer(requireToken()))
+
+    suspend fun blockUser(userId: String): Response<Unit> = api.blockUser(userId, bearer(requireToken()))
+
+    suspend fun unblockUser(userId: String): Response<Unit> = api.unblockUser(userId, bearer(requireToken()))
 
     // --- Crew --------------------------------------------------------------------------
 

@@ -94,6 +94,14 @@ data class SessionMembership(
     val createdAt: String? = null,
 )
 
+/** Someone who has joined a session, whether or not they are sending positions. Blocking needs the id. */
+@Serializable
+data class SessionRunner(val userId: String, val displayName: String)
+
+/** Someone the caller has blocked, account-wide. [blockedAt] is an ISO-8601 UTC time. */
+@Serializable
+data class BlockedUser(val userId: String, val displayName: String, val blockedAt: String)
+
 // --- Crew (server: Controllers/CrewController.cs) -----------------------------------
 // A crew is mutual and tied to the account. Members are added only by redeeming a one-time code the
 // other person sent. The server never returns usernames here: people are shown by nickname, falling
@@ -385,6 +393,35 @@ interface DotWatcherApi {
         @Header("Authorization") bearerToken: String,
         @Header("X-Api-Version") apiVersion: String = API_VERSION,
     ): Response<List<List<RunnerPosition>>>
+
+    /** Everyone who has joined the session (not just those sending positions), with their user ids. */
+    @GET("sessions/{sessionId}/runners")
+    suspend fun getSessionRunners(
+        @Path("sessionId") sessionId: String,
+        @Header("Authorization") bearerToken: String,
+        @Header("X-Api-Version") apiVersion: String = API_VERSION,
+    ): Response<List<SessionRunner>>
+
+    @GET("me/blocks")
+    suspend fun getBlockedUsers(
+        @Header("Authorization") bearerToken: String,
+        @Header("X-Api-Version") apiVersion: String = API_VERSION,
+    ): Response<List<BlockedUser>>
+
+    /** Ends any session membership shared with the user and stops them joining the caller's sessions. */
+    @POST("me/blocks/{userId}")
+    suspend fun blockUser(
+        @Path("userId") userId: String,
+        @Header("Authorization") bearerToken: String,
+        @Header("X-Api-Version") apiVersion: String = API_VERSION,
+    ): Response<Unit>
+
+    @DELETE("me/blocks/{userId}")
+    suspend fun unblockUser(
+        @Path("userId") userId: String,
+        @Header("Authorization") bearerToken: String,
+        @Header("X-Api-Version") apiVersion: String = API_VERSION,
+    ): Response<Unit>
 
     @GET("me/crew")
     suspend fun getCrew(

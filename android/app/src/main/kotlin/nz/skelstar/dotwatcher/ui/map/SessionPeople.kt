@@ -3,7 +3,9 @@ package nz.skelstar.dotwatcher.ui.map
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -22,6 +24,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -97,8 +100,10 @@ internal fun PersonDot(
 
 /**
  * Everyone in the session as dots, bottom left. Up to four are separate: tap one to centre the map on
- * them, tap again to let go. With more than four the dots overlap and the whole chip opens the list.
+ * them, tap again to let go, hold to block. With more than four the dots overlap and the whole chip opens
+ * the list.
  */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 internal fun SessionPeopleChip(
     names: List<String>,
@@ -107,6 +112,7 @@ internal fun SessionPeopleChip(
     followed: String?,
     onFollow: (String) -> Unit,
     onShowAll: () -> Unit,
+    onBlock: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val now by rememberSecondClock()
@@ -143,7 +149,13 @@ internal fun SessionPeopleChip(
                     Modifier
                 } else {
                     Modifier
-                        .clickable(enabled = age != null) { onFollow(name) }
+                        .combinedClickable(
+                            enabled = true,
+                            onClick = { if (age != null) onFollow(name) },
+                            // Hold a dot to block that person, as on iOS; never yourself.
+                            onLongClick = if (name != me) ({ onBlock(name) }) else null,
+                            onLongClickLabel = "Block",
+                        )
                         .semantics { contentDescription = if (name == me) "You" else name }
                 },
             )
@@ -171,6 +183,8 @@ internal fun SessionPeopleSheet(
     followed: String?,
     onSelect: (String) -> Unit,
     onDismiss: () -> Unit,
+    /** Asks to block someone; offered on everyone but you. */
+    onBlock: (String) -> Unit,
 ) {
     val now by rememberSecondClock()
     ModalBottomSheet(onDismissRequest = onDismiss) {
@@ -201,6 +215,11 @@ internal fun SessionPeopleSheet(
                         )
                     }
                     if (followed == name) Text("Following", style = MaterialTheme.typography.labelMedium)
+                    if (name != me) {
+                        TextButton(onClick = { onBlock(name) }) {
+                            Text("Block", color = MaterialTheme.colorScheme.error)
+                        }
+                    }
                 }
             }
         }
