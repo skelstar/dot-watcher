@@ -509,14 +509,12 @@ struct CasualMapScreen: View {
         }
     }
 
-    /// "2 crew out · 5 nearby". The nearby part appears only when the person has chosen to be seen,
-    /// because that is also when they can see others. Tapping it opens the crew sheet, so crew can be
-    /// added mid-run; with no crew yet it says so and offers the add.
+    /// "2 crew out". Tapping it opens the crew sheet, so crew can be added mid-run; with no crew yet
+    /// it says so and offers the add.
     private var countChip: some View {
         let crewOut = casual.crewOut ?? 0
         let hasNoCrew = crew.isAvailable && crew.members.isEmpty
         let text = (hasNoCrew ? "No crew yet" : crewOut == 0 ? "No crew out" : "\(crewOut) crew out")
-            + (casual.visibleToNonCrew ? "  ·  \(casual.nearby.count) nearby" : "")
         return Button {
             crew.isFlowPresented = true
         } label: {
