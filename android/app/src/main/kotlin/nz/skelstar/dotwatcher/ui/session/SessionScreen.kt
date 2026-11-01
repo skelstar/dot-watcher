@@ -25,11 +25,16 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -40,7 +45,13 @@ import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleResumeEffect
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import nz.skelstar.dotwatcher.AccountInfo
 import nz.skelstar.dotwatcher.BuildConfig
 import nz.skelstar.dotwatcher.SessionUiState
@@ -58,6 +69,18 @@ import nz.skelstar.dotwatcher.ui.crew.CrewStage
 import nz.skelstar.dotwatcher.ui.landing.EventSignButton
 import nz.skelstar.dotwatcher.ui.landing.HoldSignButton
 import nz.skelstar.dotwatcher.ui.landing.SignButton
+import nz.skelstar.dotwatcher.nearby.ActiveSessionConflict
+import nz.skelstar.dotwatcher.nearby.NEARBY_MAX_TITLE_LENGTH
+import nz.skelstar.dotwatcher.nearby.NearbyDraft
+import nz.skelstar.dotwatcher.network.NearbyEvent
+import nz.skelstar.dotwatcher.ui.nearby.ActiveSessionDialog
+import nz.skelstar.dotwatcher.ui.nearby.NearbyCreateSection
+import nz.skelstar.dotwatcher.ui.nearby.NearbyJoinSheet
+
+/** How often the nearby list refreshes by itself while the start screen is showing, matching iOS. Pulling the
+ *  screen down refreshes at once; this only stops a screen left open from going stale, and each refresh takes a
+ *  GPS fix, so it is slow. */
+private const val EVENTS_REFRESH_MS = 3 * 60_000L
 
 /**
  * Lets a signed-in runner either start a new session ([POST /sessions]) or join an existing one
@@ -80,10 +103,11 @@ import nz.skelstar.dotwatcher.ui.landing.SignButton
  * (`server/Controllers/SessionsController.cs`) — the same outcome as iOS's common path,
  * without needing to port that rarely-hit fallback sheet.
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SessionScreen(
     state: SessionUiState,
-    onCreateSession: (sessionName: String?) -> Unit,
+    onCreateSession: (sessionName: String?, nearby: NearbyDraft?) -> Unit,
     onJoinSession: (inviteCode: String) -> Unit,
     onSignOut: () -> Unit,
     account: AccountInfo,
@@ -92,8 +116,19 @@ fun SessionScreen(
     casual: CasualModel,
     events: EventsModel,
     onStartCasual: (Duration) -> Unit,
+    onJoinNearby: (sessionId: String) -> Unit,
+    activeSessionConflict: ActiveSessionConflict?,
+    onEndActiveSessionAndCreate: () -> Unit,
+    onDismissActiveSessionConflict: () -> Unit,
+    hasPreciseLocation: Boolean,
 ) {
     var showJoinDialog by remember { mutableStateOf(false) }
+    // Pull-to-refresh: the spinner shows until the nearby list has loaded.
+    var refreshing by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    // A nearby run the person tapped, showing its join sheet; null when none is up.
+    var nearbyCandidate by remember { mutableStateOf<NearbyEvent?>(null) }
+    var joinAttempted by remember { mutableStateOf(false) }
     var showBeforeYouGo by remember { mutableStateOf(false) }
     var showWhoCanSeeMe by remember { mutableStateOf(false) }
     val casualState by casual.state.collectAsState()
@@ -112,49 +147,77 @@ fun SessionScreen(
         onPauseOrDispose { }
     }
 
+    // Runs near the person change as people arrive and the organiser moves the join location. Pulling the screen
+    // down refreshes at once; this slower refresh only keeps a screen that is left open from going stale. It
+    // runs while the app is visible (screen on, app in front) and not while tracking: the map replaces this
+    // screen then. Each refresh takes a one-off GPS fix, hence the long interval.
+    val lifecycleOwner = LocalLifecycleOwner.current
+    LaunchedEffect(lifecycleOwner) {
+        lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            while (isActive) {
+                delay(EVENTS_REFRESH_MS)
+                events.refresh()
+            }
+        }
+    }
+
     // Header, crew and any error scroll; the three sign buttons stay pinned to the bottom where a
     // thumb reaches them. Kept inside the system bars: with three-button navigation the bottom button
     // would otherwise run under the nav bar (the map screens allow for the bars themselves).
     Column(modifier = Modifier.fillMaxSize().safeDrawingPadding()) {
-        Column(
-            modifier = Modifier
-                .weight(1f)
-                .verticalScroll(rememberScrollState())
-                .padding(start = 24.dp, top = 8.dp, end = 24.dp),
+        PullToRefreshBox(
+            isRefreshing = refreshing,
+            onRefresh = {
+                scope.launch {
+                    refreshing = true
+                    crew.refresh()
+                    casual.refresh()
+                    events.refreshNow()
+                    refreshing = false
+                }
+            },
+            modifier = Modifier.weight(1f),
         ) {
-            AppHeader(onAccountClick = { showAccount = true })
-            Spacer(modifier = Modifier.height(24.dp))
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+                    .padding(start = 24.dp, top = 8.dp, end = 24.dp),
+            ) {
+                AppHeader(onAccountClick = { showAccount = true })
+                Spacer(modifier = Modifier.height(24.dp))
 
-            // Hidden entirely until the server says it has crew (see CrewRow).
-            if (crewState.isAvailable) {
-                CrewRow(state = crewState, onClick = { crewStage = CrewStage.List })
-                Spacer(modifier = Modifier.height(12.dp))
-            }
+                // Hidden entirely until the server says it has crew (see CrewRow).
+                if (crewState.isAvailable) {
+                    CrewRow(state = crewState, onClick = { crewStage = CrewStage.List })
+                    Spacer(modifier = Modifier.height(12.dp))
+                }
 
-            // Hidden until the server has casual for this account, and when there is no crew to be out.
-            if (casualState.isAvailable && crewState.members.isNotEmpty()) {
-                crewOutLine(casualState.crewOut)?.let {
-                    Text(
-                        text = it,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+                // Hidden until the server has casual for this account, and when there is no crew to be out.
+                if (casualState.isAvailable && crewState.members.isNotEmpty()) {
+                    crewOutLine(casualState.crewOut)?.let {
+                        Text(
+                            text = it,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                 }
-            }
 
-            when (state) {
-                is SessionUiState.Loading -> {
-                    Spacer(modifier = Modifier.height(16.dp))
-                    CircularProgressIndicator()
+                when (state) {
+                    is SessionUiState.Loading -> {
+                        Spacer(modifier = Modifier.height(16.dp))
+                        CircularProgressIndicator()
+                    }
+                    is SessionUiState.Error -> {
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Text(
+                            text = state.message,
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                    }
+                    SessionUiState.Idle -> Unit
                 }
-                is SessionUiState.Error -> {
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Text(
-                        text = state.message,
-                        color = MaterialTheme.colorScheme.error,
-                    )
-                }
-                SessionUiState.Idle -> Unit
             }
         }
 
@@ -169,14 +232,28 @@ fun SessionScreen(
                     onComplete = { showBeforeYouGo = true },
                 )
             }
-            // Only when the server has events for this account (the "events" feature).
-            eventsState.events.firstOrNull()?.let { event ->
+            // Only when the server has events for this account (the "events" feature): the runs people
+            // nearby can join, or the placeholder while there's no position to look near.
+            eventsState.joinable.forEach { event ->
                 EventSignButton(
                     eyebrow = event.eyebrow,
                     title = event.title,
                     subtitle = event.subtitle,
-                    onClick = {},
+                    onClick = {
+                        joinAttempted = false
+                        nearbyCandidate = event
+                    },
                 )
+            }
+            if (eventsState.joinable.isEmpty()) {
+                eventsState.events.firstOrNull()?.let { event ->
+                    EventSignButton(
+                        eyebrow = event.eyebrow,
+                        title = event.title,
+                        subtitle = event.subtitle,
+                        onClick = {},
+                    )
+                }
             }
             SignButton(
                 title = "Join",
@@ -240,6 +317,27 @@ fun SessionScreen(
 
     CrewFlow(crew = crew, state = crewState, stage = crewStage, onStage = { crewStage = it })
 
+    nearbyCandidate?.let { event ->
+        NearbyJoinSheet(
+            event = event,
+            state = if (joinAttempted) state else SessionUiState.Idle,
+            onJoin = {
+                event.sessionId?.let {
+                    joinAttempted = true
+                    onJoinNearby(it)
+                }
+            },
+            onDismiss = { nearbyCandidate = null },
+        )
+    }
+
+    if (activeSessionConflict != null) {
+        ActiveSessionDialog(
+            onEndAndCreate = onEndActiveSessionAndCreate,
+            onDismiss = onDismissActiveSessionConflict,
+        )
+    }
+
     if (showJoinDialog) {
         JoinSessionDialog(
             enabled = state !is SessionUiState.Loading,
@@ -254,9 +352,11 @@ fun SessionScreen(
     if (showCreateDialog) {
         CreateSessionDialog(
             enabled = state !is SessionUiState.Loading,
-            onCreate = { sessionName ->
+            nearbyAvailable = eventsState.isAvailable,
+            hasPreciseLocation = hasPreciseLocation,
+            onCreate = { sessionName, nearby ->
                 showCreateDialog = false
-                onCreateSession(sessionName)
+                onCreateSession(sessionName, nearby)
             },
             onCancel = { showCreateDialog = false },
         )
@@ -397,10 +497,15 @@ private fun JoinSessionDialog(
 @Composable
 private fun CreateSessionDialog(
     enabled: Boolean,
-    onCreate: (sessionName: String?) -> Unit,
+    nearbyAvailable: Boolean,
+    hasPreciseLocation: Boolean,
+    onCreate: (sessionName: String?, nearby: NearbyDraft?) -> Unit,
     onCancel: () -> Unit,
 ) {
     var sessionName by remember { mutableStateOf("") }
+    var nearby by remember { mutableStateOf(NearbyDraft()) }
+    // With nearby on the name becomes a public title and the code-style box goes away.
+    val nearbyIsOn = nearbyAvailable && nearby.isOn
 
     Dialog(onDismissRequest = onCancel) {
         Column(
@@ -408,6 +513,7 @@ private fun CreateSessionDialog(
             modifier = Modifier
                 .fillMaxWidth()
                 .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(20.dp))
+                .verticalScroll(rememberScrollState())
                 .padding(24.dp),
         ) {
             Text(
@@ -416,22 +522,50 @@ private fun CreateSessionDialog(
                 style = MaterialTheme.typography.titleLarge,
             )
             Spacer(modifier = Modifier.height(12.dp))
-            Text(
-                text = "Give your session a name. You'll get an invite code to share with others.",
-                textAlign = TextAlign.Center,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Spacer(modifier = Modifier.height(20.dp))
-            CodeBoxField(
-                value = sessionName,
-                onValueChange = { sessionName = it },
-                length = 8,
-                modifier = Modifier.fillMaxWidth(),
-            )
+            if (nearbyIsOn) {
+                Text(
+                    text = "Give your run a title. People nearby will see it. You'll still get an invite code to share.",
+                    textAlign = TextAlign.Center,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(modifier = Modifier.height(20.dp))
+                OutlinedTextField(
+                    value = nearby.title,
+                    onValueChange = { if (it.length <= NEARBY_MAX_TITLE_LENGTH) nearby = nearby.copy(title = it) },
+                    label = { Text("Title") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            } else {
+                Text(
+                    text = "Give your session a name. You'll get an invite code to share with others.",
+                    textAlign = TextAlign.Center,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(modifier = Modifier.height(20.dp))
+                CodeBoxField(
+                    value = sessionName,
+                    onValueChange = { sessionName = it },
+                    length = 8,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+            if (nearbyAvailable) {
+                Spacer(modifier = Modifier.height(20.dp))
+                NearbyCreateSection(
+                    draft = nearby,
+                    onChange = { nearby = it },
+                    hasPreciseLocation = hasPreciseLocation,
+                )
+            }
             Spacer(modifier = Modifier.height(20.dp))
             Button(
-                onClick = { onCreate(sessionName.ifBlank { null }) },
-                enabled = enabled && (sessionName.isEmpty() || sessionName.length >= 4),
+                onClick = { onCreate(sessionName.ifBlank { null }, nearby.takeIf { nearbyIsOn }) },
+                enabled = enabled && if (nearbyIsOn) {
+                    nearby.trimmedTitle.isNotEmpty() && hasPreciseLocation
+                } else {
+                    sessionName.isEmpty() || sessionName.length >= 4
+                },
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Text("Create Session")

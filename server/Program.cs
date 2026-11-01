@@ -35,6 +35,7 @@ builder.Services.AddSingleton<AuthAttemptLimiter>();
 builder.Services.AddSingleton<ClientErrorLimiter>();
 builder.Services.AddSingleton<CrewCodeLimiter>();
 builder.Services.AddSingleton<WatchLinkLimiter>();
+builder.Services.AddSingleton<NearbyLimiter>();
 builder.Services.AddSingleton<FeatureFlags>();
 builder.Services.AddHostedService<CasualMaintenanceService>();
 builder.Services.AddSingleton(sp =>

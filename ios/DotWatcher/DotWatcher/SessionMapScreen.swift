@@ -21,6 +21,10 @@ struct SessionMapScreen: View {
     @State private var fittedCount = -1
     /// The runner the map stays centred on, picked by tapping their dot; nil frames everyone.
     @State private var followedName: String?
+    @State private var showNearbySettings = false
+    @State private var showEndSession = false
+    /// A short confirmation (or error) from the join-location button, cleared after a moment.
+    @State private var nearbyNote: String?
 
     private struct Pin: Identifiable {
         let id: String
@@ -90,6 +94,14 @@ struct SessionMapScreen: View {
                 }
             }
         }
+        .modifier(NearbyOrganiserControls(
+            location: location,
+            sessionId: nearbySessionId,
+            showSettings: $showNearbySettings,
+            showEndSession: $showEndSession,
+            note: nearbyNote,
+            onEnd: { await endSession() }
+        ))
         // Who is in the session, so a member who hasn't sent a position yet still gets a dot.
         .task { await location.loadLatestPositions() }
         .sheet(isPresented: $showParticipants) {
@@ -182,6 +194,13 @@ struct SessionMapScreen: View {
                     MapPolyline(coordinates: location.routeCoordinates)
                         .stroke(Color(red: 252 / 255, green: 76 / 255, blue: 2 / 255).opacity(0.9), lineWidth: 5) // Strava orange
                 }
+                // The organiser's join range: a dotted ring around the join location while nearby is on.
+                if let id = nearbySessionId, let status = location.nearbyStatuses[id], status.nearby,
+                   let center = location.nearbyMeetingPoints[id] {
+                    MapCircle(center: center, radius: CLLocationDistance(status.radiusMeters))
+                        .foregroundStyle(Color.black.opacity(0.04))
+                        .stroke(Color.black, style: StrokeStyle(lineWidth: 1, dash: [5, 5]))
+                }
                 ForEach(pins) { pin in
                     Annotation("", coordinate: pin.coordinate) {
                         let age = pin.timestamp.map { context.date.timeIntervalSince($0) }
@@ -271,6 +290,36 @@ struct SessionMapScreen: View {
                 .accessibilityLabel("Share the invite")
             }
             MapRailButton(symbol: "arrow.up.left.and.arrow.down.right", label: "Fit all runners") { fitAll() }
+            if let sessionId = nearbySessionId {
+                // Tap: move the join location to here. Touch and hold for the range, switching off and End.
+                Menu {
+                    Button {
+                        Task { await setJoinLocation(sessionId) }
+                    } label: {
+                        Label("Set join location here", systemImage: "mappin.and.ellipse")
+                    }
+                    Button {
+                        showNearbySettings = true
+                    } label: {
+                        Label("Nearby settings…", systemImage: "slider.horizontal.3")
+                    }
+                    Button(role: .destructive) {
+                        showEndSession = true
+                    } label: {
+                        Label("End session", systemImage: "xmark.circle")
+                    }
+                } label: {
+                    Image(systemName: "mappin.and.ellipse")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundStyle(.black)
+                        .frame(width: 44, height: 44)
+                        .background(Color.white.opacity(0.85), in: Circle())
+                        .shadow(color: .black.opacity(0.18), radius: 2, y: 1)
+                } primaryAction: {
+                    Task { await setJoinLocation(sessionId) }
+                }
+                .accessibilityLabel("Set join location")
+            }
             Menu {
                 Button {
                     Task { await openRouteUpload() }
@@ -296,6 +345,35 @@ struct SessionMapScreen: View {
                     .shadow(color: .black.opacity(0.18), radius: 2, y: 1)
             }
             .accessibilityLabel("Route")
+        }
+    }
+
+    /// The session's id when this device made it and made it nearby, so the join-location controls apply;
+    /// nil otherwise (a joiner, or a session without nearby join).
+    private var nearbySessionId: String? {
+        guard let id = location.activeMembership?.sessionId,
+              location.ownedSessionIds.contains(id),
+              location.nearbyStatuses[id] != nil
+        else { return nil }
+        return id
+    }
+
+    private func showNearbyNote(_ text: String) async {
+        withAnimation { nearbyNote = text }
+        try? await Task.sleep(for: .seconds(2.5))
+        withAnimation { nearbyNote = nil }
+    }
+
+    private func setJoinLocation(_ sessionId: String) async {
+        await showNearbyNote(await location.pingJoinLocation(sessionId: sessionId))
+    }
+
+    private func endSession() async {
+        guard let sessionId = nearbySessionId else { return }
+        do {
+            try await location.endSession(sessionId: sessionId)
+        } catch {
+            await showNearbyNote(error.localizedDescription)
         }
     }
 

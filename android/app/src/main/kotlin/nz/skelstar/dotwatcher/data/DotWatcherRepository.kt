@@ -11,7 +11,12 @@ import nz.skelstar.dotwatcher.network.CrewCodePreview
 import nz.skelstar.dotwatcher.network.CrewMember
 import nz.skelstar.dotwatcher.network.CrewOverview
 import nz.skelstar.dotwatcher.network.DotWatcherApi
+import nz.skelstar.dotwatcher.network.JoinNearbyRequest
 import nz.skelstar.dotwatcher.network.JoinSessionRequest
+import nz.skelstar.dotwatcher.network.NearbyStatus
+import nz.skelstar.dotwatcher.network.UpdateNearbyRequest
+import nz.skelstar.dotwatcher.location.Fix
+import nz.skelstar.dotwatcher.nearby.NearbyCreate
 import nz.skelstar.dotwatcher.network.LocationPostResponse
 import nz.skelstar.dotwatcher.network.LocationUpdate
 import nz.skelstar.dotwatcher.network.LoginRequest
@@ -77,9 +82,22 @@ class DotWatcherRepository(
         return response
     }
 
-    suspend fun createSession(sessionName: String?, displayName: String?): Response<SessionMembership> {
+    suspend fun createSession(
+        sessionName: String?,
+        displayName: String?,
+        nearby: NearbyCreate? = null,
+    ): Response<SessionMembership> {
         val token = requireToken()
-        return api.createSession(bearer(token), CreateSessionRequest(sessionName, displayName))
+        val request = CreateSessionRequest(
+            sessionName = sessionName,
+            displayName = displayName,
+            nearby = nearby?.let { true },
+            nearbyRadiusMeters = nearby?.radiusMeters,
+            latitude = nearby?.fix?.latitude,
+            longitude = nearby?.fix?.longitude,
+            accuracy = nearby?.fix?.accuracyMetres,
+        )
+        return api.createSession(bearer(token), request)
     }
 
     suspend fun joinSession(
@@ -160,7 +178,30 @@ class DotWatcherRepository(
 
     suspend fun revokeCasualWatchLinks(): Response<Unit> = api.revokeCasualWatchLinks(bearer(requireToken()))
 
-    suspend fun getNearbyEvents(): Response<List<NearbyEvent>> = api.getNearbyEvents(bearer(requireToken()))
+    /** [fix] null asks without a position, which gets the server's placeholder. */
+    suspend fun getNearbyEvents(fix: Fix? = null): Response<List<NearbyEvent>> =
+        api.getNearbyEvents(bearer(requireToken()), fix?.latitude, fix?.longitude, fix?.accuracyMetres)
+
+    suspend fun joinNearbySession(sessionId: String, fix: Fix, displayName: String?): Response<SessionMembership> =
+        api.joinNearbySession(
+            sessionId,
+            bearer(requireToken()),
+            JoinNearbyRequest(fix.latitude, fix.longitude, fix.accuracyMetres, displayName),
+        )
+
+    suspend fun updateNearby(
+        sessionId: String,
+        fix: Fix?,
+        enabled: Boolean? = null,
+        radiusMeters: Int? = null,
+    ): Response<NearbyStatus> =
+        api.updateNearby(
+            sessionId,
+            bearer(requireToken()),
+            UpdateNearbyRequest(fix?.latitude, fix?.longitude, fix?.accuracyMetres, enabled, radiusMeters),
+        )
+
+    suspend fun endSession(sessionId: String): Response<Unit> = api.endSession(sessionId, bearer(requireToken()))
 
     suspend fun getCasualSettings(): Response<CasualSettings> = api.getCasualSettings(bearer(requireToken()))
 
