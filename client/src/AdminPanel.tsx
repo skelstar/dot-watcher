@@ -530,6 +530,7 @@ export default function AdminPanel({ serverUrl }: { serverUrl: string }) {
       {token && (
         <>
           <h2 style={subheadingNoMargin}>Features</h2>
+          <p style={featuresNote}>Kill switches. Switching a feature off hides it for every account until you switch it back on.</p>
           {switchesUnavailable && <p style={errorText}>This server doesn't support feature switches yet.</p>}
           <table style={{ ...table, marginBottom: 24 }}>
             <tbody>
@@ -983,6 +984,12 @@ const collapseBtn: React.CSSProperties = {
   fontSize: '0.85rem',
   padding: '0.1rem 0.3rem',
   lineHeight: 1,
+}
+
+const featuresNote: React.CSSProperties = {
+  margin: '0.25rem 0 0.75rem',
+  fontSize: '0.875rem',
+  opacity: 0.7,
 }
 
 const errorText: React.CSSProperties = {

@@ -3,19 +3,13 @@ using Microsoft.AspNetCore.Mvc;
 namespace DotWatcher.Server.Controllers;
 
 /// <summary>
-/// Events near you. With a position it lists the sessions people nearby can join (see
-/// .ai/plans/nearby-join.md). Without one it still returns the old placeholder, so builds that
-/// predate nearby join keep showing their sign.
+/// Events near you: the sessions people nearby can join (see .ai/plans/nearby-join.md). Without a
+/// position there is nothing to look up, so the list is empty.
 /// </summary>
 [ApiController]
 public class EventsController(UserTokenAuth userAuth, FeatureFlags features, SessionStore store, NearbyLimiter limiter, TimeProvider timeProvider)
     : ControllerBase
 {
-    private static readonly NearbyEvent[] Placeholder =
-    [
-        new("placeholder-rogaine", "Happening near you · 2.3 km", "Rogaine event", "Sat 9am · Hunua Ranges · 14 joined"),
-    ];
-
     /// <summary>The events near the caller, nearest first.</summary>
     [HttpGet("/me/events/nearby")]
     [ProducesResponseType(typeof(IReadOnlyList<NearbyEvent>), StatusCodes.Status200OK)]
@@ -33,10 +27,11 @@ public class EventsController(UserTokenAuth userAuth, FeatureFlags features, Ses
         if (!features.IsOn(Features.Events))
             return NotFound();
 
+        // Older builds ask without a position; there is nothing to look up, and it is never rate limited.
         if (lat is null && lon is null)
-            return Ok(Placeholder);
+            return Ok(Array.Empty<NearbyEvent>());
 
-        // Only real lookups count; the position-less placeholder call from older builds is never limited.
+        // Only real lookups count.
         if (!limiter.TryAcceptList(user.UserId))
             return StatusCode(StatusCodes.Status429TooManyRequests, new { error = "Too many requests. Try again later." });
 
