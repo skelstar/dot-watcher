@@ -75,7 +75,7 @@ that as "use the built-in colours".
 - [x] Validate once at start-up: every colour matches `^#[0-9a-fA-F]{6}$`, and the three text-on-background pairs
       (`goFg` on `goBg`, `altFg` on `altBg`, `accentInk` on `accent`) have contrast of at least 4.5:1. If it fails,
       log a warning and serve no palette, so a typo in config means built-in colours rather than unreadable buttons.
-- [ ] The same check runs in the playground as the contrast badge, so a value that looks fine there passes here.
+- [x] The same check runs in the playground as the contrast badge, so a value that looks fine there passes here.
 
 ### S2. Exposing it
 - [x] `AuthenticatedUser` gains an optional `Config` (null for users read from a bearer token, like `Features`).
@@ -106,7 +106,7 @@ events nearby, casual settings), so this adds one call, not a new kind of traffi
 
 ## Playground
 
-- [ ] Add a "JSON" tab to Copy values in `button-colours.html`, emitting the palette block above, ready to paste into
+- [x] Add a "JSON" tab to Copy values in `button-colours.html`, emitting the palette block above, ready to paste into
       `appsettings.json`.
 
 ## Backwards compatibility (old app builds)
