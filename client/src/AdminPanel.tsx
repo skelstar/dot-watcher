@@ -72,6 +72,7 @@ export default function AdminPanel({ serverUrl }: { serverUrl: string }) {
   const [logLines, setLogLines] = useState<string[] | null>(null)
   const [logBusy, setLogBusy] = useState(false)
   const [featureSwitches, setFeatureSwitches] = useState<FeatureSwitch[]>([])
+  const [switchesUnavailable, setSwitchesUnavailable] = useState(false)
   const [switchBusy, setSwitchBusy] = useState<string | null>(null)
 
   useLayoutEffect(() => {
@@ -107,7 +108,8 @@ export default function AdminPanel({ serverUrl }: { serverUrl: string }) {
         return
       }
       setUsers(await usersRes.json() as AdminUser[])
-      // Absent on an older server; the switches section then stays empty.
+      // Absent on an older server, which is said in the Features section rather than hiding it.
+      setSwitchesUnavailable(!switchesRes.ok)
       setFeatureSwitches(switchesRes.ok ? await switchesRes.json() as FeatureSwitch[] : [])
       setSessions(await sessionsRes.json() as AdminSession[])
       setRecordedSessionIds(new Set(await recordedRes.json() as string[]))
@@ -525,9 +527,10 @@ export default function AdminPanel({ serverUrl }: { serverUrl: string }) {
 
       {error && <p style={errorText}>{error}</p>}
 
-      {featureSwitches.length > 0 && (
+      {token && (
         <>
           <h2 style={subheadingNoMargin}>Features</h2>
+          {switchesUnavailable && <p style={errorText}>This server doesn't support feature switches yet.</p>}
           <table style={{ ...table, marginBottom: 24 }}>
             <tbody>
               {featureSwitches.map(sw => (
