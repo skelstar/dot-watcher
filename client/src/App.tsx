@@ -1,7 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect } from 'react'
 // maplibre-gl has no default export (unlike mapbox-gl) — named imports only.
-import { MapLibreMap, NavigationControl, setWorkerUrl } from 'maplibre-gl'
-import 'maplibre-gl/dist/maplibre-gl.css'
+import { setWorkerUrl } from 'maplibre-gl'
 // v6 no longer auto-detects its worker URL under a bundler (only plain CDN <script type=module>
 // loading gets that for free) — without this, every vector/GeoJSON source hangs forever waiting
 // on a worker that never starts: tile.json/style.json/sprite resolve fine (main thread), but zero
@@ -11,17 +10,6 @@ import 'maplibre-gl/dist/maplibre-gl.css'
 // https://maplibre.org/maplibre-gl-js/docs/guides/v5-to-v6-migration-guide/ and
 // https://github.com/maplibre/maplibre-gl-js/issues/8018.
 import maplibreWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url'
-import { MAP_STYLES, DEFAULT_MAP_STYLE_ID, LINZ_ATTRIBUTION, LEGAL_LINKS_ATTRIBUTION, type MapStyleId } from './map/mapStyle.ts'
-import MapStyleToggle from './MapStyleToggle.tsx'
-import Terrain3DToggle from './Terrain3DToggle.tsx'
-import InvalidInvitePrompt from './InvalidInvitePrompt.tsx'
-import SignInPanel from './SignInPanel.tsx'
-import AccountButton from './AccountButton.tsx'
-import Legend from './Legend.tsx'
-import TraceToggle from './TraceToggle.tsx'
-import LegendHelp from './LegendHelp.tsx'
-import ReplayControls from './ReplayControls.tsx'
-import MapPlayButton from './MapPlayButton.tsx'
 import LegalPage from './LegalPage.tsx'
 import DeleteAccountPage from './DeleteAccountPage.tsx'
 import AdminPanel from './AdminPanel.tsx'
@@ -30,15 +18,7 @@ import LandingPage from './LandingPage.tsx'
 import JoinPage from './JoinPage.tsx'
 import CrewLinkPage from './CrewLinkPage.tsx'
 import WatchPage from './WatchPage.tsx'
-import InitialsBadge from './components/InitialsBadge.tsx'
-import { useRunnerMarkers } from './useRunnerMarkers.ts'
-import { useRouteLayer } from './useRouteLayer.ts'
-import { useSignalTrailLayer } from './useSignalTrailLayer.ts'
-import { useSimulatorRouteOverlay } from './useSimulatorRouteOverlay.ts'
-import { useSessionTimeline } from './useSessionTimeline.ts'
-import { parseGpxCoordinates } from './gpx.ts'
-import { apiHeaders } from './apiHeaders.ts'
-import { useAuthSession } from './useAuthSession.ts'
+import SessionMapPage from './SessionMapPage.tsx'
 
 setWorkerUrl(maplibreWorkerUrl)
 
@@ -80,162 +60,15 @@ function parseUrl(): RouteState {
 }
 
 export default function App() {
-  const containerRef = useRef<HTMLDivElement>(null)
-  const mapRef = useRef<MapLibreMap | null>(null)
   const { inviteCode, joinCode, crewCode, watchToken, legalPage, isAdmin, isLanding, isDeleteAccount, routeUploadSessionId } = parseUrl()
-  const [routeCoordinates, setRouteCoordinates] = useState<[number, number][] | null>(null)
-  const [mapStyleId, setMapStyleId] = useState<MapStyleId>(DEFAULT_MAP_STYLE_ID)
 
-  // Imperative: swaps the live map's style in place rather than recreating the Map instance.
-  // useRouteLayer/useSimulatorRouteOverlay re-add their sources/layers/images on the resulting
-  // 'style.load' event; runner markers are plain DOM overlays untouched by a style change.
-  function handleToggleMapStyle(next: MapStyleId) {
-    setMapStyleId(next)
-    mapRef.current?.setStyle(MAP_STYLES[next].url)
-  }
-
-  // Experimental 3D terrain: LINZ's 1m DEM (declared as the 'LINZ-Terrain' raster-dem source in
-  // both styles) draped under the imagery, with a pitched camera. See client/plans/linz-topo-migration.md.
-  const [terrain3d, setTerrain3d] = useState(false)
-  const terrain3dRef = useRef(false)
-
-  // Tilting the map by hand (right-drag / ctrl-drag, or a two-finger vertical drag on touch)
-  // switches 3D terrain on once past this pitch, so a stray nudge doesn't start fetching DEM tiles.
-  const AUTO_3D_PITCH_DEG = 10
-  // ...and tilting back to (nearly) flat switches it off again.
-  const AUTO_FLAT_PITCH_DEG = 3
-
-  function handleToggleTerrain3d() {
-    const map = mapRef.current
-    const next = !terrain3d
-    terrain3dRef.current = next
-    setTerrain3d(next)
-    if (!map) return
-    if (next) {
-      map.setTerrain({ source: 'LINZ-Terrain', exaggeration: 1 })
-      map.easeTo({ pitch: 60, duration: 800 })
-    } else {
-      map.setTerrain(null)
-      map.easeTo({ pitch: 0, bearing: 0, duration: 800 })
-    }
-  }
-
-  // Unknown paths (e.g. /log) fall back to the landing page above; rewrite the address bar to '/' so
+  // Unknown paths (e.g. /log) fall back to the landing page below; rewrite the address bar to '/' so
   // they don't sit on a URL that means nothing.
   useEffect(() => {
     if (isLanding && window.location.pathname !== '/') {
       window.history.replaceState(null, '', `/${window.location.search}${window.location.hash}`)
     }
   }, [isLanding])
-
-  useEffect(() => {
-    if (legalPage || isLanding || !containerRef.current) return
-
-    const map = new MapLibreMap({
-      container: containerRef.current,
-      style: MAP_STYLES[DEFAULT_MAP_STYLE_ID].url,
-      center: [174.7762, -41.2865], // Wellington, NZ - default before any session/positions load
-      zoom: 13,
-      maxPitch: 85, // tilting past AUTO_3D_PITCH_DEG turns 3D terrain on; the toggle does the same
-      // compact: false keeps the attribution expanded — LINZ requires it to be always visible.
-      attributionControl: { compact: false, customAttribution: [LEGAL_LINKS_ATTRIBUTION, LINZ_ATTRIBUTION] },
-    })
-
-    // Compass only: the +/- buttons are dropped (pinch/scroll still zoom) and AccountButton takes the
-    // top of this column, with the compass pushed below it by index.css.
-    map.addControl(new NavigationControl({ showZoom: false }), 'top-right')
-
-    // setStyle() wipes the terrain along with everything else, so re-apply it on every style load.
-    map.on('style.load', () => {
-      if (terrain3dRef.current) map.setTerrain({ source: 'LINZ-Terrain', exaggeration: 1 })
-    })
-
-    // Only user gestures carry an originalEvent; the toggle's own easeTo() animations don't, so
-    // they can't trigger these and fight the toggle.
-    map.on('pitch', e => {
-      if (!e.originalEvent || terrain3dRef.current || map.getPitch() < AUTO_3D_PITCH_DEG) return
-      terrain3dRef.current = true
-      setTerrain3d(true)
-      map.setTerrain({ source: 'LINZ-Terrain', exaggeration: 1 })
-    })
-    map.on('pitchend', e => {
-      if (!e.originalEvent || !terrain3dRef.current || map.getPitch() > AUTO_FLAT_PITCH_DEG) return
-      terrain3dRef.current = false
-      setTerrain3d(false)
-      map.setTerrain(null)
-    })
-
-    mapRef.current = map
-    return () => {
-      map.remove()
-      mapRef.current = null
-    }
-  }, [legalPage])
-
-  // Optional viewer sign-in, reached only through the account button in the top-right column.
-  // Anonymous viewing is unaffected; the panel just stores a session that apiHeaders() then sends.
-  const authSession = useAuthSession()
-  const [accountOpen, setAccountOpen] = useState(false)
-
-  const timeline = useSessionTimeline(SERVER_URL, inviteCode)
-
-  const { allRunners, followRunner, fitAll } = useRunnerMarkers(
-    mapRef,
-    timeline.positions,
-    timeline.virtualNowMs,
-    timeline.runnersWithGpsSignalLoss,
-    timeline.runnersWithGap,
-    timeline.runnersSleeping,
-    timeline.runnersUltraConstrained,
-  )
-  useRouteLayer(mapRef, routeCoordinates, timeline.runStartMs === null)
-  // Signal trace (toggle button, or ?trace in the URL to start with it on): plots every position
-  // up to the playhead — a blue dot for a normal connection, the runner dot's satellite badge for
-  // an ultra-constrained path, and a red X where a satellite read probably failed.
-  const [showTrace, setShowTrace] = useState(() => new URLSearchParams(window.location.search).has('trace'))
-  const tracePositions = useMemo(
-    () => showTrace
-      ? timeline.allPositions.filter(p => Date.parse(p.timestamp) <= timeline.virtualNowMs)
-      : null,
-    [showTrace, timeline.allPositions, timeline.virtualNowMs],
-  )
-  useSignalTrailLayer(mapRef, tracePositions)
-  useSimulatorRouteOverlay(mapRef)
-
-  const routeBase = inviteCode ? `${SERVER_URL}/session-invites/${inviteCode}` : null
-
-  useEffect(() => {
-    setRouteCoordinates(null)
-    if (!routeBase) return
-
-    let cancelled = false
-    async function loadRoute() {
-      const response = await fetch(`${routeBase}/route`, {
-        headers: apiHeaders(),
-      })
-      if (cancelled || !response.ok) return
-      const gpx = await response.text()
-      setRouteCoordinates(parseGpxCoordinates(gpx))
-    }
-
-    void loadRoute()
-    return () => { cancelled = true }
-  }, [routeBase])
-
-  // Who created the session, for the "hasn't started yet" toast — from the tokenless
-  // session-info endpoint, the same invite-code-only surface everything else here uses.
-  const [ownerDisplayName, setOwnerDisplayName] = useState<string | null>(null)
-  useEffect(() => {
-    setOwnerDisplayName(null)
-    if (!inviteCode) return
-
-    let cancelled = false
-    fetch(`${SERVER_URL}/session-invites/${inviteCode}`)
-      .then(res => (res.ok ? res.json() as Promise<{ ownerDisplayName: string }> : null))
-      .then(info => { if (!cancelled && info) setOwnerDisplayName(info.ownerDisplayName) })
-      .catch(() => undefined)
-    return () => { cancelled = true }
-  }, [inviteCode])
 
   if (isAdmin) {
     return <AdminPanel serverUrl={SERVER_URL} />
@@ -269,107 +102,5 @@ export default function App() {
     return <LandingPage />
   }
 
-  return (
-    <>
-      <div ref={containerRef} style={{ width: '100%', height: '100%' }} />
-      <AccountButton displayName={authSession?.user.displayName ?? null} onClick={() => setAccountOpen(true)} />
-      <LegendHelp />
-      <MapStyleToggle styleId={mapStyleId} onToggle={handleToggleMapStyle} />
-      {inviteCode && !timeline.invalidInvite && (
-        <TraceToggle on={showTrace} onToggle={() => setShowTrace(v => !v)} />
-      )}
-      <Terrain3DToggle enabled={terrain3d} onToggle={handleToggleTerrain3d} />
-      <Legend
-        runners={allRunners}
-        onRunnerClick={followRunner}
-        onFitAll={fitAll}
-        runnersWithGap={timeline.runnersWithGap}
-        runnersSleeping={timeline.runnersSleeping}
-        runnersWithGpsSignalLoss={timeline.runnersWithGpsSignalLoss}
-        runnersUltraConstrained={timeline.runnersUltraConstrained}
-        runnerBatteryStatus={timeline.runnerBatteryStatus}
-        runnerCountdowns={timeline.runnerCountdowns}
-        runnerLastSeenMs={timeline.runnerLastSeenMs}
-      />
-      {!timeline.invalidInvite && timeline.runStartMs !== null && inviteCode && (
-        <>
-          <ReplayControls timeline={timeline} />
-          {/* "following" alone would hide this on a finished session's very first load: scrubTimeMs
-              starts null (following=true) same as it does mid-live-watching, but there's no live
-              edge to follow once the session's over — isLive tells those two states apart. */}
-          {!timeline.playing && (!timeline.isLive || !timeline.following) && (
-            <MapPlayButton onPlay={timeline.play} />
-          )}
-        </>
-      )}
-      {!timeline.invalidInvite && !timeline.error && timeline.runStartMs === null && inviteCode && (
-        <div style={notStartedToast}>
-          {ownerDisplayName && (
-            <div style={notStartedToastLine}>
-              <span>Created by </span>
-              <InitialsBadge name={ownerDisplayName} />
-            </div>
-          )}
-          <div style={notStartedToastLine}>The session hasn&rsquo;t started yet.</div>
-        </div>
-      )}
-      {timeline.error && !timeline.invalidInvite && inviteCode && (
-        <div style={statusToast}>{timeline.error}</div>
-      )}
-      {accountOpen && <SignInPanel serverUrl={SERVER_URL} onClose={() => setAccountOpen(false)} />}
-      {timeline.invalidInvite && (
-        <InvalidInvitePrompt
-          message={
-            inviteCode
-              ? `Invite code '${inviteCode}' not found. Session might have expired or been deleted.`
-              : timeline.error ?? 'Invite not found.'
-          }
-        />
-      )}
-    </>
-  )
-}
-
-
-const notStartedToast: React.CSSProperties = {
-  position: 'absolute',
-  left: '50%',
-  bottom: 100,
-  transform: 'translateX(-50%)',
-  zIndex: 8,
-  maxWidth: '92vw',
-  display: 'flex',
-  flexDirection: 'column',
-  alignItems: 'center',
-  gap: 4,
-  background: '#fff',
-  color: '#57606a',
-  borderRadius: 6,
-  boxShadow: '0 0 0 2px rgba(0,0,0,0.1)',
-  padding: '8px 14px',
-  fontFamily: 'system-ui, sans-serif',
-  fontSize: '0.9rem',
-}
-
-const notStartedToastLine: React.CSSProperties = {
-  display: 'flex',
-  alignItems: 'center',
-  gap: 6,
-  whiteSpace: 'nowrap',
-}
-
-const statusToast: React.CSSProperties = {
-  position: 'absolute',
-  left: '50%',
-  bottom: 88,
-  transform: 'translateX(-50%)',
-  zIndex: 8,
-  maxWidth: 'min(420px, 92vw)',
-  background: '#fff',
-  color: '#92400e',
-  borderRadius: 6,
-  boxShadow: '0 0 0 2px rgba(0,0,0,0.1)',
-  padding: '8px 12px',
-  fontFamily: 'system-ui, sans-serif',
-  fontSize: '0.9rem',
+  return <SessionMapPage serverUrl={SERVER_URL} inviteCode={inviteCode} />
 }
