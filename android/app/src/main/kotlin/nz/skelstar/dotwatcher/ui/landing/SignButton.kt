@@ -48,7 +48,7 @@ private val FrameWidth = 2.dp
 /**
  * A full-width rectangular "sign" button for the start screen: title and a smaller line under it on
  * the left, an arrow on the right. [SignButton] is the cream one (Join, Create);
- * [HoldSignButton] is the berry Go sign.
+ * [HoldSignButton] is the navy Go sign.
  */
 @Composable
 fun SignButton(
@@ -63,18 +63,18 @@ fun SignButton(
         subtitle = subtitle,
         titleSize = 26,
         arrowSize = 30.dp,
-        ink = SignPalette.Berry,
+        ink = SignPalette.Navy,
         modifier = modifier
             .fillMaxWidth()
             .background(SignPalette.Cream)
-            .border(FrameWidth, SignPalette.Berry, RectangleShape)
+            .border(FrameWidth, SignPalette.Navy, RectangleShape)
             .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
             .padding(horizontal = 16.dp, vertical = 14.dp),
     )
 }
 
 /**
- * The Go sign, about 2.2x the height of [SignButton] with a honey bar across the top. Held rather
+ * The Go sign, about 2.2x the height of [SignButton] with a sand bar across the top. Held rather
  * than tapped, as the round Go button was: a lighter fill sweeps across while it is pressed and
  * [onComplete] runs when full, so a pocket can't start tracking. TalkBack gets a long-press action.
  */
@@ -97,20 +97,20 @@ fun HoldSignButton(
                 onLongClick(label = "Start tracking") { onComplete(); true }
             },
     ) {
-        Box(Modifier.fillMaxWidth().height(BarHeight * 1.5f).background(SignPalette.Honey))
+        Box(Modifier.fillMaxWidth().height(BarHeight * 1.5f).background(SignPalette.Sand))
         SignContent(
             title = title,
             subtitle = subtitle,
             titleSize = 44,
             arrowSize = 36.dp,
-            ink = SignPalette.Honey,
+            ink = SignPalette.Sand,
             modifier = Modifier
                 .fillMaxWidth()
                 .heightIn(min = 162.dp)
-                .background(SignPalette.Berry)
+                .background(SignPalette.Navy)
                 .drawBehind {
                     drawRect(
-                        SignPalette.Honey.copy(alpha = 0.28f),
+                        SignPalette.Sand.copy(alpha = 0.28f),
                         size = Size(size.width * progress.value, size.height),
                     )
                 }
@@ -124,8 +124,8 @@ fun HoldSignButton(
 }
 
 /**
- * A public event happening near the runner, shown under Go in amber with plum text and a plum bar so it
- * stands out from both the berry Go and the cream signs. No frame: it would make the sign look inset. [eyebrow] is the small caps line above the title
+ * A public event happening near the runner, shown under Go in orange with ink text and a ink bar so it
+ * stands out from both the navy Go and the cream signs. No frame: it would make the sign look inset. [eyebrow] is the small caps line above the title
  * ("Happening near you . 2.3 km").
  */
 @Composable
@@ -139,16 +139,16 @@ fun EventSignButton(
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .background(SignPalette.Amber)
+            .background(SignPalette.Orange)
             .clickable(role = Role.Button, onClick = onClick),
     ) {
-        Box(Modifier.fillMaxWidth().height(BarHeight).background(SignPalette.Plum))
+        Box(Modifier.fillMaxWidth().height(BarHeight).background(SignPalette.Ink))
         SignContent(
             title = title,
             subtitle = subtitle,
             titleSize = 28,
             arrowSize = 30.dp,
-            ink = SignPalette.Plum,
+            ink = SignPalette.Ink,
             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
             eyebrow = eyebrow,
         )

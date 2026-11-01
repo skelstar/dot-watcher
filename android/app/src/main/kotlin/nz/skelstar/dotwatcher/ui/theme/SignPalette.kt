@@ -7,13 +7,13 @@ import androidx.compose.ui.text.font.FontVariation
 import androidx.compose.ui.text.font.FontWeight
 import nz.skelstar.dotwatcher.R
 
-/** The start screen's "sign" colours, from the Berry and cream palette (Palette 5) in .ai/mockups/landing-signs.html. */
+/** The start screen's "sign" colours, from the Navy and orange palette (Palette 2) in .ai/mockups/landing-signs.html. */
 object SignPalette {
-    val Berry = Color(0xFF5A1F3A)
-    val Honey = Color(0xFFF6D58A)
-    val Cream = Color(0xFFF8EFE2)
-    val Amber = Color(0xFFE9B949)
-    val Plum = Color(0xFF3D1226)
+    val Navy = Color(0xFF1F3350)
+    val Sand = Color(0xFFF2EFE4)
+    val Cream = Color(0xFFF6F1E4)
+    val Orange = Color(0xFFF28C28)
+    val Ink = Color(0xFF1F2A3D)
 }
 
 /** EB Garamond (OFL, android/third_party) at ExtraBold, the nearest free face to the ITC Garamond
