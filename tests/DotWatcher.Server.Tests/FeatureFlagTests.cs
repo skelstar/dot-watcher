@@ -5,42 +5,9 @@ using Xunit;
 
 namespace DotWatcher.Server.Tests;
 
-// Per-account feature flags, gating crew. See .ai/plans/crew-feature-flag.md.
+// Per-account feature grants: stored and reported, no longer gating crew, casual or events.
 public class FeatureFlagTests
 {
-    private static readonly string[] CrewEndpoints =
-    [
-        "GET /me/crew",
-        "POST /me/crew/codes",
-        "GET /me/crew/codes",
-        "DELETE /me/crew/codes/ABCDEFGH",
-        "GET /me/crew/codes/ABCDEFGH",
-        "POST /me/crew/codes/ABCDEFGH/redeem",
-        "DELETE /me/crew/someone",
-        "GET /me/profile",
-        "PUT /me/profile",
-    ];
-
-    [Fact]
-    public async Task CrewEndpoints_WithoutTheFeature_AreNotFound()
-    {
-        using var factory = new DotWatcherApiFactory { EnabledForAll = [] };
-        using var client = factory.CreateClient();
-        var alice = await AuthTestHelpers.RegisterWithResponseAsync(client, "alice", "AL");
-
-        foreach (var endpoint in CrewEndpoints)
-        {
-            var (method, path) = endpoint.Split(' ') is [var m, var p] ? (new HttpMethod(m), p) : throw new InvalidOperationException();
-            using var request = AuthTestHelpers.WithUserToken(method, path, alice.AccessToken);
-            if (method == HttpMethod.Put)
-                request.Content = JsonContent.Create(new { nickname = "Al" });
-
-            var response = await client.SendAsync(request);
-
-            Assert.True(HttpStatusCode.NotFound == response.StatusCode, $"{endpoint} returned {response.StatusCode}");
-        }
-    }
-
     [Fact]
     public async Task CrewEndpoints_WithoutSignIn_StayUnauthorized()
     {
@@ -50,44 +17,6 @@ public class FeatureFlagTests
         var response = await client.GetAsync("/me/crew");
 
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
-    }
-
-    [Fact]
-    public async Task GrantingTheFeature_OpensCrewForThatAccountOnly()
-    {
-        using var factory = new DotWatcherApiFactory { EnabledForAll = [] };
-        using var client = factory.CreateClient();
-        var alice = await AuthTestHelpers.RegisterWithResponseAsync(client, "alice", "AL");
-        var bob = await AuthTestHelpers.RegisterWithResponseAsync(client, "bob", "BO");
-
-        var grant = await SetFeaturesAsync(client, alice.User.UserId, new[] { "crew" });
-
-        Assert.Equal(HttpStatusCode.OK, grant.StatusCode);
-        Assert.Equal(HttpStatusCode.OK, (await GetAsync(client, "/me/crew", alice.AccessToken)).StatusCode);
-        Assert.Equal(HttpStatusCode.NotFound, (await GetAsync(client, "/me/crew", bob.AccessToken)).StatusCode);
-    }
-
-    [Fact]
-    public async Task RevokingTheFeature_ClosesCrewAgain()
-    {
-        using var factory = new DotWatcherApiFactory { EnabledForAll = [] };
-        using var client = factory.CreateClient();
-        var alice = await AuthTestHelpers.RegisterWithResponseAsync(client, "alice", "AL");
-        await SetFeaturesAsync(client, alice.User.UserId, new[] { "crew" });
-
-        await SetFeaturesAsync(client, alice.User.UserId, Array.Empty<string>());
-
-        Assert.Equal(HttpStatusCode.NotFound, (await GetAsync(client, "/me/crew", alice.AccessToken)).StatusCode);
-    }
-
-    [Fact]
-    public async Task EnabledForAll_OpensCrewForEveryAccount()
-    {
-        using var factory = new DotWatcherApiFactory { EnabledForAll = ["crew"] };
-        using var client = factory.CreateClient();
-        var alice = await AuthTestHelpers.RegisterWithResponseAsync(client, "alice", "AL");
-
-        Assert.Equal(HttpStatusCode.OK, (await GetAsync(client, "/me/crew", alice.AccessToken)).StatusCode);
     }
 
     [Fact]

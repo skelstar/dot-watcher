@@ -35,18 +35,6 @@ type MemberStatsState = AdminMemberStats[] | 'loading' | { error: string }
 // session (deleting it would delete the session; the server refuses too).
 const PROTECTED_USERNAMES = new Set(['dw-demo', 'dw-casual'])
 
-// The feature the Users table can grant (server: Features.Crew). Accounts without it get a 404 from
-// every crew endpoint, so apps hide Crew for them.
-const CREW_FEATURE = 'crew'
-
-// Casual tracking (server: Features.Casual). Accounts without it get a 404 from every /casual endpoint,
-// so apps hide the Go button for them. Crew-visible output also needs Crew, so grant both together.
-const CASUAL_FEATURE = 'casual'
-
-// Public events near you (server: Features.Events). Accounts without it get a 404 from /me/events/nearby,
-// so apps hide the event sign for them.
-const EVENTS_FEATURE = 'events'
-
 const BEARER_TOKEN_KEY = 'adminBearerToken'
 const APP_VERSION = import.meta.env.VITE_APP_VERSION ?? 'v-local'
 // Matches the simulator's own VITE_CLIENT_URL convention (tools/simulator/.env.example) —
@@ -66,7 +54,6 @@ export default function AdminPanel({ serverUrl }: { serverUrl: string }) {
   const [exportingRecordsId, setExportingRecordsId] = useState<string | null>(null)
   const [selectedUserIds, setSelectedUserIds] = useState<Set<string>>(new Set())
   const [selectedSessionIds, setSelectedSessionIds] = useState<Set<string>>(new Set())
-  const [featureBusyUserId, setFeatureBusyUserId] = useState<string | null>(null)
   const [bulkDeletingUsers, setBulkDeletingUsers] = useState(false)
   const [bulkDeletingSessions, setBulkDeletingSessions] = useState(false)
   const [showImportForm, setShowImportForm] = useState(false)
@@ -158,32 +145,6 @@ export default function AdminPanel({ serverUrl }: { serverUrl: string }) {
 
   function toggleAllSessionsSelected() {
     setSelectedSessionIds(prev => prev.size === sessions.length ? new Set() : new Set(sessions.map(s => s.sessionId)))
-  }
-
-  // PUT replaces the account's whole feature list, so send the current list with `feature` added or
-  // removed rather than just the one name.
-  async function handleToggleFeature(user: AdminUser, feature: string) {
-    const current = user.features ?? []
-    const next = current.includes(feature) ? current.filter(f => f !== feature) : [...current, feature]
-    setFeatureBusyUserId(user.id)
-    setError(null)
-    try {
-      const r = await fetch(`${serverUrl}/admin/users/${user.id}/features`, {
-        method: 'PUT',
-        headers: { ...apiHeaders(token, 'web-admin'), 'Content-Type': 'application/json' },
-        body: JSON.stringify({ features: next }),
-      })
-      if (!r.ok) {
-        setError(`Failed to update ${user.username}'s features (HTTP ${r.status}).`)
-        return
-      }
-      const saved = await r.json() as string[]
-      setUsers(prev => prev.map(u => u.id === user.id ? { ...u, features: saved } : u))
-    } catch {
-      setError('Network error.')
-    } finally {
-      setFeatureBusyUserId(null)
-    }
   }
 
   async function handleBulkDeleteUsers() {
@@ -558,9 +519,6 @@ export default function AdminPanel({ serverUrl }: { serverUrl: string }) {
               </th>
               <th style={th}>Username</th>
               <th style={th}>Display name</th>
-              <th style={th}>Crew</th>
-              <th style={th}>Casual</th>
-              <th style={th}>Events</th>
               <th style={th}>Created</th>
             </tr>
           </thead>
@@ -579,36 +537,6 @@ export default function AdminPanel({ serverUrl }: { serverUrl: string }) {
                 </td>
                 <td style={td}>{user.username}</td>
                 <td style={td}>{user.displayName}</td>
-                <td style={td}>
-                  <input
-                    type="checkbox"
-                    checked={(user.features ?? []).includes(CREW_FEATURE)}
-                    onChange={() => void handleToggleFeature(user, CREW_FEATURE)}
-                    disabled={featureBusyUserId === user.id}
-                    aria-label={`Crew for ${user.username}`}
-                    title="Lets this account see and use Crew"
-                  />
-                </td>
-                <td style={td}>
-                  <input
-                    type="checkbox"
-                    checked={(user.features ?? []).includes(CASUAL_FEATURE)}
-                    onChange={() => void handleToggleFeature(user, CASUAL_FEATURE)}
-                    disabled={featureBusyUserId === user.id}
-                    aria-label={`Casual for ${user.username}`}
-                    title="Lets this account use casual tracking (the Go button). Crew is needed to see crew."
-                  />
-                </td>
-                <td style={td}>
-                  <input
-                    type="checkbox"
-                    checked={(user.features ?? []).includes(EVENTS_FEATURE)}
-                    onChange={() => void handleToggleFeature(user, EVENTS_FEATURE)}
-                    disabled={featureBusyUserId === user.id}
-                    aria-label={`Events for ${user.username}`}
-                    title="Shows this account the events sign on the start screen (placeholder event for now)"
-                  />
-                </td>
                 <td style={td}>{timeAgo(user.createdAt)}</td>
               </tr>
             ))}

@@ -52,18 +52,6 @@ public class NearbyPingTests
     }
 
     [Fact]
-    public async Task Ping_WithoutTheEventsFeature_IsNotFound()
-    {
-        using var factory = new DotWatcherApiFactory { EnabledForAll = [] };
-        using var client = factory.CreateClient();
-        var token = await AuthTestHelpers.RegisterAsync(client, "alice", "Alice");
-
-        var response = await PutAsync(client, token, "any", Fix);
-
-        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
-    }
-
-    [Fact]
     public async Task Ping_WithoutSignIn_IsUnauthorized()
     {
         using var factory = new DotWatcherApiFactory { EnabledForAll = ["events"] };

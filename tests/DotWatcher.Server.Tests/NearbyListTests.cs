@@ -182,18 +182,6 @@ public class NearbyListTests
     }
 
     [Fact]
-    public async Task List_WithoutTheEventsFeature_IsNotFound()
-    {
-        using var factory = new DotWatcherApiFactory { EnabledForAll = [] };
-        using var client = factory.CreateClient();
-        var token = await AuthTestHelpers.RegisterAsync(client, "alice", "Alice");
-
-        var response = await ListAsync(client, token, Lat, Lon, accuracy: 5);
-
-        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
-    }
-
-    [Fact]
     public void IsWithinRadius_AppliesTheAccuracyAllowance()
     {
         // Radius 50 with both fixes at 20 m forgives 40 m: reach is 90 m.

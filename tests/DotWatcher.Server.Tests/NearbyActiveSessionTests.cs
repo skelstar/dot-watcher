@@ -28,19 +28,6 @@ public class NearbyActiveSessionTests
     }
 
     [Fact]
-    public async Task Create_WithoutTheEventsFeature_StillAllowsSeveralSessions()
-    {
-        using var factory = new DotWatcherApiFactory { EnabledForAll = [] };
-        using var client = factory.CreateClient();
-        var token = await AuthTestHelpers.RegisterAsync(client, "alice", "Alice");
-        await CreateAsync(client, token, "FIRST01");
-
-        var second = await SendAsync(client, HttpMethod.Post, "/sessions", token, new { sessionName = "SECOND2" });
-
-        Assert.Equal(HttpStatusCode.OK, second.StatusCode);
-    }
-
-    [Fact]
     public async Task Create_AfterTheSessionIsEnded_IsAllowed()
     {
         using var factory = new DotWatcherApiFactory { EnabledForAll = ["events"] };
@@ -152,19 +139,6 @@ public class NearbyActiveSessionTests
         var again = await SendAsync(client, HttpMethod.Post, $"/sessions/{session.SessionId}/end", owner);
 
         Assert.Equal(HttpStatusCode.NoContent, again.StatusCode);
-    }
-
-    [Fact]
-    public async Task End_WithoutTheEventsFeature_IsNotFound()
-    {
-        using var factory = new DotWatcherApiFactory { EnabledForAll = [] };
-        using var client = factory.CreateClient();
-        var owner = await AuthTestHelpers.RegisterAsync(client, "alice", "Alice");
-        var session = await CreateAsync(client, owner, "FIRST01");
-
-        var end = await SendAsync(client, HttpMethod.Post, $"/sessions/{session.SessionId}/end", owner);
-
-        Assert.Equal(HttpStatusCode.NotFound, end.StatusCode);
     }
 
     [Fact]

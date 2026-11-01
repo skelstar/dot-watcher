@@ -19,19 +19,6 @@ public class CasualApiTests
         new() { EnabledForAll = [Features.Crew, Features.Casual] };
 
     [Fact]
-    public async Task Endpoints_WithoutTheFeature_LookAbsent()
-    {
-        using var factory = new DotWatcherApiFactory { EnabledForAll = [Features.Crew] };
-        using var client = factory.CreateClient();
-        var alice = await RegisterAsync(client, "alice", "AL");
-
-        Assert.Equal(HttpStatusCode.NotFound, (await SendAsync(client, HttpMethod.Post, "/casual/start", alice.AccessToken)).StatusCode);
-        Assert.Equal(HttpStatusCode.NotFound, (await SendAsync(client, HttpMethod.Post, "/casual/stop", alice.AccessToken)).StatusCode);
-        Assert.Equal(HttpStatusCode.NotFound, (await SendAsync(client, HttpMethod.Get, "/casual/live", alice.AccessToken)).StatusCode);
-        Assert.Equal(HttpStatusCode.NotFound, (await SendAsync(client, HttpMethod.Get, "/me/casual/settings", alice.AccessToken)).StatusCode);
-    }
-
-    [Fact]
     public async Task Endpoints_WithoutSignIn_AreUnauthorized()
     {
         using var factory = CasualFactory();
@@ -40,18 +27,6 @@ public class CasualApiTests
         var response = await client.PostAsync("/casual/start", content: null);
 
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
-    }
-
-    [Fact]
-    public async Task PostToCasualSession_WithoutTheFeature_IsForbidden()
-    {
-        using var factory = new DotWatcherApiFactory { EnabledForAll = [Features.Crew] };
-        using var client = factory.CreateClient();
-        var alice = await RegisterAsync(client, "alice", "AL");
-
-        var response = await PostCasualAsync(client, alice.AccessToken, HereLatitude);
-
-        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
 
     [Fact]
