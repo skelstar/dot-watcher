@@ -129,51 +129,66 @@ events nearby, casual settings), so this adds one call, not a new kind of traffi
 5. To revert, remove the `Palette` section (or set it back) and restart. Apps return to the built-in colours the next
    time they refresh.
 
-## Setting it at runtime (`POST /admin/palette`)
+## Palette library and app-version assignments (`/admin/palettes`)
 
-The admin bearer token can set the palette without a config edit and restart. `POST /admin/palette` takes the palette
-(plus optional `name`, 30 chars, and `label`, 32 chars, e.g. an app version; both informational) and stores it in the
-`app_settings` table. It overrides the `Palette` config section, is cached for about five seconds, and
-`DELETE /admin/palette` removes it so config is served again. Staging and Production share the database, so once both
-run this code a posted palette applies to both. PR #277.
+Config is still the base, but palettes can also be managed at runtime. Palettes are saved in the database (`palettes`)
+and **reach no phone until one is assigned to an app version** (`palette_assignments`), so they can be created and
+tweaked freely. PR "Palette library".
+
+- `GET` / `POST /admin/palettes`, `GET` / `PUT` / `DELETE /admin/palettes/{id}`: list, create, read, update, delete.
+  A name (30 chars) is required; `label` (32 chars, e.g. an app version) is optional. Both are informational.
+  Deleting an assigned palette is refused (`409`).
+- `GET /admin/palettes/assignments`, `PUT` / `DELETE /admin/palettes/assignments/{appVersion}`: which palette each app
+  version gets. `appVersion` is the part of `X-App-Version` before the build number (`1.2.2` from `1.2.2 (20)`), or
+  `default` for every other version.
+- **A phone gets, in order:** the palette assigned to its exact version, the `default` one, the `Palette` config
+  section, then none (built-in colours). Both apps already send `X-App-Version` on every call that returns
+  `config.palette`, so the apps need no change.
+- **Delivery to the phone is unchanged:** `config.palette` on login, register and `GET /me`, applied on launch and on
+  return to the front (#275, #276). Assignments and palettes are cached for about five seconds.
+- **Editing an assigned palette is live** for those phones. To stage a change, save a new palette and assign it when
+  ready.
+- Staging and Production share the database, so assignments made on either apply to both once both run this code.
 
 ### Testing it on Staging
 
 The quickest way is the Bruno collection in `tools/Bruno/palette` (PR #279): open it in Bruno, pick the `staging`
-environment, fill in `username`, `password` and `adminToken`, and run it. It does the nine steps below with
-assertions. The manual curl version follows.
-
-Set `API=https://dot-watcher-staging.skelstar.io/api`, `ADMIN` to the staging `BearerToken`, and use a staging account.
+environment, fill in `username`, `password` and `adminToken`, and run it. It sets `appVersion` to a test value, so
+only requests sending that `X-App-Version` see the test palette. By hand, with `API=https://dot-watcher-staging.skelstar.io/api`,
+`ADMIN` the staging `BearerToken` and a staging account:
 
 ```sh
-palette() { curl -s -X POST $API/auth/login -H 'Content-Type: application/json' \
-  -d '{"username":"USER","password":"PASS"}' | jq '.user.config'; }
+me() { curl -s $API/me -H "Authorization: Bearer $TOKEN" -H "X-App-Version: 9.9.9 (1)" | jq '.config.palette'; }
 ```
 
-1. `palette` for a baseline: `null` unless Staging has a `Palette` config section.
-2. `POST /admin/palette` with a low-contrast pair (`goFg` close to `goBg`): expect `400` with an `error` naming the contrast.
-3. `POST /admin/palette` with a bad token: expect `401`.
-4. `POST /admin/palette` with a good palette, a `name` and a `label`: expect `200` echoing them back, and a
-   "Palette set by admin" line in the server log.
-5. `palette` again (allow about five seconds): `config.palette` shows the posted values. With a client build from the
-   palette PRs, reopen the app (or return to the front) and the start screen changes colour.
-6. `DELETE /admin/palette`: expect `204`, then `404` on a second call, and `palette` returns to the baseline.
+1. `POST /admin/palettes` with a low-contrast pair: `400` naming the contrast. With no `name`: `400`.
+2. `POST /admin/palettes` with a good palette: `201` with an `id`. `GET /admin/palettes` lists it with `assignedTo: []`.
+3. `me`: no test palette yet (it is not assigned).
+4. `PUT /admin/palettes/assignments/9.9.9` with `{ "paletteId": "<id>" }`: `200`. `me` now shows the palette; a request
+   with another `X-App-Version` does not.
+5. `DELETE /admin/palettes/<id>`: `409` while assigned.
+6. `PUT /admin/palettes/<id>` with a changed colour: `me` shows the change (live for assigned palettes).
+7. `DELETE /admin/palettes/assignments/9.9.9`: `204`; `me` no longer shows it. Then `DELETE /admin/palettes/<id>`: `204`.
 
-Clear it afterwards. A palette left on Staging will apply to Production as soon as Production runs this code.
-`500`s on step 4 or 5 point at the `app_settings` table not being created; check the log.
+Use a version no real build has (like `9.9.9`) so real phones are untouched, and clean up afterwards: assignments made
+on Staging apply to Production once Production runs this code. `500`s on step 2 point at the `palettes` tables not
+being created; check the server log.
 
 ## Open questions
 
 - **Signed out.** `GET /me` needs an account. If the start screen can ever be shown before sign-in, the first launch
   uses the built-in colours until sign-in. Check whether that screen is reachable without an account.
-- **Try before everyone.** Per-account preview is possible by reusing the feature flags (a `palette-preview` feature
-  serving `Palette:Preview` to flagged accounts). Not in the first pass; Staging config covers testing for now.
+- **Try before everyone.** Assigning a palette to a version nobody runs yet (or the next unreleased one) is the
+  preview. Per-account preview through the feature flags is still possible but not built.
 - **Staleness.** A palette is applied on the next launch after it is fetched, so an edit reaches a given phone one
   launch later. Fine for colours; revisit if it ever needs to be immediate.
 - **Dark mode.** The playground has one palette. If dark mode needs its own, the object becomes `light` and `dark`
   sets under a bumped `version`.
-- **Where the values live long term.** Config needs a restart, so `POST /admin/palette` now stores it in the database
-  with no change to the response shape or the apps. A Save button in the admin Palette tab is not built yet.
+- **Where the values live long term.** Config needs a restart, so palettes are now also stored in the database
+  (`/admin/palettes`) with no change to the response shape or the apps. A library and assign UI in the admin Palette
+  tab is not built yet.
+- **Newer versions.** An assignment matches one exact app version. A new release has no palette until one is assigned
+  to it, or to `default`.
 
 ## Branch / PR naming
 
