@@ -65,6 +65,7 @@ struct ContentView: View {
                         await location.loadSessions()
                         await leaveStaleSessions()
                     }
+                    Task { await location.refreshPalette() }
                 } else {
                     showAuth = true
                 }
@@ -75,6 +76,8 @@ struct ContentView: View {
             .onChange(of: scenePhase) { _, newPhase in
                 if newPhase == .active {
                     location.startConnectivityPolling()
+                    // Pick up a changed start-screen palette; it shows from the next launch.
+                    Task { await location.refreshPalette() }
                 } else {
                     location.stopConnectivityPolling()
                 }
@@ -221,6 +224,9 @@ struct ContentView: View {
             }
             noSessionSigns
         }
+        .background {
+            if let screen = PaletteStore.applied?.screen { screen.ignoresSafeArea() }
+        }
     }
 
     private var noSessionSigns: some View {
@@ -300,11 +306,12 @@ struct ContentView: View {
                             nameInput = location.runnerName
                             showNameEntry = true
                         } label: {
+                            // With a server palette the dot is the Go colour and the initials the sign background.
                             Text(location.runnerName.uppercased())
                                 .font(.callout.bold())
-                                .foregroundStyle(.white)
+                                .foregroundStyle(PaletteStore.applied?.altBg ?? .white)
                                 .frame(width: 38, height: 38)
-                                .background(Circle().fill(RunnerColorPalette.currentUser))
+                                .background(Circle().fill(PaletteStore.applied?.goBg ?? RunnerColorPalette.currentUser))
                         }
                         .buttonStyle(.plain)
                         .accessibilityLabel("Edit your name")
