@@ -129,6 +129,35 @@ events nearby, casual settings), so this adds one call, not a new kind of traffi
 5. To revert, remove the `Palette` section (or set it back) and restart. Apps return to the built-in colours the next
    time they refresh.
 
+## Setting it at runtime (`POST /admin/palette`)
+
+The admin bearer token can set the palette without a config edit and restart. `POST /admin/palette` takes the palette
+(plus optional `name`, 30 chars, and `label`, 32 chars, e.g. an app version; both informational) and stores it in the
+`app_settings` table. It overrides the `Palette` config section, is cached for about five seconds, and
+`DELETE /admin/palette` removes it so config is served again. Staging and Production share the database, so once both
+run this code a posted palette applies to both. PR #277.
+
+### Testing it on Staging
+
+Set `API=https://dot-watcher-staging.skelstar.io/api`, `ADMIN` to the staging `BearerToken`, and use a staging account.
+
+```sh
+palette() { curl -s -X POST $API/auth/login -H 'Content-Type: application/json' \
+  -d '{"username":"USER","password":"PASS"}' | jq '.user.config'; }
+```
+
+1. `palette` for a baseline: `null` unless Staging has a `Palette` config section.
+2. `POST /admin/palette` with a low-contrast pair (`goFg` close to `goBg`): expect `400` with an `error` naming the contrast.
+3. `POST /admin/palette` with a bad token: expect `401`.
+4. `POST /admin/palette` with a good palette, a `name` and a `label`: expect `200` echoing them back, and a
+   "Palette set by admin" line in the server log.
+5. `palette` again (allow about five seconds): `config.palette` shows the posted values. With a client build from the
+   palette PRs, reopen the app (or return to the front) and the start screen changes colour.
+6. `DELETE /admin/palette`: expect `204`, then `404` on a second call, and `palette` returns to the baseline.
+
+Clear it afterwards. A palette left on Staging will apply to Production as soon as Production runs this code.
+`500`s on step 4 or 5 point at the `app_settings` table not being created; check the log.
+
 ## Open questions
 
 - **Signed out.** `GET /me` needs an account. If the start screen can ever be shown before sign-in, the first launch
@@ -139,8 +168,8 @@ events nearby, casual settings), so this adds one call, not a new kind of traffi
   launch later. Fine for colours; revisit if it ever needs to be immediate.
 - **Dark mode.** The playground has one palette. If dark mode needs its own, the object becomes `light` and `dark`
   sets under a bumped `version`.
-- **Where the values live long term.** Config needs a restart. If that gets tedious, the same object could be edited
-  from the admin Users page and stored in the database, with no change to the response shape or the apps.
+- **Where the values live long term.** Config needs a restart, so `POST /admin/palette` now stores it in the database
+  with no change to the response shape or the apps. A Save button in the admin Palette tab is not built yet.
 
 ## Branch / PR naming
 
