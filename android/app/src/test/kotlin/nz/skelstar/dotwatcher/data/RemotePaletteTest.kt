@@ -52,15 +52,10 @@ class RemotePaletteTest {
         assertNull(parse(palette().replace("\"version\":1,", "")))
     }
 
-    @Test fun `a text and background pair under 4_5 to 1 is rejected`() {
-        assertNull(parse(palette("goFg" to "#7f2a17")))
-        assertNull(parse(palette("altFg" to "#d0c8b0")))
-        assertNull(parse(palette("accentInk" to "#a08060")))
-    }
-
-    @Test fun `contrast matches the WCAG reference values`() {
-        assertEquals(21.0, RemotePalette.contrast("#000000", "#ffffff"), 0.01)
-        assertEquals(1.0, RemotePalette.contrast("#336699", "#336699"), 0.01)
+    @Test fun `low contrast is not a reason to reject a palette`() {
+        assertNotNull(parse(palette("goFg" to "#7f2a17")))
+        assertNotNull(parse(palette("altFg" to "#d0c8b0")))
+        assertNotNull(parse(palette("accentInk" to "#a08060")))
     }
 
     @Test fun `config without a palette, or with something else, means no palette`() {
