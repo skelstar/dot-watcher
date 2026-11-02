@@ -65,7 +65,7 @@ struct ContentView: View {
                         await location.loadSessions()
                         await leaveStaleSessions()
                     }
-                    Task { await location.refreshPalette() }
+                    fetchPalette()
                 } else {
                     showAuth = true
                 }
@@ -76,9 +76,9 @@ struct ContentView: View {
             .onChange(of: scenePhase) { _, newPhase in
                 if newPhase == .active {
                     location.startConnectivityPolling()
-                    // Use the palette the last fetch saved, then fetch the server's for next time.
+                    // Use the palette the last fetch saved, then fetch the server's and fade it in if it changed.
                     PaletteStore.apply()
-                    Task { await location.refreshPalette() }
+                    fetchPalette()
                 } else {
                     location.stopConnectivityPolling()
                 }
@@ -292,6 +292,15 @@ struct ContentView: View {
             .frame(maxWidth: .infinity)
             .padding(.vertical, 10)
             .background(Color.red)
+    }
+
+    /// Fetches the server's start-screen palette and applies it as soon as it arrives, fading the colours in.
+    /// Applying an unchanged palette redraws nothing visible.
+    private func fetchPalette() {
+        Task { @MainActor in
+            await location.refreshPalette()
+            withAnimation(.easeInOut(duration: 0.6)) { PaletteStore.apply() }
+        }
     }
 
     // MARK: - Header

@@ -98,8 +98,8 @@ struct UserConfig: Codable {
 }
 
 /// The palette the start screen is using right now, nil for the built-in colours. Observable, so the screen
-/// redraws when `PaletteStore.apply()` changes it. That happens at launch and each time the app comes back to
-/// the front, never while someone is looking at the screen.
+/// redraws when `PaletteStore.apply()` changes it. That happens at launch, when the app comes back to the front,
+/// and as soon as a fetch returns a different palette (inside `withAnimation`, so the colours fade in).
 @Observable
 final class AppliedPalette {
     static let shared = AppliedPalette()
