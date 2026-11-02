@@ -87,22 +87,22 @@ that as "use the built-in colours".
 - [x] `GET /me`, login and register include `config.palette` when configured and omit it when not.
 - [x] An invalid hex, or a pair under 4.5:1, results in no palette (and not a failed response).
 - [x] `DotWatcherApiFactory` default config has no palette, so existing tests are unchanged.
-- [ ] CI is the first run of any of this.
+- [x] CI is the first run of any of this. Passed on the server PR (#273).
 
 ## Clients (separate PRs)
 
 Neither app calls `GET /me` today. Both already call several `/me/…` endpoints on launch and foreground (crew probe,
 events nearby, casual settings), so this adds one call, not a new kind of traffic.
 
-- [ ] **Android** — `GET me` added to `DotWatcherApi`; a `PaletteStore` reads the cached palette at start-up, hands
+- [x] **Android** — `GET me` added to `DotWatcherApi`; a `PaletteStore` reads the cached palette at start-up, hands
       `SignPalette` its colours, and refreshes from `GET me` on launch and resume. Storage: the existing preferences
-      store. Falls back to the current `SignPalette` values.
-- [ ] **iOS** — same shape: a `PaletteStore`, cached in `UserDefaults`, refreshed on launch and when the app comes to
-      the front.
-- [ ] **Both** re-validate what they receive (hex format, `version` they understand, contrast of the three pairs) and
+      store. Falls back to the current `SignPalette` values. PR #276, CI green.
+- [x] **iOS** — same shape: a `PaletteStore`, cached in `UserDefaults`, refreshed on launch and when the app comes to
+      the front. PR #275. There is no iOS CI and no test target, so it has not been compiled yet.
+- [x] **Both** re-validate what they receive (hex format, `version` they understand, contrast of the three pairs) and
       ignore the whole palette if anything fails. All-or-nothing, so a half-applied palette cannot happen.
-- [ ] **Both** also apply a palette from the login or register response, so a new sign-in does not wait for `GET /me`.
-- [ ] **Web** — not needed. The landing page does not use these colours.
+- [x] **Both** also apply a palette from the login or register response, so a new sign-in does not wait for `GET /me`. Both save it for the next launch, as decided above.
+- [x] **Web** — not needed. The landing page does not use these colours.
 
 ## Playground
 
@@ -111,10 +111,10 @@ events nearby, casual settings), so this adds one call, not a new kind of traffi
 
 ## Backwards compatibility (old app builds)
 
-- [ ] The only change to an existing response is the extra `config` key on the user object. iOS `AppUser` is `Codable`
+- [x] The only change to an existing response is the extra `config` key on the user object. iOS `AppUser` is `Codable`
       (unknown keys ignored); Android decodes with `ignoreUnknownKeys = true`; web checks only the fields it needs.
       The same reasoning as the `features` key in the crew plan, and still to be re-checked here.
-- [ ] Old builds never read `config`, so they keep the colours they shipped with. A palette change only reaches
+- [x] Old builds never read `config`, so they keep the colours they shipped with. A palette change only reaches
       builds that include the client PRs.
 - [ ] **Manual check after the server PR deploys to Staging:** run an older TestFlight/Android build against Staging
       and confirm sign-in and the main screen are unaffected.
