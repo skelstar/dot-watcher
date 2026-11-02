@@ -40,7 +40,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import nz.skelstar.dotwatcher.ui.casual.holdToComplete
 import nz.skelstar.dotwatcher.ui.theme.SignFontFamily
-import nz.skelstar.dotwatcher.ui.theme.currentSignColors
+import nz.skelstar.dotwatcher.ui.theme.animatedSignColors
 
 private val BarHeight = 12.dp
 private val FrameWidth = 2.dp
@@ -58,7 +58,7 @@ fun SignButton(
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
 ) {
-    val colors = currentSignColors
+    val colors = animatedSignColors()
     SignContent(
         title = title,
         subtitle = subtitle,
@@ -89,7 +89,7 @@ fun HoldSignButton(
     val progress = remember { Animatable(0f) }
     val scope = rememberCoroutineScope()
     val haptic = LocalHapticFeedback.current
-    val colors = currentSignColors
+    val colors = animatedSignColors()
 
     Column(
         modifier = modifier
@@ -138,7 +138,7 @@ fun EventSignButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val colors = currentSignColors
+    val colors = animatedSignColors()
     Column(
         modifier = modifier
             .fillMaxWidth()

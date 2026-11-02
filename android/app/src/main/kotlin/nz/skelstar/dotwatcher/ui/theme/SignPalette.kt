@@ -1,5 +1,8 @@
 package nz.skelstar.dotwatcher.ui.theme
 
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -58,13 +61,37 @@ val BuiltInSignColors = SignColors(
 
 /**
  * The server's palette in use right now, or null to use [BuiltInSignColors]. Set at launch
- * ([nz.skelstar.dotwatcher.DotWatcherApplication.onCreate]) and again each time the app comes back to the front,
- * from whatever the last fetch saved, so a new palette never appears while someone is looking at the screen.
- * Compose state, so the start screen redraws when it changes.
+ * ([nz.skelstar.dotwatcher.DotWatcherApplication.onCreate]), when the app comes back to the front, and as soon as a
+ * fetch returns a different palette. Compose state, so the start screen redraws when it changes; the screens read it
+ * through [animatedSignColors] so the change fades in.
  */
 object AppliedSignColors {
     var palette by mutableStateOf<SignColors?>(null)
 }
 
-val currentSignColors: SignColors
-    get() = AppliedSignColors.palette ?: BuiltInSignColors
+/** How long a new palette takes to fade in. */
+const val PALETTE_FADE_MILLIS = 600
+
+/** The colours the signs draw with: [AppliedSignColors], fading between palettes when it changes. */
+@Composable
+fun animatedSignColors(): SignColors {
+    val target = AppliedSignColors.palette ?: BuiltInSignColors
+    val spec = tween<Color>(PALETTE_FADE_MILLIS)
+    return SignColors(
+        goBg = animateColorAsState(target.goBg, spec, label = "goBg").value,
+        goFg = animateColorAsState(target.goFg, spec, label = "goFg").value,
+        goBar = animateColorAsState(target.goBar, spec, label = "goBar").value,
+        altBg = animateColorAsState(target.altBg, spec, label = "altBg").value,
+        altFg = animateColorAsState(target.altFg, spec, label = "altFg").value,
+        accent = animateColorAsState(target.accent, spec, label = "accent").value,
+        accentInk = animateColorAsState(target.accentInk, spec, label = "accentInk").value,
+    )
+}
+
+/** The start screen's background: the palette's screen colour, or the theme's surface when there is none. */
+@Composable
+fun animatedScreenColor(): Color = animateColorAsState(
+    AppliedSignColors.palette?.screen ?: MaterialTheme.colorScheme.surface,
+    tween(PALETTE_FADE_MILLIS),
+    label = "screen",
+).value

@@ -82,13 +82,16 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     private val paletteStore = PaletteStore(application)
     val repository = DotWatcherRepository(api, tokenStore, paletteStore)
 
-    /** Called as the app comes to the front. Applies the palette the last fetch saved (so a change shows when the
-     *  app is next opened, without a cold start, and never while someone is looking at it), then fetches the
-     *  server's current one for next time. */
+    /** Called as the app comes to the front. Applies the palette the last fetch saved straight away, then fetches
+     *  the server's current one and applies that too, so a changed palette fades in as soon as it arrives. */
     fun refreshPalette() {
         AppliedSignColors.palette = paletteStore.current()
         if (!tokenStore.isSignedIn) return
-        viewModelScope.launch { runCatching { repository.refreshPalette() } }
+        viewModelScope.launch {
+            runCatching { repository.refreshPalette() }
+            // Unchanged (or the request failed) sets an equal value, which redraws nothing.
+            AppliedSignColors.palette = paletteStore.current()
+        }
     }
 
     /** The signed-in account's crew. Shares this ViewModel's repository and scope rather than being a
