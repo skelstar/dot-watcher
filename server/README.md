@@ -458,23 +458,36 @@ that use it.
 
 ---
 
-### Palette (`POST` / `DELETE /admin/palette`)
+### Palette (`/admin/palettes`)
 
-The start-screen palette comes back as `config.palette` on login, register and `GET /me`. It is set with
-the admin bearer token: `POST /admin/palette` with the eight colours and `Version` (camelCase JSON, validated like the
-`Palette` config section: `#rrggbb` colours, text/background pairs at 4.5:1 or better), and `DELETE /admin/palette` to
-remove it. A posted palette is stored in the `app_settings` table (key `palette`), overrides the `Palette` config
-section, and is cached for about five seconds. Staging and Production share that database, so a palette posted on
-either is served by both.
+The start-screen palette comes back as `config.palette` on login, register and `GET /me`. Palettes are saved in the
+database and **reach no phone until one is assigned to an app version**, so you can create and tweak them freely. All of
+these need the admin bearer token (`401` otherwise).
 
-An optional `label` (up to 32 characters, trimmed) names the palette, for example `1.2.2`. It is a label only: it is
-returned in `config.palette` and logged when the palette is set, and does not change what is served. It is separate
-from `version`, the schema version, which stays `1`.
+| Method | Path | What it does |
+| --- | --- | --- |
+| `GET` | `/admin/palettes` | Every saved palette: `id`, `palette`, and `assignedTo` (the app versions it is assigned to) |
+| `GET` | `/admin/palettes/{id}` | One palette (`404` if unknown) |
+| `POST` | `/admin/palettes` | Save a new palette; `201` with its `id`. Serves nobody yet |
+| `PUT` | `/admin/palettes/{id}` | Replace a palette (`404` if unknown) |
+| `DELETE` | `/admin/palettes/{id}` | Delete it; `409` while it is assigned, `404` if unknown |
+| `GET` | `/admin/palettes/assignments` | Which palette each app version gets |
+| `PUT` | `/admin/palettes/assignments/{appVersion}` | Body `{ "paletteId": "..." }`; `404` if the palette does not exist |
+| `DELETE` | `/admin/palettes/assignments/{appVersion}` | Stop giving a palette to that version (`404` if none) |
 
-An optional `name` (up to 30 characters, trimmed) gives the palette a display name, for example `Navy and orange`. It is
-informational in the same way as `label`: returned in `config.palette` and logged, with no effect on what is served.
+The body of `POST` and `PUT` is the eight colours plus `version` (camelCase JSON, validated like the `Palette` config
+section: `#rrggbb` colours, text/background pairs at 4.5:1 or better) and a required `name` (up to 30 characters). An
+optional `label` (up to 32, for example `1.2.2`) is informational. Both are trimmed and returned in `config.palette`;
+neither changes what is served. `version` is the schema version and stays `1`.
 
-**Auth:** Admin bearer token. `POST` returns `200` with the palette, or `400` with an `error` naming what is wrong; `DELETE` returns `204`, or `404` when none was set.
+**Who gets which palette.** Phones send `X-App-Version` (for example `1.2.2 (20)`). The part before the space is
+matched exactly against the assignment key. A phone gets, in order: the palette assigned to its version, the palette
+assigned to `default`, the `Palette` config section, then none (the built-in colours). Assignments and palettes are
+cached for about five seconds. Apps pick the change up on their next launch or return to the front.
+
+Editing a palette that is assigned changes what those phones get straight away. To stage a change, save it as a new
+palette and assign it when ready. Staging and Production share the database, so assignments made on either apply to
+both once both run this code.
 
 ### `GET /sessions`
 

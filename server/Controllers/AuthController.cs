@@ -19,7 +19,7 @@ public class AuthController(
         if (!tokenAuth.TryAuthenticate(Request, out var user))
             return Unauthorized();
 
-        return Ok(user with { Features = features.ForUser(user.UserId), Config = new UserConfig(palette.Palette) });
+        return Ok(user with { Features = features.ForUser(user.UserId), Config = new UserConfig(palette.For(Request.Headers["X-App-Version"])) });
     }
 
     /// <summary>Creates a new account and returns an access token.</summary>
@@ -147,7 +147,7 @@ public class AuthController(
         return new AuthResponse(
             token.Value,
             token.ExpiresAt,
-            new AuthenticatedUser(account.Id, account.Username, account.DisplayName, features.ForUser(account.Id), new UserConfig(palette.Palette)));
+            new AuthenticatedUser(account.Id, account.Username, account.DisplayName, features.ForUser(account.Id), new UserConfig(palette.For(Request.Headers["X-App-Version"]))));
     }
 
     private static string? NormalizeUsername(string? value)

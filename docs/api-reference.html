@@ -342,7 +342,7 @@
         <span class="path">/me</span>
         <span class="auth-badge auth-required">Bearer token</span>
       </div>
-      <p class="purpose">The caller's account. Login and register return the same <code>user</code> object. <code>config.palette</code> holds the start-screen colours and is omitted when the server has none configured — use the built-in colours then.</p>
+      <p class="purpose">The caller's account. Login and register return the same <code>user</code> object. <code>config.palette</code> holds the start-screen colours and is omitted when the server has none for this app version — use the built-in colours then. The server picks the palette from the <code>X-App-Version</code> header (e.g. <code>1.2.2 (20)</code>); it may also carry an informational <code>name</code> and <code>label</code>.</p>
       <div class="details">
         <div class="detail-block">
           <h4>Request Body</h4>
