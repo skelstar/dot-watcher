@@ -92,14 +92,14 @@ public class PaletteTests
     }
 
     [Fact]
-    public async Task TheDefaultAssignment_CoversEveryOtherVersion_AndUnassignFallsBack()
+    public async Task TheFallbackAssignment_CoversEveryOtherVersion_AndUnassignFallsBack()
     {
         using var factory = new DotWatcherApiFactory();
         using var client = factory.CreateClient();
         var alice = await AuthTestHelpers.RegisterWithResponseAsync(client, "alice", "AL");
         var fallback = await CreateAsync(client, "Fallback", goBg: "#112233", goFg: "#ffffff");
         var special = await CreateAsync(client, "Special", goBg: "#223344", goFg: "#ffffff");
-        await SendAdminAsync(client, HttpMethod.Put, "/admin/palettes/assignments/default", "test-token", new { paletteId = fallback.Id });
+        await SendAdminAsync(client, HttpMethod.Put, "/admin/palettes/assignments/fallback", "test-token", new { paletteId = fallback.Id });
         await SendAdminAsync(client, HttpMethod.Put, "/admin/palettes/assignments/1.2.2", "test-token", new { paletteId = special.Id });
 
         Assert.Equal("#223344", (await GetMeAsync(client, alice.AccessToken, "1.2.2 (20)")).Config?.Palette?.GoBg);

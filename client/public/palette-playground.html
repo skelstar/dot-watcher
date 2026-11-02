@@ -183,7 +183,7 @@
           <div id="assign-row" hidden>
             <p class="hint">Give <span id="assign-name"></span> (as saved) to phones on an app version:</p>
             <div class="row" style="margin-top:4px;align-items:center">
-              <input type="text" class="field" id="assign-version" placeholder="1.2.2 or default" autocomplete="off" spellcheck="false" style="flex:1;min-width:140px;margin:0">
+              <input type="text" class="field" id="assign-version" placeholder="1.2.2 or fallback" autocomplete="off" spellcheck="false" style="flex:1;min-width:140px;margin:0">
               <button class="btn" id="assign-palette">Assign</button>
             </div>
             <p class="hint">Saving reaches no phone until the palette is assigned. Replacing an assigned palette is live within a few seconds.</p>
@@ -660,7 +660,7 @@
   document.getElementById('assign-palette').addEventListener('click', function () {
     var version = document.getElementById('assign-version').value.trim();
     if (!editing) return;
-    if (!version) { say('Type an app version like 1.2.2, or "default" for every other version.', true); return; }
+    if (!version) { say('Type an app version like 1.2.2, or "fallback" for every other version.', true); return; }
     if (!window.confirm('Give "' + editing.name + '" (as saved) to phones on ' + version + '? They get it within a few seconds, replacing any palette that version has now.')) return;
     call('PUT', '/admin/palettes/assignments/' + encodeURIComponent(version), { paletteId: editing.id }).then(function () {
       return refreshLibrary().then(function () { say('Assigned to ' + version + '.'); });

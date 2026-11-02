@@ -120,7 +120,7 @@ public class AdminController(SessionStore store, BearerTokenAuth auth, FeatureFl
         };
     }
 
-    /// <summary>Admin/ops: which palette each app version gets ("default" is everyone else).</summary>
+    /// <summary>Admin/ops: which palette each app version gets ("fallback" is everyone else).</summary>
     [HttpGet("/admin/palettes/assignments")]
     [ProducesResponseType(typeof(IReadOnlyList<PaletteAssignment>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
@@ -134,7 +134,7 @@ public class AdminController(SessionStore store, BearerTokenAuth auth, FeatureFl
 
     /// <summary>
     /// Admin/ops: gives a saved palette to phones on one app version (for example <c>1.2.2</c>, matched to the part of
-    /// <c>X-App-Version</c> before the build number), or to <c>default</c> for every other version. Takes effect
+    /// <c>X-App-Version</c> before the build number), or to <c>fallback</c> for every other version. Takes effect
     /// within a few seconds, on each phone's next launch or return to the front.
     /// </summary>
     [HttpPut("/admin/palettes/assignments/{appVersion}")]
@@ -148,7 +148,7 @@ public class AdminController(SessionStore store, BearerTokenAuth auth, FeatureFl
             return Unauthorized();
 
         if (!PaletteProvider.IsValidRoute(appVersion))
-            return BadRequest(new { error = "The app version must be like 1.2.2, or \"default\"." });
+            return BadRequest(new { error = "The app version must be like 1.2.2, or \"fallback\"." });
 
         if (string.IsNullOrWhiteSpace(request?.PaletteId))
             return BadRequest(new { error = "paletteId is required." });
@@ -156,7 +156,7 @@ public class AdminController(SessionStore store, BearerTokenAuth auth, FeatureFl
         return palette.Assign(appVersion, request.PaletteId) ? Ok(new PaletteAssignment(appVersion, request.PaletteId)) : NotFound();
     }
 
-    /// <summary>Admin/ops: stops giving a palette to an app version, so those phones fall back to the default (or the built-in colours).</summary>
+    /// <summary>Admin/ops: stops giving a palette to an app version, so those phones fall back to the fallback palette (or the built-in colours).</summary>
     [HttpDelete("/admin/palettes/assignments/{appVersion}")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]

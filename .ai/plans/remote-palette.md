@@ -141,8 +141,8 @@ tweaked freely. PR "Palette library".
   Deleting an assigned palette is refused (`409`).
 - `GET /admin/palettes/assignments`, `PUT` / `DELETE /admin/palettes/assignments/{appVersion}`: which palette each app
   version gets. `appVersion` is the part of `X-App-Version` before the build number (`1.2.2` from `1.2.2 (20)`), or
-  `default` for every other version.
-- **A phone gets, in order:** the palette assigned to its exact version, the `default` one, the `Palette` config
+  `fallback` for every other version.
+- **A phone gets, in order:** the palette assigned to its exact version, the `fallback` one, the `Palette` config
   section, then none (built-in colours). Both apps already send `X-App-Version` on every call that returns
   `config.palette`, so the apps need no change.
 - **Delivery to the phone is unchanged:** `config.palette` on login, register and `GET /me`, applied on launch and on
@@ -189,7 +189,7 @@ being created; check the server log.
   (`/admin/palettes`) with no change to the response shape or the apps. A library and assign UI in the admin Palette
   tab is not built yet.
 - **Newer versions.** An assignment matches one exact app version. A new release has no palette until one is assigned
-  to it, or to `default`.
+  to it, or to `fallback`.
 
 ## Branch / PR naming
 
