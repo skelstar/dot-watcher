@@ -58,7 +58,7 @@
   /* phone preview */
   .sticky { position: sticky; top: 16px; }
   .phone-actions { display: flex; justify-content: center; gap: 8px; margin-top: 12px; }
-  .phone { width: 100%; max-width: 340px; margin: 0 auto; background: var(--screen); border: 8px solid #111; border-radius: 36px; padding: 56px 16px 24px; min-height: 640px; display: flex; flex-direction: column; gap: 14px; position: relative; }
+  .phone { width: 390px; zoom: .87; margin: 0 auto; background: var(--screen); border: 8px solid #111; border-radius: 36px; padding: 56px 16px 24px; aspect-ratio: 9 / 19.5; display: flex; flex-direction: column; gap: 14px; position: relative; }
   .phone::before { content: ""; position: absolute; top: 12px; left: 50%; width: 90px; height: 22px; margin-left: -45px; background: #111; border-radius: 12px; }
   .brand { font: 700 28px/1.1 -apple-system, system-ui, sans-serif; color: #000; margin: 0; }
   .brand .dot { display: inline-grid; place-items: center; width: 31px; height: 31px; border-radius: 50%; background: var(--go-bg); color: var(--alt-bg); font-size: 13px; vertical-align: middle; margin: 0 2px; }
@@ -106,6 +106,9 @@
   .fmt { display: flex; gap: 6px; margin-bottom: 8px; }
   .fmt .btn[aria-pressed="true"] { background: var(--ink); color: var(--card); border-color: var(--ink); }
 
+  .field-label { display: block; font-size: 14px; margin: 8px 0 4px; }
+  .field { font: 16px ui-monospace, Menlo, monospace; width: 100%; box-sizing: border-box; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; background: transparent; color: inherit; }
+  .lib-count { font-weight: 400; letter-spacing: 0; text-transform: none; }
   /* palette library (admin only) */
   .lib-list { display: flex; flex-direction: column; gap: 8px; }
   .lib-row { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; display: grid; gap: 6px; }
@@ -115,7 +118,6 @@
   .lib-label { color: var(--muted); font-size: 13px; }
   .lib-assigned { display: flex; gap: 6px; flex-wrap: wrap; }
   .lib-pill { font: inherit; font-size: 12px; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--line); background: #d8efd9; color: #17501c; cursor: pointer; }
-  #lib-version { font: 16px ui-monospace, Menlo, monospace; flex: 1; min-width: 160px; box-sizing: border-box; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; background: transparent; color: inherit; }
   @media (prefers-color-scheme: dark) { .lib-pill { background: #1f4a23; color: #cdeccf; } }
 
   @media (prefers-color-scheme: dark) {
@@ -133,7 +135,7 @@
     main { padding-top: 12px; }
     h1 { font-size: 24px; }
     p.lede { display: none; }
-    .phone { max-width: 300px; min-height: 520px; padding-top: 48px; }
+    .phone { zoom: .77; padding-top: 48px; }
     .btn { min-height: 44px; padding: 8px 16px; }
     /* Colour row on two lines: swatch | name + lock, then hex + contrast badge. */
     .tok { grid-template-columns: 44px minmax(0, 1fr) auto; grid-template-areas: "c l k" "c h r"; gap: 6px 10px; }
@@ -159,20 +161,34 @@
       </div>
 
       <div class="panel" id="library" hidden>
-        <h3>Library (on the server)</h3>
-        <p class="hint" id="lib-editing" style="margin:0 0 8px"></p>
+        <h3>Library (on the server) <span class="lib-count" id="lib-count"></span></h3>
         <div class="lib-list" id="lib-list"></div>
-        <p class="hint" id="lib-status"></p>
-        <div class="row" style="margin-top:8px">
-          <button class="btn primary" id="lib-new">Save to library</button>
-          <button class="btn" id="lib-update">Update this palette</button>
-          <button class="btn" id="lib-refresh">Refresh</button>
+        <div class="row" style="margin-top:8px"><button class="btn" id="lib-refresh">Refresh</button></div>
+      </div>
+
+      <div class="panel" id="editor">
+        <h3>Palette</h3>
+        <label for="palette-name" class="field-label">Title</label>
+        <input type="text" class="field" id="palette-name" maxlength="30" placeholder="Navy and orange" autocomplete="off">
+        <label for="palette-label" class="field-label">Label (optional, e.g. an app version like 1.2.2)</label>
+        <input type="text" class="field" id="palette-label" maxlength="32" placeholder="1.2.2" autocomplete="off">
+        <div id="save-row" hidden>
+          <p class="hint" id="editing-line"></p>
+          <div class="row" style="margin-top:8px">
+            <button class="btn primary" id="save-palette" disabled>Save to library</button>
+            <button class="btn" id="new-palette">New</button>
+          </div>
+          <p class="hint" id="save-hint"></p>
+          <p class="hint" id="save-status"></p>
+          <div id="assign-row" hidden>
+            <p class="hint">Give <span id="assign-name"></span> (as saved) to phones on an app version:</p>
+            <div class="row" style="margin-top:4px;align-items:center">
+              <input type="text" class="field" id="assign-version" placeholder="1.2.2 or default" autocomplete="off" spellcheck="false" style="flex:1;min-width:140px;margin:0">
+              <button class="btn" id="assign-palette">Assign</button>
+            </div>
+            <p class="hint">Saving reaches no phone until the palette is assigned. Replacing an assigned palette is live within a few seconds.</p>
+          </div>
         </div>
-        <div class="row" style="margin-top:8px;align-items:center">
-          <input type="text" id="lib-version" placeholder="1.2.2 or default" autocomplete="off" spellcheck="false">
-          <button class="btn" id="lib-assign">Assign to that version</button>
-        </div>
-        <p class="hint">Saving reaches no phone until the palette is assigned. Updating an assigned palette is live within a few seconds.</p>
       </div>
 
       <div class="panel" id="tokens">
@@ -200,10 +216,6 @@
 
       <div class="panel">
         <h3>Copy palette JSON</h3>
-        <label for="palette-name" style="display:block;font-size:14px;margin-bottom:4px">Name (optional)</label>
-        <input type="text" id="palette-name" maxlength="30" placeholder="Navy and orange" autocomplete="off" style="font:16px ui-monospace,Menlo,monospace;width:100%;box-sizing:border-box;padding:6px 8px;margin-bottom:8px;border:1px solid var(--line);border-radius:6px;background:transparent;color:inherit">
-        <label for="palette-label" style="display:block;font-size:14px;margin-bottom:4px">Label (optional, e.g. an app version like 1.2.2)</label>
-        <input type="text" id="palette-label" maxlength="32" placeholder="1.2.2" autocomplete="off" style="font:16px ui-monospace,Menlo,monospace;width:100%;box-sizing:border-box;padding:6px 8px;margin-bottom:8px;border:1px solid var(--line);border-radius:6px;background:transparent;color:inherit">
         <div class="fmt" id="fmt">
           <button class="btn" data-f="config" aria-pressed="true">Config</button>
           <button class="btn" data-f="api" aria-pressed="false">API body</button>
@@ -457,22 +469,39 @@
 
   // ---- library on the server (GET/POST/PUT/DELETE /admin/palettes and /admin/palettes/assignments/{appVersion}).
   // Only usable inside /admin, which sends the server address and admin token with postMessage; opened on its own
-  // this page has neither, so the panel stays hidden and nothing here runs.
+  // this page has neither, so the library and the Save button stay hidden and nothing here runs.
+  //
+  // Saving goes by the title: a title already in the library replaces that palette (after an "are you sure"),
+  // any other title is saved as a new palette.
   var libApi = null;
-  var editing = null;   // { id, name, assignedTo } of the palette loaded from (or just saved to) the library
+  var libEntries = [];  // the library as last fetched
+  var editing = null;   // { id, name, assignedTo }: the saved palette the editor was loaded from or last saved to
   var libraryEl = document.getElementById('library');
-  var libStatus = document.getElementById('lib-status');
+  var libCount = document.getElementById('lib-count');
   var libList = document.getElementById('lib-list');
   var nameEl = document.getElementById('palette-name');
   var labelEl = document.getElementById('palette-label');
+  var saveRow = document.getElementById('save-row');
+  var saveBtn = document.getElementById('save-palette');
+  var saveHint = document.getElementById('save-hint');
+  var saveStatus = document.getElementById('save-status');
+  var assignRow = document.getElementById('assign-row');
 
-  function say(msg, bad) { libStatus.textContent = msg; libStatus.style.color = bad ? '#c0392b' : ''; }
+  function say(msg, bad) { saveStatus.textContent = msg; saveStatus.style.color = bad ? '#c0392b' : ''; }
   function fail(e) { say(e.message, true); }
   function node(tag, cls, text) {
     var e = document.createElement(tag);
     if (cls) e.className = cls;
     if (text != null) e.textContent = text;
     return e;
+  }
+  function sameName(a, b) { return a.trim().toLowerCase() === b.trim().toLowerCase(); }
+  function entriesNamed(name) {
+    return libEntries.filter(function (e) { return e.palette.name && sameName(e.palette.name, name); });
+  }
+  function liveFor(entry) {
+    var v = entry.assignedTo || [];
+    return v.length ? ' It is live for ' + v.join(', ') + ', so phones get the change within a few seconds.' : '';
   }
 
   function call(method, path, body) {
@@ -500,18 +529,20 @@
 
   function refreshLibrary() {
     return call('GET', '/admin/palettes').then(function (list) {
-      renderLibrary(list);
-      say(list.length + ' saved.');
+      libEntries = list;
+      if (editing) {
+        var cur = list.filter(function (e) { return e.id === editing.id; })[0];
+        editing = cur ? { id: cur.id, name: cur.palette.name || '', assignedTo: cur.assignedTo || [] } : null;
+      }
+      renderLibrary();
+      updateSaveUi();
     }).catch(function (e) { say('Could not load the library: ' + e.message, true); });
   }
 
-  function renderLibrary(list) {
-    if (editing) {
-      var cur = list.filter(function (e) { return e.id === editing.id; })[0];
-      editing = cur ? { id: cur.id, name: cur.palette.name || '', assignedTo: cur.assignedTo || [] } : null;
-    }
+  function renderLibrary() {
+    libCount.textContent = libEntries.length + ' saved';
     libList.innerHTML = '';
-    list.forEach(function (entry) {
+    libEntries.forEach(function (entry) {
       var p = entry.palette;
       var row = node('div', 'lib-row' + (editing && editing.id === entry.id ? ' on' : ''));
       var chips = node('div', 'lib-chips');
@@ -527,28 +558,46 @@
         assigned.appendChild(pill);
       });
       var btns = node('div', 'row');
-      var load = node('button', 'btn', 'Load');
-      load.addEventListener('click', function () { loadEntry(entry); });
+      var edit = node('button', 'btn primary', 'Edit');
+      edit.addEventListener('click', function () { editEntry(entry); });
       var del = node('button', 'btn', 'Delete');
       del.addEventListener('click', function () { removeEntry(entry); });
-      btns.appendChild(load); btns.appendChild(del);
+      btns.appendChild(edit); btns.appendChild(del);
       row.appendChild(chips); row.appendChild(title); row.appendChild(assigned); row.appendChild(btns);
       libList.appendChild(row);
     });
-    updateEditing();
   }
 
-  function updateEditing() {
-    document.getElementById('lib-editing').textContent = editing
+  // What Save will do, said before it is pressed, and whether the saved palette can be assigned.
+  function updateSaveUi() {
+    if (!libApi) return;
+    var name = nameEl.value.trim();
+    var matches = name ? entriesNamed(name) : [];
+    if (!name) {
+      saveHint.textContent = 'Give it a title to save it.';
+      saveBtn.textContent = 'Save to library';
+      saveBtn.disabled = true;
+    } else if (matches.length > 1) {
+      saveHint.textContent = 'More than one palette is called "' + name + '". Delete the duplicate first.';
+      saveBtn.textContent = 'Save to library';
+      saveBtn.disabled = true;
+    } else if (matches.length === 1) {
+      saveHint.textContent = '"' + matches[0].palette.name + '" is already in the library. Saving replaces it.' + liveFor(matches[0]);
+      saveBtn.textContent = 'Replace in library';
+      saveBtn.disabled = false;
+    } else {
+      saveHint.textContent = '"' + name + '" is a new palette.';
+      saveBtn.textContent = 'Save to library';
+      saveBtn.disabled = false;
+    }
+    assignRow.hidden = !editing;
+    document.getElementById('assign-name').textContent = editing ? '"' + (editing.name || 'unnamed') + '"' : '';
+    document.getElementById('editing-line').textContent = editing
       ? 'Editing "' + (editing.name || 'unnamed') + '"' + (editing.assignedTo.length ? ' (live for ' + editing.assignedTo.join(', ') + ')' : ' (not assigned to any version)')
       : 'A new palette: not saved yet.';
-    document.getElementById('lib-update').disabled = !editing;
-    document.getElementById('lib-assign').disabled = !editing;
-    document.getElementById('lib-version').disabled = !editing;
-    document.getElementById('lib-new').textContent = editing ? 'Save as a new copy' : 'Save to library';
   }
 
-  function loadEntry(entry) {
+  function editEntry(entry) {
     var p = entry.palette;
     // Keep the saved colours exactly: the "derived" boxes would recompute two of them on the next render.
     deriveEl.checked = false;
@@ -558,8 +607,10 @@
     labelEl.value = p.label || '';
     editing = { id: entry.id, name: p.name || '', assignedTo: entry.assignedTo || [] };
     render();
-    refreshLibrary();
-    say('Loaded "' + (p.name || 'unnamed') + '".');
+    renderLibrary();
+    updateSaveUi();
+    say('Editing "' + (p.name || 'unnamed') + '".');
+    document.querySelector('.phone').scrollIntoView({ behavior: 'smooth', block: 'center' });
   }
 
   function removeEntry(entry) {
@@ -576,40 +627,50 @@
     }).then(function () { say('Phones on ' + version + ' no longer get it.'); }).catch(fail);
   }
 
-  document.getElementById('lib-new').addEventListener('click', function () {
-    if (!nameEl.value.trim()) { say('Give it a name first (the Name field further down).', true); nameEl.focus(); return; }
-    call('POST', '/admin/palettes', paletteBody()).then(function (entry) {
+  saveBtn.addEventListener('click', function () {
+    var name = nameEl.value.trim();
+    var matches = name ? entriesNamed(name) : [];
+    if (!name || matches.length > 1) return;
+    var target = matches[0];
+    if (target && !window.confirm('Replace "' + target.palette.name + '" in the library with what is on screen?' + liveFor(target))) return;
+    var request = target
+      ? call('PUT', '/admin/palettes/' + encodeURIComponent(target.id), paletteBody())
+      : call('POST', '/admin/palettes', paletteBody());
+    request.then(function (entry) {
       editing = { id: entry.id, name: entry.palette.name || '', assignedTo: entry.assignedTo || [] };
-      return refreshLibrary().then(function () { say('Saved "' + entry.palette.name + '".'); });
+      return refreshLibrary().then(function () { say(target ? 'Replaced "' + entry.palette.name + '".' : 'Saved "' + entry.palette.name + '".'); });
     }).catch(fail);
   });
 
-  document.getElementById('lib-update').addEventListener('click', function () {
-    if (!editing) return;
-    var live = editing.assignedTo.length ? ' It is live for ' + editing.assignedTo.join(', ') + ', so phones get the change within a few seconds.' : '';
-    if (!window.confirm('Replace "' + editing.name + '" in the library with what is on screen?' + live)) return;
-    call('PUT', '/admin/palettes/' + encodeURIComponent(editing.id), paletteBody()).then(function () {
-      return refreshLibrary().then(function () { say('Updated.'); });
-    }).catch(fail);
+  document.getElementById('new-palette').addEventListener('click', function () {
+    editing = null;
+    nameEl.value = '';
+    labelEl.value = '';
+    writeOut();
+    renderLibrary();
+    updateSaveUi();
+    say('');
+    nameEl.focus();
   });
 
-  document.getElementById('lib-assign').addEventListener('click', function () {
-    var version = document.getElementById('lib-version').value.trim();
+  document.getElementById('assign-palette').addEventListener('click', function () {
+    var version = document.getElementById('assign-version').value.trim();
     if (!editing) return;
     if (!version) { say('Type an app version like 1.2.2, or "default" for every other version.', true); return; }
-    if (!window.confirm('Give "' + editing.name + '" to phones on ' + version + '? They get it within a few seconds, replacing any palette that version has now.')) return;
+    if (!window.confirm('Give "' + editing.name + '" (as saved) to phones on ' + version + '? They get it within a few seconds, replacing any palette that version has now.')) return;
     call('PUT', '/admin/palettes/assignments/' + encodeURIComponent(version), { paletteId: editing.id }).then(function () {
       return refreshLibrary().then(function () { say('Assigned to ' + version + '.'); });
     }).catch(fail);
   });
 
+  nameEl.addEventListener('input', updateSaveUi);
   document.getElementById('lib-refresh').addEventListener('click', refreshLibrary);
 
   window.addEventListener('message', function (e) {
     var d = e.data;
     if (e.origin !== location.origin || !d || d.type !== 'dw-admin') return;
     libApi = { base: String(d.serverUrl || '').replace(/\/+$/, ''), token: d.token || '' };
-    libraryEl.hidden = !libApi.token;
+    libraryEl.hidden = saveRow.hidden = !libApi.token;
     if (libApi.token) refreshLibrary();
   });
 
