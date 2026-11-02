@@ -167,6 +167,10 @@
 
       <div class="panel">
         <h3>Copy palette JSON</h3>
+        <label for="palette-name" style="display:block;font-size:14px;margin-bottom:4px">Name (optional)</label>
+        <input type="text" id="palette-name" maxlength="30" placeholder="Navy and orange" autocomplete="off" style="font:16px ui-monospace,Menlo,monospace;width:100%;box-sizing:border-box;padding:6px 8px;margin-bottom:8px;border:1px solid var(--line);border-radius:6px;background:transparent;color:inherit">
+        <label for="palette-label" style="display:block;font-size:14px;margin-bottom:4px">Label (optional, e.g. an app version like 1.2.2)</label>
+        <input type="text" id="palette-label" maxlength="32" placeholder="1.2.2" autocomplete="off" style="font:16px ui-monospace,Menlo,monospace;width:100%;box-sizing:border-box;padding:6px 8px;margin-bottom:8px;border:1px solid var(--line);border-radius:6px;background:transparent;color:inherit">
         <pre id="out"></pre>
         <div class="row" style="margin-top:8px"><button class="btn" id="copy">Copy</button></div>
       </div>
@@ -337,9 +341,13 @@
   function writeOut() {
     function kt(n) { return n.charAt(0).toUpperCase() + n.slice(1); }
     // The Palette section for server/appsettings.json (PaletteProvider reads these keys).
-    var out = '"Palette": {\n  "Version": 1,\n' + ORDER.map(function (k) { return '  "' + kt(k) + '": "' + state[k].toLowerCase() + '"'; }).join(',\n') + '\n}';
+    var label = document.getElementById('palette-label').value.trim();
+    var name = document.getElementById('palette-name').value.trim();
+    var out = '"Palette": {\n  "Version": 1,\n' + (name ? '  "Name": ' + JSON.stringify(name) + ',\n' : '') + (label ? '  "Label": ' + JSON.stringify(label) + ',\n' : '') + ORDER.map(function (k) { return '  "' + kt(k) + '": "' + state[k].toLowerCase() + '"'; }).join(',\n') + '\n}';
     document.getElementById('out').textContent = out;
   }
+  document.getElementById('palette-name').addEventListener('input', writeOut);
+  document.getElementById('palette-label').addEventListener('input', writeOut);
   document.getElementById('copy').addEventListener('click', function () {
     var btn = this, txt = document.getElementById('out').textContent;
     (navigator.clipboard ? navigator.clipboard.writeText(txt) : Promise.reject()).then(function () {

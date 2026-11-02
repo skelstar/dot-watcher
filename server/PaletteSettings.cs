@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 
@@ -17,7 +18,12 @@ public record Palette(
     string AltFg,
     string Accent,
     string AccentInk,
-    string Screen
+    string Screen,
+    // A name or version for this palette, e.g. "1.2.2" or "2026-11-b". Only a label: it is shown in logs and
+    // returned to clients, and does not change what is served. Not the schema Version above.
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Label = null,
+    // A display name for this palette, e.g. "Navy and orange". Like Label, only informational.
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Name = null
 );
 
 /// <summary>Server-driven settings returned with the user. A later setting is another property here.</summary>
@@ -26,19 +32,36 @@ public record UserConfig(
 );
 
 /// <summary>
-/// Reads the <c>Palette</c> config section once at start-up. A missing section, a bad hex value or a
-/// text/background pair under 4.5:1 contrast means no palette is served (with a warning logged), so a
-/// typo in config leaves the apps on their built-in colours rather than unreadable buttons.
+/// The palette to serve. One set by an admin (POST /admin/palette, stored in the database) wins over the
+/// <c>Palette</c> config section, which is read once at start-up. A missing section, a bad hex value or a
+/// text/background pair under 4.5:1 contrast means no palette from that source (with a warning logged), so
+/// a typo leaves the apps on their built-in colours rather than unreadable buttons.
 /// </summary>
 public sealed partial class PaletteProvider
 {
     public const int CurrentVersion = 1;
     public const double MinimumContrast = 4.5;
+    public const int MaxLabelLength = 32;
+    public const int MaxNameLength = 30;
 
-    public Palette? Palette { get; }
+    public const string SettingKey = "palette";
+    private const long CacheMs = 5000;
+    private const long Stale = -2 * CacheMs; // TickCount64 is never negative, so this always reads as expired
+    private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
-    public PaletteProvider(IConfiguration configuration, ILogger<PaletteProvider> logger)
+    private readonly SessionStore _store;
+    private readonly ILogger<PaletteProvider> _logger;
+    private readonly Palette? _configured;
+    private volatile Palette? _stored;
+    private long _storedAt = Stale;
+
+    /// <summary>The admin-set palette if there is a valid one, otherwise the configured one, otherwise none.</summary>
+    public Palette? Palette => ReadStored() ?? _configured;
+
+    public PaletteProvider(IConfiguration configuration, SessionStore store, ILogger<PaletteProvider> logger)
     {
+        _store = store;
+        _logger = logger;
         var section = configuration.GetSection("Palette");
         if (!section.Exists())
             return;
@@ -52,13 +75,71 @@ public sealed partial class PaletteProvider
             section["AltFg"] ?? "",
             section["Accent"] ?? "",
             section["AccentInk"] ?? "",
-            section["Screen"] ?? "");
+            section["Screen"] ?? "",
+            section["Label"],
+            section["Name"]);
 
         var problem = Validate(candidate);
         if (problem is null)
-            Palette = candidate;
+            _configured = candidate;
         else
             logger.LogWarning("Palette config ignored, serving no palette: {Problem}", problem);
+    }
+
+    /// <summary>Stores a validated palette for everyone, replacing any earlier one. Returns what was wrong, or null.</summary>
+    public string? Set(Palette palette)
+    {
+        var problem = Validate(palette);
+        if (problem is not null)
+            return problem;
+
+        palette = palette with
+        {
+            Label = palette.Label?.Trim() is { Length: > 0 } label ? label : null,
+            Name = palette.Name?.Trim() is { Length: > 0 } name ? name : null,
+        };
+        _store.SetSetting(SettingKey, JsonSerializer.Serialize(palette, Json));
+        _logger.LogInformation("Palette set by admin, name {Name}, label {Label}", palette.Name ?? "(none)", palette.Label ?? "(none)");
+        _storedAt = Stale;
+        return null;
+    }
+
+    /// <summary>Removes the admin-set palette so the config one (if any) is served again.</summary>
+    public bool Clear()
+    {
+        var removed = _store.DeleteSetting(SettingKey);
+        _storedAt = Stale;
+        return removed;
+    }
+
+    // Cached for a few seconds so login and GET /me don't each read the database.
+    private Palette? ReadStored()
+    {
+        if (Environment.TickCount64 - _storedAt < CacheMs)
+            return _stored;
+
+        Palette? fresh = null;
+        var raw = _store.GetSetting(SettingKey);
+        if (raw is not null)
+        {
+            try
+            {
+                var candidate = JsonSerializer.Deserialize<Palette>(raw, Json);
+                var problem = candidate is null ? "empty" : Validate(candidate);
+                if (problem is null)
+                    fresh = candidate;
+                else
+                    _logger.LogWarning("Stored palette ignored: {Problem}", problem);
+            }
+            catch (JsonException ex)
+            {
+                _logger.LogWarning("Stored palette ignored, unreadable: {Message}", ex.Message);
+            }
+        }
+
+        _stored = fresh;
+        _storedAt = Environment.TickCount64;
+        return fresh;
     }
 
     /// <summary>The first thing wrong with a palette, or null when it is fine to serve.</summary>
@@ -66,6 +147,12 @@ public sealed partial class PaletteProvider
     {
         if (palette.Version != CurrentVersion)
             return $"unsupported version {palette.Version}";
+
+        if (palette.Label is { } label && (label.Length > MaxLabelLength || label.Any(char.IsControl)))
+            return $"Label must be {MaxLabelLength} characters or fewer with no control characters";
+
+        if (palette.Name is { } paletteName && (paletteName.Length > MaxNameLength || paletteName.Any(char.IsControl)))
+            return $"Name must be {MaxNameLength} characters or fewer with no control characters";
 
         var colours = new (string Name, string Value)[]
         {
@@ -75,7 +162,7 @@ public sealed partial class PaletteProvider
             (nameof(palette.AccentInk), palette.AccentInk), (nameof(palette.Screen), palette.Screen),
         };
         foreach (var (name, value) in colours)
-            if (!HexColour().IsMatch(value))
+            if (value is null || !HexColour().IsMatch(value))
                 return $"{name} is not a #rrggbb colour";
 
         foreach (var (name, fg, bg) in new[]
