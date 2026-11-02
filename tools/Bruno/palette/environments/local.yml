@@ -1,7 +1,7 @@
 name: local
 variables:
   - name: baseUrl
-    value: http://localhost:8080
+    value: http://localhost:8096
   - name: adminToken
     value: dev-token
   - name: username

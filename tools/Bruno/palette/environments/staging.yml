@@ -3,7 +3,7 @@ variables:
   - name: baseUrl
     value: https://dot-watcher-staging.skelstar.io/api
   - name: username
-    value: ""
+    value: skelstar@gmail.com
   - name: testAppVersion
     value: 9.9.9
   - secret: true
