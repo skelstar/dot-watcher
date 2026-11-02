@@ -1,0 +1,23 @@
+meta {
+  name: 12 Delete palette (while assigned)
+  type: http
+  seq: 12
+}
+
+delete {
+  url: {{baseUrl}}/admin/palettes/{{paletteId}}
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{adminToken}}
+}
+
+assert {
+  res.status: eq 409
+}
+
+docs {
+  Refused while the palette is assigned to a version.
+}

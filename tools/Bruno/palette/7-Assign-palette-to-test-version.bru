@@ -1,0 +1,30 @@
+meta {
+  name: 7 Assign palette to test version
+  type: http
+  seq: 7
+}
+
+put {
+  url: {{baseUrl}}/admin/palettes/assignments/{{testAppVersion}}
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{adminToken}}
+}
+
+body:json {
+  {
+    "paletteId": "{{paletteId}}"
+  }
+}
+
+assert {
+  res.status: eq 200
+  res.body.paletteId: eq {{paletteId}}
+}
+
+docs {
+  Gives the palette to phones on testAppVersion (9.9.9, a version no real build has).
+}

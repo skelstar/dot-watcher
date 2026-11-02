@@ -1,11 +1,11 @@
 meta {
-  name: 5 Set palette
+  name: 10 Update palette
   type: http
-  seq: 5
+  seq: 10
 }
 
-post {
-  url: {{baseUrl}}/admin/palette
+put {
+  url: {{baseUrl}}/admin/palettes/{{paletteId}}
   body: json
   auth: bearer
 }
@@ -17,8 +17,8 @@ auth:bearer {
 body:json {
   {
     "version": 1,
-    "name": "Bruno test palette",
-    "label": "bruno-1",
+    "name": "Bruno test palette v2",
+    "label": "bruno-2",
     "goBg": "#6f1a07",
     "goFg": "#f7f3e3",
     "goBar": "#af9164",
@@ -32,10 +32,10 @@ body:json {
 
 assert {
   res.status: eq 200
-  res.body.name: eq Bruno test palette
-  res.body.label: eq bruno-1
+  res.body.palette.name: eq Bruno test palette v2
+  res.body.assignedTo[0]: eq {{testAppVersion}}
 }
 
 docs {
-  Sets the palette for every app. Staging and Production share the database, so run 7 to clear it afterwards.
+  Replaces the palette. Editing an assigned palette is live for those phones.
 }

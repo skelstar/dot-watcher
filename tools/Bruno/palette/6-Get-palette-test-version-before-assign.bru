@@ -1,13 +1,17 @@
 meta {
-  name: 9 Get palette (after clear)
+  name: 6 Get palette (test version, before assign)
   type: http
-  seq: 9
+  seq: 6
 }
 
 get {
   url: {{baseUrl}}/me
   body: none
   auth: bearer
+}
+
+headers {
+  X-App-Version: {{testAppVersion}} (1)
 }
 
 auth:bearer {
@@ -20,5 +24,5 @@ assert {
 }
 
 docs {
-  Back to the baseline: the posted palette is gone.
+  A phone on the test version does not see the new palette yet: it is saved but not assigned.
 }
