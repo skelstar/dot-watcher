@@ -139,6 +139,10 @@ run this code a posted palette applies to both. PR #277.
 
 ### Testing it on Staging
 
+The quickest way is the Bruno collection in `tools/Bruno/palette` (PR #279): open it in Bruno, pick the `staging`
+environment, fill in `username`, `password` and `adminToken`, and run it. It does the nine steps below with
+assertions. The manual curl version follows.
+
 Set `API=https://dot-watcher-staging.skelstar.io/api`, `ADMIN` to the staging `BearerToken`, and use a staging account.
 
 ```sh
