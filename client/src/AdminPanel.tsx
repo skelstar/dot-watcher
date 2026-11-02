@@ -84,6 +84,16 @@ export default function AdminPanel({ serverUrl }: { serverUrl: string }) {
   const [tab, setTab] = useState<AdminTab>('users')
   const playgroundRef = useRef<HTMLIFrameElement>(null)
 
+  // Hands the playground the server address and admin token so its Library panel can use the palette API.
+  // Same-origin postMessage, so the token is never put in the frame's URL.
+  function sendPlaygroundContext() {
+    playgroundRef.current?.contentWindow?.postMessage({ type: 'dw-admin', serverUrl, token }, window.location.origin)
+  }
+  useEffect(() => {
+    if (tab === 'palette') sendPlaygroundContext()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab, token, serverUrl])
+
   useLayoutEffect(() => {
     const root = document.getElementById('root')
     const prev = { html: document.documentElement.style.overflow, body: document.body.style.overflow, root: root?.style.overflow ?? '' }
@@ -872,7 +882,7 @@ export default function AdminPanel({ serverUrl }: { serverUrl: string }) {
       {tab === 'palette' && (
         <>
           <p style={featuresNote}>
-            Try start-screen colours and copy the JSON tab into the server's <code>Palette</code> config section.
+            Try start-screen colours, then save them to the library below, or copy them as a config section or an API body.
           </p>
           {/* Same-origin static page (client/public), so the frame can follow its content's height. */}
           <iframe
@@ -887,6 +897,7 @@ export default function AdminPanel({ serverUrl }: { serverUrl: string }) {
               if (!f || !doc) return
               const fit = () => { f.style.height = `${doc.documentElement.scrollHeight}px` }
               fit()
+              sendPlaygroundContext()
               // Content height changes after load (fonts, snapshots, the layout going single-column).
               new ResizeObserver(fit).observe(doc.body)
             }}
