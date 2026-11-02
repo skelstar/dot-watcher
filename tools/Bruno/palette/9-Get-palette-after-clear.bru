@@ -1,0 +1,24 @@
+meta {
+  name: 9 Get palette (after clear)
+  type: http
+  seq: 9
+}
+
+get {
+  url: {{baseUrl}}/me
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}
+
+assert {
+  res.status: eq 200
+  res.body.config.palette.name: neq Bruno test palette
+}
+
+docs {
+  Back to the baseline: the posted palette is gone.
+}

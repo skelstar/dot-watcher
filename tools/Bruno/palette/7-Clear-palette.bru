@@ -1,0 +1,23 @@
+meta {
+  name: 7 Clear palette
+  type: http
+  seq: 7
+}
+
+delete {
+  url: {{baseUrl}}/admin/palette
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{adminToken}}
+}
+
+assert {
+  res.status: eq 204
+}
+
+docs {
+  Removes the palette set in step 5 (204).
+}

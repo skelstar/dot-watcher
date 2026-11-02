@@ -1,0 +1,41 @@
+meta {
+  name: 5 Set palette
+  type: http
+  seq: 5
+}
+
+post {
+  url: {{baseUrl}}/admin/palette
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{adminToken}}
+}
+
+body:json {
+  {
+    "version": 1,
+    "name": "Bruno test palette",
+    "label": "bruno-1",
+    "goBg": "#6f1a07",
+    "goFg": "#f7f3e3",
+    "goBar": "#af9164",
+    "altBg": "#f7f3e3",
+    "altFg": "#2b2118",
+    "accent": "#af9164",
+    "accentInk": "#2b2118",
+    "screen": "#ffffff"
+  }
+}
+
+assert {
+  res.status: eq 200
+  res.body.name: eq Bruno test palette
+  res.body.label: eq bruno-1
+}
+
+docs {
+  Sets the palette for every app. Staging and Production share the database, so run 7 to clear it afterwards.
+}
