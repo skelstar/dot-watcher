@@ -26,8 +26,8 @@ nothing below is verified locally. Nothing in this plan is built yet.
   Anything missing, invalid or unreadable means the built-in colours are used. A bad palette can never break the screen.
 - **Colours only.** Font, layout, copy and any new colour token still need a release. The palette has a `version` so a
   future token can be added without older builds misreading the object.
-- **Applied when the app next comes to the front.** Clients apply the saved palette at start-up and each time the app
-  returns from the background, then fetch the server's for next time. A change reaches a phone one open after the fetch, with no cold start needed, and never recolours the screen while someone is looking at it. Pull-down refresh does not apply it (not decided against strongly; see open questions).
+- **Applied as soon as it arrives, with a fade.** Clients apply the saved palette at start-up and when the app returns to the front, so
+  there is no flash of old colours, then fetch the server's palette and, if it differs, fade it in (about 0.6s) once the request returns. No blank loading screen: the fetch is bounded by the normal request time, and a slow or failed one just leaves the saved colours until the next open. Pull-down refresh does not trigger it.
 
 ## The palette
 
