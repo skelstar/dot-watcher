@@ -1,6 +1,6 @@
 # Palette collection (Bruno)
 
-Open this folder in Bruno (**Open Collection**), pick the `staging` or `local` environment, and fill in:
+Open this folder in Bruno (**Open Collection**; it is in Bruno's YAML format, like the other collections here), pick the `staging` or `local` environment, and fill in:
 
 - `username` and `password` for a normal app account on that server.
 - `adminToken` (staging: the server's `BearerToken`; Bruno keeps the secret values on your machine, not in these files).

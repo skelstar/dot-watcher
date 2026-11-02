@@ -1,0 +1,12 @@
+name: staging
+variables:
+  - name: baseUrl
+    value: https://dot-watcher-staging.skelstar.io/api
+  - name: username
+    value: ""
+  - name: testAppVersion
+    value: 9.9.9
+  - secret: true
+    name: adminToken
+  - secret: true
+    name: password

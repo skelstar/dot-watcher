@@ -1,0 +1,12 @@
+name: local
+variables:
+  - name: baseUrl
+    value: http://localhost:8080
+  - name: adminToken
+    value: dev-token
+  - name: username
+    value: ""
+  - name: testAppVersion
+    value: 9.9.9
+  - name: password
+    value: ""

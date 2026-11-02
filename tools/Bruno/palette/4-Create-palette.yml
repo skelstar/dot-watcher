@@ -1,0 +1,51 @@
+info:
+  name: 4 Create palette
+  type: http
+  seq: 4
+
+http:
+  method: POST
+  url: "{{baseUrl}}/admin/palettes"
+  body:
+    type: json
+    data: |-
+      {
+        "version": 1,
+        "name": "Bruno test palette",
+        "label": "bruno-1",
+        "goBg": "#6f1a07",
+        "goFg": "#f7f3e3",
+        "goBar": "#af9164",
+        "altBg": "#f7f3e3",
+        "altFg": "#2b2118",
+        "accent": "#af9164",
+        "accentInk": "#2b2118",
+        "screen": "#ffffff"
+      }
+  auth:
+    type: bearer
+    token: "{{adminToken}}"
+
+runtime:
+  scripts:
+    - type: after-response
+      code: bru.setVar("paletteId", res.body.id);
+  assertions:
+    - expression: res.status
+      operator: eq
+      value: "201"
+    - expression: res.body.palette.name
+      operator: eq
+      value: Bruno test palette
+    - expression: res.body.assignedTo.length
+      operator: eq
+      value: "0"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true
+
+docs: Saves a palette and keeps its id for the next steps. It reaches no phone until assigned (step 7).

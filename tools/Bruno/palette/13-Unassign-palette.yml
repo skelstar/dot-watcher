@@ -1,0 +1,26 @@
+info:
+  name: 13 Unassign palette
+  type: http
+  seq: 13
+
+http:
+  method: DELETE
+  url: "{{baseUrl}}/admin/palettes/assignments/{{testAppVersion}}"
+  auth:
+    type: bearer
+    token: "{{adminToken}}"
+
+runtime:
+  assertions:
+    - expression: res.status
+      operator: eq
+      value: "204"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true
+
+docs: Stops giving the palette to the test version. Run this if a run stopped part way.

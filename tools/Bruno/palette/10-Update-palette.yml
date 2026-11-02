@@ -1,0 +1,48 @@
+info:
+  name: 10 Update palette
+  type: http
+  seq: 10
+
+http:
+  method: PUT
+  url: "{{baseUrl}}/admin/palettes/{{paletteId}}"
+  body:
+    type: json
+    data: |-
+      {
+        "version": 1,
+        "name": "Bruno test palette v2",
+        "label": "bruno-2",
+        "goBg": "#6f1a07",
+        "goFg": "#f7f3e3",
+        "goBar": "#af9164",
+        "altBg": "#f7f3e3",
+        "altFg": "#2b2118",
+        "accent": "#af9164",
+        "accentInk": "#2b2118",
+        "screen": "#ffffff"
+      }
+  auth:
+    type: bearer
+    token: "{{adminToken}}"
+
+runtime:
+  assertions:
+    - expression: res.status
+      operator: eq
+      value: "200"
+    - expression: res.body.palette.name
+      operator: eq
+      value: Bruno test palette v2
+    - expression: res.body.assignedTo[0]
+      operator: eq
+      value: "{{testAppVersion}}"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true
+
+docs: Replaces the palette. Editing an assigned palette is live for those phones.

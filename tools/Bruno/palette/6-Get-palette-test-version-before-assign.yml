@@ -1,0 +1,32 @@
+info:
+  name: 6 Get palette (test version, before assign)
+  type: http
+  seq: 6
+
+http:
+  method: GET
+  url: "{{baseUrl}}/me"
+  headers:
+    - name: X-App-Version
+      value: "{{testAppVersion}} (1)"
+  auth:
+    type: bearer
+    token: "{{accessToken}}"
+
+runtime:
+  assertions:
+    - expression: res.status
+      operator: eq
+      value: "200"
+    - expression: res.body.config.palette.name
+      operator: neq
+      value: Bruno test palette
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true
+
+docs: "A phone on the test version does not see the new palette yet: it is saved but not assigned."
