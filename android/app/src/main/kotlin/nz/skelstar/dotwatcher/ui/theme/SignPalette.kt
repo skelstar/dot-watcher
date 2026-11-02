@@ -1,5 +1,8 @@
 package nz.skelstar.dotwatcher.ui.theme
 
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
@@ -54,13 +57,13 @@ val BuiltInSignColors = SignColors(
 )
 
 /**
- * The server's palette for this run of the app, or null to use [BuiltInSignColors]. Set once, in
- * [nz.skelstar.dotwatcher.DotWatcherApplication.onCreate], before any screen draws, so a new palette shows from
- * the next launch and never changes part-way through.
+ * The server's palette in use right now, or null to use [BuiltInSignColors]. Set at launch
+ * ([nz.skelstar.dotwatcher.DotWatcherApplication.onCreate]) and again each time the app comes back to the front,
+ * from whatever the last fetch saved, so a new palette never appears while someone is looking at the screen.
+ * Compose state, so the start screen redraws when it changes.
  */
 object AppliedSignColors {
-    @Volatile
-    var palette: SignColors? = null
+    var palette by mutableStateOf<SignColors?>(null)
 }
 
 val currentSignColors: SignColors

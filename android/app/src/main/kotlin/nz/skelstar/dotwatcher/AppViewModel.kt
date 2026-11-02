@@ -36,6 +36,7 @@ import nz.skelstar.dotwatcher.network.SessionMembership
 import nz.skelstar.dotwatcher.network.errorMessageOrStatus
 import nz.skelstar.dotwatcher.network.networkMessage
 import nz.skelstar.dotwatcher.network.parsedError
+import nz.skelstar.dotwatcher.ui.theme.AppliedSignColors
 import retrofit2.Response
 import java.time.Duration
 import java.time.Instant
@@ -81,9 +82,11 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     private val paletteStore = PaletteStore(application)
     val repository = DotWatcherRepository(api, tokenStore, paletteStore)
 
-    /** Picks up a changed palette from the server (on launch and when the app comes back to the front). It is
-     *  saved for the next launch; the colours on screen do not change (see AppliedSignColors). */
+    /** Called as the app comes to the front. Applies the palette the last fetch saved (so a change shows when the
+     *  app is next opened, without a cold start, and never while someone is looking at it), then fetches the
+     *  server's current one for next time. */
     fun refreshPalette() {
+        AppliedSignColors.palette = paletteStore.current()
         if (!tokenStore.isSignedIn) return
         viewModelScope.launch { runCatching { repository.refreshPalette() } }
     }

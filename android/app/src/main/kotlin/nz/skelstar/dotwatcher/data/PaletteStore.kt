@@ -11,14 +11,14 @@ import nz.skelstar.dotwatcher.ui.theme.SignColors
  * network call (see .ai/plans/remote-palette.md). Not sensitive, so plain SharedPreferences rather than
  * the encrypted token store.
  *
- * [applied] is read once, when the app starts, and does not change while it runs: a palette saved now
- * shows from the next launch, with no recolouring part-way through a session.
+ * Nothing here recolours the screen by itself: the app calls [current] at launch and each time it comes back
+ * to the front, so a palette saved by a fetch shows from the next of those, never part-way through a view.
  */
 class PaletteStore(context: Context) {
     private val prefs = context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
-    /** The colours to use for this run of the app, or null for the built-in ones. */
-    val applied: SignColors? = runCatching {
+    /** The saved palette's colours, or null for the built-in ones. */
+    fun current(): SignColors? = runCatching {
         prefs.getString(KEY_PALETTE, null)?.let { RemotePalette.parse(Json.parseToJsonElement(it)) }
     }.getOrNull()
 

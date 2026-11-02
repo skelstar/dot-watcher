@@ -18,7 +18,7 @@ class DotWatcherApplication : Application() {
         super.onCreate()
         CrashReporter.install(this)
         // The start screen's colours for this run: the last palette the server sent, if any.
-        AppliedSignColors.palette = PaletteStore(this).applied
+        AppliedSignColors.palette = PaletteStore(this).current()
 
         CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
             // Not on the critical path of startup, and a crash loop shouldn't hammer the network.
