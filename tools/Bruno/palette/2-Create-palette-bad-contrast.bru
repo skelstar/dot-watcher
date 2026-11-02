@@ -1,11 +1,11 @@
 meta {
-  name: 3 Set palette (bad contrast)
+  name: 2 Create palette (bad contrast)
   type: http
-  seq: 3
+  seq: 2
 }
 
 post {
-  url: {{baseUrl}}/admin/palette
+  url: {{baseUrl}}/admin/palettes
   body: json
   auth: bearer
 }
@@ -17,6 +17,7 @@ auth:bearer {
 body:json {
   {
     "version": 1,
+    "name": "Poor",
     "goBg": "#6f1a07",
     "goFg": "#7f2a17",
     "goBar": "#af9164",
@@ -34,5 +35,5 @@ assert {
 }
 
 docs {
-  GoFg is too close to GoBg, so the server rejects it with a 400.
+  GoFg is too close to GoBg, so the server rejects it (400).
 }

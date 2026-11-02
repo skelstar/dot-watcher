@@ -1,11 +1,11 @@
 meta {
-  name: 7 Clear palette
+  name: 14 Delete palette
   type: http
-  seq: 7
+  seq: 14
 }
 
 delete {
-  url: {{baseUrl}}/admin/palette
+  url: {{baseUrl}}/admin/palettes/{{paletteId}}
   body: none
   auth: bearer
 }
@@ -19,5 +19,5 @@ assert {
 }
 
 docs {
-  Removes the palette set in step 5 (204).
+  Now that nothing uses it, the delete goes through.
 }

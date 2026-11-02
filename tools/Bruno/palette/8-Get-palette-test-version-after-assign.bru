@@ -1,13 +1,17 @@
 meta {
-  name: 6 Get palette (after set)
+  name: 8 Get palette (test version, after assign)
   type: http
-  seq: 6
+  seq: 8
 }
 
 get {
   url: {{baseUrl}}/me
   body: none
   auth: bearer
+}
+
+headers {
+  X-App-Version: {{testAppVersion}} (1)
 }
 
 auth:bearer {
@@ -18,9 +22,8 @@ assert {
   res.status: eq 200
   res.body.config.palette.name: eq Bruno test palette
   res.body.config.palette.label: eq bruno-1
-  res.body.config.palette.goBg: eq #6f1a07
 }
 
 docs {
-  Should show the palette posted in step 5.
+  A phone on the test version now gets it.
 }

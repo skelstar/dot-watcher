@@ -1,0 +1,28 @@
+meta {
+  name: 11 Get palette (test version, after update)
+  type: http
+  seq: 11
+}
+
+get {
+  url: {{baseUrl}}/me
+  body: none
+  auth: bearer
+}
+
+headers {
+  X-App-Version: {{testAppVersion}} (1)
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}
+
+assert {
+  res.status: eq 200
+  res.body.config.palette.name: eq Bruno test palette v2
+}
+
+docs {
+  The edit shows up for the assigned version (allow a few seconds for the cache if this fails).
+}

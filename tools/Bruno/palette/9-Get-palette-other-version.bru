@@ -1,0 +1,28 @@
+meta {
+  name: 9 Get palette (other version)
+  type: http
+  seq: 9
+}
+
+get {
+  url: {{baseUrl}}/me
+  body: none
+  auth: bearer
+}
+
+headers {
+  X-App-Version: 1.0.0 (1)
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}
+
+assert {
+  res.status: eq 200
+  res.body.config.palette.name: neq Bruno test palette
+}
+
+docs {
+  A phone on a different version is unaffected.
+}
