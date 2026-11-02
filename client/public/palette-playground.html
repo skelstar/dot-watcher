@@ -637,7 +637,11 @@
       ? call('PUT', '/admin/palettes/' + encodeURIComponent(target.id), paletteBody())
       : call('POST', '/admin/palettes', paletteBody());
     request.then(function (entry) {
-      editing = { id: entry.id, name: entry.palette.name || '', assignedTo: entry.assignedTo || [] };
+      // Saved: clear the Palette section ready for the next one. The colours stay on the phone.
+      editing = null;
+      nameEl.value = '';
+      labelEl.value = '';
+      writeOut();
       return refreshLibrary().then(function () { say(target ? 'Replaced "' + entry.palette.name + '".' : 'Saved "' + entry.palette.name + '".'); });
     }).catch(fail);
   });
