@@ -1,0 +1,43 @@
+info:
+  name: 3 Create palette (no name)
+  type: http
+  seq: 3
+
+http:
+  method: POST
+  url: "{{baseUrl}}/admin/palettes"
+  body:
+    type: json
+    data: |-
+      {
+        "version": 1,
+        "goBg": "#6f1a07",
+        "goFg": "#f7f3e3",
+        "goBar": "#af9164",
+        "altBg": "#f7f3e3",
+        "altFg": "#2b2118",
+        "accent": "#af9164",
+        "accentInk": "#2b2118",
+        "screen": "#ffffff"
+      }
+  auth:
+    type: bearer
+    token: "{{adminToken}}"
+
+runtime:
+  assertions:
+    - expression: res.status
+      operator: eq
+      value: "400"
+    - expression: res.body.error
+      operator: contains
+      value: Name
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true
+
+docs: A saved palette needs a name (400).
