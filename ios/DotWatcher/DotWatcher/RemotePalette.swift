@@ -1,3 +1,4 @@
+import Observation
 import SwiftUI
 
 // The start screen's colours from the server (`config.palette`, see .ai/plans/remote-palette.md).
@@ -24,8 +25,8 @@ struct SignColors {
         screen: nil
     )
 
-    /// The colours for this run of the app: the server's palette if one was saved, else the built-in ones.
-    static var current: SignColors { PaletteStore.applied ?? .builtIn }
+    /// The colours in use right now: the server's palette if one is applied, else the built-in ones.
+    static var current: SignColors { AppliedPalette.shared.colors ?? .builtIn }
 }
 
 /// The palette as the server sends it. Every field is read leniently (a wrong type becomes nil) so an
@@ -96,18 +97,31 @@ struct UserConfig: Codable {
     }
 }
 
-/// The last good palette, kept so the next launch can use it before any network call.
+/// The palette the start screen is using right now, nil for the built-in colours. Observable, so the screen
+/// redraws when `PaletteStore.apply()` changes it. That happens at launch and each time the app comes back to
+/// the front, never while someone is looking at the screen.
+@Observable
+final class AppliedPalette {
+    static let shared = AppliedPalette()
+    var colors: SignColors? = PaletteStore.saved()
+}
+
+/// The last good palette, kept so the app can use it before any network call.
 enum PaletteStore {
     private static let key = "remotePalette"
 
-    /// The palette for this run of the app, read once (the app touches it at launch) so a palette saved now
-    /// shows from the next launch, with no recolouring part-way through.
-    static let applied: SignColors? = {
+    /// The saved palette's colours, or nil for the built-in ones.
+    static func saved() -> SignColors? {
         guard let data = UserDefaults.standard.data(forKey: key),
               let wire = try? JSONDecoder().decode(PaletteWire.self, from: data)
         else { return nil }
         return wire.validated()
-    }()
+    }
+
+    /// Starts using whatever the last fetch saved.
+    static func apply() {
+        AppliedPalette.shared.colors = saved()
+    }
 
     /// Remembers the palette in a response that really arrived, or forgets it when that response has none
     /// (the server's palette was removed or is invalid) so the app returns to the built-in colours. A failed

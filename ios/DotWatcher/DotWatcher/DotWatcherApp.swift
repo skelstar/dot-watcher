@@ -11,8 +11,8 @@ import SwiftUI
 struct DotWatcherApp: App {
     init() {
         SatelliteAlerts.shared.install()
-        // Read the saved start-screen palette now, so this run uses one palette throughout.
-        _ = PaletteStore.applied
+        // Read the saved start-screen palette now, so the first screen already has it.
+        _ = AppliedPalette.shared
     }
 
     var body: some Scene {

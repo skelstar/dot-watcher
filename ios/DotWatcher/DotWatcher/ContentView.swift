@@ -76,7 +76,8 @@ struct ContentView: View {
             .onChange(of: scenePhase) { _, newPhase in
                 if newPhase == .active {
                     location.startConnectivityPolling()
-                    // Pick up a changed start-screen palette; it shows from the next launch.
+                    // Use the palette the last fetch saved, then fetch the server's for next time.
+                    PaletteStore.apply()
                     Task { await location.refreshPalette() }
                 } else {
                     location.stopConnectivityPolling()
@@ -225,7 +226,7 @@ struct ContentView: View {
             noSessionSigns
         }
         .background {
-            if let screen = PaletteStore.applied?.screen { screen.ignoresSafeArea() }
+            if let screen = AppliedPalette.shared.colors?.screen { screen.ignoresSafeArea() }
         }
     }
 
@@ -309,9 +310,9 @@ struct ContentView: View {
                             // With a server palette the dot is the Go colour and the initials the sign background.
                             Text(location.runnerName.uppercased())
                                 .font(.callout.bold())
-                                .foregroundStyle(PaletteStore.applied?.altBg ?? .white)
+                                .foregroundStyle(AppliedPalette.shared.colors?.altBg ?? .white)
                                 .frame(width: 38, height: 38)
-                                .background(Circle().fill(PaletteStore.applied?.goBg ?? RunnerColorPalette.currentUser))
+                                .background(Circle().fill(AppliedPalette.shared.colors?.goBg ?? RunnerColorPalette.currentUser))
                         }
                         .buttonStyle(.plain)
                         .accessibilityLabel("Edit your name")
