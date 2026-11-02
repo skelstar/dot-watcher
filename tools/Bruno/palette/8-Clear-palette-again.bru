@@ -1,0 +1,23 @@
+meta {
+  name: 8 Clear palette (again)
+  type: http
+  seq: 8
+}
+
+delete {
+  url: {{baseUrl}}/admin/palette
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{adminToken}}
+}
+
+assert {
+  res.status: eq 404
+}
+
+docs {
+  Nothing left to remove (404).
+}

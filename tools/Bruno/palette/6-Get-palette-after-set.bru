@@ -1,0 +1,26 @@
+meta {
+  name: 6 Get palette (after set)
+  type: http
+  seq: 6
+}
+
+get {
+  url: {{baseUrl}}/me
+  body: none
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{accessToken}}
+}
+
+assert {
+  res.status: eq 200
+  res.body.config.palette.name: eq Bruno test palette
+  res.body.config.palette.label: eq bruno-1
+  res.body.config.palette.goBg: eq #6f1a07
+}
+
+docs {
+  Should show the palette posted in step 5.
+}

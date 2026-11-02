@@ -1,0 +1,40 @@
+meta {
+  name: 4 Set palette (bad token)
+  type: http
+  seq: 4
+}
+
+post {
+  url: {{baseUrl}}/admin/palette
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: not-the-token
+}
+
+body:json {
+  {
+    "version": 1,
+    "name": "Bruno test palette",
+    "label": "bruno-1",
+    "goBg": "#6f1a07",
+    "goFg": "#f7f3e3",
+    "goBar": "#af9164",
+    "altBg": "#f7f3e3",
+    "altFg": "#2b2118",
+    "accent": "#af9164",
+    "accentInk": "#2b2118",
+    "screen": "#ffffff"
+  }
+}
+
+assert {
+  res.status: eq 401
+
+}
+
+docs {
+  A wrong admin token gets a 401.
+}
