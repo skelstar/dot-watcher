@@ -318,7 +318,7 @@ Authenticates a local app user and returns a user access token.
 
 Returns the caller's account (`userId`, `username`, `displayName`, `features`, `config`). Login and register return the same `user` object.
 
-`config.palette` carries the start-screen colours (`version`, `goBg`, `goFg`, `goBar`, `altBg`, `altFg`, `accent`, `accentInk`, `screen`, each a `#rrggbb` string). It comes from the `Palette` section of `appsettings.json` and is omitted when that section is missing or invalid (a bad hex value, an unknown `Version`, or a text/background pair under 4.5:1 contrast logs a warning at start-up and serves no palette). Clients treat a missing palette as "use the built-in colours". See `.ai/plans/remote-palette.md`.
+`config.palette` carries the start-screen colours (`version`, `goBg`, `goFg`, `goBar`, `altBg`, `altFg`, `accent`, `accentInk`, `screen`, each a `#rrggbb` string). It comes from the `Palette` section of `appsettings.json` and is omitted when that section is missing or invalid (a bad hex value or an unknown `Version` logs a warning at start-up and serves no palette). Clients treat a missing palette as "use the built-in colours". See `.ai/plans/remote-palette.md`.
 
 **Auth:** User access token required.
 
@@ -476,7 +476,7 @@ these need the admin bearer token (`401` otherwise).
 | `DELETE` | `/admin/palettes/assignments/{appVersion}` | Stop giving a palette to that version (`404` if none) |
 
 The body of `POST` and `PUT` is the eight colours plus `version` (camelCase JSON, validated like the `Palette` config
-section: `#rrggbb` colours, text/background pairs at 4.5:1 or better) and a required `name` (up to 30 characters). An
+section: `#rrggbb` colours; contrast is not checked) and a required `name` (up to 30 characters). An
 optional `label` (up to 32, for example `1.2.2`) is informational. Both are trimmed and returned in `config.palette`;
 neither changes what is served. `version` is the schema version and stays `1`.
 

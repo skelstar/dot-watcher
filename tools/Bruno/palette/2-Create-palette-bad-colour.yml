@@ -1,5 +1,5 @@
 info:
-  name: 2 Create palette (bad contrast)
+  name: 2 Create palette (bad colour)
   type: http
   seq: 2
 
@@ -13,7 +13,7 @@ http:
         "version": 1,
         "name": "Poor",
         "goBg": "#6f1a07",
-        "goFg": "#7f2a17",
+        "goFg": "red",
         "goBar": "#af9164",
         "altBg": "#f7f3e3",
         "altFg": "#2b2118",
@@ -32,7 +32,7 @@ runtime:
       value: "400"
     - expression: res.body.error
       operator: contains
-      value: contrast
+      value: colour
 
 settings:
   encodeUrl: true
@@ -41,4 +41,4 @@ settings:
   maxRedirects: 5
   forwardAuthorizationHeader: true
 
-docs: GoFg is too close to GoBg, so the server rejects it (400).
+docs: GoFg is not a #rrggbb colour, so the server rejects it (400). Contrast is not checked.

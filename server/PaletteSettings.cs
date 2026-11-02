@@ -1,4 +1,3 @@
-using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
@@ -45,14 +44,13 @@ public enum PaletteDeleteResult { Deleted, NotFound, InUse }
 /// Which palette a phone gets. Palettes are saved in the database and do nothing until an admin assigns one to an
 /// app version (phones send it as <c>X-App-Version</c>, e.g. "1.2.2 (20)"), or to "default" for every other version.
 /// A phone gets, in order: the palette for its exact version, the default one, the <c>Palette</c> config section,
-/// then none. A missing section, a bad hex value or a text/background pair under 4.5:1 contrast is rejected when
-/// saved, and ignored (with a warning logged) in config, so a typo leaves the apps on their built-in colours
-/// rather than unreadable buttons.
+/// then none. A missing section or a bad hex value is rejected when saved, and ignored (with a warning logged) in
+/// config, so a typo leaves the apps on their built-in colours. Contrast is not checked: the playground shows the
+/// ratio as advice, and choosing readable colours is up to whoever saves the palette.
 /// </summary>
 public sealed partial class PaletteProvider
 {
     public const int CurrentVersion = 1;
-    public const double MinimumContrast = 4.5;
     public const int MaxLabelLength = 32;
     public const int MaxNameLength = 30;
 
@@ -267,37 +265,7 @@ public sealed partial class PaletteProvider
             if (value is null || !HexColour().IsMatch(value))
                 return $"{name} is not a #rrggbb colour";
 
-        foreach (var (name, fg, bg) in new[]
-        {
-            ("GoFg on GoBg", palette.GoFg, palette.GoBg),
-            ("AltFg on AltBg", palette.AltFg, palette.AltBg),
-            ("AccentInk on Accent", palette.AccentInk, palette.Accent),
-        })
-        {
-            var ratio = ContrastRatio(fg, bg);
-            if (ratio < MinimumContrast)
-                return $"{name} contrast {ratio:0.00}:1 is under {MinimumContrast}:1";
-        }
-
         return null;
-    }
-
-    /// <summary>WCAG contrast ratio between two #rrggbb colours.</summary>
-    public static double ContrastRatio(string a, string b)
-    {
-        var la = Luminance(a);
-        var lb = Luminance(b);
-        return (Math.Max(la, lb) + 0.05) / (Math.Min(la, lb) + 0.05);
-    }
-
-    private static double Luminance(string hex)
-    {
-        double Channel(int start)
-        {
-            var c = int.Parse(hex.AsSpan(start, 2), NumberStyles.HexNumber, CultureInfo.InvariantCulture) / 255.0;
-            return c <= 0.03928 ? c / 12.92 : Math.Pow((c + 0.055) / 1.055, 2.4);
-        }
-        return 0.2126 * Channel(1) + 0.7152 * Channel(3) + 0.0722 * Channel(5);
     }
 
     [GeneratedRegex("^#[0-9a-fA-F]{6}$")]

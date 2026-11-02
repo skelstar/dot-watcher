@@ -8,7 +8,7 @@ Open this folder in Bruno (**Open Collection**; it is in Bruno's YAML format, li
 Then **Run** the collection. Steps run in order and each has assertions:
 
 1. Login.
-2. A low-contrast palette is rejected (400); 3. a palette with no name is rejected (400).
+2. A palette with a bad colour is rejected (400); 3. a palette with no name is rejected (400).
 4. Create a palette (201); 5. list the palettes.
 6. A phone on `testAppVersion` does not see it yet (saved, not assigned).
 7. Assign it to `testAppVersion`; 8. that version now gets it; 9. another version does not.
