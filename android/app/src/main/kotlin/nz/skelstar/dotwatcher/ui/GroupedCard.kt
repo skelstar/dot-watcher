@@ -1,7 +1,6 @@
 package nz.skelstar.dotwatcher.ui
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.padding
@@ -11,6 +10,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.unit.dp
 
 /** iOS's `UIColor.systemGray5` — the exact fill color its grouped-list cards use (sampled
@@ -21,7 +21,9 @@ private val GroupedCardDark = Color(0xFF2C2C2E)
 
 /** The fill [GroupedCard] uses in the current theme, for things that must blend into it. */
 @Composable
-fun groupedCardColor(): Color = if (isSystemInDarkTheme()) GroupedCardDark else GroupedCardLight
+fun groupedCardColor(): Color =
+    // From the theme, not the phone: the Appearance setting can force light or dark.
+    if (MaterialTheme.colorScheme.background.luminance() < 0.5f) GroupedCardDark else GroupedCardLight
 
 /**
  * A rounded, tinted-background section grouping related rows with thin dividers between them —

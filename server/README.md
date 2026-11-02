@@ -314,6 +314,18 @@ Authenticates a local app user and returns a user access token.
 
 ---
 
+### `GET /me`
+
+Returns the caller's account (`userId`, `username`, `displayName`, `features`, `config`). Login and register return the same `user` object.
+
+`config.palette` carries the start-screen colours (`version`, `goBg`, `goFg`, `goBar`, `altBg`, `altFg`, `accent`, `accentInk`, `screen`, each a `#rrggbb` string). It comes from the `Palette` section of `appsettings.json` and is omitted when that section is missing or invalid (a bad hex value, an unknown `Version`, or a text/background pair under 4.5:1 contrast logs a warning at start-up and serves no palette). Clients treat a missing palette as "use the built-in colours". See `.ai/plans/remote-palette.md`.
+
+**Auth:** User access token required.
+
+**Responses:** `200` with the user, `401` for a missing or invalid token.
+
+---
+
 ### `POST /auth/logout`
 
 Revokes the current user access token until its expiry time plus configured clock skew.

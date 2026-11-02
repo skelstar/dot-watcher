@@ -26,8 +26,8 @@ nothing below is verified locally. Nothing in this plan is built yet.
   Anything missing, invalid or unreadable means the built-in colours are used. A bad palette can never break the screen.
 - **Colours only.** Font, layout, copy and any new colour token still need a release. The palette has a `version` so a
   future token can be added without older builds misreading the object.
-- **Applied on the next launch.** Clients apply the cached palette at start-up and refresh in the background, so a new
-  palette appears the next time the app is opened. No flash of the old colours, no live recolouring mid-session.
+- **Applied as soon as it arrives, with a fade.** Clients apply the saved palette at start-up and when the app returns to the front, so
+  there is no flash of old colours, then fetch the server's palette and, if it differs, fade it in (about 0.6s) once the request returns. No blank loading screen: the fetch is bounded by the normal request time, and a slow or failed one just leaves the saved colours until the next open. Pull-down refresh does not trigger it.
 
 ## The palette
 
@@ -71,50 +71,50 @@ that as "use the built-in colours".
 ## Server
 
 ### S1. Config and validation
-- [ ] `Palette` section in `appsettings.json` with the eight keys and `Version`, bound to a small options record.
-- [ ] Validate once at start-up: every colour matches `^#[0-9a-fA-F]{6}$`, and the three text-on-background pairs
+- [x] `Palette` config section (the eight keys and `Version`) read by `PaletteProvider`. Deliberately not added to `appsettings.json` yet: rollout step 1 merges with no palette.
+- [x] Validate once at start-up: every colour matches `^#[0-9a-fA-F]{6}$`, and the three text-on-background pairs
       (`goFg` on `goBg`, `altFg` on `altBg`, `accentInk` on `accent`) have contrast of at least 4.5:1. If it fails,
       log a warning and serve no palette, so a typo in config means built-in colours rather than unreadable buttons.
-- [ ] The same check runs in the playground as the contrast badge, so a value that looks fine there passes here.
+- [x] The same check runs in the playground as the contrast badge, so a value that looks fine there passes here.
 
 ### S2. Exposing it
-- [ ] `AuthenticatedUser` gains an optional `Config` (null for users read from a bearer token, like `Features`).
+- [x] `AuthenticatedUser` gains an optional `Config` (null for users read from a bearer token, like `Features`).
       Filled in by login, register and `GET /me` in `AuthController`.
-- [ ] `docs/api-reference.html` (login response and `GET /me`) and `server/README.md` updated.
-- [ ] `Config` is a record with an optional `Palette` so a later setting adds a property, not a new response shape.
+- [x] `docs/api-reference.html` (login response and `GET /me`) and `server/README.md` updated.
+- [x] `Config` is a record with an optional `Palette` so a later setting adds a property, not a new response shape.
 
 ### S3. Tests (`tests/DotWatcher.Server.Tests`)
-- [ ] `GET /me`, login and register include `config.palette` when configured and omit it when not.
-- [ ] An invalid hex, or a pair under 4.5:1, results in no palette (and not a failed response).
-- [ ] `DotWatcherApiFactory` default config has no palette, so existing tests are unchanged.
-- [ ] CI is the first run of any of this.
+- [x] `GET /me`, login and register include `config.palette` when configured and omit it when not.
+- [x] An invalid hex, or a pair under 4.5:1, results in no palette (and not a failed response).
+- [x] `DotWatcherApiFactory` default config has no palette, so existing tests are unchanged.
+- [x] CI is the first run of any of this. Passed on the server PR (#273).
 
 ## Clients (separate PRs)
 
 Neither app calls `GET /me` today. Both already call several `/me/…` endpoints on launch and foreground (crew probe,
 events nearby, casual settings), so this adds one call, not a new kind of traffic.
 
-- [ ] **Android** — `GET me` added to `DotWatcherApi`; a `PaletteStore` reads the cached palette at start-up, hands
+- [x] **Android** — `GET me` added to `DotWatcherApi`; a `PaletteStore` reads the cached palette at start-up, hands
       `SignPalette` its colours, and refreshes from `GET me` on launch and resume. Storage: the existing preferences
-      store. Falls back to the current `SignPalette` values.
-- [ ] **iOS** — same shape: a `PaletteStore`, cached in `UserDefaults`, refreshed on launch and when the app comes to
-      the front.
-- [ ] **Both** re-validate what they receive (hex format, `version` they understand, contrast of the three pairs) and
+      store. Falls back to the current `SignPalette` values. PR #276, CI green.
+- [x] **iOS** — same shape: a `PaletteStore`, cached in `UserDefaults`, refreshed on launch and when the app comes to
+      the front. PR #275. There is no iOS CI and no test target, so it has not been compiled yet.
+- [x] **Both** re-validate what they receive (hex format, `version` they understand, contrast of the three pairs) and
       ignore the whole palette if anything fails. All-or-nothing, so a half-applied palette cannot happen.
-- [ ] **Both** also apply a palette from the login or register response, so a new sign-in does not wait for `GET /me`.
-- [ ] **Web** — not needed. The landing page does not use these colours.
+- [x] **Both** also apply a palette from the login or register response, so a new sign-in does not wait for `GET /me`. Both save it for the next launch, as decided above.
+- [x] **Web** — not needed. The landing page does not use these colours.
 
 ## Playground
 
-- [ ] Add a "JSON" tab to Copy values in `button-colours.html`, emitting the palette block above, ready to paste into
+- [x] Add a "JSON" tab to Copy values in `button-colours.html`, emitting the palette block above, ready to paste into
       `appsettings.json`.
 
 ## Backwards compatibility (old app builds)
 
-- [ ] The only change to an existing response is the extra `config` key on the user object. iOS `AppUser` is `Codable`
+- [x] The only change to an existing response is the extra `config` key on the user object. iOS `AppUser` is `Codable`
       (unknown keys ignored); Android decodes with `ignoreUnknownKeys = true`; web checks only the fields it needs.
       The same reasoning as the `features` key in the crew plan, and still to be re-checked here.
-- [ ] Old builds never read `config`, so they keep the colours they shipped with. A palette change only reaches
+- [x] Old builds never read `config`, so they keep the colours they shipped with. A palette change only reaches
       builds that include the client PRs.
 - [ ] **Manual check after the server PR deploys to Staging:** run an older TestFlight/Android build against Staging
       and confirm sign-in and the main screen are unaffected.

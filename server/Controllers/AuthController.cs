@@ -7,6 +7,7 @@ public class AuthController(
     SessionStore store,
     UserTokenAuth tokenAuth,
     FeatureFlags features,
+    PaletteProvider palette,
     AuthAttemptLimiter attemptLimiter) : ControllerBase
 {
     /// <summary>Gets the caller's account, including the features it can use. Clients call this to pick up a newly granted feature without signing in again.</summary>
@@ -18,7 +19,7 @@ public class AuthController(
         if (!tokenAuth.TryAuthenticate(Request, out var user))
             return Unauthorized();
 
-        return Ok(user with { Features = features.ForUser(user.UserId) });
+        return Ok(user with { Features = features.ForUser(user.UserId), Config = new UserConfig(palette.Palette) });
     }
 
     /// <summary>Creates a new account and returns an access token.</summary>
@@ -146,7 +147,7 @@ public class AuthController(
         return new AuthResponse(
             token.Value,
             token.ExpiresAt,
-            new AuthenticatedUser(account.Id, account.Username, account.DisplayName, features.ForUser(account.Id)));
+            new AuthenticatedUser(account.Id, account.Username, account.DisplayName, features.ForUser(account.Id), new UserConfig(palette.Palette)));
     }
 
     private static string? NormalizeUsername(string? value)

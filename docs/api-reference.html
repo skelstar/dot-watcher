@@ -338,6 +338,39 @@
 
     <div class="card">
       <div class="endpoint-header">
+        <span class="method method-get">GET</span>
+        <span class="path">/me</span>
+        <span class="auth-badge auth-required">Bearer token</span>
+      </div>
+      <p class="purpose">The caller's account. Login and register return the same <code>user</code> object. <code>config.palette</code> holds the start-screen colours and is omitted when the server has none configured — use the built-in colours then.</p>
+      <div class="details">
+        <div class="detail-block">
+          <h4>Request Body</h4>
+          <p class="none-label">None</p>
+        </div>
+        <div class="detail-block">
+          <h4>Response — user</h4>
+          <pre>{
+  "userId": "string",
+  "username": "string",
+  "displayName": "string",
+  "features": ["crew"],
+  "config": {
+    "palette": {
+      "version": 1,
+      "goBg": "#6f1a07", "goFg": "#f7f3e3", "goBar": "#af9164",
+      "altBg": "#f7f3e3", "altFg": "#2b2118",
+      "accent": "#af9164", "accentInk": "#2b2118",
+      "screen": "#ffffff"
+    }
+  }
+}</pre>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="endpoint-header">
         <span class="method method-delete">DELETE</span>
         <span class="path">/me</span>
         <span class="auth-badge auth-required">Bearer token</span>

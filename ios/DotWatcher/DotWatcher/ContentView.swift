@@ -49,6 +49,7 @@ struct ContentView: View {
             .modifier(EventsHost(events: events, location: location))
             .modifier(SessionMapCover(
                 location: location,
+                crew: crew,
                 casualMapPresented: casual.isMapPresented,
                 showShareConsent: $showShareConsent
             ))
@@ -326,32 +327,24 @@ struct ContentView: View {
                 }
             }
             Spacer()
-            if location.isAuthenticated {
-                Menu {
-                    Button {
-                        nameInput = location.runnerName
-                        showNameEntry = true
-                    } label: {
-                        Label("Edit name", systemImage: "pencil")
-                    }
+            HStack(spacing: 16) {
+                // Settings, as on Android. Editing the name stays on the initials dot in the wordmark.
+                if location.isAuthenticated {
                     Button { showAuth = true } label: {
-                        Label(location.isAuthenticated ? "Settings" : "Account", systemImage: location.isAuthenticated ? "gearshape" : "person.crop.circle")
+                        Image(systemName: "person.circle.fill")
+                            .font(.title)
+                            .foregroundStyle(.primary)
                     }
-                    Button { showHelp = true } label: {
-                        Label("Help", systemImage: "questionmark.circle")
-                    }
-                } label: {
-                    Image(systemName: "ellipsis.circle")
-                        .font(.title)
-                        .foregroundStyle(.primary)
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Settings")
                 }
-            } else {
                 Button { showHelp = true } label: {
                     Image(systemName: "questionmark.circle")
                         .font(.title)
                         .foregroundStyle(.primary)
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("Help")
             }
         }
     }
