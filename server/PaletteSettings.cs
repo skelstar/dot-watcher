@@ -31,11 +31,23 @@ public record UserConfig(
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] Palette? Palette = null
 );
 
+/// <summary>A saved palette and the app versions it is assigned to ("default" is the fallback).</summary>
+public record PaletteEntry(string Id, Palette Palette, IReadOnlyList<string> AssignedTo);
+
+/// <summary>An app version, or "default", and the palette phones on it get.</summary>
+public record PaletteAssignment(string AppVersion, string PaletteId);
+
+public record AssignPaletteRequest(string? PaletteId);
+
+public enum PaletteDeleteResult { Deleted, NotFound, InUse }
+
 /// <summary>
-/// The palette to serve. One set by an admin (POST /admin/palette, stored in the database) wins over the
-/// <c>Palette</c> config section, which is read once at start-up. A missing section, a bad hex value or a
-/// text/background pair under 4.5:1 contrast means no palette from that source (with a warning logged), so
-/// a typo leaves the apps on their built-in colours rather than unreadable buttons.
+/// Which palette a phone gets. Palettes are saved in the database and do nothing until an admin assigns one to an
+/// app version (phones send it as <c>X-App-Version</c>, e.g. "1.2.2 (20)"), or to "default" for every other version.
+/// A phone gets, in order: the palette for its exact version, the default one, the <c>Palette</c> config section,
+/// then none. A missing section, a bad hex value or a text/background pair under 4.5:1 contrast is rejected when
+/// saved, and ignored (with a warning logged) in config, so a typo leaves the apps on their built-in colours
+/// rather than unreadable buttons.
 /// </summary>
 public sealed partial class PaletteProvider
 {
@@ -44,7 +56,9 @@ public sealed partial class PaletteProvider
     public const int MaxLabelLength = 32;
     public const int MaxNameLength = 30;
 
-    public const string SettingKey = "palette";
+    /// <summary>What the API calls the fallback assignment; it is stored under <see cref="DefaultKey"/>.</summary>
+    public const string DefaultRoute = "default";
+    private const string DefaultKey = "*";
     private const long CacheMs = 5000;
     private const long Stale = -2 * CacheMs; // TickCount64 is never negative, so this always reads as expired
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
@@ -52,11 +66,8 @@ public sealed partial class PaletteProvider
     private readonly SessionStore _store;
     private readonly ILogger<PaletteProvider> _logger;
     private readonly Palette? _configured;
-    private volatile Palette? _stored;
-    private long _storedAt = Stale;
-
-    /// <summary>The admin-set palette if there is a valid one, otherwise the configured one, otherwise none.</summary>
-    public Palette? Palette => ReadStored() ?? _configured;
+    private volatile IReadOnlyDictionary<string, Palette>? _assigned;
+    private long _assignedAt = Stale;
 
     public PaletteProvider(IConfiguration configuration, SessionStore store, ILogger<PaletteProvider> logger)
     {
@@ -86,59 +97,150 @@ public sealed partial class PaletteProvider
             logger.LogWarning("Palette config ignored, serving no palette: {Problem}", problem);
     }
 
-    /// <summary>Stores a validated palette for everyone, replacing any earlier one. Returns what was wrong, or null.</summary>
-    public string? Set(Palette palette)
+    /// <summary>The palette for a phone reporting this <c>X-App-Version</c> header, or null for the built-in colours.</summary>
+    public Palette? For(string? appVersionHeader)
     {
-        var problem = Validate(palette);
+        var assigned = ReadAssigned();
+        var version = AppVersionName(appVersionHeader);
+        if (version is not null && assigned.TryGetValue(version, out var forVersion))
+            return forVersion;
+        return assigned.TryGetValue(DefaultKey, out var fallback) ? fallback : _configured;
+    }
+
+    /// <summary>"1.2.2" from "1.2.2 (20)"; null when the header is missing.</summary>
+    public static string? AppVersionName(string? header) =>
+        header?.Split(' ', 2, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries) is [var name, ..]
+            ? name
+            : null;
+
+    public IReadOnlyList<PaletteEntry> List()
+    {
+        var assignments = Assignments();
+        return _store.GetPalettes()
+            .Select(row => ToEntry(row.Id, row.Json, assignments))
+            .OfType<PaletteEntry>()
+            .OrderBy(e => e.Palette.Name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    public PaletteEntry? Get(string id) =>
+        _store.GetPaletteJson(id) is { } json ? ToEntry(id, json, Assignments()) : null;
+
+    /// <summary>Saves a new palette. Returns what was wrong, or null; it serves nobody until assigned.</summary>
+    public string? Create(Palette palette, out PaletteEntry? entry)
+    {
+        entry = null;
+        var problem = Prepare(palette, out var clean);
         if (problem is not null)
             return problem;
 
-        palette = palette with
+        var id = Guid.NewGuid().ToString("N")[..12];
+        _store.InsertPalette(id, JsonSerializer.Serialize(clean, Json));
+        _logger.LogInformation("Palette {Id} created by admin, name {Name}, label {Label}", id, clean.Name, clean.Label ?? "(none)");
+        entry = new PaletteEntry(id, clean, []);
+        return null;
+    }
+
+    /// <summary>Replaces a saved palette. Phones it is assigned to get the change within a few seconds.</summary>
+    public string? Update(string id, Palette palette, out PaletteEntry? entry)
+    {
+        entry = null;
+        var problem = Prepare(palette, out var clean);
+        if (problem is not null)
+            return problem;
+
+        if (!_store.UpdatePalette(id, JsonSerializer.Serialize(clean, Json)))
+            return null;
+
+        _assignedAt = Stale;
+        _logger.LogInformation("Palette {Id} updated by admin, name {Name}, label {Label}", id, clean.Name, clean.Label ?? "(none)");
+        entry = Get(id);
+        return null;
+    }
+
+    /// <summary>Deletes a palette, unless it is assigned to a version.</summary>
+    public PaletteDeleteResult Delete(string id) => _store.DeletePalette(id);
+
+    public IReadOnlyList<PaletteAssignment> Assignments() =>
+        _store.GetPaletteAssignments()
+            .Select(a => new PaletteAssignment(a.AppVersion == DefaultKey ? DefaultRoute : a.AppVersion, a.PaletteId))
+            .OrderBy(a => a.AppVersion, StringComparer.Ordinal)
+            .ToList();
+
+    /// <summary>Gives the palette to phones on this app version ("default" for the rest). False when the palette does not exist.</summary>
+    public bool Assign(string appVersion, string paletteId)
+    {
+        if (_store.GetPaletteJson(paletteId) is null)
+            return false;
+
+        _store.AssignPalette(Key(appVersion), paletteId);
+        _assignedAt = Stale;
+        _logger.LogInformation("Palette {Id} assigned to {AppVersion}", paletteId, appVersion);
+        return true;
+    }
+
+    public bool Unassign(string appVersion)
+    {
+        var removed = _store.UnassignPalette(Key(appVersion));
+        _assignedAt = Stale;
+        return removed;
+    }
+
+    /// <summary>An app version, or "default", as the API takes it: a short, plain token.</summary>
+    public static bool IsValidRoute(string appVersion) => RouteToken().IsMatch(appVersion);
+
+    private static string Key(string appVersion) => appVersion == DefaultRoute ? DefaultKey : appVersion;
+
+    // A saved palette needs a name so the list is usable, and is trimmed so storage is stable.
+    private static string? Prepare(Palette palette, out Palette clean)
+    {
+        clean = palette with
         {
             Label = palette.Label?.Trim() is { Length: > 0 } label ? label : null,
             Name = palette.Name?.Trim() is { Length: > 0 } name ? name : null,
         };
-        _store.SetSetting(SettingKey, JsonSerializer.Serialize(palette, Json));
-        _logger.LogInformation("Palette set by admin, name {Name}, label {Label}", palette.Name ?? "(none)", palette.Label ?? "(none)");
-        _storedAt = Stale;
+        return clean.Name is null ? "Name is required" : Validate(clean);
+    }
+
+    private PaletteEntry? ToEntry(string id, string json, IReadOnlyList<PaletteAssignment> assignments)
+    {
+        var palette = Read(json);
+        return palette is null
+            ? null
+            : new PaletteEntry(id, palette, assignments.Where(a => a.PaletteId == id).Select(a => a.AppVersion).ToList());
+    }
+
+    private Palette? Read(string json)
+    {
+        try
+        {
+            var candidate = JsonSerializer.Deserialize<Palette>(json, Json);
+            var problem = candidate is null ? "empty" : Validate(candidate);
+            if (problem is null)
+                return candidate;
+            _logger.LogWarning("Stored palette ignored: {Problem}", problem);
+        }
+        catch (JsonException ex)
+        {
+            _logger.LogWarning("Stored palette ignored, unreadable: {Message}", ex.Message);
+        }
         return null;
     }
 
-    /// <summary>Removes the admin-set palette so the config one (if any) is served again.</summary>
-    public bool Clear()
+    // App version (or "*") to palette, cached for a few seconds so login and GET /me don't each read the database.
+    private IReadOnlyDictionary<string, Palette> ReadAssigned()
     {
-        var removed = _store.DeleteSetting(SettingKey);
-        _storedAt = Stale;
-        return removed;
-    }
+        var cached = _assigned;
+        if (cached is not null && Environment.TickCount64 - _assignedAt < CacheMs)
+            return cached;
 
-    // Cached for a few seconds so login and GET /me don't each read the database.
-    private Palette? ReadStored()
-    {
-        if (Environment.TickCount64 - _storedAt < CacheMs)
-            return _stored;
+        var fresh = new Dictionary<string, Palette>();
+        foreach (var (version, json) in _store.GetAssignedPaletteJson())
+            if (Read(json) is { } palette)
+                fresh[version] = palette;
 
-        Palette? fresh = null;
-        var raw = _store.GetSetting(SettingKey);
-        if (raw is not null)
-        {
-            try
-            {
-                var candidate = JsonSerializer.Deserialize<Palette>(raw, Json);
-                var problem = candidate is null ? "empty" : Validate(candidate);
-                if (problem is null)
-                    fresh = candidate;
-                else
-                    _logger.LogWarning("Stored palette ignored: {Problem}", problem);
-            }
-            catch (JsonException ex)
-            {
-                _logger.LogWarning("Stored palette ignored, unreadable: {Message}", ex.Message);
-            }
-        }
-
-        _stored = fresh;
-        _storedAt = Environment.TickCount64;
+        _assigned = fresh;
+        _assignedAt = Environment.TickCount64;
         return fresh;
     }
 
@@ -200,4 +302,7 @@ public sealed partial class PaletteProvider
 
     [GeneratedRegex("^#[0-9a-fA-F]{6}$")]
     private static partial Regex HexColour();
+
+    [GeneratedRegex(@"^[0-9A-Za-z][0-9A-Za-z.+_-]{0,31}$")]
+    private static partial Regex RouteToken();
 }

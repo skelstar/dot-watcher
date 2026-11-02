@@ -38,15 +38,37 @@ public class AdminController(SessionStore store, BearerTokenAuth auth, FeatureFl
         return store.SetUserFeatures(userId, features) ? Ok(features) : NotFound();
     }
 
-    /// <summary>
-    /// Admin/ops: sets the start-screen palette for every app, replacing any earlier one and overriding the
-    /// <c>Palette</c> config section. The apps pick it up on their next launch or return to the front.
-    /// </summary>
-    [HttpPost("/admin/palette")]
-    [ProducesResponseType(typeof(Palette), StatusCodes.Status200OK)]
+    /// <summary>Admin/ops: every saved palette, with the app versions each is assigned to.</summary>
+    [HttpGet("/admin/palettes")]
+    [ProducesResponseType(typeof(IReadOnlyList<PaletteEntry>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public IActionResult GetPalettes()
+    {
+        if (!auth.IsAuthorized(Request))
+            return Unauthorized();
+
+        return Ok(palette.List());
+    }
+
+    /// <summary>Admin/ops: one saved palette.</summary>
+    [HttpGet("/admin/palettes/{id}")]
+    [ProducesResponseType(typeof(PaletteEntry), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public IActionResult GetPalette(string id)
+    {
+        if (!auth.IsAuthorized(Request))
+            return Unauthorized();
+
+        return palette.Get(id) is { } entry ? Ok(entry) : NotFound();
+    }
+
+    /// <summary>Admin/ops: saves a new palette (a name is required). It reaches no phone until it is assigned to an app version.</summary>
+    [HttpPost("/admin/palettes")]
+    [ProducesResponseType(typeof(PaletteEntry), StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-    public IActionResult SetPalette([FromBody] Palette? request)
+    public IActionResult CreatePalette([FromBody] Palette? request)
     {
         if (!auth.IsAuthorized(Request))
             return Unauthorized();
@@ -54,21 +76,97 @@ public class AdminController(SessionStore store, BearerTokenAuth auth, FeatureFl
         if (request is null)
             return BadRequest(new { error = "A palette is required." });
 
-        var problem = palette.Set(request);
-        return problem is null ? Ok(request) : BadRequest(new { error = problem });
+        var problem = palette.Create(request, out var entry);
+        return problem is null ? Created($"/admin/palettes/{entry!.Id}", entry) : BadRequest(new { error = problem });
     }
 
-    /// <summary>Admin/ops: removes the admin-set palette, so the <c>Palette</c> config section (if any) is served again.</summary>
-    [HttpDelete("/admin/palette")]
-    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    /// <summary>Admin/ops: replaces a saved palette. Phones it is assigned to get the change within a few seconds.</summary>
+    [HttpPut("/admin/palettes/{id}")]
+    [ProducesResponseType(typeof(PaletteEntry), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public IActionResult ClearPalette()
+    public IActionResult UpdatePalette(string id, [FromBody] Palette? request)
     {
         if (!auth.IsAuthorized(Request))
             return Unauthorized();
 
-        return palette.Clear() ? NoContent() : NotFound();
+        if (request is null)
+            return BadRequest(new { error = "A palette is required." });
+
+        var problem = palette.Update(id, request, out var entry);
+        if (problem is not null)
+            return BadRequest(new { error = problem });
+
+        return entry is null ? NotFound() : Ok(entry);
+    }
+
+    /// <summary>Admin/ops: deletes a saved palette. Refused with 409 while it is assigned to an app version.</summary>
+    [HttpDelete("/admin/palettes/{id}")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    public IActionResult DeletePalette(string id)
+    {
+        if (!auth.IsAuthorized(Request))
+            return Unauthorized();
+
+        return palette.Delete(id) switch
+        {
+            PaletteDeleteResult.Deleted => NoContent(),
+            PaletteDeleteResult.InUse => Conflict(new { error = "The palette is assigned to an app version. Unassign it first." }),
+            _ => NotFound(),
+        };
+    }
+
+    /// <summary>Admin/ops: which palette each app version gets ("default" is everyone else).</summary>
+    [HttpGet("/admin/palettes/assignments")]
+    [ProducesResponseType(typeof(IReadOnlyList<PaletteAssignment>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public IActionResult GetPaletteAssignments()
+    {
+        if (!auth.IsAuthorized(Request))
+            return Unauthorized();
+
+        return Ok(palette.Assignments());
+    }
+
+    /// <summary>
+    /// Admin/ops: gives a saved palette to phones on one app version (for example <c>1.2.2</c>, matched to the part of
+    /// <c>X-App-Version</c> before the build number), or to <c>default</c> for every other version. Takes effect
+    /// within a few seconds, on each phone's next launch or return to the front.
+    /// </summary>
+    [HttpPut("/admin/palettes/assignments/{appVersion}")]
+    [ProducesResponseType(typeof(PaletteAssignment), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public IActionResult AssignPalette(string appVersion, [FromBody] AssignPaletteRequest? request)
+    {
+        if (!auth.IsAuthorized(Request))
+            return Unauthorized();
+
+        if (!PaletteProvider.IsValidRoute(appVersion))
+            return BadRequest(new { error = "The app version must be like 1.2.2, or \"default\"." });
+
+        if (string.IsNullOrWhiteSpace(request?.PaletteId))
+            return BadRequest(new { error = "paletteId is required." });
+
+        return palette.Assign(appVersion, request.PaletteId) ? Ok(new PaletteAssignment(appVersion, request.PaletteId)) : NotFound();
+    }
+
+    /// <summary>Admin/ops: stops giving a palette to an app version, so those phones fall back to the default (or the built-in colours).</summary>
+    [HttpDelete("/admin/palettes/assignments/{appVersion}")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public IActionResult UnassignPalette(string appVersion)
+    {
+        if (!auth.IsAuthorized(Request))
+            return Unauthorized();
+
+        return palette.Unassign(appVersion) ? NoContent() : NotFound();
     }
 
     /// <summary>Admin/ops: the global kill switch for each feature. A feature is on unless switched off here.</summary>
