@@ -94,6 +94,28 @@ export default function AdminPanel({ serverUrl }: { serverUrl: string }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab, token, serverUrl])
 
+  // The playground is a frame as tall as its content, so it can't tell when this page scrolls. Tell it where the
+  // frame sits in the window, so it can keep the phone preview in view (wide layouts only; it decides).
+  useEffect(() => {
+    if (tab !== 'palette') return
+    const send = () => {
+      const f = playgroundRef.current
+      if (!f) return
+      f.contentWindow?.postMessage(
+        { type: 'dw-viewport', top: f.getBoundingClientRect().top, height: window.innerHeight },
+        window.location.origin,
+      )
+    }
+    // Capture, so it works whichever element ends up scrolling (the admin page lets the root scroll).
+    window.addEventListener('scroll', send, { passive: true, capture: true })
+    window.addEventListener('resize', send)
+    send()
+    return () => {
+      window.removeEventListener('scroll', send, { capture: true })
+      window.removeEventListener('resize', send)
+    }
+  }, [tab])
+
   useLayoutEffect(() => {
     const root = document.getElementById('root')
     const prev = { html: document.documentElement.style.overflow, body: document.body.style.overflow, root: root?.style.overflow ?? '' }

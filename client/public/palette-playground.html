@@ -678,6 +678,38 @@
     if (libApi.token) refreshLibrary();
   });
 
+  // ---- keep the phone in view while the /admin page scrolls (wide layout only).
+  // Inside /admin this page is a frame as tall as its content, so CSS sticky has nothing to stick to. /admin sends
+  // where the frame sits in its own viewport; the phone column is then slid down to stay in view, and stops at the
+  // bottom of the layout. Narrow layouts (phone first, single column) never move. Opened on its own, CSS sticky
+  // does the job and no messages arrive.
+  var stickyEl = document.querySelector('.sticky');
+  var wideMq = window.matchMedia('(min-width: 821px)');
+  var phoneOffset = 0;
+  var lastView = null;
+  function followParent(view) {
+    lastView = view || lastView;
+    if (!lastView) return;
+    var offset = 0;
+    if (wideMq.matches) {
+      var rect = stickyEl.getBoundingClientRect();
+      var natural = rect.top + window.scrollY - phoneOffset;   // where the column sits without any shift
+      var layoutBottom = document.querySelector('.layout').getBoundingClientRect().bottom + window.scrollY;
+      if (rect.height + 32 <= lastView.height) {               // only if it fits on screen
+        offset = Math.max(0, 16 - (lastView.top + natural));
+        offset = Math.min(offset, Math.max(0, layoutBottom - (natural + rect.height)));
+      }
+    }
+    phoneOffset = offset;
+    stickyEl.style.transform = offset ? 'translateY(' + Math.round(offset) + 'px)' : '';
+  }
+  window.addEventListener('message', function (e) {
+    var d = e.data;
+    if (e.origin !== location.origin || !d || d.type !== 'dw-viewport') return;
+    followParent({ top: Number(d.top) || 0, height: Number(d.height) || 0 });
+  });
+  wideMq.addEventListener('change', function () { followParent(); });
+
   // ---- init
   loadSnaps(); renderSnaps();
   readHash();
