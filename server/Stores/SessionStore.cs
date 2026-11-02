@@ -201,6 +201,12 @@ public partial class SessionStore(string connectionString) : IDisposable
         addSwitches.CommandText = "CREATE TABLE IF NOT EXISTS feature_switches (feature TEXT PRIMARY KEY, enabled BOOLEAN NOT NULL)";
         addSwitches.ExecuteNonQuery();
 
+        // Admin-set settings (the palette), one row per key. Additive like the tables above: a build
+        // that predates it never reads or writes this table.
+        using var addSettings = conn.CreateCommand();
+        addSettings.CommandText = "CREATE TABLE IF NOT EXISTS app_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at TEXT NOT NULL)";
+        addSettings.ExecuteNonQuery();
+
         // Casual tracking (see .ai/plans/casual-tracking.md). Same rules as crew above: everything
         // is additive and every foreign key cascades, because Staging and Production share this
         // database and a build that predates casual still does a plain DELETE FROM users and
@@ -433,6 +439,38 @@ public partial class SessionStore(string connectionString) : IDisposable
         cmd.Parameters.AddWithValue("@feature", feature);
         cmd.Parameters.AddWithValue("@enabled", enabled);
         cmd.ExecuteNonQuery();
+    }
+
+    public string? GetSetting(string key)
+    {
+        using var conn = Connect();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT value FROM app_settings WHERE key = @key";
+        cmd.Parameters.AddWithValue("@key", key);
+        return cmd.ExecuteScalar() as string;
+    }
+
+    public void SetSetting(string key, string value)
+    {
+        using var conn = Connect();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = """
+            INSERT INTO app_settings (key, value, updated_at) VALUES (@key, @value, @updatedAt)
+            ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = EXCLUDED.updated_at
+            """;
+        cmd.Parameters.AddWithValue("@key", key);
+        cmd.Parameters.AddWithValue("@value", value);
+        cmd.Parameters.AddWithValue("@updatedAt", DateTime.UtcNow.ToString("o"));
+        cmd.ExecuteNonQuery();
+    }
+
+    public bool DeleteSetting(string key)
+    {
+        using var conn = Connect();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "DELETE FROM app_settings WHERE key = @key";
+        cmd.Parameters.AddWithValue("@key", key);
+        return cmd.ExecuteNonQuery() > 0;
     }
 
     public bool UserExists(string userId)

@@ -3,7 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 namespace DotWatcher.Server.Controllers;
 
 [ApiController]
-public class AdminController(SessionStore store, BearerTokenAuth auth, FeatureFlags features) : ControllerBase
+public class AdminController(SessionStore store, BearerTokenAuth auth, FeatureFlags features, PaletteProvider palette) : ControllerBase
 {
     /// <summary>Admin/ops: lists all registered user accounts.</summary>
     [HttpGet("/admin/users")]
@@ -36,6 +36,39 @@ public class AdminController(SessionStore store, BearerTokenAuth auth, FeatureFl
             return BadRequest(new { error = "Feature names can't contain commas." });
 
         return store.SetUserFeatures(userId, features) ? Ok(features) : NotFound();
+    }
+
+    /// <summary>
+    /// Admin/ops: sets the start-screen palette for every app, replacing any earlier one and overriding the
+    /// <c>Palette</c> config section. The apps pick it up on their next launch or return to the front.
+    /// </summary>
+    [HttpPost("/admin/palette")]
+    [ProducesResponseType(typeof(Palette), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public IActionResult SetPalette([FromBody] Palette? request)
+    {
+        if (!auth.IsAuthorized(Request))
+            return Unauthorized();
+
+        if (request is null)
+            return BadRequest(new { error = "A palette is required." });
+
+        var problem = palette.Set(request);
+        return problem is null ? Ok(request) : BadRequest(new { error = problem });
+    }
+
+    /// <summary>Admin/ops: removes the admin-set palette, so the <c>Palette</c> config section (if any) is served again.</summary>
+    [HttpDelete("/admin/palette")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public IActionResult ClearPalette()
+    {
+        if (!auth.IsAuthorized(Request))
+            return Unauthorized();
+
+        return palette.Clear() ? NoContent() : NotFound();
     }
 
     /// <summary>Admin/ops: the global kill switch for each feature. A feature is on unless switched off here.</summary>

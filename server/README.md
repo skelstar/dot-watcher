@@ -458,6 +458,24 @@ that use it.
 
 ---
 
+### Palette (`POST` / `DELETE /admin/palette`)
+
+The start-screen palette comes back as `config.palette` on login, register and `GET /me`. It is set with
+the admin bearer token: `POST /admin/palette` with the eight colours and `Version` (camelCase JSON, validated like the
+`Palette` config section: `#rrggbb` colours, text/background pairs at 4.5:1 or better), and `DELETE /admin/palette` to
+remove it. A posted palette is stored in the `app_settings` table (key `palette`), overrides the `Palette` config
+section, and is cached for about five seconds. Staging and Production share that database, so a palette posted on
+either is served by both.
+
+An optional `label` (up to 32 characters, trimmed) names the palette, for example `1.2.2`. It is a label only: it is
+returned in `config.palette` and logged when the palette is set, and does not change what is served. It is separate
+from `version`, the schema version, which stays `1`.
+
+An optional `name` (up to 30 characters, trimmed) gives the palette a display name, for example `Navy and orange`. It is
+informational in the same way as `label`: returned in `config.palette` and logged, with no effect on what is served.
+
+**Auth:** Admin bearer token. `POST` returns `200` with the palette, or `400` with an `error` naming what is wrong; `DELETE` returns `204`, or `404` when none was set.
+
 ### `GET /sessions`
 
 Lists all session codes that have a recording on disk, ordered newest first. This is an admin/debug endpoint.
