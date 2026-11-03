@@ -223,3 +223,23 @@ different `-SessionName` per run you want to keep around.
   `powershell`, leave it — don't `brew link --overwrite dotnet`, since that
   can point `dotnet` away from the SDK the server itself uses. `pwsh` works
   fine regardless of that conflict.
+
+## store-palettes.sh
+
+Stores the nine start-screen palettes from the landing-sign mock-ups
+(`.ai/mockups/landing-signs.html`, also the presets in
+`client/public/palette-playground.html`) in a server's palette library, so
+they can be assigned to app versions from the admin Palette tab.
+
+```bash
+scripts/store-palettes.sh --dry-run
+SERVER_URL=https://dot-watcher-staging.skelstar.io/api ADMIN_TOKEN=... scripts/store-palettes.sh
+```
+
+- Safe to run twice: a palette whose name is already in the library is
+  skipped, never duplicated or changed.
+- Nothing is assigned, so no phone sees any of them until one is.
+- Needs the admin bearer token (`ADMIN_TOKEN`; defaults to the local dev
+  value) and python for JSON.
+- Staging and Production share one database, so storing on either puts them
+  in the library for both.

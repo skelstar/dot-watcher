@@ -314,6 +314,18 @@ Authenticates a local app user and returns a user access token.
 
 ---
 
+### `GET /me`
+
+Returns the caller's account (`userId`, `username`, `displayName`, `features`, `config`). Login and register return the same `user` object.
+
+`config.palette` carries the start-screen colours (`version`, `goBg`, `goFg`, `goBar`, `altBg`, `altFg`, `accent`, `accentInk`, `screen`, each a `#rrggbb` string). It comes from the `Palette` section of `appsettings.json` and is omitted when that section is missing or invalid (a bad hex value or an unknown `Version` logs a warning at start-up and serves no palette). Clients treat a missing palette as "use the built-in colours". See `.ai/plans/remote-palette.md`.
+
+**Auth:** User access token required.
+
+**Responses:** `200` with the user, `401` for a missing or invalid token.
+
+---
+
 ### `POST /auth/logout`
 
 Revokes the current user access token until its expiry time plus configured clock skew.
@@ -445,6 +457,37 @@ keys would make that fail for any user with crew data. Deploy this server to Pro
 that use it.
 
 ---
+
+### Palette (`/admin/palettes`)
+
+The start-screen palette comes back as `config.palette` on login, register and `GET /me`. Palettes are saved in the
+database and **reach no phone until one is assigned to an app version**, so you can create and tweak them freely. All of
+these need the admin bearer token (`401` otherwise).
+
+| Method | Path | What it does |
+| --- | --- | --- |
+| `GET` | `/admin/palettes` | Every saved palette: `id`, `palette`, and `assignedTo` (the app versions it is assigned to) |
+| `GET` | `/admin/palettes/{id}` | One palette (`404` if unknown) |
+| `POST` | `/admin/palettes` | Save a new palette; `201` with its `id`. Serves nobody yet |
+| `PUT` | `/admin/palettes/{id}` | Replace a palette (`404` if unknown) |
+| `DELETE` | `/admin/palettes/{id}` | Delete it; `409` while it is assigned, `404` if unknown |
+| `GET` | `/admin/palettes/assignments` | Which palette each app version gets |
+| `PUT` | `/admin/palettes/assignments/{appVersion}` | Body `{ "paletteId": "..." }`; `404` if the palette does not exist |
+| `DELETE` | `/admin/palettes/assignments/{appVersion}` | Stop giving a palette to that version (`404` if none) |
+
+The body of `POST` and `PUT` is the eight colours plus `version` (camelCase JSON, validated like the `Palette` config
+section: `#rrggbb` colours; contrast is not checked) and a required `name` (up to 30 characters). An
+optional `label` (up to 32, for example `1.2.2`) is informational. Both are trimmed and returned in `config.palette`;
+neither changes what is served. `version` is the schema version and stays `1`.
+
+**Who gets which palette.** Phones send `X-App-Version` (for example `1.2.2 (20)`). The part before the space is
+matched exactly against the assignment key. A phone gets, in order: the palette assigned to its version, the palette
+assigned to `fallback`, the `Palette` config section, then none (the built-in colours). Assignments and palettes are
+cached for about five seconds. Apps pick the change up on their next launch or return to the front.
+
+Editing a palette that is assigned changes what those phones get straight away. To stage a change, save it as a new
+palette and assign it when ready. Staging and Production share the database, so assignments made on either apply to
+both once both run this code.
 
 ### `GET /sessions`
 

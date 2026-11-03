@@ -201,6 +201,22 @@ public partial class SessionStore(string connectionString) : IDisposable
         addSwitches.CommandText = "CREATE TABLE IF NOT EXISTS feature_switches (feature TEXT PRIMARY KEY, enabled BOOLEAN NOT NULL)";
         addSwitches.ExecuteNonQuery();
 
+        // Saved palettes and which app version gets which (see PaletteProvider). Additive, and only the
+        // palette code reads them, so a build that predates them is unaffected.
+        using var addPalettes = conn.CreateCommand();
+        addPalettes.CommandText = """
+            CREATE TABLE IF NOT EXISTS palettes (
+                id         TEXT PRIMARY KEY,
+                json       TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS palette_assignments (
+                app_version TEXT PRIMARY KEY,
+                palette_id  TEXT NOT NULL REFERENCES palettes(id)
+            );
+            """;
+        addPalettes.ExecuteNonQuery();
+
         // Casual tracking (see .ai/plans/casual-tracking.md). Same rules as crew above: everything
         // is additive and every foreign key cascades, because Staging and Production share this
         // database and a build that predates casual still does a plain DELETE FROM users and

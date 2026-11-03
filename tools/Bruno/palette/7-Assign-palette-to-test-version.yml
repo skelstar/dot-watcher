@@ -1,0 +1,35 @@
+info:
+  name: 7 Assign palette to test version
+  type: http
+  seq: 7
+
+http:
+  method: PUT
+  url: "{{baseUrl}}/admin/palettes/assignments/{{testAppVersion}}"
+  body:
+    type: json
+    data: |-
+      {
+        "paletteId": "{{paletteId}}"
+      }
+  auth:
+    type: bearer
+    token: "{{adminToken}}"
+
+runtime:
+  assertions:
+    - expression: res.status
+      operator: eq
+      value: "200"
+    - expression: res.body.paletteId
+      operator: eq
+      value: "{{paletteId}}"
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true
+
+docs: Gives the palette to phones on testAppVersion (9.9.9, a version no real build has).

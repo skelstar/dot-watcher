@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useState, type FormEvent, Fragment } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type FormEvent, Fragment } from 'react'
 import { apiHeaders } from './apiHeaders'
 import LoadRouteButton from './LoadRouteButton.tsx'
 
@@ -40,6 +40,13 @@ const PROTECTED_USERNAMES = new Set(['dw-demo', 'dw-casual'])
 type FeatureSwitch = { feature: string; enabled: boolean }
 const FEATURE_LABELS: Record<string, string> = { crew: 'Crew', casual: 'Casual tracking', events: 'Events' }
 
+type AdminTab = 'users' | 'sessions' | 'palette'
+const TABS: { id: AdminTab; label: string }[] = [
+  { id: 'users', label: 'Users' },
+  { id: 'sessions', label: 'Sessions' },
+  { id: 'palette', label: 'Palette' },
+]
+
 const BEARER_TOKEN_KEY = 'adminBearerToken'
 const APP_VERSION = import.meta.env.VITE_APP_VERSION ?? 'v-local'
 // Matches the simulator's own VITE_CLIENT_URL convention (tools/simulator/.env.example) —
@@ -74,6 +81,40 @@ export default function AdminPanel({ serverUrl }: { serverUrl: string }) {
   const [featureSwitches, setFeatureSwitches] = useState<FeatureSwitch[]>([])
   const [switchesUnavailable, setSwitchesUnavailable] = useState(false)
   const [switchBusy, setSwitchBusy] = useState<string | null>(null)
+  const [tab, setTab] = useState<AdminTab>('users')
+  const playgroundRef = useRef<HTMLIFrameElement>(null)
+
+  // Hands the playground the server address and admin token so its Library panel can use the palette API.
+  // Same-origin postMessage, so the token is never put in the frame's URL.
+  function sendPlaygroundContext() {
+    playgroundRef.current?.contentWindow?.postMessage({ type: 'dw-admin', serverUrl, token }, window.location.origin)
+  }
+  useEffect(() => {
+    if (tab === 'palette') sendPlaygroundContext()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab, token, serverUrl])
+
+  // The playground is a frame as tall as its content, so it can't tell when this page scrolls. Tell it where the
+  // frame sits in the window, so it can keep the phone preview in view (wide layouts only; it decides).
+  useEffect(() => {
+    if (tab !== 'palette') return
+    const send = () => {
+      const f = playgroundRef.current
+      if (!f) return
+      f.contentWindow?.postMessage(
+        { type: 'dw-viewport', top: f.getBoundingClientRect().top, height: window.innerHeight },
+        window.location.origin,
+      )
+    }
+    // Capture, so it works whichever element ends up scrolling (the admin page lets the root scroll).
+    window.addEventListener('scroll', send, { passive: true, capture: true })
+    window.addEventListener('resize', send)
+    send()
+    return () => {
+      window.removeEventListener('scroll', send, { capture: true })
+      window.removeEventListener('resize', send)
+    }
+  }, [tab])
 
   useLayoutEffect(() => {
     const root = document.getElementById('root')
@@ -485,8 +526,8 @@ export default function AdminPanel({ serverUrl }: { serverUrl: string }) {
   }
 
   return (
-    <div style={page}>
-      <h1 style={heading}>Admin — Users</h1>
+    <div style={tab === 'palette' ? { ...page, maxWidth: 1200 } : page}>
+      <h1 style={heading}>Admin</h1>
       <p style={versionText}>{APP_VERSION}</p>
       {/* Dev-only: import.meta.env.DEV is false in the built app, so this never appears on the
           deployed staging/production admin page, where no simulator is running to link to. */}
@@ -527,7 +568,21 @@ export default function AdminPanel({ serverUrl }: { serverUrl: string }) {
 
       {error && <p style={errorText}>{error}</p>}
 
-      {token && (
+      <div style={tabBar} role="tablist">
+        {TABS.map(t => (
+          <button
+            key={t.id}
+            role="tab"
+            aria-selected={tab === t.id}
+            style={tab === t.id ? tabBtnActive : tabBtn}
+            onClick={() => setTab(t.id)}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'users' && token && (
         <>
           <h2 style={subheadingNoMargin}>Features</h2>
           <p style={featuresNote}>Kill switches. Switching a feature off hides it for every account until you switch it back on.</p>
@@ -554,6 +609,7 @@ export default function AdminPanel({ serverUrl }: { serverUrl: string }) {
         </>
       )}
 
+      {tab === 'users' && (<>
       <div style={subheadingRow}>
         <h2 style={subheadingNoMargin}>Users</h2>
         {selectedUserIds.size > 0 && (
@@ -608,7 +664,9 @@ export default function AdminPanel({ serverUrl }: { serverUrl: string }) {
       {token && !loading && users.length === 0 && !error && (
         <p style={emptyText}>No users.</p>
       )}
+      </>)}
 
+      {tab === 'sessions' && (<>
       <div style={subheadingRow}>
         <h2 style={subheadingNoMargin}>Sessions</h2>
         <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
@@ -818,8 +876,9 @@ export default function AdminPanel({ serverUrl }: { serverUrl: string }) {
       {token && !loading && sessions.length === 0 && !error && (
         <p style={emptyText}>No sessions.</p>
       )}
+      </>)}
 
-      {token && (
+      {tab === 'sessions' && token && (
         <>
           <div style={subheadingRow}>
             <h2 style={subheadingNoMargin}>Server log</h2>
@@ -841,6 +900,32 @@ export default function AdminPanel({ serverUrl }: { serverUrl: string }) {
           )}
         </>
       )}
+
+      {tab === 'palette' && (
+        <>
+          <p style={featuresNote}>
+            Try start-screen colours, then save them to the library below, or copy them as a config section or an API body.
+          </p>
+          {/* Same-origin static page (client/public), so the frame can follow its content's height. */}
+          <iframe
+            ref={playgroundRef}
+            src="/palette-playground.html"
+            title="Palette playground"
+            style={playgroundFrame}
+            scrolling="no"
+            onLoad={() => {
+              const f = playgroundRef.current
+              const doc = f?.contentDocument
+              if (!f || !doc) return
+              const fit = () => { f.style.height = `${doc.documentElement.scrollHeight}px` }
+              fit()
+              sendPlaygroundContext()
+              // Content height changes after load (fonts, snapshots, the layout going single-column).
+              new ResizeObserver(fit).observe(doc.body)
+            }}
+          />
+        </>
+      )}
     </div>
   )
 }
@@ -850,6 +935,38 @@ const page: React.CSSProperties = {
   margin: '2rem auto',
   padding: '0 1rem',
   fontFamily: 'system-ui, sans-serif',
+}
+
+const tabBar: React.CSSProperties = {
+  display: 'flex',
+  gap: '0.25rem',
+  borderBottom: '1px solid #e2e8f0',
+  marginBottom: '1rem',
+}
+
+const tabBtn: React.CSSProperties = {
+  padding: '0.5rem 1rem',
+  border: 'none',
+  borderBottom: '2px solid transparent',
+  background: 'none',
+  color: '#64748b',
+  cursor: 'pointer',
+  fontFamily: 'system-ui, sans-serif',
+  fontSize: '0.95rem',
+  fontWeight: 600,
+}
+
+const tabBtnActive: React.CSSProperties = {
+  ...tabBtn,
+  color: '#1e293b',
+  borderBottomColor: '#3b82f6',
+}
+
+const playgroundFrame: React.CSSProperties = {
+  width: '100%',
+  height: 1400,
+  border: '1px solid #e2e8f0',
+  borderRadius: 8,
 }
 
 const subheading: React.CSSProperties = {

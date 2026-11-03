@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import nz.skelstar.dotwatcher.blocks.BlocksModel
 import nz.skelstar.dotwatcher.casual.CasualModel
 import nz.skelstar.dotwatcher.casual.CasualPrefs
 import nz.skelstar.dotwatcher.events.EventsModel
@@ -36,6 +37,8 @@ import nz.skelstar.dotwatcher.network.SessionMembership
 import nz.skelstar.dotwatcher.network.errorMessageOrStatus
 import nz.skelstar.dotwatcher.network.networkMessage
 import nz.skelstar.dotwatcher.network.parsedError
+import nz.skelstar.dotwatcher.ui.theme.AppearanceMode
+import nz.skelstar.dotwatcher.ui.theme.AppearancePrefs
 import nz.skelstar.dotwatcher.ui.theme.AppliedSignColors
 import retrofit2.Response
 import java.time.Duration
@@ -97,6 +100,17 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     /** The signed-in account's crew. Shares this ViewModel's repository and scope rather than being a
      *  second ViewModel, so there is one network stack (see the class note above). */
     val crew = CrewModel(repository, viewModelScope, CrewPrefs(application))
+
+    val blocks = BlocksModel(repository)
+
+    private val appearancePrefs = AppearancePrefs(application)
+    private val _appearance = MutableStateFlow(appearancePrefs.mode)
+    val appearance: StateFlow<AppearanceMode> = _appearance
+
+    fun setAppearance(mode: AppearanceMode) {
+        appearancePrefs.mode = mode
+        _appearance.value = mode
+    }
 
     /** One-off positions for nearby join; never starts tracking. */
     private val nearbyFix = NearbyFixSource(application)
@@ -343,7 +357,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             }
 
             val name = if (draft != null) draft.trimmedTitle else sessionName?.ifBlank { null }
-            val result = runCatching { repository.createSession(name, displayName = null, nearby = nearbyCreate) }
+            val result = runCatching { repository.createSession(name, displayName = repository.displayName, nearby = nearbyCreate) }
 
             val response = result.getOrNull()
             if (response != null && response.code() == 409) {
@@ -402,7 +416,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 )
                 return@launch
             }
-            val result = runCatching { repository.joinNearbySession(sessionId, fix, displayName = null) }
+            val result = runCatching { repository.joinNearbySession(sessionId, fix, displayName = repository.displayName) }
             _sessionState.value = when (result.getOrNull()?.code()) {
                 // One answer for every refusal, by design: too far, ended, switched off or gone.
                 404 -> SessionUiState.Error("You can't join this run from here. Move closer to the start and try again.")
@@ -470,7 +484,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     fun joinSession(inviteCode: String) {
         viewModelScope.launch {
             _sessionState.value = SessionUiState.Loading
-            val result = runCatching { repository.joinSession(inviteCode, displayName = null) }
+            val result = runCatching { repository.joinSession(inviteCode, displayName = repository.displayName) }
             _sessionState.value = handleSessionResult(result)
         }
     }
@@ -526,6 +540,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
      *  being stored. */
     val account: AccountInfo
         get() = AccountInfo(repository.username, repository.displayName.orEmpty())
+
+    fun setInitials(initials: String) = repository.setDisplayName(initials)
 
     /** Deletes the account for good (after the UI has confirmed). On success this signs out and
      *  lands on the auth screen; on failure the runner stays signed in and [onError] says why. */

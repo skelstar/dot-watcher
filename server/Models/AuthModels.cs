@@ -6,7 +6,10 @@ public record AuthenticatedUser(
     string DisplayName,
     // What this account can use (e.g. "crew"). Filled in for login, register and GET /me; null when
     // the user was read from a bearer token, which doesn't carry it.
-    IReadOnlyList<string>? Features = null
+    IReadOnlyList<string>? Features = null,
+    // Server-driven settings (e.g. the palette). Same fill rule as Features; omitted from the JSON when null.
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    UserConfig? Config = null
 );
 
 /// <summary>Admin/ops: replaces the features granted to an account.</summary>

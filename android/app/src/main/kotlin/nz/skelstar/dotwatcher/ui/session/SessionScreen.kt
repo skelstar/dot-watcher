@@ -62,7 +62,9 @@ import nz.skelstar.dotwatcher.crew.CrewModel
 import nz.skelstar.dotwatcher.events.EventsModel
 import nz.skelstar.dotwatcher.ui.casual.BeforeYouGoSheet
 import nz.skelstar.dotwatcher.ui.casual.crewOutLine
+import nz.skelstar.dotwatcher.blocks.BlocksModel
 import nz.skelstar.dotwatcher.ui.casual.WhoCanSeeMeSheet
+import nz.skelstar.dotwatcher.ui.theme.AppearanceMode
 import java.time.Duration
 import nz.skelstar.dotwatcher.ui.CodeBoxField
 import nz.skelstar.dotwatcher.ui.crew.CrewFlow
@@ -117,6 +119,10 @@ fun SessionScreen(
     onSignOut: () -> Unit,
     account: AccountInfo,
     onDeleteAccount: (onError: (String) -> Unit) -> Unit,
+    onSaveInitials: (String) -> Unit,
+    blocks: BlocksModel,
+    appearance: AppearanceMode,
+    onAppearanceChange: (AppearanceMode) -> Unit,
     crew: CrewModel,
     casual: CasualModel,
     events: EventsModel,
@@ -316,6 +322,10 @@ fun SessionScreen(
                 onSignOut()
             },
             onDeleteAccount = onDeleteAccount,
+            onSaveInitials = onSaveInitials,
+            blocks = blocks,
+            appearance = appearance,
+            onAppearanceChange = onAppearanceChange,
             onDismiss = { showAccount = false },
             showNickname = crewState.isAvailable,
             nickname = crewState.nickname,
