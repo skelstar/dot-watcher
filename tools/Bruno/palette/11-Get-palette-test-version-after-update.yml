@@ -1,0 +1,32 @@
+info:
+  name: 11 Get palette (test version, after update)
+  type: http
+  seq: 11
+
+http:
+  method: GET
+  url: "{{baseUrl}}/me"
+  headers:
+    - name: X-App-Version
+      value: "{{testAppVersion}} (1)"
+  auth:
+    type: bearer
+    token: "{{accessToken}}"
+
+runtime:
+  assertions:
+    - expression: res.status
+      operator: eq
+      value: "200"
+    - expression: res.body.config.palette.name
+      operator: eq
+      value: Bruno test palette v2
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true
+
+docs: The edit shows up for the assigned version (allow a few seconds for the cache if this fails).

@@ -6,6 +6,7 @@ import SwiftUI
 /// screen, where the invite code, participants and Leave still live. See `MapChrome.swift`.
 struct SessionMapScreen: View {
     var location: LocationManager
+    var crew: CrewStore
 
     @State private var camera: MapCameraPosition = .userLocation(fallback: .automatic)
     @State private var stopProgress: CGFloat = 0
@@ -23,6 +24,10 @@ struct SessionMapScreen: View {
     @State private var followedName: String?
     /// While set, the map re-frames everyone as positions move; fit-all sets it, dragging the map clears it.
     @State private var fitLocked = true
+    @State private var showNearbySettings = false
+    @State private var showEndSession = false
+    /// A short confirmation (or error) from the join-location button, cleared after a moment.
+    @State private var nearbyNote: String?
 
     private struct Pin: Identifiable {
         let id: String
@@ -92,6 +97,14 @@ struct SessionMapScreen: View {
                 }
             }
         }
+        .modifier(NearbyOrganiserControls(
+            location: location,
+            sessionId: nearbySessionId,
+            showSettings: $showNearbySettings,
+            showEndSession: $showEndSession,
+            note: nearbyNote,
+            onEnd: { await endSession() }
+        ))
         // Who is in the session, so a member who hasn't sent a position yet still gets a dot.
         .task { await location.loadLatestPositions() }
         .sheet(isPresented: $showParticipants) {
@@ -152,7 +165,11 @@ struct SessionMapScreen: View {
                 Button("Cancel", role: .cancel) {}
             }
         } message: {
-            Text("They'll be removed from this session and won't be able to join any of your sessions again.")
+            let inCrew = blockCandidate
+                .flatMap { location.participantUserIds[$0] }
+                .map { id in crew.members.contains { $0.userId == id } } ?? false
+            Text("They'll be removed from this session and won't be able to join any of your sessions again."
+                + (inCrew ? " They'll also be removed from your crew." : ""))
         }
         .alert("Couldn't block user", isPresented: Binding(
             get: { blockError != nil },
@@ -183,6 +200,13 @@ struct SessionMapScreen: View {
                 if location.routeCoordinates.count > 1 {
                     MapPolyline(coordinates: location.routeCoordinates)
                         .stroke(Color(red: 252 / 255, green: 76 / 255, blue: 2 / 255).opacity(0.9), lineWidth: 5) // Strava orange
+                }
+                // The organiser's join range: a dotted ring around the join location while nearby is on.
+                if let id = nearbySessionId, let status = location.nearbyStatuses[id], status.nearby,
+                   let center = location.nearbyMeetingPoints[id] {
+                    MapCircle(center: center, radius: CLLocationDistance(status.radiusMeters))
+                        .foregroundStyle(Color.black.opacity(0.04))
+                        .stroke(Color.black, style: StrokeStyle(lineWidth: 1, dash: [5, 5]))
                 }
                 ForEach(pins) { pin in
                     Annotation("", coordinate: pin.coordinate) {
@@ -284,6 +308,36 @@ struct SessionMapScreen: View {
                 .accessibilityLabel("Share the invite")
             }
             MapRailButton(symbol: "arrow.up.left.and.arrow.down.right", label: "Fit all runners") { fitAll() }
+            if let sessionId = nearbySessionId {
+                // Tap: move the join location to here. Touch and hold for the range, switching off and End.
+                Menu {
+                    Button {
+                        Task { await setJoinLocation(sessionId) }
+                    } label: {
+                        Label("Set join location here", systemImage: "mappin.and.ellipse")
+                    }
+                    Button {
+                        showNearbySettings = true
+                    } label: {
+                        Label("Nearby settings…", systemImage: "slider.horizontal.3")
+                    }
+                    Button(role: .destructive) {
+                        showEndSession = true
+                    } label: {
+                        Label("End session", systemImage: "xmark.circle")
+                    }
+                } label: {
+                    Image(systemName: "mappin.and.ellipse")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundStyle(.black)
+                        .frame(width: 44, height: 44)
+                        .background(Color.white.opacity(0.85), in: Circle())
+                        .shadow(color: .black.opacity(0.18), radius: 2, y: 1)
+                } primaryAction: {
+                    Task { await setJoinLocation(sessionId) }
+                }
+                .accessibilityLabel("Set join location")
+            }
             Menu {
                 Button {
                     Task { await openRouteUpload() }
@@ -312,6 +366,35 @@ struct SessionMapScreen: View {
         }
     }
 
+    /// The session's id when this device made it and made it nearby, so the join-location controls apply;
+    /// nil otherwise (a joiner, or a session without nearby join).
+    private var nearbySessionId: String? {
+        guard let id = location.activeMembership?.sessionId,
+              location.ownedSessionIds.contains(id),
+              location.nearbyStatuses[id] != nil
+        else { return nil }
+        return id
+    }
+
+    private func showNearbyNote(_ text: String) async {
+        withAnimation { nearbyNote = text }
+        try? await Task.sleep(for: .seconds(2.5))
+        withAnimation { nearbyNote = nil }
+    }
+
+    private func setJoinLocation(_ sessionId: String) async {
+        await showNearbyNote(await location.pingJoinLocation(sessionId: sessionId))
+    }
+
+    private func endSession() async {
+        guard let sessionId = nearbySessionId else { return }
+        do {
+            try await location.endSession(sessionId: sessionId)
+        } catch {
+            await showNearbyNote(error.localizedDescription)
+        }
+    }
+
     /// Asks the server for a short-lived upload link and opens the web route-upload page in an in-app
     /// browser. The route is refetched when that browser is dismissed.
     private func openRouteUpload() async {
@@ -329,6 +412,8 @@ struct SessionMapScreen: View {
         }
         do {
             try await location.blockUser(userId: userId, displayName: name)
+            // The server also ends any crew link with them, so reload rather than show a stale crew.
+            await crew.refresh()
         } catch {
             blockError = error.localizedDescription
         }
@@ -491,6 +576,7 @@ private struct ParticipantsSheet: View {
 /// landing screen too.
 struct SessionMapCover: ViewModifier {
     var location: LocationManager
+    var crew: CrewStore
     var casualMapPresented: Bool
     @Binding var showShareConsent: Bool
 
@@ -500,7 +586,7 @@ struct SessionMapCover: ViewModifier {
                 get: { location.activeMembership != nil && (location.isTracking || showShareConsent) && !casualMapPresented },
                 set: { _ in }
             )) {
-                SessionMapScreen(location: location)
+                SessionMapScreen(location: location, crew: crew)
                     .preferredColorScheme(location.appearanceMode.colorScheme)
                     .sheet(isPresented: $showShareConsent) {
                         if let membership = location.activeMembership {

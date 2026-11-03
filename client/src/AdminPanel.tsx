@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useState, type FormEvent, Fragment } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type FormEvent, Fragment } from 'react'
 import { apiHeaders } from './apiHeaders'
 import LoadRouteButton from './LoadRouteButton.tsx'
 
@@ -35,17 +35,17 @@ type MemberStatsState = AdminMemberStats[] | 'loading' | { error: string }
 // session (deleting it would delete the session; the server refuses too).
 const PROTECTED_USERNAMES = new Set(['dw-demo', 'dw-casual'])
 
-// The feature the Users table can grant (server: Features.Crew). Accounts without it get a 404 from
-// every crew endpoint, so apps hide Crew for them.
-const CREW_FEATURE = 'crew'
+// Global kill switches (server: GET/PUT /admin/features). A feature is on unless switched off here;
+// off makes its endpoints return 404 for every account.
+type FeatureSwitch = { feature: string; enabled: boolean }
+const FEATURE_LABELS: Record<string, string> = { crew: 'Crew', casual: 'Casual tracking', events: 'Events' }
 
-// Casual tracking (server: Features.Casual). Accounts without it get a 404 from every /casual endpoint,
-// so apps hide the Go button for them. Crew-visible output also needs Crew, so grant both together.
-const CASUAL_FEATURE = 'casual'
-
-// Public events near you (server: Features.Events). Accounts without it get a 404 from /me/events/nearby,
-// so apps hide the event sign for them.
-const EVENTS_FEATURE = 'events'
+type AdminTab = 'users' | 'sessions' | 'palette'
+const TABS: { id: AdminTab; label: string }[] = [
+  { id: 'users', label: 'Users' },
+  { id: 'sessions', label: 'Sessions' },
+  { id: 'palette', label: 'Palette' },
+]
 
 const BEARER_TOKEN_KEY = 'adminBearerToken'
 const APP_VERSION = import.meta.env.VITE_APP_VERSION ?? 'v-local'
@@ -66,7 +66,6 @@ export default function AdminPanel({ serverUrl }: { serverUrl: string }) {
   const [exportingRecordsId, setExportingRecordsId] = useState<string | null>(null)
   const [selectedUserIds, setSelectedUserIds] = useState<Set<string>>(new Set())
   const [selectedSessionIds, setSelectedSessionIds] = useState<Set<string>>(new Set())
-  const [featureBusyUserId, setFeatureBusyUserId] = useState<string | null>(null)
   const [bulkDeletingUsers, setBulkDeletingUsers] = useState(false)
   const [bulkDeletingSessions, setBulkDeletingSessions] = useState(false)
   const [showImportForm, setShowImportForm] = useState(false)
@@ -79,6 +78,43 @@ export default function AdminPanel({ serverUrl }: { serverUrl: string }) {
   const [sessionActionId, setSessionActionId] = useState<string | null>(null)
   const [logLines, setLogLines] = useState<string[] | null>(null)
   const [logBusy, setLogBusy] = useState(false)
+  const [featureSwitches, setFeatureSwitches] = useState<FeatureSwitch[]>([])
+  const [switchesUnavailable, setSwitchesUnavailable] = useState(false)
+  const [switchBusy, setSwitchBusy] = useState<string | null>(null)
+  const [tab, setTab] = useState<AdminTab>('users')
+  const playgroundRef = useRef<HTMLIFrameElement>(null)
+
+  // Hands the playground the server address and admin token so its Library panel can use the palette API.
+  // Same-origin postMessage, so the token is never put in the frame's URL.
+  function sendPlaygroundContext() {
+    playgroundRef.current?.contentWindow?.postMessage({ type: 'dw-admin', serverUrl, token }, window.location.origin)
+  }
+  useEffect(() => {
+    if (tab === 'palette') sendPlaygroundContext()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab, token, serverUrl])
+
+  // The playground is a frame as tall as its content, so it can't tell when this page scrolls. Tell it where the
+  // frame sits in the window, so it can keep the phone preview in view (wide layouts only; it decides).
+  useEffect(() => {
+    if (tab !== 'palette') return
+    const send = () => {
+      const f = playgroundRef.current
+      if (!f) return
+      f.contentWindow?.postMessage(
+        { type: 'dw-viewport', top: f.getBoundingClientRect().top, height: window.innerHeight },
+        window.location.origin,
+      )
+    }
+    // Capture, so it works whichever element ends up scrolling (the admin page lets the root scroll).
+    window.addEventListener('scroll', send, { passive: true, capture: true })
+    window.addEventListener('resize', send)
+    send()
+    return () => {
+      window.removeEventListener('scroll', send, { capture: true })
+      window.removeEventListener('resize', send)
+    }
+  }, [tab])
 
   useLayoutEffect(() => {
     const root = document.getElementById('root')
@@ -98,10 +134,11 @@ export default function AdminPanel({ serverUrl }: { serverUrl: string }) {
     setError(null)
     try {
       const headers = apiHeaders(bearerToken, 'web-admin')
-      const [usersRes, sessionsRes, recordedRes] = await Promise.all([
+      const [usersRes, sessionsRes, recordedRes, switchesRes] = await Promise.all([
         fetch(`${serverUrl}/admin/users`, { headers }),
         fetch(`${serverUrl}/admin/sessions`, { headers }),
         fetch(`${serverUrl}/sessions`, { headers }),
+        fetch(`${serverUrl}/admin/features`, { headers }),
       ])
       if (usersRes.status === 401 || sessionsRes.status === 401 || recordedRes.status === 401) {
         setError('Invalid bearer token.')
@@ -112,6 +149,9 @@ export default function AdminPanel({ serverUrl }: { serverUrl: string }) {
         return
       }
       setUsers(await usersRes.json() as AdminUser[])
+      // Absent on an older server, which is said in the Features section rather than hiding it.
+      setSwitchesUnavailable(!switchesRes.ok)
+      setFeatureSwitches(switchesRes.ok ? await switchesRes.json() as FeatureSwitch[] : [])
       setSessions(await sessionsRes.json() as AdminSession[])
       setRecordedSessionIds(new Set(await recordedRes.json() as string[]))
       setSelectedUserIds(new Set())
@@ -160,29 +200,25 @@ export default function AdminPanel({ serverUrl }: { serverUrl: string }) {
     setSelectedSessionIds(prev => prev.size === sessions.length ? new Set() : new Set(sessions.map(s => s.sessionId)))
   }
 
-  // PUT replaces the account's whole feature list, so send the current list with `feature` added or
-  // removed rather than just the one name.
-  async function handleToggleFeature(user: AdminUser, feature: string) {
-    const current = user.features ?? []
-    const next = current.includes(feature) ? current.filter(f => f !== feature) : [...current, feature]
-    setFeatureBusyUserId(user.id)
+  async function handleToggleSwitch(sw: FeatureSwitch) {
+    setSwitchBusy(sw.feature)
     setError(null)
     try {
-      const r = await fetch(`${serverUrl}/admin/users/${user.id}/features`, {
+      const r = await fetch(`${serverUrl}/admin/features/${sw.feature}`, {
         method: 'PUT',
         headers: { ...apiHeaders(token, 'web-admin'), 'Content-Type': 'application/json' },
-        body: JSON.stringify({ features: next }),
+        body: JSON.stringify({ enabled: !sw.enabled }),
       })
       if (!r.ok) {
-        setError(`Failed to update ${user.username}'s features (HTTP ${r.status}).`)
+        setError(`Failed to update ${sw.feature} (HTTP ${r.status}).`)
         return
       }
-      const saved = await r.json() as string[]
-      setUsers(prev => prev.map(u => u.id === user.id ? { ...u, features: saved } : u))
+      const saved = await r.json() as FeatureSwitch
+      setFeatureSwitches(prev => prev.map(x => x.feature === saved.feature ? saved : x))
     } catch {
       setError('Network error.')
     } finally {
-      setFeatureBusyUserId(null)
+      setSwitchBusy(null)
     }
   }
 
@@ -490,8 +526,8 @@ export default function AdminPanel({ serverUrl }: { serverUrl: string }) {
   }
 
   return (
-    <div style={page}>
-      <h1 style={heading}>Admin — Users</h1>
+    <div style={tab === 'palette' ? { ...page, maxWidth: 1200 } : page}>
+      <h1 style={heading}>Admin</h1>
       <p style={versionText}>{APP_VERSION}</p>
       {/* Dev-only: import.meta.env.DEV is false in the built app, so this never appears on the
           deployed staging/production admin page, where no simulator is running to link to. */}
@@ -532,6 +568,48 @@ export default function AdminPanel({ serverUrl }: { serverUrl: string }) {
 
       {error && <p style={errorText}>{error}</p>}
 
+      <div style={tabBar} role="tablist">
+        {TABS.map(t => (
+          <button
+            key={t.id}
+            role="tab"
+            aria-selected={tab === t.id}
+            style={tab === t.id ? tabBtnActive : tabBtn}
+            onClick={() => setTab(t.id)}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'users' && token && (
+        <>
+          <h2 style={subheadingNoMargin}>Features</h2>
+          <p style={featuresNote}>Kill switches. Switching a feature off hides it for every account until you switch it back on.</p>
+          {switchesUnavailable && <p style={errorText}>This server doesn't support feature switches yet.</p>}
+          <table style={{ ...table, marginBottom: 24 }}>
+            <tbody>
+              {featureSwitches.map(sw => (
+                <tr key={sw.feature}>
+                  <td style={td}>{FEATURE_LABELS[sw.feature] ?? sw.feature}</td>
+                  <td style={td}>{sw.enabled ? 'On' : 'Off for everyone'}</td>
+                  <td style={td}>
+                    <button
+                      style={sw.enabled ? deleteBtn : secondaryBtn}
+                      onClick={() => void handleToggleSwitch(sw)}
+                      disabled={switchBusy === sw.feature}
+                    >
+                      {sw.enabled ? 'Switch off' : 'Switch on'}
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </>
+      )}
+
+      {tab === 'users' && (<>
       <div style={subheadingRow}>
         <h2 style={subheadingNoMargin}>Users</h2>
         {selectedUserIds.size > 0 && (
@@ -558,9 +636,6 @@ export default function AdminPanel({ serverUrl }: { serverUrl: string }) {
               </th>
               <th style={th}>Username</th>
               <th style={th}>Display name</th>
-              <th style={th}>Crew</th>
-              <th style={th}>Casual</th>
-              <th style={th}>Events</th>
               <th style={th}>Created</th>
             </tr>
           </thead>
@@ -579,36 +654,6 @@ export default function AdminPanel({ serverUrl }: { serverUrl: string }) {
                 </td>
                 <td style={td}>{user.username}</td>
                 <td style={td}>{user.displayName}</td>
-                <td style={td}>
-                  <input
-                    type="checkbox"
-                    checked={(user.features ?? []).includes(CREW_FEATURE)}
-                    onChange={() => void handleToggleFeature(user, CREW_FEATURE)}
-                    disabled={featureBusyUserId === user.id}
-                    aria-label={`Crew for ${user.username}`}
-                    title="Lets this account see and use Crew"
-                  />
-                </td>
-                <td style={td}>
-                  <input
-                    type="checkbox"
-                    checked={(user.features ?? []).includes(CASUAL_FEATURE)}
-                    onChange={() => void handleToggleFeature(user, CASUAL_FEATURE)}
-                    disabled={featureBusyUserId === user.id}
-                    aria-label={`Casual for ${user.username}`}
-                    title="Lets this account use casual tracking (the Go button). Crew is needed to see crew."
-                  />
-                </td>
-                <td style={td}>
-                  <input
-                    type="checkbox"
-                    checked={(user.features ?? []).includes(EVENTS_FEATURE)}
-                    onChange={() => void handleToggleFeature(user, EVENTS_FEATURE)}
-                    disabled={featureBusyUserId === user.id}
-                    aria-label={`Events for ${user.username}`}
-                    title="Shows this account the events sign on the start screen (placeholder event for now)"
-                  />
-                </td>
                 <td style={td}>{timeAgo(user.createdAt)}</td>
               </tr>
             ))}
@@ -619,7 +664,9 @@ export default function AdminPanel({ serverUrl }: { serverUrl: string }) {
       {token && !loading && users.length === 0 && !error && (
         <p style={emptyText}>No users.</p>
       )}
+      </>)}
 
+      {tab === 'sessions' && (<>
       <div style={subheadingRow}>
         <h2 style={subheadingNoMargin}>Sessions</h2>
         <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
@@ -829,8 +876,9 @@ export default function AdminPanel({ serverUrl }: { serverUrl: string }) {
       {token && !loading && sessions.length === 0 && !error && (
         <p style={emptyText}>No sessions.</p>
       )}
+      </>)}
 
-      {token && (
+      {tab === 'sessions' && token && (
         <>
           <div style={subheadingRow}>
             <h2 style={subheadingNoMargin}>Server log</h2>
@@ -852,6 +900,32 @@ export default function AdminPanel({ serverUrl }: { serverUrl: string }) {
           )}
         </>
       )}
+
+      {tab === 'palette' && (
+        <>
+          <p style={featuresNote}>
+            Try start-screen colours, then save them to the library below, or copy them as a config section or an API body.
+          </p>
+          {/* Same-origin static page (client/public), so the frame can follow its content's height. */}
+          <iframe
+            ref={playgroundRef}
+            src="/palette-playground.html"
+            title="Palette playground"
+            style={playgroundFrame}
+            scrolling="no"
+            onLoad={() => {
+              const f = playgroundRef.current
+              const doc = f?.contentDocument
+              if (!f || !doc) return
+              const fit = () => { f.style.height = `${doc.documentElement.scrollHeight}px` }
+              fit()
+              sendPlaygroundContext()
+              // Content height changes after load (fonts, snapshots, the layout going single-column).
+              new ResizeObserver(fit).observe(doc.body)
+            }}
+          />
+        </>
+      )}
     </div>
   )
 }
@@ -861,6 +935,38 @@ const page: React.CSSProperties = {
   margin: '2rem auto',
   padding: '0 1rem',
   fontFamily: 'system-ui, sans-serif',
+}
+
+const tabBar: React.CSSProperties = {
+  display: 'flex',
+  gap: '0.25rem',
+  borderBottom: '1px solid #e2e8f0',
+  marginBottom: '1rem',
+}
+
+const tabBtn: React.CSSProperties = {
+  padding: '0.5rem 1rem',
+  border: 'none',
+  borderBottom: '2px solid transparent',
+  background: 'none',
+  color: '#64748b',
+  cursor: 'pointer',
+  fontFamily: 'system-ui, sans-serif',
+  fontSize: '0.95rem',
+  fontWeight: 600,
+}
+
+const tabBtnActive: React.CSSProperties = {
+  ...tabBtn,
+  color: '#1e293b',
+  borderBottomColor: '#3b82f6',
+}
+
+const playgroundFrame: React.CSSProperties = {
+  width: '100%',
+  height: 1400,
+  border: '1px solid #e2e8f0',
+  borderRadius: 8,
 }
 
 const subheading: React.CSSProperties = {
@@ -995,6 +1101,12 @@ const collapseBtn: React.CSSProperties = {
   fontSize: '0.85rem',
   padding: '0.1rem 0.3rem',
   lineHeight: 1,
+}
+
+const featuresNote: React.CSSProperties = {
+  margin: '0.25rem 0 0.75rem',
+  fontSize: '0.875rem',
+  opacity: 0.7,
 }
 
 const errorText: React.CSSProperties = {

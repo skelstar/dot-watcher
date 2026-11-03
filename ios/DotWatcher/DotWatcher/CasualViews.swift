@@ -324,6 +324,7 @@ struct CasualMapScreen: View {
     @State private var showExtend = false
     @State private var showWhoCanSeeMe = false
     @State private var showShare = false
+    @State private var showSettings = false
     @State private var fittedCount = -1
 
     private static let pollInterval: Duration = .seconds(10)
@@ -420,6 +421,15 @@ struct CasualMapScreen: View {
         .sheet(isPresented: $showShare) {
             ShareRunSheet(casual: casual)
                 .presentationDetents([.large])
+        }
+        .sheet(isPresented: $showSettings) {
+            AuthSheet(location: location, crew: crew)
+                .preferredColorScheme(location.appearanceMode.colorScheme)
+        }
+        // Signing out from the settings sheet hands over to the sign-in cover on `ContentView`; this
+        // sheet must not still be up when it presents.
+        .onChange(of: location.isAuthenticated) { _, isAuthenticated in
+            if !isAuthenticated { showSettings = false }
         }
         // The crew sheet lives here, not on `ContentView`, because the map is a full-screen cover. A
         // crew link opened during a run lands here too (`CrewStore` sets the same flag).
@@ -518,17 +528,16 @@ struct CasualMapScreen: View {
             }
             MapRailButton(symbol: "arrow.up.left.and.arrow.down.right", label: "Fit all runners") { fitAll() }
             MapRailButton(symbol: "eye", label: "Who can see me") { showWhoCanSeeMe = true }
+            MapRailButton(symbol: "gearshape", label: "Settings") { showSettings = true }
         }
     }
 
-    /// "2 crew out · 5 nearby". The nearby part appears only when the person has chosen to be seen,
-    /// because that is also when they can see others. Tapping it opens the crew sheet, so crew can be
-    /// added mid-run; with no crew yet it says so and offers the add.
+    /// "2 crew out". Tapping it opens the crew sheet, so crew can be added mid-run; with no crew yet
+    /// it says so and offers the add.
     private var countChip: some View {
         let crewOut = casual.crewOut ?? 0
         let hasNoCrew = crew.isAvailable && crew.members.isEmpty
         let text = (hasNoCrew ? "No crew yet" : crewOut == 0 ? "No crew out" : "\(crewOut) crew out")
-            + (casual.visibleToNonCrew ? "  ·  \(casual.nearby.count) nearby" : "")
         return Button {
             crew.isFlowPresented = true
         } label: {
@@ -554,22 +563,25 @@ struct CasualMapScreen: View {
 
 // MARK: - Map pieces
 
-/// A person who is not in the crew: a grey dot with a white edge, and a padlock when they are in a named
-/// session. No name, initials or colour: nothing that says who it is.
+/// A person who is not in the crew: a grey dot with a white edge and "??" for initials, and a padlock
+/// when they are in a named session. Nothing that says who it is. 80% of a normal dot (27 pt).
 private struct NearbyDotView: View {
     let isLocked: Bool
+
+    private let size: CGFloat = 27 * 0.8
 
     var body: some View {
         Circle()
             .fill(Color(red: 0x9E / 255, green: 0xA3 / 255, blue: 0xA8 / 255))
             .overlay(Circle().stroke(.white, lineWidth: 2))
-            .frame(width: 18, height: 18)
+            .frame(width: size, height: size)
             .overlay {
-                if isLocked {
-                    Image(systemName: "lock.fill")
-                        .font(.system(size: 8, weight: .bold))
-                        .foregroundStyle(.white)
-                }
+                Text("??")
+                    .font(.system(size: size * 0.4, weight: .bold))
+                    .foregroundStyle(.white)
+            }
+            .overlay(alignment: .bottomTrailing) {
+                if isLocked { LockBadge().offset(x: 4, y: 4) }
             }
             .accessibilityLabel(isLocked ? "Someone nearby, in a session" : "Someone nearby")
     }

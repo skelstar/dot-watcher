@@ -57,6 +57,9 @@ public sealed class DotWatcherApiFactory : WebApplicationFactory<global::Program
     /// </summary>
     public string[] EnabledForAll { get; init; } = [Features.Crew];
 
+    /// <summary>The <c>Palette:*</c> config entries (e.g. <c>GoBg</c>). Empty by default: no palette is served.</summary>
+    public Dictionary<string, string> Palette { get; init; } = [];
+
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.ConfigureAppConfiguration((_, config) =>
@@ -73,6 +76,8 @@ public sealed class DotWatcherApiFactory : WebApplicationFactory<global::Program
             };
             for (var i = 0; i < EnabledForAll.Length; i++)
                 settings[$"Features:EnabledForAll:{i}"] = EnabledForAll[i];
+            foreach (var (key, value) in Palette)
+                settings[$"Palette:{key}"] = value;
             config.AddInMemoryCollection(settings);
         });
     }

@@ -1,6 +1,8 @@
 package nz.skelstar.dotwatcher.data
 
+import nz.skelstar.dotwatcher.network.BlockedUser
 import nz.skelstar.dotwatcher.network.CasualLiveResponse
+import nz.skelstar.dotwatcher.network.SessionRunner
 import nz.skelstar.dotwatcher.network.CasualSettings
 import nz.skelstar.dotwatcher.network.CasualWatchLinkResponse
 import nz.skelstar.dotwatcher.network.NearbyEvent
@@ -11,7 +13,12 @@ import nz.skelstar.dotwatcher.network.CrewCodePreview
 import nz.skelstar.dotwatcher.network.CrewMember
 import nz.skelstar.dotwatcher.network.CrewOverview
 import nz.skelstar.dotwatcher.network.DotWatcherApi
+import nz.skelstar.dotwatcher.network.JoinNearbyRequest
 import nz.skelstar.dotwatcher.network.JoinSessionRequest
+import nz.skelstar.dotwatcher.network.NearbyStatus
+import nz.skelstar.dotwatcher.network.UpdateNearbyRequest
+import nz.skelstar.dotwatcher.location.Fix
+import nz.skelstar.dotwatcher.nearby.NearbyCreate
 import nz.skelstar.dotwatcher.network.LocationPostResponse
 import nz.skelstar.dotwatcher.network.LocationUpdate
 import nz.skelstar.dotwatcher.network.LoginRequest
@@ -33,10 +40,19 @@ import retrofit2.Response
 class DotWatcherRepository(
     private val api: DotWatcherApi,
     private val tokenStore: AuthTokenStore,
+    // Null where nothing shows the palette (the tracking service).
+    private val paletteStore: PaletteStore? = null,
 ) {
     /** Who is signed in, for the account sheet. */
     val username: String? get() = tokenStore.username
     val displayName: String? get() = tokenStore.displayName
+
+    /** Changes the initials this phone sends when creating or joining a session, as iOS does: it is not
+     *  an account change, so the server's own copy (crew and casual dots) is untouched, and the next
+     *  sign-in puts the account's initials back. */
+    fun setDisplayName(initials: String) {
+        tokenStore.displayName = initials
+    }
 
     suspend fun register(username: String, password: String, displayName: String): Response<Unit> {
         val response = api.register(RegisterRequest(username, password, displayName))
@@ -45,6 +61,7 @@ class DotWatcherRepository(
             tokenStore.userId = auth.user.userId
             tokenStore.displayName = auth.user.displayName
             tokenStore.username = auth.user.username
+            paletteStore?.save(auth.user.config)
         }
         return stripBody(response)
     }
@@ -56,8 +73,15 @@ class DotWatcherRepository(
             tokenStore.userId = auth.user.userId
             tokenStore.displayName = auth.user.displayName
             tokenStore.username = auth.user.username
+            paletteStore?.save(auth.user.config)
         }
         return stripBody(response)
+    }
+
+    /** Fetches the account and saves its palette for the next launch. A failed request changes nothing. */
+    suspend fun refreshPalette() {
+        val response = api.getMe(bearer(requireToken()))
+        response.body()?.let { paletteStore?.save(it.config) }
     }
 
     suspend fun logout() {
@@ -77,9 +101,22 @@ class DotWatcherRepository(
         return response
     }
 
-    suspend fun createSession(sessionName: String?, displayName: String?): Response<SessionMembership> {
+    suspend fun createSession(
+        sessionName: String?,
+        displayName: String?,
+        nearby: NearbyCreate? = null,
+    ): Response<SessionMembership> {
         val token = requireToken()
-        return api.createSession(bearer(token), CreateSessionRequest(sessionName, displayName))
+        val request = CreateSessionRequest(
+            sessionName = sessionName,
+            displayName = displayName,
+            nearby = nearby?.let { true },
+            nearbyRadiusMeters = nearby?.radiusMeters,
+            latitude = nearby?.fix?.latitude,
+            longitude = nearby?.fix?.longitude,
+            accuracy = nearby?.fix?.accuracyMetres,
+        )
+        return api.createSession(bearer(token), request)
     }
 
     suspend fun joinSession(
@@ -127,6 +164,17 @@ class DotWatcherRepository(
         return api.leaveSession(sessionId, bearer(token))
     }
 
+    // --- Blocking ----------------------------------------------------------------------
+
+    suspend fun getSessionRunners(sessionId: String): Response<List<SessionRunner>> =
+        api.getSessionRunners(sessionId, bearer(requireToken()))
+
+    suspend fun getBlockedUsers(): Response<List<BlockedUser>> = api.getBlockedUsers(bearer(requireToken()))
+
+    suspend fun blockUser(userId: String): Response<Unit> = api.blockUser(userId, bearer(requireToken()))
+
+    suspend fun unblockUser(userId: String): Response<Unit> = api.unblockUser(userId, bearer(requireToken()))
+
     // --- Crew --------------------------------------------------------------------------
 
     suspend fun getCrew(): Response<CrewOverview> = api.getCrew(bearer(requireToken()))
@@ -160,7 +208,30 @@ class DotWatcherRepository(
 
     suspend fun revokeCasualWatchLinks(): Response<Unit> = api.revokeCasualWatchLinks(bearer(requireToken()))
 
-    suspend fun getNearbyEvents(): Response<List<NearbyEvent>> = api.getNearbyEvents(bearer(requireToken()))
+    /** [fix] null asks without a position, which gets the server's placeholder. */
+    suspend fun getNearbyEvents(fix: Fix? = null): Response<List<NearbyEvent>> =
+        api.getNearbyEvents(bearer(requireToken()), fix?.latitude, fix?.longitude, fix?.accuracyMetres)
+
+    suspend fun joinNearbySession(sessionId: String, fix: Fix, displayName: String?): Response<SessionMembership> =
+        api.joinNearbySession(
+            sessionId,
+            bearer(requireToken()),
+            JoinNearbyRequest(fix.latitude, fix.longitude, fix.accuracyMetres, displayName),
+        )
+
+    suspend fun updateNearby(
+        sessionId: String,
+        fix: Fix?,
+        enabled: Boolean? = null,
+        radiusMeters: Int? = null,
+    ): Response<NearbyStatus> =
+        api.updateNearby(
+            sessionId,
+            bearer(requireToken()),
+            UpdateNearbyRequest(fix?.latitude, fix?.longitude, fix?.accuracyMetres, enabled, radiusMeters),
+        )
+
+    suspend fun endSession(sessionId: String): Response<Unit> = api.endSession(sessionId, bearer(requireToken()))
 
     suspend fun getCasualSettings(): Response<CasualSettings> = api.getCasualSettings(bearer(requireToken()))
 

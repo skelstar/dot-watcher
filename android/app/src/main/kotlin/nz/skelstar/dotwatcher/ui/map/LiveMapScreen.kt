@@ -50,6 +50,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -60,14 +61,20 @@ import androidx.lifecycle.repeatOnLifecycle
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import nz.skelstar.dotwatcher.BuildConfig
+import nz.skelstar.dotwatcher.crew.CrewModel
 import nz.skelstar.dotwatcher.data.DotWatcherRepository
 import nz.skelstar.dotwatcher.location.LocationTrackingService
 import nz.skelstar.dotwatcher.location.POST_INTERVAL_SECONDS
 import nz.skelstar.dotwatcher.location.TrackingState
+import nz.skelstar.dotwatcher.nearby.NearbyOrganiser
 import nz.skelstar.dotwatcher.network.RunnerPosition
 import nz.skelstar.dotwatcher.network.SessionMembership
+import nz.skelstar.dotwatcher.network.errorMessageOrStatus
+import nz.skelstar.dotwatcher.network.networkMessage
 import nz.skelstar.dotwatcher.ui.casual.HoldToStopPill
+import nz.skelstar.dotwatcher.ui.nearby.NearbyOrganiserSheet
 import java.time.Duration
 import java.time.Instant
 
@@ -90,10 +97,14 @@ private const val POLL_INTERVAL_MS = 10_000L
 fun LiveMapScreen(
     membership: SessionMembership,
     repository: DotWatcherRepository,
+    crew: CrewModel,
     onLeaveSession: () -> Unit,
+    /** The nearby controls for the organiser of a session made nearby; null for everyone else. */
+    nearbyOrganiser: NearbyOrganiser? = null,
 ) {
     val context = LocalContext.current
     var positions by remember { mutableStateOf<List<RunnerPosition>>(emptyList()) }
+    var showNearby by remember { mutableStateOf(false) }
     var showPeople by remember { mutableStateOf(false) }
     var showInviteCode by remember { mutableStateOf(false) }
     var showExtendSheet by remember { mutableStateOf(false) }
@@ -114,6 +125,43 @@ fun LiveMapScreen(
     }
     val trackingState by LocationTrackingService.state.collectAsState()
     val pausedForBattery = (trackingState as? TrackingState.Tracking)?.pausedForBattery == true
+
+    // Blocking needs user ids, which only the session's runner list has (positions carry names). Loaded
+    // when the people list opens or a block is asked for, so a block made from either is current.
+    var runnerIds by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
+    var blockCandidate by remember { mutableStateOf<String?>(null) }
+    var blockError by remember { mutableStateOf<String?>(null) }
+    val crewState by crew.state.collectAsState()
+    val scope = rememberCoroutineScope()
+    LaunchedEffect(showPeople, blockCandidate) {
+        if (!showPeople && blockCandidate == null) return@LaunchedEffect
+        runCatching { repository.getSessionRunners(membership.sessionId) }
+            .getOrNull()?.takeIf { it.isSuccessful }?.body()?.let { runners ->
+                runnerIds = runners.associate { it.displayName to it.userId }
+            }
+    }
+    fun blockParticipant(name: String) {
+        val userId = runnerIds[name]
+        if (userId == null) {
+            blockError = "Couldn't find that participant. Try opening the list again and blocking again."
+            return
+        }
+        scope.launch {
+            val result = runCatching { repository.blockUser(userId) }
+            val response = result.getOrNull()
+            when {
+                // The server has already ended their membership: drop them from the map without waiting for a poll.
+                response?.isSuccessful == true -> {
+                    positions = positions.filterNot { it.runnerName == name }
+                    runnerIds = runnerIds - name
+                    // The server also ends any crew link with them, so reload rather than show a stale crew.
+                    crew.refresh()
+                }
+                response != null -> blockError = response.errorMessageOrStatus()
+                else -> blockError = result.exceptionOrNull()?.networkMessage() ?: "Network error."
+            }
+        }
+    }
 
     // Sharing ending by itself (the chosen time ran out) ends the session too, as stopping does. Only after
     // sharing has been seen running, since the service takes a moment to start; and not when the runner
@@ -176,7 +224,45 @@ fun LiveMapScreen(
                 follow(name)
             },
             onDismiss = { showPeople = false },
+            onBlock = { name ->
+                showPeople = false
+                blockCandidate = name
+            },
         )
+    }
+
+    blockCandidate?.let { name ->
+        val inCrew = runnerIds[name]?.let { id -> crewState.members.any { it.userId == id } } == true
+        AlertDialog(
+            onDismissRequest = { blockCandidate = null },
+            title = { Text("Block $name?") },
+            text = {
+                Text(
+                    "They'll be removed from this session and won't be able to join any of your sessions again." +
+                        if (inCrew) " They'll also be removed from your crew." else ""
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    blockCandidate = null
+                    blockParticipant(name)
+                }) { Text("Block", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = { TextButton(onClick = { blockCandidate = null }) { Text("Cancel") } },
+        )
+    }
+
+    blockError?.let { message ->
+        AlertDialog(
+            onDismissRequest = { blockError = null },
+            title = { Text("Couldn't block user") },
+            text = { Text(message) },
+            confirmButton = { TextButton(onClick = { blockError = null }) { Text("OK") } },
+        )
+    }
+
+    if (showNearby && nearbyOrganiser != null) {
+        NearbyOrganiserSheet(organiser = nearbyOrganiser, onDismiss = { showNearby = false })
     }
 
     if (showInviteCode) {
@@ -197,6 +283,10 @@ fun LiveMapScreen(
             fitAllTick = fitAllTick,
             sendIntervalSeconds = POST_INTERVAL_SECONDS,
             ownPaused = pausedForBattery,
+            joinRange = nearbyOrganiser
+                ?.takeIf { it.status.nearby }
+                ?.meetingPoint
+                ?.let { JoinRange(it.latitude, it.longitude, nearbyOrganiser.status.radiusMeters) },
             onRunnerTapped = { name ->
                 // Tapping the runner you're following lets go again.
                 followedRunner = if (name == followedRunner) null else name
@@ -239,6 +329,9 @@ fun LiveMapScreen(
             }
             RailButton(RailIcon.Globe, "Open web map") { context.openWebMap(membership) }
             RailButton(RailIcon.Hash, "Invite code") { showInviteCode = true }
+            if (nearbyOrganiser != null) {
+                RailButton(RailIcon.Pin, "Nearby join") { showNearby = true }
+            }
         }
 
         // While paused for battery, the card below carries its own Stop and takes the bottom edge. Nothing
@@ -251,6 +344,7 @@ fun LiveMapScreen(
                 followed = followedRunner,
                 onFollow = follow,
                 onShowAll = { showPeople = true },
+                onBlock = { blockCandidate = it },
                 modifier = Modifier
                     .align(Alignment.BottomStart)
                     .navigationBarsPadding()
@@ -373,8 +467,13 @@ internal enum class RailIcon(val paths: List<String>) {
     Fit(listOf("M4 9V5a1 1 0 0 1 1-1h4M15 4h4a1 1 0 0 1 1 1v4M20 15v4a1 1 0 0 1-1 1h-4M9 20H5a1 1 0 0 1-1-1v-4")),
     Globe(listOf("M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18M3 12h18M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18")),
     Hash(listOf("M5 9h14M5 15h14M10 4L8 20M16 4l-2 16")),
+    Pin(listOf("M12 21s-6-5.2-6-10a6 6 0 0 1 12 0c0 4.8-6 10-6 10zM12 8.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5")),
     More(listOf("M5 12h.01M12 12h.01M19 12h.01")),
     Eye(listOf("M2 12s3.6-6.5 10-6.5S22 12 22 12s-3.6 6.5-10 6.5S2 12 2 12zM12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6")),
+    Settings(listOf(
+        "M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z",
+        "M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z",
+    )),
     Battery(listOf("M4 7h13a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2zM22 11v2M6 10v4")),
 }
 

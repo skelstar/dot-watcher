@@ -70,7 +70,7 @@ public class LocationsController(
         try
         {
             var account = store.GetCasualAccount(user.UserId);
-            if (!account.VisibleToNonCrew || !features.ForGranted(account.GrantedFeatures).Contains(Features.Casual))
+            if (!account.VisibleToNonCrew || !features.IsOn(Features.Casual))
                 return;
 
             store.AddCasualPosition(
@@ -88,11 +88,10 @@ public class LocationsController(
 
     private IActionResult AddCasualLocation(LocationUpdate update, AuthenticatedUser user)
     {
-        var account = store.GetCasualAccount(user.UserId);
-        var enabled = features.ForGranted(account.GrantedFeatures);
-        if (!enabled.Contains(Features.Casual))
+        if (!features.IsOn(Features.Casual))
             return StatusCode(StatusCodes.Status403Forbidden);
 
+        var account = store.GetCasualAccount(user.UserId);
         var storedUpdate = update with
         {
             RunnerName = user.DisplayName,
@@ -114,7 +113,7 @@ public class LocationsController(
         return Ok(store.GetCasualLive(
             user.UserId,
             account.VisibleToNonCrew,
-            enabled.Contains(Features.Crew),
+            features.IsOn(Features.Crew),
             result.Self,
             now));
     }

@@ -36,21 +36,29 @@ import org.maplibre.android.maps.MapView
 import org.maplibre.android.maps.Style
 import org.maplibre.android.style.expressions.Expression.get
 import org.maplibre.android.style.layers.CircleLayer
+import org.maplibre.android.style.layers.FillLayer
+import org.maplibre.android.style.layers.LineLayer
 import org.maplibre.android.style.layers.PropertyFactory.circleOpacity
 import org.maplibre.android.style.layers.PropertyFactory.circleRadius
 import org.maplibre.android.style.layers.PropertyFactory.circleStrokeColor
 import org.maplibre.android.style.layers.PropertyFactory.circleStrokeWidth
+import org.maplibre.android.style.layers.PropertyFactory.fillColor
+import org.maplibre.android.style.layers.PropertyFactory.fillOpacity
 import org.maplibre.android.style.layers.PropertyFactory.iconAllowOverlap
 import org.maplibre.android.style.layers.PropertyFactory.iconIgnorePlacement
 import org.maplibre.android.style.layers.PropertyFactory.iconImage
 import org.maplibre.android.style.layers.PropertyFactory.iconRotate
 import org.maplibre.android.style.layers.PropertyFactory.iconRotationAlignment
 import org.maplibre.android.style.layers.PropertyFactory.iconSize
+import org.maplibre.android.style.layers.PropertyFactory.lineColor
+import org.maplibre.android.style.layers.PropertyFactory.lineDasharray
+import org.maplibre.android.style.layers.PropertyFactory.lineWidth
 import org.maplibre.android.style.layers.SymbolLayer
 import org.maplibre.android.style.sources.GeoJsonSource
 import org.maplibre.geojson.Feature
 import org.maplibre.geojson.FeatureCollection
 import org.maplibre.geojson.Point
+import org.maplibre.geojson.Polygon
 import java.time.Duration
 import java.time.Instant
 import kotlin.math.abs
@@ -69,6 +77,9 @@ private const val ICON_PROPERTY = "icon"
 
 private const val NEARBY_SOURCE_ID = "nearby-source"
 private const val NEARBY_LAYER_ID = "nearby-layer"
+private const val JOIN_RANGE_SOURCE_ID = "join-range-source"
+private const val JOIN_RANGE_FILL_LAYER_ID = "join-range-fill-layer"
+private const val JOIN_RANGE_LINE_LAYER_ID = "join-range-line-layer"
 private const val NEARBY_IMAGE = "nearby-dot"
 private const val NEARBY_LOCKED_IMAGE = "nearby-dot-locked"
 
@@ -113,6 +124,8 @@ fun MapScreen(
     nearby: List<NearbyDot> = emptyList(),
     /** Casual only: runners (by name) who are in a named session rather than out casually. */
     lockedRunners: Set<String> = emptySet(),
+    /** The organiser of a nearby session: the range around the join location, drawn as a dotted ring. */
+    joinRange: JoinRange? = null,
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -229,6 +242,22 @@ fun MapScreen(
                                     iconIgnorePlacement(true),
                                 )
                             )
+                            loadedStyle.addSource(GeoJsonSource(JOIN_RANGE_SOURCE_ID))
+                            loadedStyle.addLayerBelow(
+                                FillLayer(JOIN_RANGE_FILL_LAYER_ID, JOIN_RANGE_SOURCE_ID).withProperties(
+                                    fillColor("#000000"),
+                                    fillOpacity(0.04f),
+                                ),
+                                NEARBY_LAYER_ID,
+                            )
+                            loadedStyle.addLayerBelow(
+                                LineLayer(JOIN_RANGE_LINE_LAYER_ID, JOIN_RANGE_SOURCE_ID).withProperties(
+                                    lineColor("#000000"),
+                                    lineWidth(1f),
+                                    lineDasharray(arrayOf(5f, 5f)),
+                                ),
+                                NEARBY_LAYER_ID,
+                            )
                             loadedStyle.addSource(GeoJsonSource(RUNNERS_SOURCE_ID))
                             loadedStyle.addLayer(
                                 SymbolLayer(RUNNERS_LAYER_ID, RUNNERS_SOURCE_ID).withProperties(
@@ -270,6 +299,12 @@ fun MapScreen(
                 }
                 source.setGeoJson(positions.toPinFeatures(specs))
                 currentStyle.getSourceAs<GeoJsonSource>(NEARBY_SOURCE_ID)?.setGeoJson(nearby.toNearbyFeatures())
+                val joinRangeSource = currentStyle.getSourceAs<GeoJsonSource>(JOIN_RANGE_SOURCE_ID)
+                if (joinRange != null) {
+                    joinRangeSource?.setGeoJson(Feature.fromGeometry(joinRange.toPolygon()))
+                } else {
+                    joinRangeSource?.setGeoJson(FeatureCollection.fromFeatures(emptyList<Feature>()))
+                }
                 currentStyle.getSourceAs<GeoJsonSource>(CHEVRONS_SOURCE_ID)
                     ?.setGeoJson(positions.toChevronFeatures(specs))
 
@@ -295,6 +330,23 @@ fun MapScreen(
             )
         }
     }
+}
+
+/** A nearby session's range: [radiusMeters] around the join location. */
+data class JoinRange(val latitude: Double, val longitude: Double, val radiusMeters: Int)
+
+private const val JOIN_RANGE_POINTS = 72
+private const val METRES_PER_DEGREE_LATITUDE = 111_320.0
+
+/** The range as a polygon of [JOIN_RANGE_POINTS] points (flat-earth is plenty at 500 m). */
+private fun JoinRange.toPolygon(): Polygon {
+    val dLat = radiusMeters / METRES_PER_DEGREE_LATITUDE
+    val dLon = dLat / kotlin.math.cos(Math.toRadians(latitude))
+    val ring = (0..JOIN_RANGE_POINTS).map { i ->
+        val angle = 2 * Math.PI * (i % JOIN_RANGE_POINTS) / JOIN_RANGE_POINTS
+        Point.fromLngLat(longitude + dLon * kotlin.math.cos(angle), latitude + dLat * kotlin.math.sin(angle))
+    }
+    return Polygon.fromLngLats(listOf(ring))
 }
 
 /** Mutable camera bookkeeping shared between the effect that aims the camera and the listeners that

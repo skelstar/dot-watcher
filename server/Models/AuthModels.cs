@@ -6,11 +6,18 @@ public record AuthenticatedUser(
     string DisplayName,
     // What this account can use (e.g. "crew"). Filled in for login, register and GET /me; null when
     // the user was read from a bearer token, which doesn't carry it.
-    IReadOnlyList<string>? Features = null
+    IReadOnlyList<string>? Features = null,
+    // Server-driven settings (e.g. the palette). Same fill rule as Features; omitted from the JSON when null.
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    UserConfig? Config = null
 );
 
 /// <summary>Admin/ops: replaces the features granted to an account.</summary>
 public record SetFeaturesRequest(IReadOnlyList<string>? Features);
+
+public record SetFeatureSwitchRequest(bool? Enabled);
+
+public record FeatureSwitch(string Feature, bool Enabled);
 
 public record UserAccount(
     string Id,
@@ -51,7 +58,29 @@ public record ValidatedUserToken(
 public record CreateSessionRequest(
     string? SessionName = null,
     string? DisplayName = null,
-    int? MaxLengthHours = null
+    int? MaxLengthHours = null,
+    bool? Nearby = null,
+    int? NearbyRadiusMeters = null,
+    double? Latitude = null,
+    double? Longitude = null,
+    double? Accuracy = null
+);
+
+/// <summary>The organiser's Ping: a fresh fix sets the meeting point; Enabled/RadiusMeters change the nearby setting.</summary>
+public record UpdateNearbyRequest(
+    double? Latitude = null,
+    double? Longitude = null,
+    double? Accuracy = null,
+    bool? Enabled = null,
+    int? RadiusMeters = null
+);
+
+/// <summary>Joining a nearby session: the joiner's current fix, which the server checks against the radius.</summary>
+public record JoinNearbyRequest(
+    double? Latitude = null,
+    double? Longitude = null,
+    double? Accuracy = null,
+    string? DisplayName = null
 );
 
 /// <summary>Admin/ops: creates a session owned by an existing account, for callers (e.g. the admin

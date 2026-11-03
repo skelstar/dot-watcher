@@ -20,6 +20,12 @@ struct ContentView: View {
     @State private var showCreateSession: Bool = false
     @State private var noSessionCreateCode = ""
     @State private var noSessionCreateLengthHours = CreateSessionView.defaultLengthHours
+    @State private var noSessionNearbyDraft = NearbyCreateDraft()
+    /// A nearby run the person tapped, showing its join sheet; nil when none is up.
+    @State private var nearbyCandidate: NearbyEvent?
+    /// The id of the session that stopped a new one being created (409), while the person decides
+    /// whether to end it; nil when no prompt is up.
+    @State private var activeSessionConflict: String?
     @State private var noSessionInviteCode = ""
     @State private var showJoinSheet = false
     /// Invite code from a tapped `/join/{CODE}` link (see `InviteLink`), held until it's been prefilled
@@ -43,6 +49,7 @@ struct ContentView: View {
             .modifier(EventsHost(events: events, location: location))
             .modifier(SessionMapCover(
                 location: location,
+                crew: crew,
                 casualMapPresented: casual.isMapPresented,
                 showShareConsent: $showShareConsent
             ))
@@ -59,6 +66,7 @@ struct ContentView: View {
                         await location.loadSessions()
                         await leaveStaleSessions()
                     }
+                    fetchPalette()
                 } else {
                     showAuth = true
                 }
@@ -69,6 +77,9 @@ struct ContentView: View {
             .onChange(of: scenePhase) { _, newPhase in
                 if newPhase == .active {
                     location.startConnectivityPolling()
+                    // Use the palette the last fetch saved, then fetch the server's and fade it in if it changed.
+                    PaletteStore.apply()
+                    fetchPalette()
                 } else {
                     location.stopConnectivityPolling()
                 }
@@ -92,12 +103,16 @@ struct ContentView: View {
                 CreateSessionView(
                     sessionCode: $noSessionCreateCode,
                     maxLengthHours: $noSessionCreateLengthHours,
+                    nearby: $noSessionNearbyDraft,
+                    nearbyAvailable: events.isAvailable,
+                    locationState: location.nearbyLocationState,
+                    onAllowLocation: { location.requestWhenInUseAuthorizationIfNeeded() },
                     isBusy: isBusy,
                     isOffline: location.isOffline
                 ) {
                     Task { await noSessionCreateSession() }
                 }
-                .presentationDetents([.height(560)])
+                .presentationDetents(events.isAvailable ? [.large] : [.height(560)])
                 .preferredColorScheme(location.appearanceMode.colorScheme)
             }
             .sheet(isPresented: $showJoinSheet) {
@@ -211,6 +226,9 @@ struct ContentView: View {
             }
             noSessionSigns
         }
+        .background {
+            if let screen = AppliedPalette.shared.colors?.screen { screen.ignoresSafeArea() }
+        }
     }
 
     private var noSessionSigns: some View {
@@ -221,9 +239,21 @@ struct ContentView: View {
                     subtitle: "Hold to start"
                 ) { casual.isBeforeYouGoPresented = true }
             }
-            // Only when the server has events for this account (the "events" feature).
-            if let event = events.events.first {
+            // Only when the server has events for this account (the "events" feature): the runs people
+            // nearby can join, or the placeholder while there's no position to look near.
+            ForEach(events.joinable) { event in
+                EventSignButton(eyebrow: event.eyebrow, title: event.title, subtitle: event.subtitle) {
+                    nearbyCandidate = event
+                }
+            }
+            if events.joinable.isEmpty, let event = events.events.first {
                 EventSignButton(eyebrow: event.eyebrow, title: event.title, subtitle: event.subtitle) {}
+            }
+            if events.isAvailable, location.nearbyLocationState == .needsPermission {
+                EventSignButton(
+                    eyebrow: "Nearby", title: "Find runs near you",
+                    subtitle: "Allow location to see who is starting close by"
+                ) { location.requestWhenInUseAuthorizationIfNeeded() }
             }
             SignButton(title: "Join", subtitle: "Enter an invite code") {
                 showJoinSheet = true
@@ -237,6 +267,23 @@ struct ContentView: View {
         .padding(.horizontal)
         .padding(.top, 8)
         .padding(.bottom)
+        .sheet(item: $nearbyCandidate) { event in
+            NearbyJoinSheet(event: event, location: location) { offerSharingAfterJoin() }
+                .presentationDetents([.medium, .large])
+                .preferredColorScheme(location.appearanceMode.colorScheme)
+        }
+        .alert(
+            "You already have an active session",
+            isPresented: Binding(get: { activeSessionConflict != nil }, set: { if !$0 { activeSessionConflict = nil } }),
+            presenting: activeSessionConflict
+        ) { sessionId in
+            Button("End it and create this one", role: .destructive) {
+                Task { await endActiveSessionThenCreate(sessionId) }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: { _ in
+            Text("Only one session can run at a time. Ending it removes everyone from it. Its replay stays available.")
+        }
     }
 
     private var offlineBanner: some View {
@@ -246,6 +293,15 @@ struct ContentView: View {
             .frame(maxWidth: .infinity)
             .padding(.vertical, 10)
             .background(Color.red)
+    }
+
+    /// Fetches the server's start-screen palette and applies it as soon as it arrives, fading the colours in.
+    /// Applying an unchanged palette redraws nothing visible.
+    private func fetchPalette() {
+        Task { @MainActor in
+            await location.refreshPalette()
+            withAnimation(.easeInOut(duration: 0.6)) { PaletteStore.apply() }
+        }
     }
 
     // MARK: - Header
@@ -261,11 +317,12 @@ struct ContentView: View {
                             nameInput = location.runnerName
                             showNameEntry = true
                         } label: {
+                            // With a server palette the dot is the Go colour and the initials the sign background.
                             Text(location.runnerName.uppercased())
                                 .font(.callout.bold())
-                                .foregroundStyle(.white)
+                                .foregroundStyle(AppliedPalette.shared.colors?.altBg ?? .white)
                                 .frame(width: 38, height: 38)
-                                .background(Circle().fill(RunnerColorPalette.currentUser))
+                                .background(Circle().fill(AppliedPalette.shared.colors?.goBg ?? RunnerColorPalette.currentUser))
                         }
                         .buttonStyle(.plain)
                         .accessibilityLabel("Edit your name")
@@ -287,32 +344,24 @@ struct ContentView: View {
                 }
             }
             Spacer()
-            if location.isAuthenticated {
-                Menu {
-                    Button {
-                        nameInput = location.runnerName
-                        showNameEntry = true
-                    } label: {
-                        Label("Edit name", systemImage: "pencil")
-                    }
+            HStack(spacing: 16) {
+                // Settings, as on Android. Editing the name stays on the initials dot in the wordmark.
+                if location.isAuthenticated {
                     Button { showAuth = true } label: {
-                        Label(location.isAuthenticated ? "Settings" : "Account", systemImage: location.isAuthenticated ? "gearshape" : "person.crop.circle")
+                        Image(systemName: "person.circle.fill")
+                            .font(.title)
+                            .foregroundStyle(.primary)
                     }
-                    Button { showHelp = true } label: {
-                        Label("Help", systemImage: "questionmark.circle")
-                    }
-                } label: {
-                    Image(systemName: "ellipsis.circle")
-                        .font(.title)
-                        .foregroundStyle(.primary)
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Settings")
                 }
-            } else {
                 Button { showHelp = true } label: {
                     Image(systemName: "questionmark.circle")
                         .font(.title)
                         .foregroundStyle(.primary)
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("Help")
             }
         }
     }
@@ -352,18 +401,48 @@ struct ContentView: View {
     private func noSessionCreateSession() async {
         isBusy = true
         formError = nil
+        defer { isBusy = false }
+
+        var name = noSessionCreateCode
+        var nearbySettings: NearbyJoinSettings?
+        if events.isAvailable, noSessionNearbyDraft.isOn {
+            guard let fix = await location.currentFix(), isUsableNearbyFix(fix) else {
+                formError = "Couldn't get an accurate location, so the run can't be shown nearby. Try again with a clear view of the sky."
+                return
+            }
+            name = noSessionNearbyDraft.trimmedTitle
+            nearbySettings = NearbyJoinSettings(radiusMeters: noSessionNearbyDraft.radiusMeters, fix: fix)
+        }
+
         do {
             try await location.createSession(
-                name: noSessionCreateCode,
+                name: name,
                 displayName: location.runnerName,
-                maxLengthHours: noSessionCreateLengthHours)
+                maxLengthHours: noSessionCreateLengthHours,
+                nearby: nearbySettings)
             noSessionCreateCode = ""
             noSessionCreateLengthHours = CreateSessionView.defaultLengthHours
+            noSessionNearbyDraft = NearbyCreateDraft()
             offerSharingAfterJoin()
+        } catch DotWatcherAPIError.activeSessionExists(let sessionId, _) {
+            // The sheet's entries are kept, so ending the old session can carry straight on.
+            activeSessionConflict = sessionId
         } catch {
             formError = error.localizedDescription
         }
-        isBusy = false
+    }
+
+    /// The person chose to end the session that was in the way, then create the new one with what they entered.
+    private func endActiveSessionThenCreate(_ sessionId: String) async {
+        isBusy = true
+        do {
+            try await location.endSession(sessionId: sessionId)
+        } catch {
+            formError = error.localizedDescription
+            isBusy = false
+            return
+        }
+        await noSessionCreateSession()
     }
 
     private func noSessionJoinSession() async {

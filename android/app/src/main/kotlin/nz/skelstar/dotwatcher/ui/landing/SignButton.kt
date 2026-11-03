@@ -40,7 +40,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import nz.skelstar.dotwatcher.ui.casual.holdToComplete
 import nz.skelstar.dotwatcher.ui.theme.SignFontFamily
-import nz.skelstar.dotwatcher.ui.theme.SignPalette
+import nz.skelstar.dotwatcher.ui.theme.animatedSignColors
 
 private val BarHeight = 12.dp
 private val FrameWidth = 2.dp
@@ -48,7 +48,7 @@ private val FrameWidth = 2.dp
 /**
  * A full-width rectangular "sign" button for the start screen: title and a smaller line under it on
  * the left, an arrow on the right. [SignButton] is the cream one (Join, Create);
- * [HoldSignButton] is the berry Go sign.
+ * [HoldSignButton] is the navy Go sign.
  */
 @Composable
 fun SignButton(
@@ -58,23 +58,24 @@ fun SignButton(
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
 ) {
+    val colors = animatedSignColors()
     SignContent(
         title = title,
         subtitle = subtitle,
         titleSize = 26,
         arrowSize = 30.dp,
-        ink = SignPalette.Berry,
+        ink = colors.altFg,
         modifier = modifier
             .fillMaxWidth()
-            .background(SignPalette.Cream)
-            .border(FrameWidth, SignPalette.Berry, RectangleShape)
+            .background(colors.altBg)
+            .border(FrameWidth, colors.altFg, RectangleShape)
             .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
             .padding(horizontal = 16.dp, vertical = 14.dp),
     )
 }
 
 /**
- * The Go sign, about 2.2x the height of [SignButton] with a honey bar across the top. Held rather
+ * The Go sign, about 2.2x the height of [SignButton] with a sand bar across the top. Held rather
  * than tapped, as the round Go button was: a lighter fill sweeps across while it is pressed and
  * [onComplete] runs when full, so a pocket can't start tracking. TalkBack gets a long-press action.
  */
@@ -88,6 +89,7 @@ fun HoldSignButton(
     val progress = remember { Animatable(0f) }
     val scope = rememberCoroutineScope()
     val haptic = LocalHapticFeedback.current
+    val colors = animatedSignColors()
 
     Column(
         modifier = modifier
@@ -97,20 +99,20 @@ fun HoldSignButton(
                 onLongClick(label = "Start tracking") { onComplete(); true }
             },
     ) {
-        Box(Modifier.fillMaxWidth().height(BarHeight * 1.5f).background(SignPalette.Honey))
+        Box(Modifier.fillMaxWidth().height(BarHeight * 1.5f).background(colors.goBar))
         SignContent(
             title = title,
             subtitle = subtitle,
             titleSize = 44,
             arrowSize = 36.dp,
-            ink = SignPalette.Honey,
+            ink = colors.goFg,
             modifier = Modifier
                 .fillMaxWidth()
                 .heightIn(min = 162.dp)
-                .background(SignPalette.Berry)
+                .background(colors.goBg)
                 .drawBehind {
                     drawRect(
-                        SignPalette.Honey.copy(alpha = 0.28f),
+                        colors.goFg.copy(alpha = 0.28f),
                         size = Size(size.width * progress.value, size.height),
                     )
                 }
@@ -124,8 +126,8 @@ fun HoldSignButton(
 }
 
 /**
- * A public event happening near the runner, shown under Go in amber with plum text and a plum bar so it
- * stands out from both the berry Go and the cream signs. No frame: it would make the sign look inset. [eyebrow] is the small caps line above the title
+ * A public event happening near the runner, shown under Go in orange with ink text and a ink bar so it
+ * stands out from both the navy Go and the cream signs. No frame: it would make the sign look inset. [eyebrow] is the small caps line above the title
  * ("Happening near you . 2.3 km").
  */
 @Composable
@@ -136,19 +138,20 @@ fun EventSignButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val colors = animatedSignColors()
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .background(SignPalette.Amber)
+            .background(colors.accent)
             .clickable(role = Role.Button, onClick = onClick),
     ) {
-        Box(Modifier.fillMaxWidth().height(BarHeight).background(SignPalette.Plum))
+        Box(Modifier.fillMaxWidth().height(BarHeight).background(colors.accentInk))
         SignContent(
             title = title,
             subtitle = subtitle,
             titleSize = 28,
             arrowSize = 30.dp,
-            ink = SignPalette.Plum,
+            ink = colors.accentInk,
             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
             eyebrow = eyebrow,
         )
