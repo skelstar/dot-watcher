@@ -82,13 +82,14 @@ struct SignButton: View {
     let action: () -> Void
 
     var body: some View {
+        let colors = SignColors.current
         Button(action: action) {
-            SignContent(title: title, subtitle: subtitle, titleSize: 26, arrowSize: 24, ink: SignPalette.navy)
+            SignContent(title: title, subtitle: subtitle, titleSize: 26, arrowSize: 24, ink: colors.altFg)
                 .padding(.horizontal, 16)
                 .padding(.vertical, 14)
                 .frame(maxWidth: .infinity)
-                .background(SignPalette.cream)
-                .overlay(Rectangle().strokeBorder(SignPalette.navy, lineWidth: signFrameWidth))
+                .background(colors.altBg)
+                .overlay(Rectangle().strokeBorder(colors.altFg, lineWidth: signFrameWidth))
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -108,19 +109,20 @@ struct HoldSignButton: View {
     @State private var progress: CGFloat = 0
 
     var body: some View {
+        let colors = SignColors.current
         VStack(spacing: 0) {
-            SignPalette.sand.frame(height: signBarHeight * 1.5)
+            colors.goBar.frame(height: signBarHeight * 1.5)
             SignContent(
                 title: title, subtitle: subtitle, titleSize: 44, arrowSize: 30,
-                ink: SignPalette.sand, alignBottom: true
+                ink: colors.goFg, alignBottom: true
             )
             .padding(.horizontal, 20)
             .padding(.vertical, 18)
             .frame(maxWidth: .infinity, minHeight: 162, alignment: .bottomLeading)
-            .background(SignPalette.navy)
+            .background(colors.goBg)
             .overlay(alignment: .leading) {
                 GeometryReader { proxy in
-                    SignPalette.sand.opacity(0.28)
+                    colors.goFg.opacity(0.28)
                         .frame(width: proxy.size.width * progress)
                 }
             }
@@ -143,18 +145,19 @@ struct EventSignButton: View {
     let action: () -> Void
 
     var body: some View {
+        let colors = SignColors.current
         Button(action: action) {
             VStack(spacing: 0) {
-                SignPalette.ink.frame(height: signBarHeight)
+                colors.accentInk.frame(height: signBarHeight)
                 SignContent(
                     eyebrow: eyebrow, title: title, subtitle: subtitle, titleSize: 28, arrowSize: 24,
-                    ink: SignPalette.ink
+                    ink: colors.accentInk
                 )
                 .padding(.horizontal, 16)
                 .padding(.vertical, 12)
                 .frame(maxWidth: .infinity)
             }
-            .background(SignPalette.orange)
+            .background(colors.accent)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)

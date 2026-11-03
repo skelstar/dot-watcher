@@ -66,6 +66,7 @@ struct ContentView: View {
                         await location.loadSessions()
                         await leaveStaleSessions()
                     }
+                    fetchPalette()
                 } else {
                     showAuth = true
                 }
@@ -76,6 +77,9 @@ struct ContentView: View {
             .onChange(of: scenePhase) { _, newPhase in
                 if newPhase == .active {
                     location.startConnectivityPolling()
+                    // Use the palette the last fetch saved, then fetch the server's and fade it in if it changed.
+                    PaletteStore.apply()
+                    fetchPalette()
                 } else {
                     location.stopConnectivityPolling()
                 }
@@ -222,6 +226,9 @@ struct ContentView: View {
             }
             noSessionSigns
         }
+        .background {
+            if let screen = AppliedPalette.shared.colors?.screen { screen.ignoresSafeArea() }
+        }
     }
 
     private var noSessionSigns: some View {
@@ -288,6 +295,15 @@ struct ContentView: View {
             .background(Color.red)
     }
 
+    /// Fetches the server's start-screen palette and applies it as soon as it arrives, fading the colours in.
+    /// Applying an unchanged palette redraws nothing visible.
+    private func fetchPalette() {
+        Task { @MainActor in
+            await location.refreshPalette()
+            withAnimation(.easeInOut(duration: 0.6)) { PaletteStore.apply() }
+        }
+    }
+
     // MARK: - Header
 
     private var headerSection: some View {
@@ -301,11 +317,12 @@ struct ContentView: View {
                             nameInput = location.runnerName
                             showNameEntry = true
                         } label: {
+                            // With a server palette the dot is the Go colour and the initials the sign background.
                             Text(location.runnerName.uppercased())
                                 .font(.callout.bold())
-                                .foregroundStyle(.white)
+                                .foregroundStyle(AppliedPalette.shared.colors?.altBg ?? .white)
                                 .frame(width: 38, height: 38)
-                                .background(Circle().fill(RunnerColorPalette.currentUser))
+                                .background(Circle().fill(AppliedPalette.shared.colors?.goBg ?? RunnerColorPalette.currentUser))
                         }
                         .buttonStyle(.plain)
                         .accessibilityLabel("Edit your name")

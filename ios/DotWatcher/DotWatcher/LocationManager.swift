@@ -9,6 +9,26 @@ struct AppUser: Codable {
     let userId: String
     let username: String
     let displayName: String
+    /// Server-driven settings (the start-screen palette). Only read from a response: not saved with the
+    /// signed-in user, since `PaletteStore` keeps the palette.
+    let config: UserConfig?
+
+    private enum CodingKeys: String, CodingKey { case userId, username, displayName, config }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        userId = try c.decode(String.self, forKey: .userId)
+        username = try c.decode(String.self, forKey: .username)
+        displayName = try c.decode(String.self, forKey: .displayName)
+        config = try? c.decodeIfPresent(UserConfig.self, forKey: .config)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(userId, forKey: .userId)
+        try c.encode(username, forKey: .username)
+        try c.encode(displayName, forKey: .displayName)
+    }
 }
 
 enum AppearanceMode: String, CaseIterable, Identifiable {
@@ -393,6 +413,13 @@ final class LocationManager {
             // username or the password was wrong), which the app would otherwise show as a generic error.
             throw DotWatcherAPIError.badResponse(401, "Wrong username or password.")
         }
+    }
+
+    /// Fetches the account and saves its start-screen palette for the next launch. A failed request changes nothing.
+    func refreshPalette() async {
+        guard isAuthenticated else { return }
+        guard let user: AppUser = try? await send(path: "/me") else { return }
+        PaletteStore.save(user.config)
     }
 
     func register(username: String, password: String, displayName: String) async throws {
@@ -1192,6 +1219,7 @@ final class LocationManager {
             UserDefaults.standard.set(data, forKey: "currentUser")
         }
         runnerName = session.user.displayName.uppercased()
+        PaletteStore.save(session.user.config)
         status = "Signed in"
         await loadSessions()
     }
