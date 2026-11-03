@@ -39,7 +39,9 @@ import androidx.lifecycle.repeatOnLifecycle
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import nz.skelstar.dotwatcher.AccountInfo
 import nz.skelstar.dotwatcher.BuildConfig
+import nz.skelstar.dotwatcher.blocks.BlocksModel
 import nz.skelstar.dotwatcher.casual.CasualModel
 import nz.skelstar.dotwatcher.crew.CrewModel
 import nz.skelstar.dotwatcher.data.DotWatcherRepository
@@ -54,6 +56,8 @@ import nz.skelstar.dotwatcher.ui.casual.WatchLinkState
 import nz.skelstar.dotwatcher.ui.casual.WhoCanSeeMeSheet
 import nz.skelstar.dotwatcher.ui.crew.CrewFlow
 import nz.skelstar.dotwatcher.ui.crew.CrewStage
+import nz.skelstar.dotwatcher.ui.session.AccountSheet
+import nz.skelstar.dotwatcher.ui.theme.AppearanceMode
 
 private const val POLL_INTERVAL_MS = 10_000L
 
@@ -69,6 +73,13 @@ fun CasualMapScreen(
     repository: DotWatcherRepository,
     casual: CasualModel,
     crew: CrewModel,
+    account: AccountInfo,
+    onSignOut: () -> Unit,
+    onDeleteAccount: (onError: (String) -> Unit) -> Unit,
+    onSaveInitials: (String) -> Unit,
+    blocks: BlocksModel,
+    appearance: AppearanceMode,
+    onAppearanceChange: (AppearanceMode) -> Unit,
     onStop: () -> Unit,
 ) {
     val context = LocalContext.current
@@ -79,6 +90,7 @@ fun CasualMapScreen(
     var showExtendSheet by remember { mutableStateOf(false) }
     var showWhoCanSeeMe by remember { mutableStateOf(false) }
     var showShare by remember { mutableStateOf(false) }
+    var showSettings by remember { mutableStateOf(false) }
     var crewStage by remember { mutableStateOf(CrewStage.None) }
     val crewState by crew.state.collectAsState()
     // The link made for this run, kept while the screen is up so reopening the sheet doesn't make another.
@@ -151,6 +163,27 @@ fun CasualMapScreen(
     }
 
     CrewFlow(crew = crew, state = crewState, stage = crewStage, onStage = { crewStage = it })
+
+    if (showSettings) {
+        AccountSheet(
+            account = account,
+            onSignOut = {
+                showSettings = false
+                onSignOut()
+            },
+            onDeleteAccount = onDeleteAccount,
+            onSaveInitials = onSaveInitials,
+            blocks = blocks,
+            appearance = appearance,
+            onAppearanceChange = onAppearanceChange,
+            onDismiss = { showSettings = false },
+            showNickname = crewState.isAvailable,
+            nickname = crewState.nickname,
+            nicknameError = crewState.nicknameError,
+            onSaveNickname = { crew.setNickname(it) },
+            onEditNickname = crew::clearNicknameError,
+        )
+    }
 
     tracking?.takeIf { showExtendSheet }?.let { running ->
         ExtendSessionSheet(
@@ -230,6 +263,7 @@ fun CasualMapScreen(
                 fitAllTick++
             }
             RailButton(RailIcon.Eye, "Who can see me") { showWhoCanSeeMe = true }
+            RailButton(RailIcon.Settings, "Settings") { showSettings = true }
         }
 
         // While paused for battery the card below takes the bottom edge with its own Stop.

@@ -8,6 +8,7 @@ import com.jakewharton.retrofit2.converter.kotlinx.serialization.asConverterFact
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
 import nz.skelstar.dotwatcher.BuildConfig
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -53,6 +54,9 @@ data class AuthenticatedUser(
     val userId: String,
     val username: String,
     val displayName: String,
+    // Server-driven settings, e.g. config.palette (see data/RemotePalette.kt). Kept as raw JSON so an
+    // unexpected shape in here can never fail a sign-in; null from a server that does not send it.
+    val config: JsonObject? = null,
 )
 
 @Serializable
@@ -93,6 +97,14 @@ data class SessionMembership(
     /** ISO-8601 UTC time the session was created; null from older servers. */
     val createdAt: String? = null,
 )
+
+/** Someone who has joined a session, whether or not they are sending positions. Blocking needs the id. */
+@Serializable
+data class SessionRunner(val userId: String, val displayName: String)
+
+/** Someone the caller has blocked, account-wide. [blockedAt] is an ISO-8601 UTC time. */
+@Serializable
+data class BlockedUser(val userId: String, val displayName: String, val blockedAt: String)
 
 // --- Crew (server: Controllers/CrewController.cs) -----------------------------------
 // A crew is mutual and tied to the account. Members are added only by redeeming a one-time code the
@@ -328,6 +340,13 @@ interface DotWatcherApi {
         @Header("X-Api-Version") apiVersion: String = API_VERSION,
     ): Response<Unit>
 
+    /** The caller's account, including the server's `config` (the palette). */
+    @GET("me")
+    suspend fun getMe(
+        @Header("Authorization") bearerToken: String,
+        @Header("X-Api-Version") apiVersion: String = API_VERSION,
+    ): Response<AuthenticatedUser>
+
     @POST("auth/logout")
     suspend fun logout(
         @Header("Authorization") bearerToken: String,
@@ -385,6 +404,35 @@ interface DotWatcherApi {
         @Header("Authorization") bearerToken: String,
         @Header("X-Api-Version") apiVersion: String = API_VERSION,
     ): Response<List<List<RunnerPosition>>>
+
+    /** Everyone who has joined the session (not just those sending positions), with their user ids. */
+    @GET("sessions/{sessionId}/runners")
+    suspend fun getSessionRunners(
+        @Path("sessionId") sessionId: String,
+        @Header("Authorization") bearerToken: String,
+        @Header("X-Api-Version") apiVersion: String = API_VERSION,
+    ): Response<List<SessionRunner>>
+
+    @GET("me/blocks")
+    suspend fun getBlockedUsers(
+        @Header("Authorization") bearerToken: String,
+        @Header("X-Api-Version") apiVersion: String = API_VERSION,
+    ): Response<List<BlockedUser>>
+
+    /** Ends any session membership shared with the user and stops them joining the caller's sessions. */
+    @POST("me/blocks/{userId}")
+    suspend fun blockUser(
+        @Path("userId") userId: String,
+        @Header("Authorization") bearerToken: String,
+        @Header("X-Api-Version") apiVersion: String = API_VERSION,
+    ): Response<Unit>
+
+    @DELETE("me/blocks/{userId}")
+    suspend fun unblockUser(
+        @Path("userId") userId: String,
+        @Header("Authorization") bearerToken: String,
+        @Header("X-Api-Version") apiVersion: String = API_VERSION,
+    ): Response<Unit>
 
     @GET("me/crew")
     suspend fun getCrew(

@@ -40,7 +40,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import nz.skelstar.dotwatcher.ui.casual.holdToComplete
 import nz.skelstar.dotwatcher.ui.theme.SignFontFamily
-import nz.skelstar.dotwatcher.ui.theme.SignPalette
+import nz.skelstar.dotwatcher.ui.theme.animatedSignColors
 
 private val BarHeight = 12.dp
 private val FrameWidth = 2.dp
@@ -58,16 +58,17 @@ fun SignButton(
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
 ) {
+    val colors = animatedSignColors()
     SignContent(
         title = title,
         subtitle = subtitle,
         titleSize = 26,
         arrowSize = 30.dp,
-        ink = SignPalette.Navy,
+        ink = colors.altFg,
         modifier = modifier
             .fillMaxWidth()
-            .background(SignPalette.Cream)
-            .border(FrameWidth, SignPalette.Navy, RectangleShape)
+            .background(colors.altBg)
+            .border(FrameWidth, colors.altFg, RectangleShape)
             .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
             .padding(horizontal = 16.dp, vertical = 14.dp),
     )
@@ -88,6 +89,7 @@ fun HoldSignButton(
     val progress = remember { Animatable(0f) }
     val scope = rememberCoroutineScope()
     val haptic = LocalHapticFeedback.current
+    val colors = animatedSignColors()
 
     Column(
         modifier = modifier
@@ -97,20 +99,20 @@ fun HoldSignButton(
                 onLongClick(label = "Start tracking") { onComplete(); true }
             },
     ) {
-        Box(Modifier.fillMaxWidth().height(BarHeight * 1.5f).background(SignPalette.Sand))
+        Box(Modifier.fillMaxWidth().height(BarHeight * 1.5f).background(colors.goBar))
         SignContent(
             title = title,
             subtitle = subtitle,
             titleSize = 44,
             arrowSize = 36.dp,
-            ink = SignPalette.Sand,
+            ink = colors.goFg,
             modifier = Modifier
                 .fillMaxWidth()
                 .heightIn(min = 162.dp)
-                .background(SignPalette.Navy)
+                .background(colors.goBg)
                 .drawBehind {
                     drawRect(
-                        SignPalette.Sand.copy(alpha = 0.28f),
+                        colors.goFg.copy(alpha = 0.28f),
                         size = Size(size.width * progress.value, size.height),
                     )
                 }
@@ -136,19 +138,20 @@ fun EventSignButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val colors = animatedSignColors()
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .background(SignPalette.Orange)
+            .background(colors.accent)
             .clickable(role = Role.Button, onClick = onClick),
     ) {
-        Box(Modifier.fillMaxWidth().height(BarHeight).background(SignPalette.Ink))
+        Box(Modifier.fillMaxWidth().height(BarHeight).background(colors.accentInk))
         SignContent(
             title = title,
             subtitle = subtitle,
             titleSize = 28,
             arrowSize = 30.dp,
-            ink = SignPalette.Ink,
+            ink = colors.accentInk,
             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
             eyebrow = eyebrow,
         )

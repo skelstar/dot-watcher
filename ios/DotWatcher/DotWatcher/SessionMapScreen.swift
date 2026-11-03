@@ -6,6 +6,7 @@ import SwiftUI
 /// screen, where the invite code, participants and Leave still live. See `MapChrome.swift`.
 struct SessionMapScreen: View {
     var location: LocationManager
+    var crew: CrewStore
 
     @State private var camera: MapCameraPosition = .userLocation(fallback: .automatic)
     @State private var stopProgress: CGFloat = 0
@@ -21,6 +22,8 @@ struct SessionMapScreen: View {
     @State private var fittedCount = -1
     /// The runner the map stays centred on, picked by tapping their dot; nil frames everyone.
     @State private var followedName: String?
+    /// While set, the map re-frames everyone as positions move; fit-all sets it, dragging the map clears it.
+    @State private var fitLocked = true
     @State private var showNearbySettings = false
     @State private var showEndSession = false
     /// A short confirmation (or error) from the join-location button, cleared after a moment.
@@ -162,7 +165,11 @@ struct SessionMapScreen: View {
                 Button("Cancel", role: .cancel) {}
             }
         } message: {
-            Text("They'll be removed from this session and won't be able to join any of your sessions again.")
+            let inCrew = blockCandidate
+                .flatMap { location.participantUserIds[$0] }
+                .map { id in crew.members.contains { $0.userId == id } } ?? false
+            Text("They'll be removed from this session and won't be able to join any of your sessions again."
+                + (inCrew ? " They'll also be removed from your crew." : ""))
         }
         .alert("Couldn't block user", isPresented: Binding(
             get: { blockError != nil },
@@ -214,7 +221,13 @@ struct SessionMapScreen: View {
                     }
                 }
             }
-            .onChange(of: context.date) { _, _ in followIfNeeded() }
+            .onChange(of: context.date) { _, _ in
+                followIfNeeded()
+                if fitLocked { frameEveryone() }
+            }
+            .onChange(of: camera.positionedByUser) { _, byUser in
+                if byUser { fitLocked = false }
+            }
         }
         // Dims the frozen last-known frame while on satellite: positions stop refreshing, so the map is
         // left as it was rather than hidden.
@@ -225,11 +238,10 @@ struct SessionMapScreen: View {
         }
         .ignoresSafeArea()
         .onChange(of: pins.count) { _, count in
-            // Frame everyone whenever someone arrives or leaves; the fit-all button does it on demand.
-            if count != fittedCount {
-                fittedCount = count
-                fitAll()
-            }
+            // Frame everyone whenever someone arrives (not when they leave); the fit-all button does it on demand.
+            let arrived = count > fittedCount
+            fittedCount = count
+            if arrived { fitAll() }
         }
         .onAppear { fitAll() }
     }
@@ -238,6 +250,7 @@ struct SessionMapScreen: View {
     /// map already has. Frozen on satellite, like the rest of the map.
     private func followIfNeeded() {
         guard !location.isUltraConstrained, let followedName else { return }
+        fitLocked = false
         guard let pin = pins.first(where: { $0.id == followedName }) else {
             self.followedName = nil  // they left, or have no position any more
             return
@@ -250,6 +263,11 @@ struct SessionMapScreen: View {
 
     private func fitAll() {
         followedName = nil
+        fitLocked = true
+        frameEveryone()
+    }
+
+    private func frameEveryone() {
         guard !location.isUltraConstrained else { return }
         let coordinates = pins.map(\.coordinate)
         guard let first = coordinates.first else { return }
@@ -394,6 +412,8 @@ struct SessionMapScreen: View {
         }
         do {
             try await location.blockUser(userId: userId, displayName: name)
+            // The server also ends any crew link with them, so reload rather than show a stale crew.
+            await crew.refresh()
         } catch {
             blockError = error.localizedDescription
         }
@@ -556,6 +576,7 @@ private struct ParticipantsSheet: View {
 /// landing screen too.
 struct SessionMapCover: ViewModifier {
     var location: LocationManager
+    var crew: CrewStore
     var casualMapPresented: Bool
     @Binding var showShareConsent: Bool
 
@@ -565,7 +586,7 @@ struct SessionMapCover: ViewModifier {
                 get: { location.activeMembership != nil && (location.isTracking || showShareConsent) && !casualMapPresented },
                 set: { _ in }
             )) {
-                SessionMapScreen(location: location)
+                SessionMapScreen(location: location, crew: crew)
                     .preferredColorScheme(location.appearanceMode.colorScheme)
                     .sheet(isPresented: $showShareConsent) {
                         if let membership = location.activeMembership {

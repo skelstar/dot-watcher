@@ -42,10 +42,12 @@ import nz.skelstar.dotwatcher.ui.theme.DotWatcherTheme
  */
 @Composable
 fun DotWatcherApp(hasBackgroundLocationPermission: Boolean) {
+    val viewModel: AppViewModel = viewModel()
+    val appearance by viewModel.appearance.collectAsState()
     val isUpdateRequired by UpdateRequiredState.isUpdateRequired.collectAsState()
     if (isUpdateRequired) {
         val context = LocalContext.current
-        DotWatcherTheme {
+        DotWatcherTheme(darkTheme = appearance.isDark()) {
             UpdateRequiredScreen(onOpenPlayStore = {
                 val intent = Intent(
                     Intent.ACTION_VIEW,
@@ -57,7 +59,6 @@ fun DotWatcherApp(hasBackgroundLocationPermission: Boolean) {
         return
     }
 
-    val viewModel: AppViewModel = viewModel()
     val destination by viewModel.destination.collectAsState()
     val authState by viewModel.authState.collectAsState()
     val sessionState by viewModel.sessionState.collectAsState()
@@ -66,7 +67,7 @@ fun DotWatcherApp(hasBackgroundLocationPermission: Boolean) {
     // Holding Go needs "all the time" location, as sharing in a session does.
     var casualNeedsLocationPermission by remember { mutableStateOf(false) }
 
-    DotWatcherTheme {
+    DotWatcherTheme(darkTheme = appearance.isDark()) {
         Surface(modifier = Modifier.fillMaxSize()) {
             when (val current = destination) {
                 Destination.Auth -> AuthScreen(
@@ -103,6 +104,10 @@ fun DotWatcherApp(hasBackgroundLocationPermission: Boolean) {
                     onSignOut = viewModel::signOut,
                     account = viewModel.account,
                     onDeleteAccount = viewModel::deleteAccount,
+                    onSaveInitials = viewModel::setInitials,
+                    blocks = viewModel.blocks,
+                    appearance = appearance,
+                    onAppearanceChange = viewModel::setAppearance,
                     crew = viewModel.crew,
                     casual = viewModel.casual,
                     events = viewModel.events,
@@ -125,6 +130,13 @@ fun DotWatcherApp(hasBackgroundLocationPermission: Boolean) {
                     repository = viewModel.repository,
                     casual = viewModel.casual,
                     crew = viewModel.crew,
+                    account = viewModel.account,
+                    onSignOut = viewModel::signOut,
+                    onDeleteAccount = viewModel::deleteAccount,
+                    onSaveInitials = viewModel::setInitials,
+                    blocks = viewModel.blocks,
+                    appearance = appearance,
+                    onAppearanceChange = viewModel::setAppearance,
                     onStop = viewModel::stopCasual,
                 )
 
@@ -186,6 +198,7 @@ private fun SessionMapDestination(membership: SessionMembership, asking: Boolean
         LiveMapScreen(
             membership = membership,
             repository = viewModel.repository,
+            crew = viewModel.crew,
             onLeaveSession = { viewModel.leaveSession(membership) },
             nearbyOrganiser = nearbyOrganiser,
         )

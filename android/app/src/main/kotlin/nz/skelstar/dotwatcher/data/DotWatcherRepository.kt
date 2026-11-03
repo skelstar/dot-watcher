@@ -1,6 +1,8 @@
 package nz.skelstar.dotwatcher.data
 
+import nz.skelstar.dotwatcher.network.BlockedUser
 import nz.skelstar.dotwatcher.network.CasualLiveResponse
+import nz.skelstar.dotwatcher.network.SessionRunner
 import nz.skelstar.dotwatcher.network.CasualSettings
 import nz.skelstar.dotwatcher.network.CasualWatchLinkResponse
 import nz.skelstar.dotwatcher.network.NearbyEvent
@@ -38,10 +40,19 @@ import retrofit2.Response
 class DotWatcherRepository(
     private val api: DotWatcherApi,
     private val tokenStore: AuthTokenStore,
+    // Null where nothing shows the palette (the tracking service).
+    private val paletteStore: PaletteStore? = null,
 ) {
     /** Who is signed in, for the account sheet. */
     val username: String? get() = tokenStore.username
     val displayName: String? get() = tokenStore.displayName
+
+    /** Changes the initials this phone sends when creating or joining a session, as iOS does: it is not
+     *  an account change, so the server's own copy (crew and casual dots) is untouched, and the next
+     *  sign-in puts the account's initials back. */
+    fun setDisplayName(initials: String) {
+        tokenStore.displayName = initials
+    }
 
     suspend fun register(username: String, password: String, displayName: String): Response<Unit> {
         val response = api.register(RegisterRequest(username, password, displayName))
@@ -50,6 +61,7 @@ class DotWatcherRepository(
             tokenStore.userId = auth.user.userId
             tokenStore.displayName = auth.user.displayName
             tokenStore.username = auth.user.username
+            paletteStore?.save(auth.user.config)
         }
         return stripBody(response)
     }
@@ -61,8 +73,15 @@ class DotWatcherRepository(
             tokenStore.userId = auth.user.userId
             tokenStore.displayName = auth.user.displayName
             tokenStore.username = auth.user.username
+            paletteStore?.save(auth.user.config)
         }
         return stripBody(response)
+    }
+
+    /** Fetches the account and saves its palette for the next launch. A failed request changes nothing. */
+    suspend fun refreshPalette() {
+        val response = api.getMe(bearer(requireToken()))
+        response.body()?.let { paletteStore?.save(it.config) }
     }
 
     suspend fun logout() {
@@ -144,6 +163,17 @@ class DotWatcherRepository(
         val token = requireToken()
         return api.leaveSession(sessionId, bearer(token))
     }
+
+    // --- Blocking ----------------------------------------------------------------------
+
+    suspend fun getSessionRunners(sessionId: String): Response<List<SessionRunner>> =
+        api.getSessionRunners(sessionId, bearer(requireToken()))
+
+    suspend fun getBlockedUsers(): Response<List<BlockedUser>> = api.getBlockedUsers(bearer(requireToken()))
+
+    suspend fun blockUser(userId: String): Response<Unit> = api.blockUser(userId, bearer(requireToken()))
+
+    suspend fun unblockUser(userId: String): Response<Unit> = api.unblockUser(userId, bearer(requireToken()))
 
     // --- Crew --------------------------------------------------------------------------
 

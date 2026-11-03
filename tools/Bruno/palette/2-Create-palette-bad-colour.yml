@@ -1,0 +1,44 @@
+info:
+  name: 2 Create palette (bad colour)
+  type: http
+  seq: 2
+
+http:
+  method: POST
+  url: "{{baseUrl}}/admin/palettes"
+  body:
+    type: json
+    data: |-
+      {
+        "version": 1,
+        "name": "Poor",
+        "goBg": "#6f1a07",
+        "goFg": "red",
+        "goBar": "#af9164",
+        "altBg": "#f7f3e3",
+        "altFg": "#2b2118",
+        "accent": "#af9164",
+        "accentInk": "#2b2118",
+        "screen": "#ffffff"
+      }
+  auth:
+    type: bearer
+    token: "{{adminToken}}"
+
+runtime:
+  assertions:
+    - expression: res.status
+      operator: eq
+      value: "400"
+    - expression: res.body.error
+      operator: contains
+      value: colour
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true
+
+docs: GoFg is not a #rrggbb colour, so the server rejects it (400). Contrast is not checked.

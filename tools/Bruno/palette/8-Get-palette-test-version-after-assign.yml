@@ -1,0 +1,35 @@
+info:
+  name: 8 Get palette (test version, after assign)
+  type: http
+  seq: 8
+
+http:
+  method: GET
+  url: "{{baseUrl}}/me"
+  headers:
+    - name: X-App-Version
+      value: "{{testAppVersion}} (1)"
+  auth:
+    type: bearer
+    token: "{{accessToken}}"
+
+runtime:
+  assertions:
+    - expression: res.status
+      operator: eq
+      value: "200"
+    - expression: res.body.config.palette.name
+      operator: eq
+      value: Bruno test palette
+    - expression: res.body.config.palette.label
+      operator: eq
+      value: bruno-1
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+  forwardAuthorizationHeader: true
+
+docs: A phone on the test version now gets it.

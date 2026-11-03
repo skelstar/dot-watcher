@@ -318,10 +318,13 @@ struct CasualMapScreen: View {
 
     @Environment(\.scenePhase) private var scenePhase
     @State private var camera: MapCameraPosition = .automatic
+    /// While set, the map re-frames everyone as positions move; fit-all sets it, dragging the map clears it.
+    @State private var fitLocked = true
     @State private var stopProgress: CGFloat = 0
     @State private var showExtend = false
     @State private var showWhoCanSeeMe = false
     @State private var showShare = false
+    @State private var showSettings = false
     @State private var fittedCount = -1
 
     private static let pollInterval: Duration = .seconds(10)
@@ -419,6 +422,15 @@ struct CasualMapScreen: View {
             ShareRunSheet(casual: casual)
                 .presentationDetents([.large])
         }
+        .sheet(isPresented: $showSettings) {
+            AuthSheet(location: location, crew: crew)
+                .preferredColorScheme(location.appearanceMode.colorScheme)
+        }
+        // Signing out from the settings sheet hands over to the sign-in cover on `ContentView`; this
+        // sheet must not still be up when it presents.
+        .onChange(of: location.isAuthenticated) { _, isAuthenticated in
+            if !isAuthenticated { showSettings = false }
+        }
         // The crew sheet lives here, not on `ContentView`, because the map is a full-screen cover. A
         // crew link opened during a run lands here too (`CrewStore` sets the same flag).
         .sheet(isPresented: $crew.isFlowPresented) {
@@ -455,19 +467,29 @@ struct CasualMapScreen: View {
                     }
                 }
             }
+            .onChange(of: context.date) { _, _ in
+                if fitLocked { frameEveryone() }
+            }
+            .onChange(of: camera.positionedByUser) { _, byUser in
+                if byUser { fitLocked = false }
+            }
         }
         .ignoresSafeArea()
         .onChange(of: pins.count + casual.nearby.count) { _, count in
-            // Frame everyone whenever someone arrives or leaves; the fit-all button does it on demand.
-            if count != fittedCount {
-                fittedCount = count
-                fitAll()
-            }
+            // Frame everyone whenever someone arrives (not when they leave); the fit-all button does it on demand.
+            let arrived = count > fittedCount
+            fittedCount = count
+            if arrived { fitAll() }
         }
         .onAppear { fitAll() }
     }
 
     private func fitAll() {
+        fitLocked = true
+        frameEveryone()
+    }
+
+    private func frameEveryone() {
         // Everyone on the map, anonymous dots included: they are why the person opened it.
         let coordinates = pins.map(\.coordinate)
             + casual.nearby.map { CLLocationCoordinate2D(latitude: $0.latitude, longitude: $0.longitude) }
@@ -506,17 +528,16 @@ struct CasualMapScreen: View {
             }
             MapRailButton(symbol: "arrow.up.left.and.arrow.down.right", label: "Fit all runners") { fitAll() }
             MapRailButton(symbol: "eye", label: "Who can see me") { showWhoCanSeeMe = true }
+            MapRailButton(symbol: "gearshape", label: "Settings") { showSettings = true }
         }
     }
 
-    /// "2 crew out · 5 nearby". The nearby part appears only when the person has chosen to be seen,
-    /// because that is also when they can see others. Tapping it opens the crew sheet, so crew can be
-    /// added mid-run; with no crew yet it says so and offers the add.
+    /// "2 crew out". Tapping it opens the crew sheet, so crew can be added mid-run; with no crew yet
+    /// it says so and offers the add.
     private var countChip: some View {
         let crewOut = casual.crewOut ?? 0
         let hasNoCrew = crew.isAvailable && crew.members.isEmpty
         let text = (hasNoCrew ? "No crew yet" : crewOut == 0 ? "No crew out" : "\(crewOut) crew out")
-            + (casual.visibleToNonCrew ? "  ·  \(casual.nearby.count) nearby" : "")
         return Button {
             crew.isFlowPresented = true
         } label: {
