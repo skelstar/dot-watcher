@@ -1,4 +1,3 @@
-using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
@@ -31,10 +30,10 @@ public record UserConfig(
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] Palette? Palette = null
 );
 
-/// <summary>A saved palette and the app versions it is assigned to ("default" is the fallback).</summary>
+/// <summary>A saved palette and the app versions it is assigned to ("fallback" is every other version).</summary>
 public record PaletteEntry(string Id, Palette Palette, IReadOnlyList<string> AssignedTo);
 
-/// <summary>An app version, or "default", and the palette phones on it get.</summary>
+/// <summary>An app version, or "fallback", and the palette phones on it get.</summary>
 public record PaletteAssignment(string AppVersion, string PaletteId);
 
 public record AssignPaletteRequest(string? PaletteId);
@@ -43,22 +42,21 @@ public enum PaletteDeleteResult { Deleted, NotFound, InUse }
 
 /// <summary>
 /// Which palette a phone gets. Palettes are saved in the database and do nothing until an admin assigns one to an
-/// app version (phones send it as <c>X-App-Version</c>, e.g. "1.2.2 (20)"), or to "default" for every other version.
-/// A phone gets, in order: the palette for its exact version, the default one, the <c>Palette</c> config section,
-/// then none. A missing section, a bad hex value or a text/background pair under 4.5:1 contrast is rejected when
-/// saved, and ignored (with a warning logged) in config, so a typo leaves the apps on their built-in colours
-/// rather than unreadable buttons.
+/// app version (phones send it as <c>X-App-Version</c>, e.g. "1.2.2 (20)"), or to "fallback" for every other version.
+/// A phone gets, in order: the palette for its exact version, the fallback one, the <c>Palette</c> config section,
+/// then none. A missing section or a bad hex value is rejected when saved, and ignored (with a warning logged) in
+/// config, so a typo leaves the apps on their built-in colours. Contrast is not checked: the playground shows the
+/// ratio as advice, and choosing readable colours is up to whoever saves the palette.
 /// </summary>
 public sealed partial class PaletteProvider
 {
     public const int CurrentVersion = 1;
-    public const double MinimumContrast = 4.5;
     public const int MaxLabelLength = 32;
     public const int MaxNameLength = 30;
 
-    /// <summary>What the API calls the fallback assignment; it is stored under <see cref="DefaultKey"/>.</summary>
-    public const string DefaultRoute = "default";
-    private const string DefaultKey = "*";
+    /// <summary>What the API calls the fallback assignment; it is stored under <see cref="FallbackKey"/>.</summary>
+    public const string FallbackRoute = "fallback";
+    private const string FallbackKey = "*";
     private const long CacheMs = 5000;
     private const long Stale = -2 * CacheMs; // TickCount64 is never negative, so this always reads as expired
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
@@ -104,7 +102,7 @@ public sealed partial class PaletteProvider
         var version = AppVersionName(appVersionHeader);
         if (version is not null && assigned.TryGetValue(version, out var forVersion))
             return forVersion;
-        return assigned.TryGetValue(DefaultKey, out var fallback) ? fallback : _configured;
+        return assigned.TryGetValue(FallbackKey, out var fallback) ? fallback : _configured;
     }
 
     /// <summary>"1.2.2" from "1.2.2 (20)"; null when the header is missing.</summary>
@@ -163,11 +161,11 @@ public sealed partial class PaletteProvider
 
     public IReadOnlyList<PaletteAssignment> Assignments() =>
         _store.GetPaletteAssignments()
-            .Select(a => new PaletteAssignment(a.AppVersion == DefaultKey ? DefaultRoute : a.AppVersion, a.PaletteId))
+            .Select(a => new PaletteAssignment(a.AppVersion == FallbackKey ? FallbackRoute : a.AppVersion, a.PaletteId))
             .OrderBy(a => a.AppVersion, StringComparer.Ordinal)
             .ToList();
 
-    /// <summary>Gives the palette to phones on this app version ("default" for the rest). False when the palette does not exist.</summary>
+    /// <summary>Gives the palette to phones on this app version ("fallback" for the rest). False when the palette does not exist.</summary>
     public bool Assign(string appVersion, string paletteId)
     {
         if (_store.GetPaletteJson(paletteId) is null)
@@ -186,10 +184,10 @@ public sealed partial class PaletteProvider
         return removed;
     }
 
-    /// <summary>An app version, or "default", as the API takes it: a short, plain token.</summary>
+    /// <summary>An app version, or "fallback", as the API takes it: a short, plain token.</summary>
     public static bool IsValidRoute(string appVersion) => RouteToken().IsMatch(appVersion);
 
-    private static string Key(string appVersion) => appVersion == DefaultRoute ? DefaultKey : appVersion;
+    private static string Key(string appVersion) => appVersion == FallbackRoute ? FallbackKey : appVersion;
 
     // A saved palette needs a name so the list is usable, and is trimmed so storage is stable.
     private static string? Prepare(Palette palette, out Palette clean)
@@ -267,37 +265,7 @@ public sealed partial class PaletteProvider
             if (value is null || !HexColour().IsMatch(value))
                 return $"{name} is not a #rrggbb colour";
 
-        foreach (var (name, fg, bg) in new[]
-        {
-            ("GoFg on GoBg", palette.GoFg, palette.GoBg),
-            ("AltFg on AltBg", palette.AltFg, palette.AltBg),
-            ("AccentInk on Accent", palette.AccentInk, palette.Accent),
-        })
-        {
-            var ratio = ContrastRatio(fg, bg);
-            if (ratio < MinimumContrast)
-                return $"{name} contrast {ratio:0.00}:1 is under {MinimumContrast}:1";
-        }
-
         return null;
-    }
-
-    /// <summary>WCAG contrast ratio between two #rrggbb colours.</summary>
-    public static double ContrastRatio(string a, string b)
-    {
-        var la = Luminance(a);
-        var lb = Luminance(b);
-        return (Math.Max(la, lb) + 0.05) / (Math.Min(la, lb) + 0.05);
-    }
-
-    private static double Luminance(string hex)
-    {
-        double Channel(int start)
-        {
-            var c = int.Parse(hex.AsSpan(start, 2), NumberStyles.HexNumber, CultureInfo.InvariantCulture) / 255.0;
-            return c <= 0.03928 ? c / 12.92 : Math.Pow((c + 0.055) / 1.055, 2.4);
-        }
-        return 0.2126 * Channel(1) + 0.7152 * Channel(3) + 0.0722 * Channel(5);
     }
 
     [GeneratedRegex("^#[0-9a-fA-F]{6}$")]

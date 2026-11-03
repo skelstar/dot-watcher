@@ -72,10 +72,11 @@ that as "use the built-in colours".
 
 ### S1. Config and validation
 - [x] `Palette` config section (the eight keys and `Version`) read by `PaletteProvider`. Deliberately not added to `appsettings.json` yet: rollout step 1 merges with no palette.
-- [x] Validate once at start-up: every colour matches `^#[0-9a-fA-F]{6}$`, and the three text-on-background pairs
-      (`goFg` on `goBg`, `altFg` on `altBg`, `accentInk` on `accent`) have contrast of at least 4.5:1. If it fails,
-      log a warning and serve no palette, so a typo in config means built-in colours rather than unreadable buttons.
-- [x] The same check runs in the playground as the contrast badge, so a value that looks fine there passes here.
+- [x] Validate once at start-up: every colour matches `^#[0-9a-fA-F]{6}$`. If it fails, log a warning and serve no
+      palette, so a typo in config means built-in colours. **Contrast is not checked** (decision, 2026-11-03: it
+      blocked palettes that were wanted; the playground shows the ratio as advice only). It was a 4.5:1 rule on the
+      three text-on-background pairs (`goFg` on `goBg`, `altFg` on `altBg`, `accentInk` on `accent`).
+- [x] The playground shows a contrast badge for each pair as advice; it does not block saving.
 
 ### S2. Exposing it
 - [x] `AuthenticatedUser` gains an optional `Config` (null for users read from a bearer token, like `Features`).
@@ -85,7 +86,7 @@ that as "use the built-in colours".
 
 ### S3. Tests (`tests/DotWatcher.Server.Tests`)
 - [x] `GET /me`, login and register include `config.palette` when configured and omit it when not.
-- [x] An invalid hex, or a pair under 4.5:1, results in no palette (and not a failed response).
+- [x] An invalid hex results in no palette (and not a failed response); a low-contrast pair is accepted.
 - [x] `DotWatcherApiFactory` default config has no palette, so existing tests are unchanged.
 - [x] CI is the first run of any of this. Passed on the server PR (#273).
 
@@ -99,7 +100,7 @@ events nearby, casual settings), so this adds one call, not a new kind of traffi
       store. Falls back to the current `SignPalette` values. PR #276, CI green.
 - [x] **iOS** — same shape: a `PaletteStore`, cached in `UserDefaults`, refreshed on launch and when the app comes to
       the front. PR #275. There is no iOS CI and no test target, so it has not been compiled yet.
-- [x] **Both** re-validate what they receive (hex format, `version` they understand, contrast of the three pairs) and
+- [x] **Both** re-validate what they receive (hex format and a `version` they understand) and
       ignore the whole palette if anything fails. All-or-nothing, so a half-applied palette cannot happen.
 - [x] **Both** also apply a palette from the login or register response, so a new sign-in does not wait for `GET /me`. Both save it for the next launch, as decided above.
 - [x] **Web** — not needed. The landing page does not use these colours.
@@ -124,7 +125,7 @@ events nearby, casual settings), so this adds one call, not a new kind of traffi
 1. Merge the server PR with no `Palette` section. Nothing changes for anyone.
 2. Ship the client PRs, both defaulting to the built-in colours. Confirm they behave identically with no palette.
 3. Add the chosen palette to Staging config, restart, confirm the apps pick it up on the next launch, and that a
-   deliberately bad value (bad hex, low contrast) leaves the built-in colours in place.
+   deliberately bad value (a bad hex) leaves the built-in colours in place.
 4. Copy the palette to Production config. To change colours later, edit config and restart; no release.
 5. To revert, remove the `Palette` section (or set it back) and restart. Apps return to the built-in colours the next
    time they refresh.
@@ -140,8 +141,8 @@ tweaked freely. PR "Palette library".
   Deleting an assigned palette is refused (`409`).
 - `GET /admin/palettes/assignments`, `PUT` / `DELETE /admin/palettes/assignments/{appVersion}`: which palette each app
   version gets. `appVersion` is the part of `X-App-Version` before the build number (`1.2.2` from `1.2.2 (20)`), or
-  `default` for every other version.
-- **A phone gets, in order:** the palette assigned to its exact version, the `default` one, the `Palette` config
+  `fallback` for every other version.
+- **A phone gets, in order:** the palette assigned to its exact version, the `fallback` one, the `Palette` config
   section, then none (built-in colours). Both apps already send `X-App-Version` on every call that returns
   `config.palette`, so the apps need no change.
 - **Delivery to the phone is unchanged:** `config.palette` on login, register and `GET /me`, applied on launch and on
@@ -161,7 +162,7 @@ only requests sending that `X-App-Version` see the test palette. By hand, with `
 me() { curl -s $API/me -H "Authorization: Bearer $TOKEN" -H "X-App-Version: 9.9.9 (1)" | jq '.config.palette'; }
 ```
 
-1. `POST /admin/palettes` with a low-contrast pair: `400` naming the contrast. With no `name`: `400`.
+1. `POST /admin/palettes` with a bad hex colour: `400` naming it. With no `name`: `400`.
 2. `POST /admin/palettes` with a good palette: `201` with an `id`. `GET /admin/palettes` lists it with `assignedTo: []`.
 3. `me`: no test palette yet (it is not assigned).
 4. `PUT /admin/palettes/assignments/9.9.9` with `{ "paletteId": "<id>" }`: `200`. `me` now shows the palette; a request
@@ -188,7 +189,7 @@ being created; check the server log.
   (`/admin/palettes`) with no change to the response shape or the apps. A library and assign UI in the admin Palette
   tab is not built yet.
 - **Newer versions.** An assignment matches one exact app version. A new release has no palette until one is assigned
-  to it, or to `default`.
+  to it, or to `fallback`.
 
 ## Branch / PR naming
 

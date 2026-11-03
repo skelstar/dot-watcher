@@ -54,7 +54,6 @@ public class PaletteTests
     [InlineData("GoBg", "6f1a07")]       // no leading #
     [InlineData("Screen", "#fff")]       // short form
     [InlineData("Accent", "#zzzzzz")]    // not hex
-    [InlineData("GoFg", "#7f2a17")]      // too close to GoBg
     [InlineData("Version", "2")]         // a version this server doesn't know
     public async Task AnInvalidPalette_IsNotServed_AndDoesNotFailTheResponse(string key, string value)
     {
@@ -93,14 +92,14 @@ public class PaletteTests
     }
 
     [Fact]
-    public async Task TheDefaultAssignment_CoversEveryOtherVersion_AndUnassignFallsBack()
+    public async Task TheFallbackAssignment_CoversEveryOtherVersion_AndUnassignFallsBack()
     {
         using var factory = new DotWatcherApiFactory();
         using var client = factory.CreateClient();
         var alice = await AuthTestHelpers.RegisterWithResponseAsync(client, "alice", "AL");
         var fallback = await CreateAsync(client, "Fallback", goBg: "#112233", goFg: "#ffffff");
         var special = await CreateAsync(client, "Special", goBg: "#223344", goFg: "#ffffff");
-        await SendAdminAsync(client, HttpMethod.Put, "/admin/palettes/assignments/default", "test-token", new { paletteId = fallback.Id });
+        await SendAdminAsync(client, HttpMethod.Put, "/admin/palettes/assignments/fallback", "test-token", new { paletteId = fallback.Id });
         await SendAdminAsync(client, HttpMethod.Put, "/admin/palettes/assignments/1.2.2", "test-token", new { paletteId = special.Id });
 
         Assert.Equal("#223344", (await GetMeAsync(client, alice.AccessToken, "1.2.2 (20)")).Config?.Palette?.GoBg);
@@ -149,7 +148,7 @@ public class PaletteTests
         async Task<HttpStatusCode> Status(HttpMethod m, string path, string token, object? body = null) =>
             (await SendAdminAsync(client, m, path, token, body)).StatusCode;
 
-        Assert.Equal(HttpStatusCode.BadRequest, await Status(HttpMethod.Post, "/admin/palettes", "test-token", Body("Poor", goFg: "#7f2a17"))); // low contrast
+        Assert.Equal(HttpStatusCode.BadRequest, await Status(HttpMethod.Post, "/admin/palettes", "test-token", Body("Bad", goFg: "red")));      // not #rrggbb
         Assert.Equal(HttpStatusCode.BadRequest, await Status(HttpMethod.Post, "/admin/palettes", "test-token", Body(name: null)));            // name required
         Assert.Equal(HttpStatusCode.BadRequest, await Status(HttpMethod.Post, "/admin/palettes", "test-token", Body(new string('x', 31))));  // name too long
         Assert.Equal(HttpStatusCode.BadRequest, await Status(HttpMethod.Post, "/admin/palettes", "test-token", Body("Ok", new string('x', 33))));
@@ -163,10 +162,19 @@ public class PaletteTests
     }
 
     [Fact]
-    public void Contrast_MatchesTheWcagReferenceValues()
+    public async Task LowContrast_IsNotRejected()
     {
-        Assert.Equal(21.0, PaletteProvider.ContrastRatio("#000000", "#ffffff"), 2);
-        Assert.Equal(1.0, PaletteProvider.ContrastRatio("#336699", "#336699"), 2);
+        var palette = Good();
+        palette["GoFg"] = "#7f2a17";   // barely different from GoBg
+        using var factory = new DotWatcherApiFactory { Palette = palette };
+        using var client = factory.CreateClient();
+        var alice = await AuthTestHelpers.RegisterWithResponseAsync(client, "alice", "AL");
+
+        var me = await GetMeAsync(client, alice.AccessToken);
+        var saved = await SendAdminAsync(client, HttpMethod.Post, "/admin/palettes", "test-token", Body("Poor", goFg: "#7f2a17"));
+
+        Assert.NotNull(me.Config?.Palette);
+        Assert.Equal(HttpStatusCode.Created, saved.StatusCode);
     }
 
     // A valid palette as the API takes it (camelCase JSON); override a colour or two as needed.
