@@ -19,6 +19,7 @@ import nz.skelstar.dotwatcher.crew.CrewModel
 import nz.skelstar.dotwatcher.crew.CrewPrefs
 import nz.skelstar.dotwatcher.data.AuthTokenStore
 import nz.skelstar.dotwatcher.data.DotWatcherRepository
+import nz.skelstar.dotwatcher.data.PaletteStore
 import nz.skelstar.dotwatcher.data.ShareChoiceStore
 import nz.skelstar.dotwatcher.location.CASUAL_SESSION_ID
 import nz.skelstar.dotwatcher.location.Fix
@@ -38,6 +39,7 @@ import nz.skelstar.dotwatcher.network.networkMessage
 import nz.skelstar.dotwatcher.network.parsedError
 import nz.skelstar.dotwatcher.ui.theme.AppearanceMode
 import nz.skelstar.dotwatcher.ui.theme.AppearancePrefs
+import nz.skelstar.dotwatcher.ui.theme.AppliedSignColors
 import retrofit2.Response
 import java.time.Duration
 import java.time.Instant
@@ -80,7 +82,20 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     private val tokenStore = AuthTokenStore(application)
     private val shareChoices = ShareChoiceStore(application)
     private val api = DotWatcherApiClient.create(BuildConfig.API_BASE_URL, application)
-    val repository = DotWatcherRepository(api, tokenStore)
+    private val paletteStore = PaletteStore(application)
+    val repository = DotWatcherRepository(api, tokenStore, paletteStore)
+
+    /** Called as the app comes to the front. Applies the palette the last fetch saved straight away, then fetches
+     *  the server's current one and applies that too, so a changed palette fades in as soon as it arrives. */
+    fun refreshPalette() {
+        AppliedSignColors.palette = paletteStore.current()
+        if (!tokenStore.isSignedIn) return
+        viewModelScope.launch {
+            runCatching { repository.refreshPalette() }
+            // Unchanged (or the request failed) sets an equal value, which redraws nothing.
+            AppliedSignColors.palette = paletteStore.current()
+        }
+    }
 
     /** The signed-in account's crew. Shares this ViewModel's repository and scope rather than being a
      *  second ViewModel, so there is one network stack (see the class note above). */
