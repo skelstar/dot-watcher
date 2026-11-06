@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Retire the Staging server plan</title>
+<style>
+  :root { --bg:#fff; --fg:#1d2330; --muted:#5b6475; --line:#dde1e8; --card:#f5f7fa; --accent:#1f6feb; --warn:#b54708; --warnbg:#fff4e5; --ok:#067647; --code:#eef1f5; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#14171d; --fg:#e6e9ef; --muted:#9aa3b2; --line:#2b313c; --card:#1b1f27; --accent:#6ea8ff; --warn:#f5b66b; --warnbg:#2a2218; --ok:#52c28a; --code:#232833; }
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:16px/1.55 system-ui,-apple-system,Segoe UI,sans-serif; }
+  main { max-width:880px; margin:0 auto; padding:32px 16px 64px; }
+  h1 { font-size:1.8rem; margin:0 0 4px; }
+  h2 { font-size:1.25rem; margin:40px 0 8px; padding-top:16px; border-top:1px solid var(--line); }
+  h3 { font-size:1.05rem; margin:24px 0 4px; }
+  p, li { max-width:70ch; }
+  .meta { color:var(--muted); margin:0 0 24px; }
+  code { background:var(--code); padding:1px 5px; border-radius:4px; font:0.9em ui-monospace,Consolas,monospace; }
+  pre { background:var(--code); padding:12px 14px; border-radius:8px; overflow-x:auto; font:0.85rem/1.5 ui-monospace,Consolas,monospace; }
+  pre code { background:none; padding:0; }
+  table { border-collapse:collapse; width:100%; margin:12px 0; font-size:0.93rem; display:block; overflow-x:auto; }
+  th, td { border:1px solid var(--line); padding:6px 10px; text-align:left; vertical-align:top; }
+  th { background:var(--card); }
+  .callout { background:var(--warnbg); border-left:4px solid var(--warn); padding:10px 14px; border-radius:4px; margin:16px 0; }
+  .callout strong:first-child { color:var(--warn); }
+  .tag { display:inline-block; font-size:0.75rem; padding:1px 8px; border-radius:999px; border:1px solid var(--line); color:var(--muted); margin-left:6px; }
+  .tag.repo { color:var(--accent); border-color:var(--accent); }
+  .tag.tat { color:var(--ok); border-color:var(--ok); }
+  .tag.cfg { color:var(--warn); border-color:var(--warn); }
+  ol.steps { padding-left:1.2em; }
+  ol.steps > li { margin:14px 0; }
+  .diagram { display:flex; gap:16px; flex-wrap:wrap; margin:12px 0; }
+  .diagram > div { flex:1 1 300px; }
+  .box { border:1px solid var(--line); border-radius:6px; padding:8px 10px; margin:6px 0; background:var(--card); font-size:0.9rem; }
+  .box.db { border-color:var(--accent); }
+</style>
+</head>
+<body>
+<main>
+
+<h1>Retire the Staging server</h1>
+<p class="meta">Branch <code>retire-staging-server</code> · plan written 2026-11-06 · status: <strong>proposed, nothing executed</strong> · replaces the earlier per-environment-database plan</p>
+
+<p>Decision: there is no Staging server on Tatooine. The <code>staging</code> branch stays as the integration branch and is exercised locally against the Docker Postgres in <code>docker-compose.yml</code>. TestFlight builds move to the Production server. A release is a merge of <code>staging</code> into <code>main</code>; Kraken (the Tatooine deploy app) then offers it to deploy to Production.</p>
+
+<h2>1. Where this ends up</h2>
+<div class="diagram">
+  <div>
+    <strong>Now</strong>
+    <div class="box">PR &rarr; <code>staging</code> branch</div>
+    <div class="box">Staging pod (ns <code>dot-watcher-server-staging</code>) &larr; TestFlight</div>
+    <div class="box">Promote PR &rarr; <code>main</code>, <code>/deploy</code> builds <code>:latest</code></div>
+    <div class="box db">One shared Postgres database, used by both pods</div>
+  </div>
+  <div>
+    <strong>After</strong>
+    <div class="box">PR &rarr; <code>staging</code> branch, tested locally (Docker Postgres)</div>
+    <div class="box">Promote PR &rarr; <code>main</code> &rarr; Actions builds images, publishes a GitHub Release</div>
+    <div class="box">Kraken: press Deploy &rarr; Production pod &larr; TestFlight, App Store</div>
+    <div class="box db">One Postgres database, Production only</div>
+  </div>
+</div>
+
+<h2>2. What this removes from the earlier plan</h2>
+<ul>
+  <li><strong>No second database, role, or data split.</strong> There is only one environment with a server, so the database question disappears. Production keeps <code>dotwatcher</code> untouched.</li>
+  <li><strong>Your own data carries over.</strong> The iPhone/TestFlight account and sessions already live in that shared database (merged in the 2026-07-22 cutover), so moving TestFlight to Production needs no data copy and no re-registering.</li>
+  <li><strong>The "TestFlight can't join Production sessions" concern is gone.</strong> It was only a problem if the databases were split.</li>
+</ul>
+
+<h2>3. Constraints from Kraken</h2>
+<ul>
+  <li>Kraken only reads GitHub Releases from the app repo. It never looks at branches, so the branch model is ours to keep: PRs to <code>staging</code>, promote to <code>main</code>, <code>enforce-staging.yml</code> unchanged.</li>
+  <li>A release is a published GitHub Release tagged <code>vX.Y.Z</code> with a <code>release.json</code> asset: <code>project</code>, <code>version</code> (equal to the tag), <code>commit</code>, <code>images</code> for each of <code>server</code> and <code>client</code> pinned by digest (<code>ghcr.io/skelstar/dot-watcher-server@sha256:&hellip;</code>), and <code>migrations</code>. Anything else is skipped.</li>
+  <li>Production-only projects are supported. The release is offered straight to Production, with a warning that nothing was tested first. That is the case here, since testing happens locally.</li>
+  <li>Rollback swaps images only. Schema changes must stay additive so the previous release still starts (<code>SessionStore.Initialize()</code> already works this way).</li>
+  <li>Kraken's tag pattern is hardcoded to <code>^v\d+\.\d+\.\d+$</code>. This repo already has mobile tags <code>v1.0.0</code>&ndash;<code>v1.3.0</code> and <code>android-v0.2.x</code>, so server releases need their own tag space (step 3).</li>
+</ul>
+
+<div class="callout">
+  <strong>Order matters.</strong> Installed TestFlight builds point at the Staging hostname. Do not remove the Staging server until a TestFlight build pointing at Production is out and the testers (you) have it installed, or the installed app stops working. Production must also be running the new server code before that build ships.
+</div>
+
+<h2>4. Plan</h2>
+<p>Tags: <span class="tag repo">repo</span> changes in this repository, <span class="tag cfg">config</span> changes in Tatooine-Configuration (Kraken and Flux), <span class="tag tat">tatooine</span> commands on the cluster, run by you.</p>
+
+<ol class="steps">
+  <li><strong>Inventory the live wiring.</strong> <span class="tag tat">tatooine</span><br>
+    Read-only. For the two Production Deployments (<code>dot-watcher-server</code>, <code>dot-watcher-client</code>): the Flux Kustomization that owns each, how <code>ConnectionString</code> reaches the pod (a hand-patched <code>secretKeyRef</code>, per the cutover notes), the image currently running, and whether <code>ghcr-pull-secret</code> exists in each namespace. The Production namespaces stay as they are, so no PVC moves or data copy is needed.</li>
+
+  <li><strong>Back up the database.</strong> <span class="tag tat">tatooine</span><br>
+    <code>pg_dump -Fc dotwatcher</code> from the Postgres pod to a file off the node, and prove it restores into a scratch database. There is no backup today, and everything below ends with Production being the only copy.</li>
+
+  <li><strong>Release workflow for dot-watcher.</strong> <span class="tag repo">repo</span><br>
+    New <code>.github/workflows/release.yml</code>, triggered by a push to <code>main</code> (so the promote PR merge is the release). It should:
+    <ul>
+      <li>build and push <code>ghcr.io/skelstar/dot-watcher-server</code> and <code>dot-watcher-client</code> (the client needs the LINZ key as a build argument; the build fails without it);</li>
+      <li>write <code>release.json</code> with both digests, the commit, and <code>migrations</code> set when <code>server/Stores/SessionStore*.cs</code> changed since the previous release (dot-watcher has no migrations folder, so the schema file is the signal);</li>
+      <li>publish the GitHub Release using the server tag prefix from the next item, with generated notes.</li>
+    </ul>
+    Model it on <code>tatooine-deploy/.github/workflows/release.yml</code> and activity-logger's. Version numbers must not clash with the mobile app tags.</li>
+
+  <li><strong>Server tag prefix in Kraken.</strong> <span class="tag cfg">config</span><br>
+    Small change in the Kraken repo: an optional <code>tagPrefix</code> per project in <code>projects.yaml</code> (for example <code>server-v</code>) replacing the hardcoded <code>v</code> in <code>src/real/github.ts</code>, so mobile tags are ignored and server releases get their own numbers. Separate PR in that repo.</li>
+
+  <li><strong>Declare the Production deployment.</strong> <span class="tag cfg">config</span><br>
+    In Tatooine-Configuration, give <code>deployments/dot-watcher-server</code> and <code>dot-watcher-client</code> a <code>kustomization.yaml</code> that lists their manifests and pins the image by digest (the same approach as activity-logger's existing production-only folder). Put the <code>ConnectionString</code> <code>secretKeyRef</code> env in the manifest so a redeploy can't lose it (the problem recorded in the old cutover plan). Add the Production-only dot-watcher entry to Kraken's <code>projects.yaml</code>. Remove the dead <code>DbPath</code> and the stale hostname from <code>server/.deploy.yaml</code>, or delete that file once <code>/deploy</code> is retired.</li>
+
+  <li><strong>First Kraken release and deploy of Production.</strong> <span class="tag tat">tatooine</span><br>
+    Promote <code>staging</code> to <code>main</code> (it is 7 commits ahead of <code>main</code> today), let the release workflow run, then deploy it to Production from Kraken. Production must run the code the TestFlight build expects before step 7.</li>
+
+  <li><strong>Move TestFlight to Production.</strong> <span class="tag repo">repo</span><br>
+    In the iOS app, remove the TestFlight &rarr; Staging routing in <code>LocationManager.swift</code> (the <code>isTestFlightBuild</code> branch that selects <code>DotWatcherStagingAPIBaseURL</code>, plus the explanatory comment about the shared database), the <code>DotWatcherStaging*</code> keys in <code>Info.plist</code>, and the <code>DOTWATCHER_STAGING_*</code> build settings in the project file. Keep the Debug (localhost) settings. Ship a TestFlight build and confirm it hits Production and shows your existing sessions. Update <code>ios/README.md</code>.</li>
+
+  <li><strong>Retire the Staging server.</strong> <span class="tag cfg">config</span> <span class="tag tat">tatooine</span><br>
+    Only after step 7 is confirmed on your phone.
+    <ul>
+      <li>Remove the Staging manifests and Flux Kustomizations from Tatooine-Configuration (<code>dot-watcher-server-staging</code>, <code>dot-watcher-client-staging</code>).</li>
+      <li>Check the paths before committing. Flux runs with <code>prune: true</code>, which deletes the Namespace and its PVCs when its folder goes away. That is what we want for the two Staging namespaces and not at all for the Production ones.</li>
+      <li>Remove the <code>dot-watcher-staging.skelstar.io</code> DNS record and ingress.</li>
+      <li>Remove the Staging entries from the Android manifest (<code>dot-watcher-staging.skelstar.io</code> app link) and iOS entitlements (<code>applinks:</code>) in a later app release, so old builds' invite links keep working until then.</li>
+      <li>Delete the leftover SQLite volumes in both environments once you are happy there is no rollback need.</li>
+    </ul></li>
+
+  <li><strong>Make local the Staging environment.</strong> <span class="tag repo">repo</span><br>
+    <code>docker-compose.yml</code> and <code>appsettings.Development.json</code> already do this, so no code change. Document it: the <code>staging</code> branch is integration, tested with <code>docker compose up -d</code> and <code>dotnet run</code>, and a promote PR to <code>main</code> is the release. Keep <code>enforce-staging.yml</code>.</li>
+
+  <li><strong>Docs and comments.</strong> <span class="tag repo">repo</span><br>
+    Update <code>server/README.md</code> (Deployment section: Kraken instead of <code>/deploy</code> and <code>deploy.sh</code>; remove the "Staging and Production share one database" notes, the palette sharing sentence, and the "deploy to Production first" rule; Runtime secrets: add <code>ConnectionString</code>), the shared-database comments in <code>SessionStore.cs</code>, <code>SessionStore.Casual.cs</code>, <code>SessionsController.cs</code> and <code>CasualMaintenanceService.cs</code>, the header of <code>scripts/shared-postgres.yaml</code>, and <code>scripts/audit-user-collisions.sh</code> / <code>store-palettes.sh</code> references. Comments only. Do this last so the docs describe what is true.</li>
+</ol>
+
+<h2>5. What does not change</h2>
+<ul>
+  <li><strong>Server code and schema.</strong> It already takes one <code>ConnectionString</code> and creates its own schema.</li>
+  <li><strong>CI.</strong> <code>server-dotnet.yml</code> still tests against its own Postgres container.</li>
+  <li><strong>Production namespaces, hostnames, DNS and data.</strong> Nothing in Production is renamed or moved.</li>
+  <li><strong>Branching.</strong> PRs still go to <code>staging</code> and promote to <code>main</code>.</li>
+</ul>
+
+<h2>6. Rollback</h2>
+<table>
+  <tr><th>Failure</th><th>Action</th></tr>
+  <tr><td>A Kraken deploy to Production misbehaves</td><td>Roll back in Kraken (images only). If the release changed the schema, the older release usually still starts because changes are additive; otherwise restore the step 2 dump.</td></tr>
+  <tr><td>New TestFlight build misbehaves</td><td>The Staging server is still running until step 8, so install the previous build. This is why step 8 comes last.</td></tr>
+  <tr><td>Wrong namespace removed in step 8</td><td>Re-apply the manifests from git; restore the database from the step 2 dump if Postgres's namespace was touched. The Postgres instance lives in its own namespace (<code>dot-watcher-db</code>) and is not pruned by the dot-watcher Kustomizations.</td></tr>
+</table>
+
+<h2>7. Risks and open items</h2>
+<ul>
+  <li><strong>No staging means releases are tested only locally.</strong> The local setup runs the server and web client, not real-device GPS traffic or the cluster network. Kraken shows its "nothing was tested first" warning on every deploy.</li>
+  <li><strong>TestFlight is now real data.</strong> A bad Production deploy affects your phone, as it affects everyone. Rollback in Kraken is the mitigation.</li>
+  <li><strong>No backups exist</strong> (step 2 is the first). A recurring <code>pg_dump</code> is worth adding regardless.</li>
+  <li><strong>Unknown until step 1:</strong> the live Flux Kustomization names, whether Production's manifests live in Tatooine-Configuration in a form Kraken can overlay, and how its secrets are referenced.</li>
+  <li><strong>Kraken itself</strong> is not yet running for real (its checklist lists the first Tatooine session as outstanding). Steps 5 and 6 depend on that being done.</li>
+</ul>
+
+<h2>8. Suggested PR split</h2>
+<ol>
+  <li>This plan (current branch).</li>
+  <li>dot-watcher: release workflow (step 3).</li>
+  <li>Kraken: <code>tagPrefix</code> (step 4); Tatooine-Configuration: Production overlay and Kraken entry (step 5).</li>
+  <li>dot-watcher: iOS TestFlight routing and docs (steps 7, 9, 10), after step 6 is deployed.</li>
+  <li>Tatooine-Configuration: remove Staging (step 8).</li>
+</ol>
+<p class="meta">Per the repo's AGENTS.md, build and test verification is left to CI. This branch contains only a plan document.</p>
+
+</main>
+</body>
+</html>
