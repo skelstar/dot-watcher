@@ -11,6 +11,14 @@
 #
 # Compatibility between phones and server is the X-Api-Version integer and the server's
 # MinimumApiVersion, not these version numbers.
+#
+# The version bump comes from labels on the pull request merged into main (staging -> main):
+#   no label        minor  1.4.0 -> 1.5.0
+#   release:patch   patch  1.4.0 -> 1.4.1
+#   release:major   major  1.4.0 -> 2.0.0
+#   release:skip    no release (tests don't run either)
+# More than one release:* label fails the run rather than guessing. A push to main without a
+# pull request gets a minor bump. Run workflow by hand to release an explicit version instead.
 name: Release
 
 on:
@@ -38,8 +46,61 @@ env:
   CLIENT_IMAGE: ghcr.io/skelstar/dot-watcher-client
 
 jobs:
+  # Decides the version bump from the merged pull request's release:* labels.
+  plan:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      bump: ${{ steps.bump.outputs.bump }}
+    steps:
+      - name: Read release label
+        id: bump
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          if [[ "$EVENT" == "workflow_dispatch" ]]; then
+            # An explicit version, if given, wins in the release job; otherwise minor.
+            echo "Run by hand"
+            echo "bump=minor" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # The pull request whose merge produced this commit on main.
+          pr=$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/pulls" \
+            --jq "[.[] | select(.merged_at != null and .base.ref == \"main\")][0] // empty")
+          if [[ -z "$pr" ]]; then
+            echo "No merged pull request for $GITHUB_SHA; using a minor bump"
+            echo "bump=minor" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          number=$(jq -r .number <<<"$pr")
+          mapfile -t labels < <(jq -r '.labels[].name | select(startswith("release:"))' <<<"$pr")
+          echo "PR #$number release labels: ${labels[*]:-none}"
+
+          if [[ ${#labels[@]} -gt 1 ]]; then
+            echo "::error::PR #$number has more than one release label (${labels[*]}). Keep one and re-run this workflow."
+            exit 1
+          fi
+
+          case "${labels[0]:-}" in
+            "")            bump=minor ;;
+            release:patch) bump=patch ;;
+            release:major) bump=major ;;
+            release:skip)  bump=skip ;;
+            *) echo "::error::Unknown label ${labels[0]} on PR #$number (expected release:patch, release:major or release:skip)"; exit 1 ;;
+          esac
+          echo "Bump: $bump"
+          echo "bump=$bump" >> "$GITHUB_OUTPUT"
+
   # A commit that fails these never becomes an image or a release.
   test-server:
+    needs: plan
+    if: needs.plan.outputs.bump != 'skip'
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -74,6 +135,8 @@ jobs:
           done
 
   test-client:
+    needs: plan
+    if: needs.plan.outputs.bump != 'skip'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -89,7 +152,8 @@ jobs:
       - run: npm run test
 
   release:
-    needs: [test-server, test-client]
+    needs: [plan, test-server, test-client]
+    if: needs.plan.outputs.bump != 'skip'
     runs-on: ubuntu-latest
     permissions:
       contents: write # create the tag and GitHub Release
@@ -104,6 +168,7 @@ jobs:
         id: version
         env:
           REQUESTED: ${{ github.event.inputs.version }}
+          BUMP: ${{ needs.plan.outputs.bump }}
         run: |
           set -euo pipefail
           valid() { [[ "$1" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; }
@@ -119,11 +184,16 @@ jobs:
           elif [[ -z "$latest" ]]; then
             version="1.0.0"
           else
-            IFS=. read -r major minor _patch <<<"$latest"
-            version="$major.$((minor + 1)).0"
+            IFS=. read -r major minor patch <<<"$latest"
+            case "$BUMP" in
+              patch) version="$major.$minor.$((patch + 1))" ;;
+              major) version="$((major + 1)).0.0" ;;
+              minor) version="$major.$((minor + 1)).0" ;;
+              *) echo "::error::Unexpected bump '$BUMP'"; exit 1 ;;
+            esac
           fi
 
-          echo "Latest release: ${latest:-none}. New release: $version"
+          echo "Latest release: ${latest:-none}. Bump: $BUMP. New release: $version"
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
       # Schema changes are idempotent CREATE/ALTER/DROP statements run at server startup, in
