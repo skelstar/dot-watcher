@@ -8,4 +8,8 @@ WORKDIR /app
 COPY --from=build /out .
 EXPOSE 8080
 ENV ASPNETCORE_URLS=http://+:8080
+# The release version, baked in by release.yml (logged as Version). Unset for local builds, where
+# Program.cs falls back to the assembly version.
+ARG APP_VERSION
+ENV APP_VERSION=${APP_VERSION}
 ENTRYPOINT ["dotnet", "DotWatcher.Server.dll"]

@@ -14,7 +14,9 @@ builder.Services.AddSingleton(logBuffer);
 builder.Host.UseSerilog((ctx, services, config) =>
 {
     var seqUrl = Environment.GetEnvironmentVariable("SEQ_URL") ?? "https://seq.skelstar.io";
-    var version = Environment.GetEnvironmentVariable("APP_VERSION")
+    // The Dockerfile always sets APP_VERSION, empty for local builds, so treat empty as unset.
+    var appVersion = Environment.GetEnvironmentVariable("APP_VERSION");
+    var version = (string.IsNullOrWhiteSpace(appVersion) ? null : appVersion)
         ?? typeof(Program).Assembly.GetName().Version?.ToString()
         ?? "unknown";
     config
