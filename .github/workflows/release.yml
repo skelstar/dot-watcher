@@ -1,0 +1,292 @@
+# .github/workflows/release.yml
+#
+# Every merge to main that touches the server or web client builds both images and publishes a
+# GitHub Release (tag v<version>) with release.json. It never deploys: Kraken (kraken.skelstar.io)
+# reads the release and deploys it when you press the button. If Kraken is down, deploy by editing
+# newTag and digest for both images in Tatooine-Configuration's dot-watcher kustomization.yaml.
+#
+# Tags: v* is reserved for server + web releases (Kraken only reads vX.Y.Z). Phone releases use
+# their own prefixes: ios-v* and android-v*. The old iOS v1.0.0–v1.3.0 releases predate this; Kraken
+# lists them as skipped.
+#
+# Compatibility between phones and server is the X-Api-Version integer and the server's
+# MinimumApiVersion, not these version numbers.
+#
+# The version bump comes from labels on the pull request merged into main (staging -> main):
+#   no label        minor  1.4.0 -> 1.5.0
+#   release:patch   patch  1.4.0 -> 1.4.1
+#   release:major   major  1.4.0 -> 2.0.0
+#   release:skip    no release (tests don't run either)
+# More than one release:* label fails the run rather than guessing. A push to main without a
+# pull request gets a minor bump. Run workflow by hand to release an explicit version instead.
+name: Release
+
+on:
+  push:
+    branches: [main]
+    # Phone-only, docs-only and tooling changes don't make a server/web release.
+    paths:
+      - "server/**"
+      - "client/**"
+      - "tests/**"
+      - ".github/workflows/release.yml"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Explicit version (e.g. 2.0.0). Leave blank to bump the minor version"
+        required: false
+
+# Releases are numbered from the latest tag, so never run two at once.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+env:
+  SERVER_IMAGE: ghcr.io/skelstar/dot-watcher-server
+  CLIENT_IMAGE: ghcr.io/skelstar/dot-watcher-client
+
+jobs:
+  # Decides the version bump from the merged pull request's release:* labels.
+  plan:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      bump: ${{ steps.bump.outputs.bump }}
+    steps:
+      - name: Read release label
+        id: bump
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          if [[ "$EVENT" == "workflow_dispatch" ]]; then
+            # An explicit version, if given, wins in the release job; otherwise minor.
+            echo "Run by hand"
+            echo "bump=minor" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # The pull request whose merge produced this commit on main.
+          pr=$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/pulls" \
+            --jq "[.[] | select(.merged_at != null and .base.ref == \"main\")][0] // empty")
+          if [[ -z "$pr" ]]; then
+            echo "No merged pull request for $GITHUB_SHA; using a minor bump"
+            echo "bump=minor" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          number=$(jq -r .number <<<"$pr")
+          mapfile -t labels < <(jq -r '.labels[].name | select(startswith("release:"))' <<<"$pr")
+          echo "PR #$number release labels: ${labels[*]:-none}"
+
+          if [[ ${#labels[@]} -gt 1 ]]; then
+            echo "::error::PR #$number has more than one release label (${labels[*]}). Keep one and re-run this workflow."
+            exit 1
+          fi
+
+          case "${labels[0]:-}" in
+            "")            bump=minor ;;
+            release:patch) bump=patch ;;
+            release:major) bump=major ;;
+            release:skip)  bump=skip ;;
+            *) echo "::error::Unknown label ${labels[0]} on PR #$number (expected release:patch, release:major or release:skip)"; exit 1 ;;
+          esac
+          echo "Bump: $bump"
+          echo "bump=$bump" >> "$GITHUB_OUTPUT"
+
+  # A commit that fails these never becomes an image or a release.
+  test-server:
+    needs: plan
+    if: needs.plan.outputs.bump != 'skip'
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: dotwatcher
+          POSTGRES_PASSWORD: dotwatcher-dev
+          POSTGRES_DB: dotwatcher
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "9.0.x"
+      - name: Test
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t test_projects < <(find . -type f \( -name "*Tests.csproj" -o -name "*Test.csproj" \))
+          if [ ${#test_projects[@]} -eq 0 ]; then
+            echo "No .NET test projects found."
+            exit 0
+          fi
+          for project in "${test_projects[@]}"; do
+            dotnet test "$project" --configuration Release
+          done
+
+  test-client:
+    needs: plan
+    if: needs.plan.outputs.bump != 'skip'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: client
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+      - run: npm ci
+      - run: npm run test
+
+  release:
+    needs: [plan, test-server, test-client]
+    if: needs.plan.outputs.bump != 'skip'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # create the tag and GitHub Release
+      packages: write # push to ghcr.io
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # tags are needed to work out the next version
+
+      - name: Resolve version
+        id: version
+        env:
+          REQUESTED: ${{ github.event.inputs.version }}
+          BUMP: ${{ needs.plan.outputs.bump }}
+        run: |
+          set -euo pipefail
+          valid() { [[ "$1" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; }
+          # Only plain vX.Y.Z tags; ios-v* and android-v* are phone releases.
+          latest=$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | head -n1 | sed 's/^v//')
+
+          if [[ -n "$REQUESTED" ]]; then
+            valid "$REQUESTED" || { echo "::error::Version '$REQUESTED' must be X.Y.Z"; exit 1; }
+            if [[ -n "$latest" ]] && [[ "$(printf '%s\n%s\n' "$latest" "$REQUESTED" | sort -V | tail -n1)" != "$REQUESTED" || "$REQUESTED" == "$latest" ]]; then
+              echo "::error::Version $REQUESTED must be greater than the latest release $latest"; exit 1
+            fi
+            version="$REQUESTED"
+          elif [[ -z "$latest" ]]; then
+            version="1.0.0"
+          else
+            IFS=. read -r major minor patch <<<"$latest"
+            case "$BUMP" in
+              patch) version="$major.$minor.$((patch + 1))" ;;
+              major) version="$((major + 1)).0.0" ;;
+              minor) version="$major.$((minor + 1)).0" ;;
+              *) echo "::error::Unexpected bump '$BUMP'"; exit 1 ;;
+            esac
+          fi
+
+          echo "Latest release: ${latest:-none}. Bump: $BUMP. New release: $version"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      # Schema changes are idempotent CREATE/ALTER/DROP statements run at server startup, in
+      # server/Stores. Flag the release when any were added since the last release that Kraken
+      # deployed from (the previous release with a release.json), so Kraken can warn before a
+      # rollback past it. With no earlier Kraken release, assume there were.
+      - name: Detect migrations
+        id: migrations
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          prev=""
+          for tag in $(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname); do
+            if gh release view "$tag" --json assets --jq '.assets[].name' 2>/dev/null | grep -qx release.json; then
+              prev="$tag"; break
+            fi
+          done
+          if [[ -z "$prev" ]]; then
+            echo "No earlier release with release.json; marking migrations: true"
+            migrations=true
+          elif git diff "$prev"..HEAD -- server/Stores | grep -qiE '^\+.*\b(CREATE|ALTER|DROP)\b'; then
+            echo "Schema statements changed since $prev"
+            migrations=true
+          else
+            echo "No schema statements changed since $prev"
+            migrations=false
+          fi
+          echo "migrations=$migrations" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push server image
+        id: server
+        uses: docker/build-push-action@v6
+        with:
+          context: server
+          platforms: linux/amd64
+          push: true
+          tags: ${{ env.SERVER_IMAGE }}:${{ steps.version.outputs.version }}
+          labels: org.opencontainers.image.source=https://github.com/${{ github.repository }}
+          build-args: |
+            APP_VERSION=${{ steps.version.outputs.version }}
+
+      # The LINZ key is a browser key: it ends up in the built JavaScript either way.
+      - name: Build and push client image
+        id: client
+        uses: docker/build-push-action@v6
+        with:
+          context: client
+          platforms: linux/amd64
+          push: true
+          tags: ${{ env.CLIENT_IMAGE }}:${{ steps.version.outputs.version }}
+          labels: org.opencontainers.image.source=https://github.com/${{ github.repository }}
+          build-args: |
+            VITE_APP_VERSION=v${{ steps.version.outputs.version }}
+            VITE_LINZ_API_KEY=${{ secrets.LINZ_API_KEY }}
+
+      # release.json is what Kraken reads. The digests pin exactly what was built, and the
+      # server and client always deploy together as one release.
+      - name: Write release.json
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          MIGRATIONS: ${{ steps.migrations.outputs.migrations }}
+          SERVER_DIGEST: ${{ steps.server.outputs.digest }}
+          CLIENT_DIGEST: ${{ steps.client.outputs.digest }}
+        run: |
+          set -euo pipefail
+          for d in "$SERVER_DIGEST" "$CLIENT_DIGEST"; do
+            [[ "$d" == sha256:* ]] || { echo "::error::Missing image digest from a build"; exit 1; }
+          done
+          jq -n \
+            --arg version "$VERSION" \
+            --arg commit "$GITHUB_SHA" \
+            --argjson migrations "$MIGRATIONS" \
+            --arg server "$SERVER_IMAGE@$SERVER_DIGEST" \
+            --arg client "$CLIENT_IMAGE@$CLIENT_DIGEST" \
+            '{project: "dot-watcher", version: $version, commit: $commit, migrations: $migrations, images: {server: $server, client: $client}}' \
+            > release.json
+          cat release.json
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          gh release create "v$VERSION" release.json \
+            --target "$GITHUB_SHA" \
+            --title "dot-watcher $VERSION" \
+            --generate-notes
