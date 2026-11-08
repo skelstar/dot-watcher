@@ -19,6 +19,8 @@ private struct CasualSettings: Decodable {
     let visibleToNonCrew: Bool
     /// Absent from an older server, which always hides the start area.
     let hideStartArea: Bool?
+    /// Absent from an older server, which always shows you to your crew.
+    let visibleToCrew: Bool?
 }
 
 /// Yourself or someone in your crew who is out casually. The same fields as `RunnerPositionResponse`
@@ -74,6 +76,11 @@ final class CasualStore {
     /// "Hide my start area": people who aren't in the crew don't see the person until they are 300 m from where
     /// the run began. On unless the person turns it off; the server holds the value.
     private(set) var hideStartArea = true
+    /// "My crew": whether the person's crew see them. On unless the person turns it off; with this and
+    /// `visibleToNonCrew` both off nobody sees them, though a watch link still works.
+    private(set) var visibleToCrew = true
+    /// Nobody sees this person on the map: neither their crew nor people nearby.
+    var isPrivate: Bool { !visibleToCrew && !visibleToNonCrew }
     /// How many of the person's crew are out right now; nil until first loaded.
     private(set) var crewOut: Int?
     var settingsError: String?
@@ -116,6 +123,7 @@ final class CasualStore {
             visibleToNonCrew = settings.visibleToNonCrew
             UserDefaults.standard.set(settings.visibleToNonCrew, forKey: Self.visibleKey)
             hideStartArea = settings.hideStartArea ?? true
+            visibleToCrew = settings.visibleToCrew ?? true
             await loadLive()
         } catch DotWatcherAPIError.badResponse(let status, _) {
             // 401 means the session ended and 426 is handled app-wide; neither says anything about
@@ -147,6 +155,7 @@ final class CasualStore {
         visibleToNonCrew = false
         UserDefaults.standard.removeObject(forKey: Self.visibleKey)
         hideStartArea = true
+        visibleToCrew = true
         crewOut = nil
         people = []
         nearby = []
@@ -190,6 +199,21 @@ final class CasualStore {
                 path: "/me/casual/settings", method: "PUT", body: ["hideStartArea": hide])
         } catch {
             hideStartArea = before
+            settingsError = error.localizedDescription
+        }
+    }
+
+    /// Turns "My crew" on or off. Shown at once; put back if the server refuses it.
+    func setVisibleToCrew(_ visible: Bool) async {
+        guard let location else { return }
+        let before = visibleToCrew
+        visibleToCrew = visible
+        settingsError = nil
+        do {
+            let _: CasualSettings = try await location.send(
+                path: "/me/casual/settings", method: "PUT", body: ["visibleToCrew": visible])
+        } catch {
+            visibleToCrew = before
             settingsError = error.localizedDescription
         }
     }

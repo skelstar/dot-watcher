@@ -96,12 +96,27 @@ public partial class SessionStore
     {
         using var conn = Connect();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "SELECT casual_visible_to_non_crew, features, casual_hide_start_area FROM users WHERE id = @userId";
+        cmd.CommandText = """
+            SELECT casual_visible_to_non_crew, features, casual_hide_start_area, casual_visible_to_crew
+            FROM users WHERE id = @userId
+            """;
         cmd.Parameters.AddWithValue("@userId", userId);
         using var reader = cmd.ExecuteReader();
         return reader.Read()
-            ? new CasualAccount(reader.GetBoolean(0), ParseFeatures(reader.GetString(1)), reader.GetBoolean(2))
+            ? new CasualAccount(reader.GetBoolean(0), ParseFeatures(reader.GetString(1)), reader.GetBoolean(2), reader.GetBoolean(3))
             : new CasualAccount(false, []);
+    }
+
+    public bool SetCasualVisibleToCrew(string userId, bool visible)
+    {
+        using var conn = Connect();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "UPDATE users SET casual_visible_to_crew = @visible WHERE id = @userId";
+        cmd.Parameters.AddWithValue("@visible", visible);
+        cmd.Parameters.AddWithValue("@userId", userId);
+        var changed = cmd.ExecuteNonQuery() > 0;
+        InvalidateCasualSnapshot();
+        return changed;
     }
 
     public bool SetCasualHideStartArea(string userId, bool hide)
@@ -396,10 +411,13 @@ public partial class SessionStore
     /// server last placed them, never on a position the caller supplies: otherwise any opted-in
     /// account could scan the map for strangers. <paramref name="includeCrew"/> is false for accounts
     /// without the crew feature, who then see everyone else as a non-crew dot.
+    /// <paramref name="viewerVisibleToCrew"/> is the viewer's own "My crew": off, they don't see
+    /// their crew (as they aren't seen by them).
     /// </summary>
     public CasualLiveResponse GetCasualLive(
         string viewerId,
         bool viewerVisibleToNonCrew,
+        bool viewerVisibleToCrew,
         bool includeCrew,
         CasualLiveEntry? self,
         DateTimeOffset now)
@@ -428,7 +446,8 @@ public partial class SessionStore
             crewLabels,
             GetBlockedPartyIds(conn, viewerId),
             entries,
-            now);
+            now,
+            viewerVisibleToCrew);
     }
 
     private IReadOnlyList<CasualLiveEntry> GetCasualSnapshot(DateTimeOffset now)
@@ -463,7 +482,8 @@ public partial class SessionStore
             SELECT DISTINCT ON (l.runner_user_id)
                    l.runner_user_id, l.runner_name, l.latitude, l.longitude, l.heading, l.timestamp,
                    l.next_expected_at, l.is_ultra_constrained, l.battery_level, l.in_session, l.received_at,
-                   u.casual_visible_to_non_crew, r.start_lat, r.start_lon, u.casual_hide_start_area
+                   u.casual_visible_to_non_crew, r.start_lat, r.start_lon, u.casual_hide_start_area,
+                   u.casual_visible_to_crew
             FROM location_updates l
             JOIN casual_runs r ON r.id = l.casual_run_id AND r.ended_at IS NULL
             JOIN users u ON u.id = l.runner_user_id
@@ -492,7 +512,8 @@ public partial class SessionStore
                 reader.IsDBNull(12) ? null : reader.GetDouble(12),
                 reader.IsDBNull(13) ? null : reader.GetDouble(13),
                 DateTimeOffset.Parse(reader.GetString(10)),
-                reader.GetBoolean(14)));
+                reader.GetBoolean(14),
+                reader.GetBoolean(15)));
         }
         return entries;
     }

@@ -62,6 +62,7 @@ public class CasualController(
         return Ok(store.GetCasualLive(
             user.UserId,
             account.VisibleToNonCrew,
+            account.VisibleToCrew,
             features.IsOn(Features.Crew),
             self: null,
             timeProvider.GetUtcNow()));
@@ -102,7 +103,10 @@ public class CasualController(
         return NoContent();
     }
 
-    /// <summary>Gets whether people who aren't in the caller's crew can see them (off by default).</summary>
+    /// <summary>
+    /// Gets who can see the caller: people who aren't in their crew (off by default), and their crew
+    /// (on by default).
+    /// </summary>
     [HttpGet("/me/casual/settings")]
     [ProducesResponseType(typeof(CasualSettings), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
@@ -118,13 +122,14 @@ public class CasualController(
     private CasualSettings SettingsFor(string userId)
     {
         var account = store.GetCasualAccount(userId);
-        return new CasualSettings(account.VisibleToNonCrew, account.HideStartArea);
+        return new CasualSettings(account.VisibleToNonCrew, account.HideStartArea, account.VisibleToCrew);
     }
 
     /// <summary>
-    /// Sets whether people who aren't in the caller's crew can see them, and whether they stay hidden
-    /// from non-crew until 300 m from where the run began (on by default; crew are never affected).
-    /// Omitted fields are left alone.
+    /// Sets whether people who aren't in the caller's crew can see them, whether they stay hidden
+    /// from non-crew until 300 m from where the run began (on by default; crew are never affected),
+    /// and whether their crew can see them (on by default). With both visibility settings off nobody
+    /// sees them, though their watch links still work. Omitted fields are left alone.
     /// </summary>
     [HttpPut("/me/casual/settings")]
     [ProducesResponseType(typeof(CasualSettings), StatusCodes.Status200OK)]
@@ -139,6 +144,8 @@ public class CasualController(
             store.SetCasualVisibleToNonCrew(user.UserId, visible);
         if (request?.HideStartArea is { } hide)
             store.SetCasualHideStartArea(user.UserId, hide);
+        if (request?.VisibleToCrew is { } crewVisible)
+            store.SetCasualVisibleToCrew(user.UserId, crewVisible);
 
         return Ok(SettingsFor(user.UserId));
     }
