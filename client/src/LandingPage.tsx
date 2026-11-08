@@ -23,7 +23,7 @@ export default function LandingPage() {
           <div>
             <h1 className="dw-hero-headline" style={headline}>Track your activity with others,<br />everyone gets a dot.</h1>
             <p style={subhead}>
-              Dot-watcher keeps your friends/competitors visible on one live map — so supporters know where to cheer, and nobody gets left behind.
+              Dot Watcher keeps your friends/competitors visible on one live map — so supporters know where to cheer, and nobody gets left behind.
             </p>
             <div style={heroCtaRow}>
               <a href={APP_STORE_URL} target="_blank" rel="noopener" style={storeLink}>
@@ -56,7 +56,7 @@ export default function LandingPage() {
             <StartOption src="/landing/assets/button-go.png" alt="Go: hold to start" title="Go" body="Start casual tracking. Just hold Go and your crew see you as a named dot on the map. Share with family/friends by sending a link so they can watch. Super simple way of starting your tracking." />
             <StartOption src="/landing/assets/button-join.png" alt="Join: enter an invite code" title="Join" body="Got a group invite code? Enter it to join and see other people in the group on the map. Great for club events and races." />
             <StartOption src="/landing/assets/button-create.png" alt="Create: set up a new group for others" title="Create" body="Create a group for an event, then share the invite code with others to join." />
-            <StartOption src="/landing/assets/crew-row.png" alt="The Your crew row in the Dot Watcher app, showing four crew dots and 6 people" title="Your crew" body="Add the people you well to your “crew”. You'll see each other on the map when you're both tracking." />
+            <StartOption src="/landing/assets/crew-row.png" alt="The Your crew row in the Dot Watcher app, showing four crew dots and 6 people" title="Your crew" body="Add the people you know well to your “crew”. You'll see each other on the map when you're both tracking." />
             <StartOption src="/landing/assets/satellite-dot.png" alt="A runner’s dot on the map with a satellite indicator" title="Satellite tracking" body={<>No cell signal? On a <u>supported phone</u> and <u>carrier</u>, your position keeps coming through over satellite, less often to save battery. Your dot shows a satellite indicator when sharing via satellite.<p style={{ margin: '10px 0 0' }}><i>(Relies on a clear view of the sky.)</i></p></>} rounded />
           </div>
         </section>
@@ -68,7 +68,7 @@ export default function LandingPage() {
             <FaqItem q="Can I track without a group?" a="Yes — hold Go on the start screen to start casual tracking. Your crew can see you, and you can share a watch link with anyone else." />
             <FaqItem q="Who can see where I am?" a="Only your crew, the people in the group you've joined, and anyone you give a watch link to. You can stop sharing at any time." />
             <FaqItem q="How accurate is the location?" a="It uses your phone's GPS, updated every 15 seconds. Like any GPS app, accuracy can vary with weather, buildings, or signal." />
-            <FaqItem q="How many people can join a group?" a="Dot-watcher supports small groups comfortably today — great for a club outing or a race-day crew." />
+            <FaqItem q="How many people can join a group?" a="Dot Watcher supports small groups comfortably today — great for a club outing or a race-day crew." />
             <FaqItem q="Who is this for?" a={<>
               Originally created for trail runners, but it works for any group who are out and about:
               <ul style={faqList}>
