@@ -1,4 +1,4 @@
-import MapKit
+import CoreLocation
 import SwiftUI
 
 /// The full-screen map shown while tracking in a named session: the same layout as the casual map
@@ -8,7 +8,10 @@ struct SessionMapScreen: View {
     var location: LocationManager
     var crew: CrewStore
 
-    @State private var camera: MapCameraPosition = .userLocation(fallback: .automatic)
+    @State private var camera = LinzMapCamera()
+    /// Fixed start for the map's per-second timeline. `.periodic(from: .now, …)` restarts on every body
+    /// update, and each tick's re-frame updates the body, so ticks would fire back to back and hang.
+    @State private var timelineStart = Date()
     @State private var stopProgress: CGFloat = 0
     @State private var showExtend = false
     @State private var showParticipants = false
@@ -60,6 +63,8 @@ struct SessionMapScreen: View {
     var body: some View {
         ZStack {
             map
+            LinzAttribution()
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
             VStack {
                 HStack(alignment: .top) {
                     // Nothing to count down until sharing starts: the map is also the backdrop for
@@ -195,38 +200,17 @@ struct SessionMapScreen: View {
     // MARK: Map
 
     private var map: some View {
-        TimelineView(.periodic(from: .now, by: 1)) { context in
-            Map(position: $camera) {
-                if location.routeCoordinates.count > 1 {
-                    MapPolyline(coordinates: location.routeCoordinates)
-                        .stroke(Color(red: 252 / 255, green: 76 / 255, blue: 2 / 255).opacity(0.9), lineWidth: 5) // Strava orange
-                }
-                // The organiser's join range: a dotted ring around the join location while nearby is on.
-                if let id = nearbySessionId, let status = location.nearbyStatuses[id], status.nearby,
-                   let center = location.nearbyMeetingPoints[id] {
-                    MapCircle(center: center, radius: CLLocationDistance(status.radiusMeters))
-                        .foregroundStyle(Color.black.opacity(0.04))
-                        .stroke(Color.black, style: StrokeStyle(lineWidth: 1, dash: [5, 5]))
-                }
-                ForEach(pins) { pin in
-                    Annotation("", coordinate: pin.coordinate) {
-                        let age = pin.timestamp.map { context.date.timeIntervalSince($0) }
-                        RunnerMapPin(
-                            name: pin.id,
-                            isHighlighted: pin.isSelf,
-                            heading: pin.heading,
-                            isStale: age.map { $0 > MapPinAge.staleAfter } ?? false,
-                            isDisconnected: age.map { $0 > MapPinAge.disconnectedAfter } ?? false
-                        )
-                    }
-                }
-            }
+        TimelineView(.periodic(from: timelineStart, by: 1)) { context in
+            LinzMapView(
+                markers: markers(at: context.date),
+                route: location.routeCoordinates,
+                joinRange: joinRange,
+                camera: camera,
+                onUserMovedCamera: { fitLocked = false }
+            )
             .onChange(of: context.date) { _, _ in
                 followIfNeeded()
                 if fitLocked { frameEveryone() }
-            }
-            .onChange(of: camera.positionedByUser) { _, byUser in
-                if byUser { fitLocked = false }
             }
         }
         // Dims the frozen last-known frame while on satellite: positions stop refreshing, so the map is
@@ -246,8 +230,31 @@ struct SessionMapScreen: View {
         .onAppear { fitAll() }
     }
 
-    /// Keeps the map on the followed runner (their pin moves as new positions land), at the zoom the
-    /// map already has. Frozen on satellite, like the rest of the map.
+    private func markers(at date: Date) -> [LinzMapMarker] {
+        pins.map { pin in
+            let age = pin.timestamp.map { date.timeIntervalSince($0) }
+            return LinzMapMarker(id: pin.id, coordinate: pin.coordinate) {
+                RunnerMapPin(
+                    name: pin.id,
+                    isHighlighted: pin.isSelf,
+                    heading: pin.heading,
+                    isStale: age.map { $0 > MapPinAge.staleAfter } ?? false,
+                    isDisconnected: age.map { $0 > MapPinAge.disconnectedAfter } ?? false
+                )
+            }
+        }
+    }
+
+    /// The organiser's join range: a dotted ring around the join location while nearby is on.
+    private var joinRange: LinzJoinRange? {
+        guard let id = nearbySessionId, let status = location.nearbyStatuses[id], status.nearby,
+              let center = location.nearbyMeetingPoints[id]
+        else { return nil }
+        return LinzJoinRange(center: center, radiusMeters: Double(status.radiusMeters))
+    }
+
+    /// Keeps the map on the followed runner (their pin moves as new positions land). Frozen on
+    /// satellite, like the rest of the map.
     private func followIfNeeded() {
         guard !location.isUltraConstrained, let followedName else { return }
         fitLocked = false
@@ -255,10 +262,7 @@ struct SessionMapScreen: View {
             self.followedName = nil  // they left, or have no position any more
             return
         }
-        withAnimation(.easeInOut(duration: 0.6)) {
-            camera = .region(MKCoordinateRegion(
-                center: pin.coordinate, span: MKCoordinateSpan(latitudeDelta: 0.01, longitudeDelta: 0.01)))
-        }
+        camera.move(to: LinzMapRegion(center: pin.coordinate, span: 0.01))
     }
 
     private func fitAll() {
@@ -268,27 +272,10 @@ struct SessionMapScreen: View {
     }
 
     private func frameEveryone() {
-        guard !location.isUltraConstrained else { return }
-        let coordinates = pins.map(\.coordinate)
-        guard let first = coordinates.first else { return }
-        if coordinates.count == 1 {
-            withAnimation(.easeInOut(duration: 0.6)) {
-                camera = .region(MKCoordinateRegion(
-                    center: first, span: MKCoordinateSpan(latitudeDelta: 0.01, longitudeDelta: 0.01)))
-            }
-            return
-        }
-        let minLat = coordinates.map(\.latitude).min()!
-        let maxLat = coordinates.map(\.latitude).max()!
-        let minLon = coordinates.map(\.longitude).min()!
-        let maxLon = coordinates.map(\.longitude).max()!
-        withAnimation(.easeInOut(duration: 0.6)) {
-            camera = .region(MKCoordinateRegion(
-                center: CLLocationCoordinate2D(latitude: (minLat + maxLat) / 2, longitude: (minLon + maxLon) / 2),
-                span: MKCoordinateSpan(
-                    latitudeDelta: max(0.01, (maxLat - minLat) * 1.5),
-                    longitudeDelta: max(0.01, (maxLon - minLon) * 1.5))))
-        }
+        guard !location.isUltraConstrained,
+              let region = LinzMapRegion.fitting(pins.map(\.coordinate))
+        else { return }
+        camera.move(to: region)
     }
 
     // MARK: Controls

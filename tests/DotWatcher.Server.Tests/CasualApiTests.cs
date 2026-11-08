@@ -286,6 +286,35 @@ public class CasualApiTests
     }
 
     [Fact]
+    public async Task VisibleToCrew_DefaultsOn_AndTurningItOffHidesTheRunnerAndTheirCrewFromEachOther()
+    {
+        using var factory = CasualFactory();
+        using var client = factory.CreateClient();
+        var (alice, bob) = await MakeCrewAsync(client, "alice", "bob");
+        Assert.True((await GetSettingsAsync(client, alice.AccessToken)).VisibleToCrew);
+        await StartAsync(client, bob.AccessToken);
+        await PostCasualOkAsync(client, bob.AccessToken, HereLatitude);
+        await StartAsync(client, alice.AccessToken);
+        await PostCasualOkAsync(client, alice.AccessToken, HereLatitude);
+        Assert.Equal(2, (await GetLiveAsync(client, bob.AccessToken)).Participants.Count);
+
+        var off = await SendAsync(client, HttpMethod.Put, "/me/casual/settings", alice.AccessToken, new { visibleToCrew = false });
+        Assert.Equal(HttpStatusCode.OK, off.StatusCode);
+        var settings = await GetSettingsAsync(client, alice.AccessToken);
+        Assert.False(settings.VisibleToCrew);
+        Assert.True(settings.HideStartArea);
+
+        // Bob now sees only himself, and Alice only herself.
+        Assert.Single((await GetLiveAsync(client, bob.AccessToken)).Participants);
+        Assert.Single((await PostCasualOkAsync(client, alice.AccessToken, HereLatitude)).Participants);
+        Assert.Single((await GetLiveAsync(client, alice.AccessToken)).Participants);
+
+        await SendAsync(client, HttpMethod.Put, "/me/casual/settings", alice.AccessToken, new { visibleToCrew = true });
+        Assert.Equal(2, (await GetLiveAsync(client, bob.AccessToken)).Participants.Count);
+        Assert.Equal(2, (await GetLiveAsync(client, alice.AccessToken)).Participants.Count);
+    }
+
+    [Fact]
     public async Task Stop_RemovesTheRunnerFromEveryonesMap()
     {
         using var factory = CasualFactory();

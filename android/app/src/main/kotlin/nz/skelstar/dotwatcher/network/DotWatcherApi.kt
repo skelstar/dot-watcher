@@ -155,6 +155,8 @@ data class CasualSettings(
     val visibleToNonCrew: Boolean = false,
     /** People who aren't in the crew don't see the caller until 300 m from where the run began. On by default. */
     val hideStartArea: Boolean = true,
+    /** Whether the caller's crew see them. On by default; absent from older servers, which always show crew. */
+    val visibleToCrew: Boolean = true,
 )
 
 /** Fields left null are left alone by the server. */
@@ -162,6 +164,7 @@ data class CasualSettings(
 data class UpdateCasualSettingsRequest(
     val visibleToNonCrew: Boolean? = null,
     val hideStartArea: Boolean? = null,
+    val visibleToCrew: Boolean? = null,
 )
 
 // --- Events near you (server: Controllers/EventsController.cs) --------------------------

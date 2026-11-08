@@ -1,4 +1,4 @@
-import MapKit
+import CoreLocation
 import SwiftUI
 
 // Casual tracking screens: the Go button on the start screen, "Before you go", "Who can see me", and
@@ -117,6 +117,8 @@ func crewOutLine(_ crewOut: Int?) -> String? {
 /// offers a way to change who can see them.
 struct BeforeYouGoSheet: View {
     @State private var duration = CasualStore.defaultDuration
+    /// Whether "My crew" is on in "Who can see me".
+    var visibleToCrew = true
     let onGo: (TimeInterval) -> Void
     let onChooseWhoCanSeeMe: () -> Void
 
@@ -125,7 +127,12 @@ struct BeforeYouGoSheet: View {
             VStack(alignment: .leading, spacing: 16) {
                 Text("Before you go")
                     .font(.largeTitle.bold())
-                point("Your crew see your name", "While you're out, with their colour ring on the map.")
+                if visibleToCrew {
+                    point("Your crew see your name", "While you're out, with their colour ring on the map.")
+                } else {
+                    point("You and your crew don't see each other",
+                          "You turned off My crew. You can still share a link to watch you.")
+                }
                 point("Nearby runners see nothing",
                       "Unless you turn on Show me to people nearby. Then it's a grey dot with no name.")
                 point("Stop any time", "Hold the red Stop, or it stops by itself when the time is up.")
@@ -180,9 +187,11 @@ struct BeforeYouGoSheet: View {
 
 // MARK: - Who can see me
 
-/// Who can see a casual run. Crew always can. The switch controls strangers nearby: off until the person
-/// turns it on, then remembered. Only people who have also turned it on can be seen, and they see each
-/// other, so turning it off also stops showing them others.
+/// Who can see a casual run. Crew can, unless the person turns "My crew" off, which also stops them seeing
+/// their crew. The nearby switch controls
+/// strangers: off until the person turns it on, then remembered. Only people who have also turned it on
+/// can be seen, and they see each other, so turning it off also stops showing them others. With both off
+/// the person is private: nobody sees them on the map, but a "Share your run" link still works.
 struct WhoCanSeeMeSheet: View {
     var casual: CasualStore
 
@@ -199,13 +208,16 @@ struct WhoCanSeeMeSheet: View {
         VStack(alignment: .leading, spacing: 18) {
             Text("Who can see me")
                 .font(.largeTitle.bold())
-            Toggle(isOn: .constant(true)) {
+            Toggle(isOn: Binding(
+                get: { casual.visibleToCrew },
+                set: { visible in Task { await casual.setVisibleToCrew(visible) } }
+            )) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("My crew").font(.headline)
-                    Text("Always. They see your name.").font(.subheadline).foregroundStyle(.secondary)
+                    Text(casual.visibleToCrew ? "They see your name." : "You and your crew don't see each other.")
+                        .font(.subheadline).foregroundStyle(.secondary)
                 }
             }
-            .disabled(true)
             Toggle(isOn: Binding(
                 get: { casual.visibleToNonCrew },
                 set: { visible in Task { await casual.setVisibleToNonCrew(visible) } }
@@ -230,6 +242,17 @@ struct WhoCanSeeMeSheet: View {
                 Text("Anyone nearby can see where you set off from, which may be your home.")
                     .font(.footnote)
                     .foregroundStyle(.orange)
+            }
+            if casual.isPrivate {
+                Label {
+                    Text("You're private: nobody sees you on the map, and you don't see your crew. You can still send someone a link to watch you. On the map, tap \(Image(systemName: "square.and.arrow.up")) Share.")
+                } icon: {
+                    Image(systemName: "eye.slash")
+                }
+                .font(.footnote)
+                .padding(12)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color.secondary.opacity(0.12), in: RoundedRectangle(cornerRadius: 10))
             }
             Text("Only people who have also turned on \"Show me to people nearby\" can be seen, and you see them. Your choices are remembered next time.")
                 .font(.footnote)
@@ -259,6 +282,7 @@ struct CasualHost: ViewModifier {
         content
             .sheet(isPresented: $casual.isBeforeYouGoPresented) {
                 BeforeYouGoSheet(
+                    visibleToCrew: casual.visibleToCrew,
                     onGo: { duration in
                         casual.isBeforeYouGoPresented = false
                         Task { await casual.start(duration: duration) }
@@ -317,7 +341,10 @@ struct CasualMapScreen: View {
     var location: LocationManager
 
     @Environment(\.scenePhase) private var scenePhase
-    @State private var camera: MapCameraPosition = .automatic
+    @State private var camera = LinzMapCamera()
+    /// Fixed start for the map's per-second timeline. `.periodic(from: .now, …)` restarts on every body
+    /// update, and each tick's re-frame updates the body, so ticks would fire back to back and hang.
+    @State private var timelineStart = Date()
     /// While set, the map re-frames everyone as positions move; fit-all sets it, dragging the map clears it.
     @State private var fitLocked = true
     @State private var stopProgress: CGFloat = 0
@@ -371,6 +398,8 @@ struct CasualMapScreen: View {
     var body: some View {
         ZStack {
             map
+            LinzAttribution()
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
             VStack {
                 HStack(alignment: .top) {
                     topLeft
@@ -443,35 +472,14 @@ struct CasualMapScreen: View {
     // MARK: Map
 
     private var map: some View {
-        TimelineView(.periodic(from: .now, by: 1)) { context in
-            Map(position: $camera) {
-                ForEach(Array(casual.nearby.enumerated()), id: \.offset) { _, dot in
-                    Annotation("", coordinate: CLLocationCoordinate2D(latitude: dot.latitude, longitude: dot.longitude)) {
-                        NearbyDotView(isLocked: dot.inSession == true)
-                    }
-                }
-                ForEach(pins) { pin in
-                    Annotation("", coordinate: pin.coordinate) {
-                        let age = pin.timestamp.map { context.date.timeIntervalSince($0) }
-                        RunnerMapPin(
-                            name: pin.id,
-                            label: pin.displayName,
-                            isHighlighted: pin.isSelf,
-                            heading: pin.heading,
-                            isStale: age.map { $0 > MapPinAge.staleAfter } ?? false,
-                            isDisconnected: age.map { $0 > MapPinAge.disconnectedAfter } ?? false
-                        )
-                        .overlay(alignment: .bottomTrailing) {
-                            if pin.isLocked { LockBadge().offset(x: 4, y: 4) }
-                        }
-                    }
-                }
-            }
+        TimelineView(.periodic(from: timelineStart, by: 1)) { context in
+            LinzMapView(
+                markers: markers(at: context.date),
+                camera: camera,
+                onUserMovedCamera: { fitLocked = false }
+            )
             .onChange(of: context.date) { _, _ in
                 if fitLocked { frameEveryone() }
-            }
-            .onChange(of: camera.positionedByUser) { _, byUser in
-                if byUser { fitLocked = false }
             }
         }
         .ignoresSafeArea()
@@ -484,6 +492,35 @@ struct CasualMapScreen: View {
         .onAppear { fitAll() }
     }
 
+    /// Anonymous nearby dots under the named pins.
+    private func markers(at date: Date) -> [LinzMapMarker] {
+        let nearby = casual.nearby.enumerated().map { index, dot in
+            LinzMapMarker(
+                id: "nearby-\(index)",
+                coordinate: CLLocationCoordinate2D(latitude: dot.latitude, longitude: dot.longitude)
+            ) {
+                NearbyDotView(isLocked: dot.inSession == true)
+            }
+        }
+        let people = pins.map { pin in
+            let age = pin.timestamp.map { date.timeIntervalSince($0) }
+            return LinzMapMarker(id: "runner-\(pin.id)", coordinate: pin.coordinate, zIndex: 1) {
+                RunnerMapPin(
+                    name: pin.id,
+                    label: pin.displayName,
+                    isHighlighted: pin.isSelf,
+                    heading: pin.heading,
+                    isStale: age.map { $0 > MapPinAge.staleAfter } ?? false,
+                    isDisconnected: age.map { $0 > MapPinAge.disconnectedAfter } ?? false
+                )
+                .overlay(alignment: .bottomTrailing) {
+                    if pin.isLocked { LockBadge().offset(x: 4, y: 4) }
+                }
+            }
+        }
+        return nearby + people
+    }
+
     private func fitAll() {
         fitLocked = true
         frameEveryone()
@@ -493,25 +530,8 @@ struct CasualMapScreen: View {
         // Everyone on the map, anonymous dots included: they are why the person opened it.
         let coordinates = pins.map(\.coordinate)
             + casual.nearby.map { CLLocationCoordinate2D(latitude: $0.latitude, longitude: $0.longitude) }
-        guard let first = coordinates.first else { return }
-        if coordinates.count == 1 {
-            withAnimation(.easeInOut(duration: 0.6)) {
-                camera = .region(MKCoordinateRegion(
-                    center: first, span: MKCoordinateSpan(latitudeDelta: 0.01, longitudeDelta: 0.01)))
-            }
-            return
-        }
-        let minLat = coordinates.map(\.latitude).min()!
-        let maxLat = coordinates.map(\.latitude).max()!
-        let minLon = coordinates.map(\.longitude).min()!
-        let maxLon = coordinates.map(\.longitude).max()!
-        withAnimation(.easeInOut(duration: 0.6)) {
-            camera = .region(MKCoordinateRegion(
-                center: CLLocationCoordinate2D(latitude: (minLat + maxLat) / 2, longitude: (minLon + maxLon) / 2),
-                span: MKCoordinateSpan(
-                    latitudeDelta: max(0.01, (maxLat - minLat) * 1.5),
-                    longitudeDelta: max(0.01, (maxLon - minLon) * 1.5))))
-        }
+        guard let region = LinzMapRegion.fitting(coordinates) else { return }
+        camera.move(to: region)
     }
 
     // MARK: Controls

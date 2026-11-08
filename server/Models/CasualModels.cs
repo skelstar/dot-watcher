@@ -6,14 +6,20 @@ namespace DotWatcher.Server;
 // HideStartArea: people who aren't in the runner's crew don't see them until they are
 // CasualVisibility.StartFuzzMeters from where the run began. On unless the runner turns it off; crew
 // are never affected.
+//
+// VisibleToCrew: whether the runner and their crew see each other. On unless the runner turns it off
+// (reciprocal, like VisibleToNonCrew); with both off, nobody sees them in casual and they see nobody
+// else. Watch links still work either way.
 public record CasualSettings(
     bool VisibleToNonCrew,
-    bool HideStartArea = true
+    bool HideStartArea = true,
+    bool VisibleToCrew = true
 );
 
 public record UpdateCasualSettingsRequest(
     bool? VisibleToNonCrew = null,
-    bool? HideStartArea = null
+    bool? HideStartArea = null,
+    bool? VisibleToCrew = null
 );
 
 public record CasualStartResponse(
@@ -51,7 +57,9 @@ public record CasualLiveEntry(
     // own clock (Position.Timestamp), which can be wrong.
     DateTimeOffset ReceivedAt,
     // The runner's own setting: when true, non-crew don't see them near where the run began.
-    bool HideStartArea = true
+    bool HideStartArea = true,
+    // The runner's own setting: when false, their crew don't see them.
+    bool VisibleToCrew = true
 );
 
 public enum CasualPostOutcome
@@ -68,7 +76,11 @@ public enum CasualPostOutcome
 public record CasualPostResult(CasualPostOutcome Outcome, CasualLiveEntry? Self = null);
 
 /// <summary>What the casual endpoints need to know about an account, read in one query.</summary>
-public record CasualAccount(bool VisibleToNonCrew, IReadOnlyList<string> GrantedFeatures, bool HideStartArea = true);
+public record CasualAccount(
+    bool VisibleToNonCrew,
+    IReadOnlyList<string> GrantedFeatures,
+    bool HideStartArea = true,
+    bool VisibleToCrew = true);
 
 /// <summary>A new watch link for the caller's current run. <see cref="Path"/> is relative to the web
 /// site (<c>/watch/{token}</c>); each client builds the full link with its own web base URL.</summary>

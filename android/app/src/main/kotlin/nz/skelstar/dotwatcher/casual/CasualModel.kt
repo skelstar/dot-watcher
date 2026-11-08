@@ -25,11 +25,17 @@ data class CasualUiState(
     /** "Hide my start area": people who aren't in the crew don't see the person until they are 300 m
      *  from where the run began. On unless the person turns it off; the server holds the value. */
     val hideStartArea: Boolean = true,
+    /** "My crew": whether the person's crew see them. On unless the person turns it off; with this and
+     *  [visibleToNonCrew] both off nobody sees them, though a watch link still works. */
+    val visibleToCrew: Boolean = true,
     /** How many of the person's crew are out right now; null until first loaded. */
     val crewOut: Int? = null,
     val error: String? = null,
 ) {
     val isAvailable: Boolean get() = availability == CasualAvailability.Available
+
+    /** Nobody sees this person on the map: neither their crew nor people nearby. */
+    val isPrivate: Boolean get() = !visibleToCrew && !visibleToNonCrew
 }
 
 /**
@@ -58,9 +64,15 @@ class CasualModel(
             settings.isSuccessful -> {
                 val visible = settings.body()?.visibleToNonCrew ?: false
                 val hide = settings.body()?.hideStartArea ?: true
+                val crewVisible = settings.body()?.visibleToCrew ?: true
                 prefs.visibleToNonCrew = visible
                 _state.update {
-                    it.copy(availability = CasualAvailability.Available, visibleToNonCrew = visible, hideStartArea = hide)
+                    it.copy(
+                        availability = CasualAvailability.Available,
+                        visibleToNonCrew = visible,
+                        hideStartArea = hide,
+                        visibleToCrew = crewVisible,
+                    )
                 }
             }
             // 401 means the session ended and 426 is handled app-wide; neither says anything about
@@ -111,6 +123,25 @@ class CasualModel(
                 _state.update {
                     it.copy(
                         hideStartArea = before,
+                        error = response?.errorMessageOrStatus()
+                            ?: (result.exceptionOrNull()?.networkMessage() ?: "Network error. Try again."),
+                    )
+                }
+            }
+        }
+    }
+
+    /** Turns "My crew" on or off. Shown at once; put back if the server refuses it. */
+    fun setVisibleToCrew(visible: Boolean) {
+        val before = _state.value.visibleToCrew
+        _state.update { it.copy(visibleToCrew = visible, error = null) }
+        scope.launch {
+            val result = runCatching { repository.setCasualVisibleToCrew(visible) }
+            val response = result.getOrNull()
+            if (response == null || !response.isSuccessful) {
+                _state.update {
+                    it.copy(
+                        visibleToCrew = before,
                         error = response?.errorMessageOrStatus()
                             ?: (result.exceptionOrNull()?.networkMessage() ?: "Network error. Try again."),
                     )

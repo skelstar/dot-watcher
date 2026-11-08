@@ -18,7 +18,8 @@ public class CasualVisibilityTests
         double? startLatitude = null,
         double? startLongitude = null,
         TimeSpan? age = null,
-        DateTimeOffset? nextExpectedAt = null) =>
+        DateTimeOffset? nextExpectedAt = null,
+        bool visibleToCrew = true) =>
         new(
             userId,
             new RunnerPosition(userId.ToUpperInvariant(), latitude, longitude, 90, Now - (age ?? TimeSpan.FromSeconds(5)), nextExpectedAt),
@@ -26,16 +27,19 @@ public class CasualVisibilityTests
             visible,
             startLatitude,
             startLongitude,
-            ReceivedAt: Now - (age ?? TimeSpan.FromSeconds(5)));
+            ReceivedAt: Now - (age ?? TimeSpan.FromSeconds(5)),
+            VisibleToCrew: visibleToCrew);
 
     private static CasualLiveResponse View(
         IReadOnlyCollection<CasualLiveEntry> live,
         bool viewerVisible = true,
         (double, double)? viewerPosition = null,
         IReadOnlyDictionary<string, string>? crew = null,
-        IReadOnlySet<string>? blocked = null) =>
+        IReadOnlySet<string>? blocked = null,
+        bool viewerVisibleToCrew = true) =>
         CasualVisibility.ForViewer(
-            "me", viewerVisible, viewerPosition ?? (-41.17, 174.7762), crew ?? NoCrew, blocked ?? NoBlocks, live, Now);
+            "me", viewerVisible, viewerPosition ?? (-41.17, 174.7762), crew ?? NoCrew, blocked ?? NoBlocks, live, Now,
+            viewerVisibleToCrew);
 
     [Fact]
     public void Viewer_SeesThemselves_EvenWithNothingElseOn()
@@ -55,6 +59,44 @@ public class CasualVisibilityTests
 
         Assert.Equal(new[] { "Aimes" }, response.Participants);
         Assert.Empty(response.Nearby);
+    }
+
+    [Fact]
+    public void Crew_WhoTurnedOffMyCrew_AreHidden_EvenAsADot()
+    {
+        // Close by and visible to non-crew: still not shown, since an anonymous dot would give them away.
+        var response = View(
+            [Entry("amy", latitude: -41.16, visibleToCrew: false)],
+            crew: new Dictionary<string, string> { ["amy"] = "Aimes" });
+
+        Assert.Empty(response.Participants);
+        Assert.Empty(response.Positions);
+        Assert.Empty(response.Nearby);
+    }
+
+    [Fact]
+    public void Viewer_WhoTurnedOffMyCrew_SeesOnlyThemselves_NotTheirCrew_EvenAsADot()
+    {
+        // Amy is close by and visible to non-crew, and the viewer shows to non-crew too: still hidden.
+        var response = View(
+            [Entry("me", visibleToCrew: false), Entry("amy", latitude: -41.16)],
+            crew: new Dictionary<string, string> { ["amy"] = "Aimes" },
+            viewerVisibleToCrew: false);
+
+        Assert.Equal(new[] { "ME" }, response.Participants);
+        Assert.Empty(response.Nearby);
+    }
+
+    [Fact]
+    public void Viewer_WhoTurnedOffMyCrew_StillSeesNonCrewDots()
+    {
+        Assert.Single(View([Entry("zed", latitude: -41.16)], viewerVisibleToCrew: false).Nearby);
+    }
+
+    [Fact]
+    public void NonCrew_AreUnaffectedByMyCrew()
+    {
+        Assert.Single(View([Entry("zed", latitude: -41.16, visibleToCrew: false)]).Nearby);
     }
 
     [Fact]
