@@ -54,9 +54,9 @@ export default function LandingPage() {
           <p style={startIntro}>Your phone shares your GPS location with the people you want to see your location. That could be friends who are out with you, your club, or even your friends and family wanting to watch at home. You do this by choosing one of three options:</p>
           <div style={startButtons}>
             <StartOption src="/landing/assets/button-go.png" alt="Go: hold to start" title="Go" body="Start casual tracking. Just hold Go and your crew see you as a named dot on the map. Share with family/friends by sending a link so they can watch. Super simple way of starting your tracking." />
-            <StartOption src="/landing/assets/button-join.png" alt="Join: enter an invite code" title="Join" body="Got a group invite code? Enter it to join group and see other members on the map. Great for club events and races." />
+            <StartOption src="/landing/assets/button-join.png" alt="Join: enter an invite code" title="Join" body="Got a group invite code? Enter it to join and see other people in the group on the map. Great for club events and races." />
             <StartOption src="/landing/assets/button-create.png" alt="Create: set up a new group for others" title="Create" body="Create a group for an event, then share the invite code with others to join." />
-            <StartOption src="/landing/assets/crew-row.png" alt="The Your crew row in the Dot Watcher app, showing four crew dots and 6 people" title="Your crew" body="Add the people you often run with to your “crew.”" />
+            <StartOption src="/landing/assets/crew-row.png" alt="The Your crew row in the Dot Watcher app, showing four crew dots and 6 people" title="Your crew" body="Add the people you well to your “crew”. You'll see each other on the map when you're both tracking." />
             <StartOption src="/landing/assets/satellite-dot.png" alt="A runner’s dot on the map with a satellite indicator" title="Satellite tracking" body={<>No cell signal? On a <u>supported phone</u> and <u>carrier</u>, your position keeps coming through over satellite, less often to save battery. Your dot shows a satellite indicator when sharing via satellite.<p style={{ margin: '10px 0 0' }}><i>(Relies on a clear view of the sky.)</i></p></>} rounded />
           </div>
         </section>
@@ -64,11 +64,21 @@ export default function LandingPage() {
         <section id="dw-faq" className="dw-faq" style={faq}>
           <h2 style={eyebrowHeading}>FAQ</h2>
           <div style={stepList}>
-            <FaqItem q="Is it only for iPhone?" a="Runners can use an iPhone today, and the Android app is in closed beta. Spectators can watch from any browser, no app needed." />
+            <FaqItem q="Is it only for iPhone?" a="You can use an iPhone today, and the Android app is in closed beta. Spectators can watch from any browser, no app needed." />
             <FaqItem q="Can I track without a group?" a="Yes — hold Go on the start screen to start casual tracking. Your crew can see you, and you can share a watch link with anyone else." />
             <FaqItem q="Who can see where I am?" a="Only your crew, the people in the group you've joined, and anyone you give a watch link to. You can stop sharing at any time." />
             <FaqItem q="How accurate is the location?" a="It uses your phone's GPS, updated every 15 seconds. Like any GPS app, accuracy can vary with weather, buildings, or signal." />
-            <FaqItem q="How many people can join a session?" a="Sessions support small groups comfortably today — great for a run club outing or a race-day crew." />
+            <FaqItem q="How many people can join a group?" a="Dot-watcher supports small groups comfortably today — great for a club outing or a race-day crew." />
+            <FaqItem q="Who is this for?" a={<>
+              Originally created for trail runners, but it works for any group who are out and about:
+              <ul style={faqList}>
+                <li>Trail running and club runs</li>
+                <li>Running far from home and want family to know where you are?</li>
+                <li>Rogaine and orienteering</li>
+                <li>Car clubs on a road trip</li>
+                <li>Yacht racing</li>
+              </ul>
+            </>} />
             <FaqItem q="Is it free?" a="Yes, free to use." last />
           </div>
         </section>
@@ -119,7 +129,7 @@ function Feature({ color, title, body, image }: { color: string; title: string; 
   )
 }
 
-function FaqItem({ q, a, last }: { q: string; a: string; last?: boolean }) {
+function FaqItem({ q, a, last }: { q: string; a: React.ReactNode; last?: boolean }) {
   return (
     <div style={{ ...faqCard, marginBottom: last ? 0 : 10 }}>
       <div style={faqQuestion}>{q}</div>
@@ -483,6 +493,11 @@ const faqAnswer: React.CSSProperties = {
   fontSize: 13.5,
   lineHeight: 1.5,
   color: '#6B6D77',
+}
+
+const faqList: React.CSSProperties = {
+  margin: '8px 0 0',
+  paddingLeft: 20,
 }
 
 const footer: React.CSSProperties = {
