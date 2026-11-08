@@ -349,7 +349,7 @@ const startButtons: React.CSSProperties = {
   display: 'flex',
   flexDirection: 'column',
   gap: 14,
-  maxWidth: 440,
+  maxWidth: 270,
   margin: '0 0 28px',
 }
 
