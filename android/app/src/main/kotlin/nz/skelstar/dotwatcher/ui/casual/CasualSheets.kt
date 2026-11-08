@@ -1,6 +1,8 @@
 package nz.skelstar.dotwatcher.ui.casual
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -53,6 +55,8 @@ fun BeforeYouGoSheet(
     onGo: (Duration) -> Unit,
     onChooseWhoCanSeeMe: () -> Unit,
     onDismiss: () -> Unit,
+    /** Whether "My crew" is on in "Who can see me". */
+    visibleToCrew: Boolean = true,
 ) {
     var duration by remember { mutableStateOf(DEFAULT_CASUAL_DURATION) }
 
@@ -68,7 +72,14 @@ fun BeforeYouGoSheet(
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             Text("Before you go", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-            Point("Your crew see your name", "While you're out, with their colour ring on the map.")
+            if (visibleToCrew) {
+                Point("Your crew see your name", "While you're out, with their colour ring on the map.")
+            } else {
+                Point(
+                    "You and your crew don't see each other",
+                    "You turned off My crew. You can still share a link to watch you.",
+                )
+            }
             Point(
                 "Nearby runners see nothing",
                 "Unless you turn on Show me to people nearby. Then it's a grey dot with no name.",
@@ -127,16 +138,21 @@ private val HIDE_START_AREA_BODY = buildAnnotatedString {
 }
 
 /**
- * Who can see a casual run. Crew always can. The switch controls strangers nearby: off until the
- * person turns it on, then remembered. Only people who have also turned it on can be seen, and
- * they see each other, so turning it off also stops showing them others.
+ * Who can see a casual run. Crew can, unless the person turns "My crew" off, which also stops them
+ * seeing their crew. The nearby switch
+ * controls strangers: off until the person turns it on, then remembered. Only people who have also
+ * turned it on can be seen, and they see each other, so turning it off also stops showing them
+ * others. With both off the person is private: nobody sees them on the map, but a watch link still
+ * works.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun WhoCanSeeMeSheet(
+    visibleToCrew: Boolean,
     visibleToNonCrew: Boolean,
     hideStartArea: Boolean,
     error: String?,
+    onCrewVisibleChange: (Boolean) -> Unit,
     onVisibleChange: (Boolean) -> Unit,
     onHideStartAreaChange: (Boolean) -> Unit,
     onDismiss: () -> Unit,
@@ -149,10 +165,12 @@ fun WhoCanSeeMeSheet(
             Text("Who can see me", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
             SwitchRow(
                 title = "My crew",
-                body = AnnotatedString("Always. They see your name."),
-                checked = true,
-                enabled = false,
-                onCheckedChange = {},
+                body = AnnotatedString(
+                    if (visibleToCrew) "They see your name." else "You and your crew don't see each other.",
+                ),
+                checked = visibleToCrew,
+                enabled = true,
+                onCheckedChange = onCrewVisibleChange,
             )
             SwitchRow(
                 title = "Show me to people nearby",
@@ -173,6 +191,17 @@ fun WhoCanSeeMeSheet(
                     text = "Anyone nearby can see where you set off from, which may be your home.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.error,
+                )
+            }
+            if (!visibleToCrew && !visibleToNonCrew) {
+                Text(
+                    text = "You're private: nobody sees you on the map, and you don't see your crew. You can " +
+                        "still send someone a link to watch you. On the map, tap Share.",
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(10.dp))
+                        .padding(12.dp),
                 )
             }
             Text(

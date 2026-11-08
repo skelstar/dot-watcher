@@ -96,6 +96,18 @@ class CasualWireTest {
         )
     }
 
+    @Test fun `my crew is on unless the server says otherwise, and is sent alone`() {
+        assertTrue(json.decodeFromString<CasualSettings>("{}").visibleToCrew)
+        assertFalse(json.decodeFromString<CasualSettings>("""{"visibleToNonCrew":false,"visibleToCrew":false}""").visibleToCrew)
+        assertEquals(
+            """{"visibleToCrew":false}""",
+            json.encodeToString(
+                UpdateCasualSettingsRequest.serializer(),
+                UpdateCasualSettingsRequest(visibleToCrew = false),
+            ),
+        )
+    }
+
     @Test fun `the casual session id matches the server's fixed one`() {
         assertEquals("ca5ca100-0000-4000-8000-000000000001", CASUAL_SESSION_ID)
     }

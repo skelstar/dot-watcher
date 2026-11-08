@@ -297,14 +297,17 @@ fun SessionScreen(
                 showWhoCanSeeMe = true
             },
             onDismiss = { showBeforeYouGo = false },
+            visibleToCrew = casualState.visibleToCrew,
         )
     }
 
     if (showWhoCanSeeMe) {
         WhoCanSeeMeSheet(
+            visibleToCrew = casualState.visibleToCrew,
             visibleToNonCrew = casualState.visibleToNonCrew,
             hideStartArea = casualState.hideStartArea,
             error = casualState.error,
+            onCrewVisibleChange = casual::setVisibleToCrew,
             onVisibleChange = casual::setVisibleToNonCrew,
             onHideStartAreaChange = casual::setHideStartArea,
             onDismiss = {

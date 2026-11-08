@@ -6,7 +6,10 @@ namespace DotWatcher.Server;
 ///
 /// <list type="bullet">
 /// <item>The viewer always sees themselves.</item>
-/// <item>Crew are named (nickname, else initials) at any distance, whatever their toggle says.</item>
+/// <item>Crew are named (nickname, else initials) at any distance, whatever their non-crew toggle
+/// says, unless they turned <see cref="CasualLiveEntry.VisibleToCrew"/> off. Then they don't appear
+/// to their crew at all, not even as an anonymous dot (which crew could easily tell apart). Like the
+/// non-crew toggle it is reciprocal: a viewer with it off doesn't see their crew either.</item>
 /// <item>Anyone else is an anonymous dot, only if both they and the viewer have the toggle on, they are
 /// within <see cref="NearbyRadiusMeters"/> of the viewer, and they are not within
 /// <see cref="StartFuzzMeters"/> of where their own run began (unless they turned
@@ -50,7 +53,8 @@ public static class CasualVisibility
         IReadOnlyDictionary<string, string> crewLabels,
         IReadOnlySet<string> blockedUserIds,
         IReadOnlyCollection<CasualLiveEntry> live,
-        DateTimeOffset now)
+        DateTimeOffset now,
+        bool viewerVisibleToCrew = true)
     {
         var participants = new List<string>();
         var positions = new List<RunnerPosition[]>();
@@ -73,6 +77,8 @@ public static class CasualVisibility
 
             if (crewLabels.TryGetValue(entry.UserId, out var label))
             {
+                if (!entry.VisibleToCrew || !viewerVisibleToCrew)
+                    continue;
                 participants.Add(label);
                 positions.Add([ToCasualPosition(entry, label, isSelf: false)]);
                 continue;

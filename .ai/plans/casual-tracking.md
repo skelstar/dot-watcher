@@ -180,7 +180,10 @@ the rule lives in one place (and can later move to a "presence" model without to
 | Everyone else | no | n/a |
 
 The toggle is **reciprocal** (decided): if your toggle is off you get crew only, and strangers don't see you. Crew
-always see you regardless of the toggle.
+see you regardless of the toggle, unless you turn **"My crew"** off (`users.casual_visible_to_crew`, default on;
+`visibleToCrew` in `/me/casual/settings`). That is reciprocal too: you and your crew don't see each other at all,
+not even as anonymous dots. With both off you are private: nobody sees you and you see nobody, but your watch links
+still work.
 
 "Live" means: has an open casual run **and** a position within the stale cutoff (default 10 min, honouring
 `NextExpectedAt` + grace so a satellite user on a slow cadence doesn't vanish; hard cap 30 min).

@@ -113,6 +113,7 @@ public class LocationsController(
         return Ok(store.GetCasualLive(
             user.UserId,
             account.VisibleToNonCrew,
+            account.VisibleToCrew,
             features.IsOn(Features.Crew),
             result.Self,
             now));
