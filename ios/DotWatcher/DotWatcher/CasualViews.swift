@@ -318,6 +318,9 @@ struct CasualMapScreen: View {
 
     @Environment(\.scenePhase) private var scenePhase
     @State private var camera = LinzMapCamera()
+    /// Fixed start for the map's per-second timeline. `.periodic(from: .now, …)` restarts on every body
+    /// update, and each tick's re-frame updates the body, so ticks would fire back to back and hang.
+    @State private var timelineStart = Date()
     /// While set, the map re-frames everyone as positions move; fit-all sets it, dragging the map clears it.
     @State private var fitLocked = true
     @State private var stopProgress: CGFloat = 0
@@ -445,7 +448,7 @@ struct CasualMapScreen: View {
     // MARK: Map
 
     private var map: some View {
-        TimelineView(.periodic(from: .now, by: 1)) { context in
+        TimelineView(.periodic(from: timelineStart, by: 1)) { context in
             LinzMapView(
                 markers: markers(at: context.date),
                 camera: camera,

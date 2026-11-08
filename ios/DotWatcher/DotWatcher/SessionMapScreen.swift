@@ -9,6 +9,9 @@ struct SessionMapScreen: View {
     var crew: CrewStore
 
     @State private var camera = LinzMapCamera()
+    /// Fixed start for the map's per-second timeline. `.periodic(from: .now, …)` restarts on every body
+    /// update, and each tick's re-frame updates the body, so ticks would fire back to back and hang.
+    @State private var timelineStart = Date()
     @State private var stopProgress: CGFloat = 0
     @State private var showExtend = false
     @State private var showParticipants = false
@@ -197,7 +200,7 @@ struct SessionMapScreen: View {
     // MARK: Map
 
     private var map: some View {
-        TimelineView(.periodic(from: .now, by: 1)) { context in
+        TimelineView(.periodic(from: timelineStart, by: 1)) { context in
             LinzMapView(
                 markers: markers(at: context.date),
                 route: location.routeCoordinates,
