@@ -12,7 +12,6 @@ export default function LandingPage() {
           </div>
           <div className="dw-nav-links" style={navLinks}>
             <a href="#dw-how" style={navLink}>How it works</a>
-            <a href="#dw-features" style={navLink}>Features</a>
             <a href="#dw-faq" style={navLink}>FAQ</a>
           </div>
           <a href={APP_STORE_URL} target="_blank" rel="noopener" style={navCta}>
@@ -22,9 +21,9 @@ export default function LandingPage() {
 
         <section className="dw-hero" style={hero}>
           <div>
-            <h1 className="dw-hero-headline" style={headline}>Your run group,<br />one shared dot each.</h1>
+            <h1 className="dw-hero-headline" style={headline}>Track your activity with others,<br />everyone gets a dot.</h1>
             <p style={subhead}>
-              Dot-watcher keeps every runner visible on one live map — so supporters know where to cheer, and nobody gets left behind.
+              Dot Watcher keeps your friends/competitors visible on one live map — so supporters know where to cheer, and nobody gets left behind.
             </p>
             <div style={heroCtaRow}>
               <a href={APP_STORE_URL} target="_blank" rel="noopener" style={storeLink}>
@@ -42,7 +41,7 @@ export default function LandingPage() {
 
           <div className="dw-phones" style={phones}>
             <div className="dw-phone-a" style={phoneA} tabIndex={0}>
-              <img src="/landing/assets/dw-sending-screenshot.png" alt="Sending location in the Dot Watcher iOS app" style={phoneAImg} />
+              <img src="/landing/assets/main_screen.png" alt="The Dot Watcher start screen with Go, Join and Create buttons" style={phoneAImg} />
             </div>
             <div className="dw-phone-b" style={phoneB}>
               <video src="/landing/uploads/dw-sending-demo.mp4" style={phoneBVideo} autoPlay loop muted playsInline preload="auto" controls />
@@ -52,29 +51,34 @@ export default function LandingPage() {
 
         <section id="dw-how" className="dw-section" style={sectionStyle}>
           <h2 style={eyebrowHeading}>How it works</h2>
-          <div style={stepList}>
-            <Step n={1} title="Sign in and pick an option" body="After signing in, choose one of three options: Tap Go to start a casual session, join someone else's session using an Invite code, or Create to start your own." />
-            <Step n={2} title="Share the invite with others" body="In the session, click the share button and send an invite code to others using WhatsApp, email or whatever your phone provides." />
-            <Step n={3} title="Watch everyone on one map" body="Every runner shows up as a dot, their position updating every 15 seconds. Tap a dot to lock the map onto that runner." last />
+          <p style={startIntro}>Your phone shares your GPS location with the people you want to see your location. That could be friends who are out with you, your club, or even your friends and family wanting to watch at home. You do this by choosing one of three options:</p>
+          <div style={startButtons}>
+            <StartOption src="/landing/assets/button-go.png" alt="Go: hold to start" title="Go" body="Start casual tracking. Just hold Go and your crew see you as a named dot on the map. Share with family/friends by sending a link so they can watch. Super simple way of starting your tracking." />
+            <StartOption src="/landing/assets/button-join.png" alt="Join: enter an invite code" title="Join" body="Got a group invite code? Enter it to join and see other people in the group on the map. Great for club events and races." />
+            <StartOption src="/landing/assets/button-create.png" alt="Create: set up a new group for others" title="Create" body="Create a group for an event, then share the invite code with others to join." />
+            <StartOption src="/landing/assets/crew-row.png" alt="The Your crew row in the Dot Watcher app, showing four crew dots and 6 people" title="Your crew" body="Add the people you know well to your “crew”. You'll see each other on the map when you're both tracking." />
+            <StartOption src="/landing/assets/satellite-dot.png" alt="A runner’s dot on the map with a satellite indicator" title="Satellite tracking" body={<>No cell signal? On a <u>supported phone</u> and <u>carrier</u>, your position keeps coming through over satellite, less often to save battery. Your dot shows a satellite indicator when sharing via satellite.<p style={{ margin: '10px 0 0' }}><i>(Relies on a clear view of the sky.)</i></p></>} rounded />
           </div>
-        </section>
-
-        <section id="dw-features" className="dw-features" style={features}>
-          <Feature color="#3B82F6" title="Live map for everyone" body="Named dots, auto-framed bounds — supporters don't need the app to watch." />
-          <Feature color="#F59E0B" title="One code, easy invites" body="Share it once — rejoin anytime without asking again." image={{ src: '/landing/assets/invite-code.png', alt: 'The Dot Watcher invite code entry, six boxes with a Paste button and a Join Session button' }} />
-          <Feature color="#A855F7" title="Your crew" body="Add the people you often run with to your “crew.”" image={{ src: '/landing/assets/crew-row.png', alt: 'The Your crew row in the Dot Watcher app, showing four crew dots and 6 people' }} />
-          <Feature color="#EF4444" title="Casual tracking" body="No session needed: hold Go to start, and your crew see you as a named dot. Share a watch link so anyone can follow along in a browser." />
-          <Feature color="#0EA5E9" title="Satellite tracking" body={<>No cell signal? On a <u>supported phone</u> and <u>carrier</u>, your position keeps coming through over satellite, less often to save battery. Your dot shows a satellite indicator when sharing via satellite.<p style={{ margin: '10px 0 0' }}><i>(relies on a clear view of the sky.)</i></p></>} image={{ src: '/landing/assets/satellite-dot.png', alt: 'A runner’s dot on the map with a satellite indicator', fill: true }} />
         </section>
 
         <section id="dw-faq" className="dw-faq" style={faq}>
           <h2 style={eyebrowHeading}>FAQ</h2>
           <div style={stepList}>
-            <FaqItem q="Is it only for iPhone?" a="Runners can use an iPhone today, and the Android app is in closed beta. Spectators can watch from any browser, no app needed." />
-            <FaqItem q="Can I track without a session?" a="Yes — hold Go on the start screen to start casual tracking. Your crew can see you, and you can share a watch link with anyone else." />
-            <FaqItem q="Who can see where I am?" a="Only the people in the session you joined, your crew, and anyone you give a watch link to. You can stop sharing at any time." />
+            <FaqItem q="Is it only for iPhone?" a="You can use an iPhone today, and the Android app is in closed beta. Spectators can watch from any browser, no app needed." />
+            <FaqItem q="Can I track without a group?" a="Yes — hold Go on the start screen to start casual tracking. Your crew can see you, and you can share a watch link with anyone else." />
+            <FaqItem q="Who can see where I am?" a="Only your crew, the people in the group you've joined, and anyone you give a watch link to. You can stop sharing at any time." />
             <FaqItem q="How accurate is the location?" a="It uses your phone's GPS, updated every 15 seconds. Like any GPS app, accuracy can vary with weather, buildings, or signal." />
-            <FaqItem q="How many people can join a session?" a="Sessions support small groups comfortably today — great for a run club outing or a race-day crew." />
+            <FaqItem q="How many people can join a group?" a="Dot Watcher supports small groups comfortably today — great for a club outing or a race-day crew." />
+            <FaqItem q="Who is this for?" a={<>
+              Originally created for trail runners, but it works for any group who are out and about:
+              <ul style={faqList}>
+                <li>Trail running and club runs</li>
+                <li>Running far from home and want family to know where you are?</li>
+                <li>Rogaine and orienteering</li>
+                <li>Car clubs on a road trip</li>
+                <li>Yacht racing</li>
+              </ul>
+            </>} />
             <FaqItem q="Is it free?" a="Yes, free to use." last />
           </div>
         </section>
@@ -100,6 +104,18 @@ function Step({ n, title, body, last }: { n: number; title: string; body: string
   )
 }
 
+function StartOption({ src, alt, title, body, rounded }: { src: string; alt: string; title: string; body: React.ReactNode; rounded?: boolean }) {
+  return (
+    <div className="dw-option" style={startOption}>
+      <img className="dw-option-img" src={src} alt={alt} style={{ ...startButtonImg, ...(rounded ? { borderRadius: 10 } : {}) }} />
+      <div style={startOptionText}>
+        <div style={stepTitle}>{title}</div>
+        <div style={stepBody}>{body}</div>
+      </div>
+    </div>
+  )
+}
+
 function Feature({ color, title, body, image }: { color: string; title: string; body: React.ReactNode; image?: { src: string; alt: string; fill?: boolean } }) {
   return (
     <div style={featureCard}>
@@ -113,7 +129,7 @@ function Feature({ color, title, body, image }: { color: string; title: string; 
   )
 }
 
-function FaqItem({ q, a, last }: { q: string; a: string; last?: boolean }) {
+function FaqItem({ q, a, last }: { q: string; a: React.ReactNode; last?: boolean }) {
   return (
     <div style={{ ...faqCard, marginBottom: last ? 0 : 10 }}>
       <div style={faqQuestion}>{q}</div>
@@ -138,6 +154,10 @@ const responsiveCss = `
     .dw-section { padding:8px 28px !important; }
     .dw-features { padding:28px 28px 44px !important; grid-template-columns:1fr !important; }
     .dw-faq { padding:0 28px 44px !important; }
+  }
+  @media (max-width: 640px) {
+    .dw-option { flex-direction:column !important; gap:10px !important; }
+    .dw-option-img { width:100% !important; }
   }
   @media (max-width: 520px) {
     .dw-hero-headline { font-size:29px !important; letter-spacing:-0.5px; }
@@ -340,6 +360,39 @@ const eyebrowHeading: React.CSSProperties = {
   margin: '0 0 22px',
 }
 
+const startButtons: React.CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 22,
+  margin: '0 0 28px',
+}
+
+const startOption: React.CSSProperties = {
+  display: 'flex',
+  gap: 24,
+  alignItems: 'flex-start',
+}
+
+const startButtonImg: React.CSSProperties = {
+  width: 320,
+  flex: 'none',
+  maxWidth: '100%',
+  height: 'auto',
+  display: 'block',
+}
+
+const startIntro: React.CSSProperties = {
+  fontSize: 13.5,
+  fontWeight: 500,
+  color: '#6B6D77',
+  margin: '0 0 16px',
+}
+
+const startOptionText: React.CSSProperties = {
+  flex: 1,
+  minWidth: 0,
+}
+
 const stepList: React.CSSProperties = {
   display: 'flex',
   flexDirection: 'column',
@@ -382,10 +435,10 @@ const stepBody: React.CSSProperties = {
 }
 
 const features: React.CSSProperties = {
-  padding: '36px 48px 56px',
-  display: 'grid',
-  gridTemplateColumns: 'repeat(3, 1fr)',
-  gap: 20,
+  padding: '28px 48px 56px',
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 22,
 }
 
 const featureCard: React.CSSProperties = {
@@ -440,6 +493,11 @@ const faqAnswer: React.CSSProperties = {
   fontSize: 13.5,
   lineHeight: 1.5,
   color: '#6B6D77',
+}
+
+const faqList: React.CSSProperties = {
+  margin: '8px 0 0',
+  paddingLeft: 20,
 }
 
 const footer: React.CSSProperties = {
