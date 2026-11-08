@@ -22,9 +22,9 @@ export default function LandingPage() {
 
         <section className="dw-hero" style={hero}>
           <div>
-            <h1 className="dw-hero-headline" style={headline}>Your run group,<br />one shared dot each.</h1>
+            <h1 className="dw-hero-headline" style={headline}>Track your activity with others,<br />everyone gets a dot.</h1>
             <p style={subhead}>
-              Dot-watcher keeps every runner visible on one live map — so supporters know where to cheer, and nobody gets left behind.
+              Dot-watcher keeps your friends/competitors visible on one live map — so supporters know where to cheer, and nobody gets left behind.
             </p>
             <div style={heroCtaRow}>
               <a href={APP_STORE_URL} target="_blank" rel="noopener" style={storeLink}>
