@@ -43,6 +43,21 @@ dotnet run --urls "http://0.0.0.0:8080"
 
 ---
 
+## Map (LINZ basemap)
+
+Both map screens (the session map and the casual map) draw LINZ Basemaps' `topographic-v2` vector style with [MapLibre Native](https://github.com/maplibre/maplibre-gl-native-distribution). That is the same basemap the web client (`client/src/map/mapStyle.ts`) and the Android app use. Coverage is New Zealand only: outside NZ the map is blank. The map code lives in `LinzMap.swift`. MapLibre comes in as a Swift package, which Xcode fetches the first time the project opens.
+
+The style needs a LINZ developer API key: the same key as the web client's `VITE_LINZ_API_KEY` and Android's `LINZ_API_KEY`. It is kept out of git:
+
+1. Copy `DotWatcher/Config/Secrets.xcconfig.example` to `DotWatcher/Config/Secrets.xcconfig` (gitignored).
+2. Replace the placeholder with the real key.
+
+`Config/DotWatcher.xcconfig` (the target's base configuration) includes `Secrets.xcconfig` if it exists and passes `LINZ_API_KEY` to the app through `LINZAPIKey` in `Info.plist`. Without the file the app still builds, but the map is blank and the console logs a warning. The key ships inside the app, like the web client's browser key, so treat it as public.
+
+LINZ's licence (CC BY 4.0) requires visible attribution, so each map shows a small "© LINZ CC BY 4.0 · Basemaps data attribution" line at the bottom (`LinzAttribution`). Rotation and tilt are off: the runner pins draw their heading chevrons in screen space, so they only point the right way on a north-up map.
+
+---
+
 ## Session flow
 
 After signing in, the main screen leads with joining a session, since most users arrive with an invite code from someone else:

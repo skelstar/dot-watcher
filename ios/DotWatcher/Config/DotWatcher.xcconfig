@@ -1,0 +1,9 @@
+// Base build settings for the DotWatcher target (all configurations). Settings in the project file
+// override these.
+//
+// Secrets stay out of git: copy Secrets.xcconfig.example to Secrets.xcconfig (gitignored) next to this
+// file and fill it in. Without it the build still succeeds, but the LINZ map is blank.
+
+LINZ_API_KEY =
+
+#include? "Secrets.xcconfig"

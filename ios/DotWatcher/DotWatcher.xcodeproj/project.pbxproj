@@ -6,8 +6,13 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		4C1A00012FE1000100D07A01 /* MapLibre in Frameworks */ = {isa = PBXBuildFile; productRef = 4C1A00022FE1000100D07A01 /* MapLibre */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXFileReference section */
 		497F89C62FDC6E6300022FF1 /* DotWatcher.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = DotWatcher.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		4C1A00042FE1000100D07A01 /* DotWatcher.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = DotWatcher.xcconfig; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -36,6 +41,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				4C1A00012FE1000100D07A01 /* MapLibre in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -46,8 +52,17 @@
 			isa = PBXGroup;
 			children = (
 				497F89C82FDC6E6300022FF1 /* DotWatcher */,
+				4C1A00052FE1000100D07A01 /* Config */,
 				497F89C72FDC6E6300022FF1 /* Products */,
 			);
+			sourceTree = "<group>";
+		};
+		4C1A00052FE1000100D07A01 /* Config */ = {
+			isa = PBXGroup;
+			children = (
+				4C1A00042FE1000100D07A01 /* DotWatcher.xcconfig */,
+			);
+			path = Config;
 			sourceTree = "<group>";
 		};
 		497F89C72FDC6E6300022FF1 /* Products */ = {
@@ -79,6 +94,7 @@
 			);
 			name = DotWatcher;
 			packageProductDependencies = (
+				4C1A00022FE1000100D07A01 /* MapLibre */,
 			);
 			productName = DotWatcher;
 			productReference = 497F89C62FDC6E6300022FF1 /* DotWatcher.app */;
@@ -108,6 +124,9 @@
 			);
 			mainGroup = 497F89BD2FDC6E6300022FF1;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				4C1A00032FE1000100D07A01 /* XCRemoteSwiftPackageReference "maplibre-gl-native-distribution" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 497F89C72FDC6E6300022FF1 /* Products */;
 			projectDirPath = "";
@@ -280,6 +299,7 @@
 		};
 		497F89D22FDC6E6400022FF1 /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 4C1A00042FE1000100D07A01 /* DotWatcher.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
@@ -312,6 +332,7 @@
 		};
 		497F89D32FDC6E6400022FF1 /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 4C1A00042FE1000100D07A01 /* DotWatcher.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
@@ -408,6 +429,7 @@
 		};
 		497F89E12FDC6E6400022FF1 /* Device */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 4C1A00042FE1000100D07A01 /* DotWatcher.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
@@ -462,6 +484,25 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		4C1A00032FE1000100D07A01 /* XCRemoteSwiftPackageReference "maplibre-gl-native-distribution" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/maplibre/maplibre-gl-native-distribution";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 6.0.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		4C1A00022FE1000100D07A01 /* MapLibre */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 4C1A00032FE1000100D07A01 /* XCRemoteSwiftPackageReference "maplibre-gl-native-distribution" */;
+			productName = MapLibre;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 497F89BE2FDC6E6300022FF1 /* Project object */;
 }
