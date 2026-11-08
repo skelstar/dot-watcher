@@ -28,6 +28,8 @@
 	<string>e6a7ab2</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
+	<key>LINZAPIKey</key>
+	<string>$(LINZ_API_KEY)</string>
 	<key>LSApplicationQueriesSchemes</key>
 	<array>
 		<string>whatsapp</string>

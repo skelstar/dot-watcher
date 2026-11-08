@@ -34,6 +34,7 @@ xcuserdata/
 *.xcworkspace/
 .build/
 Pods/
+ios/DotWatcher/Config/Secrets.xcconfig
 
 # ─── Kotlin / Android ─────────────────────────────────────────────────────────
 .gradle/
