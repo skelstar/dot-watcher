@@ -1454,27 +1454,15 @@ final class LocationManager {
         SecItemAdd(item as CFDictionary, nil)
     }
 
-    /// TestFlight builds carry a sandbox receipt; App Store builds carry a production receipt.
-    /// Both are archived from the same Release build configuration, so this is the only way to
-    /// tell them apart at runtime and route TestFlight to the staging server.
-    private static var isTestFlightBuild: Bool {
-        Bundle.main.appStoreReceiptURL?.lastPathComponent == "sandboxReceipt"
-    }
-
+    /// TestFlight and App Store builds both use Production: there is no Staging server.
     private static func configuredServerBaseURL() -> URL {
         configuredBaseURL(
-            infoKey: isTestFlightBuild ? "DotWatcherStagingAPIBaseURL" : "DotWatcherAPIBaseURL",
+            infoKey: "DotWatcherAPIBaseURL",
             debugEnvKey: "DOTWATCHER_API_BASE_URL",
             fallback: "https://dot-watcher.skelstar.io/api"
         )
     }
 
-    // Deliberately not routed by isTestFlightBuild, unlike configuredServerBaseURL above. That
-    // flag exists so a TestFlight tester's own app talks to the staging API pod — fine, since
-    // staging and production share one database. But this URL isn't for the tester: it's embedded
-    // in invite/route-upload links handed to other people (createRouteUploadURL, join links), who
-    // are never TestFlight testers and should always land on the stable public site regardless of
-    // which backend the sharer's build happens to be hitting.
     private static func configuredWebBaseURL() -> URL {
         configuredBaseURL(
             infoKey: "DotWatcherWebBaseURL",
@@ -1485,7 +1473,7 @@ final class LocationManager {
 
     /// `debugEnvKey` lets a Debug run from Xcode point at another server without editing the project:
     /// set it as an environment variable in the scheme (Edit Scheme > Run > Arguments), for example
-    /// `DOTWATCHER_API_BASE_URL=https://dot-watcher-staging.skelstar.io/api`. It wins over the
+    /// `DOTWATCHER_API_BASE_URL=https://dot-watcher.skelstar.io/api`. It wins over the
     /// Info.plist value and does nothing in a Release build, so it can't reach TestFlight or the App Store.
     private static func configuredBaseURL(infoKey: String, debugEnvKey: String, fallback: String) -> URL {
         #if DEBUG

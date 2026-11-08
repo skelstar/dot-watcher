@@ -18,10 +18,6 @@
 	<string>864</string>
 	<key>DotWatcherAPIBaseURL</key>
 	<string>$(DOTWATCHER_API_BASE_URL)</string>
-	<key>DotWatcherStagingAPIBaseURL</key>
-	<string>$(DOTWATCHER_STAGING_API_BASE_URL)</string>
-	<key>DotWatcherStagingWebBaseURL</key>
-	<string>$(DOTWATCHER_STAGING_WEB_BASE_URL)</string>
 	<key>DotWatcherWebBaseURL</key>
 	<string>$(DOTWATCHER_WEB_BASE_URL)</string>
 	<key>GitCommitSHA</key>

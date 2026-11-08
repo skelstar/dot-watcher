@@ -21,14 +21,9 @@ Switch between them by changing the active scheme in Xcode's toolbar:
 
 The API base URL is set in `DOTWATCHER_API_BASE_URL` (build setting) and read by the app at runtime from `DotWatcherAPIBaseURL` in `Info.plist`.
 
-### Release: TestFlight vs App Store
+### Release: TestFlight and App Store
 
-TestFlight and App Store builds are both archived from the same **Release** configuration — Xcode has no separate build configuration for them, since Apple only decides the distribution channel after the archive is uploaded. To still route each to the right server, `LocationManager.configuredServerBaseURL()` checks the app's StoreKit receipt at runtime:
-
-- A **sandbox receipt** (`appStoreReceiptURL` ends in `sandboxReceipt`) means the build came from TestFlight → uses `DotWatcherStagingAPIBaseURL` (`DOTWATCHER_STAGING_API_BASE_URL` build setting → `https://dot-watcher-staging.skelstar.io/api`).
-- Any other receipt means an App Store install → uses `DotWatcherAPIBaseURL` (`DOTWATCHER_API_BASE_URL` build setting → `https://dot-watcher.skelstar.io/api`).
-
-No separate archive or scheme switch is needed — the same Release build works correctly whether it's distributed via TestFlight or released to the App Store.
+TestFlight and App Store builds are both archived from the same **Release** configuration and both use Production (`DOTWATCHER_API_BASE_URL` → `https://dot-watcher.skelstar.io/api`). There is no Staging server, so a TestFlight build sees real data. Any scheme can archive: they all archive with Release.
 
 ### Physical device setup
 
