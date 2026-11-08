@@ -52,6 +52,11 @@ export default function LandingPage() {
 
         <section id="dw-how" className="dw-section" style={sectionStyle}>
           <h2 style={eyebrowHeading}>How it works</h2>
+          <div style={startButtons}>
+            <img src="/landing/assets/button-go.png" alt="Go: hold to start" style={startButtonImg} />
+            <img src="/landing/assets/button-join.png" alt="Join: enter an invite code" style={startButtonImg} />
+            <img src="/landing/assets/button-create.png" alt="Create: set up a new run for others" style={startButtonImg} />
+          </div>
           <div style={stepList}>
             <Step n={1} title="Sign in and pick an option" body="After signing in, choose one of three options: Tap Go to start a casual session, join someone else's session using an Invite code, or Create to start your own." />
             <Step n={2} title="Share the invite with others" body="In the session, click the share button and send an invite code to others using WhatsApp, email or whatever your phone provides." />
@@ -338,6 +343,20 @@ const eyebrowHeading: React.CSSProperties = {
   textTransform: 'uppercase',
   color: '#8B8D97',
   margin: '0 0 22px',
+}
+
+const startButtons: React.CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 14,
+  maxWidth: 440,
+  margin: '0 0 28px',
+}
+
+const startButtonImg: React.CSSProperties = {
+  width: '100%',
+  height: 'auto',
+  display: 'block',
 }
 
 const stepList: React.CSSProperties = {
