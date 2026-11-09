@@ -149,7 +149,7 @@ Tick boxes as work lands: `- [ ]` → `- [x]`. Per `AGENTS.md`, build/test verif
   generally good). Valhalla has no round-trip mode, so the service builds loops: pick a bearing and radius, route
   out and back through two or three waypoints, and reject routes that are mostly road or cross roads more than N
   times. The persona picks the costing (trail runner prefers tracks and hills, jogger prefers paths and flat, walker
-  avoids steep). First do a spike: generate five loops from a trail near you and look at them on the map. Valhalla's
+  avoids steep). The spike is done (`ro-dots/spike/`): it works, but random-bearing loops are only about a third trail-like, so the generator must score many candidates, take waypoints from trail nodes, and reject water/ferry loops. Findings in `ro-dots/spike/README.md`. Valhalla's
   map matching can also snap noisy output.
 - **Never**: public tile/route APIs without a licence for this use, or any route derived from a real user's recording.
 
