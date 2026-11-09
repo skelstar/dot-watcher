@@ -290,12 +290,16 @@ Lower-priority items, roughly mapped to remaining iOS files:
      draw a line layer in `MapScreen` (below the pins). Load when the active session changes and on
      app resume (`repeatOnLifecycle(STARTED)`, same gate as the position poll — no extra background
      work).
-  2. *Upload:* `POST /sessions/{id}/route-upload-token`, then open
-     `{webBase}/route-upload/{sessionId}#token={token}` in a Custom Tab (the web page already has
-     the file picker/preview). Refetch the route when the tab closes / app resumes. Needs a web
-     base URL in `BuildConfig` (iOS deliberately does not route this by TestFlight — see the
-     comment at `LocationManager.swift` `configuredBaseURL`; mirror that: production web, not
-     staging).
+  2. *Upload:* **update:** iOS no longer uses the web page. It picks the file natively
+     (`.fileImporter`) and posts the raw GPX to `POST /sessions/{id}/route` with the user token
+     (a session member is already accepted), so there is no 15-minute upload link. Do the same on
+     Android with the system file picker (`ActivityResultContracts.OpenDocument`) and skip the
+     token and web base URL. The old route (`POST /sessions/{id}/route-upload-token`, then open
+     `{webBase}/route-upload/{sessionId}#token={token}` in a Custom Tab) still works and the web
+     page remains for the admin panel and older apps, but it is no longer the plan.
+     Go (casual) runs have routes too: `POST`/`DELETE /casual/route`, `routes` in
+     `GET /casual/live`, fetched per run from `GET /casual/runs/{runId}/route` — see
+     `.ai/plans/casual-tracking.md`. Android's Go map needs the same button and drawing.
   3. *Menu:* "Add route" / "Replace route" and "Remove route" (confirm: "removes the route for
      everyone") in the redesigned map's ⋯ menu, any session member.
   4. *Propagation (all clients, all paths)* — decided 2026-10-16. Routes are fetched only on
