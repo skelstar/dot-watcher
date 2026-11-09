@@ -145,6 +145,14 @@ account or app. The apps' buttons are in their own PRs (iOS #218, Android #219).
 - `GET /watch/{token}` (no sign-in) returns `{ label, ended, live, position }` for that one run and nothing else:
   the label is the account's initials, never a username or id. Unknown, malformed or revoked tokens are a bare 404;
   repeated wrong guesses get 429 without ever refusing a valid link. The response is `Cache-Control: no-store`.
+- **Routes (GPX) on a run.** `POST /casual/route` (raw GPX body; 409 when not out; 400 empty or over 5 MB) sets the
+  route on the current run, `DELETE /casual/route` removes it. It is stored in `casual_run_routes`, one per run,
+  and deleted when the run is stopped (and cascades if the run is purged). `GET /casual/live` gains
+  `routes: [{ runnerName, runId, uploadedAt }]` for the caller and visible crew only (never anonymous nearby dots);
+  `GET /casual/runs/{runId}/route` returns the GPX only if that run is in the caller's own `routes`, so a route is
+  never reachable by someone who couldn't see the dot. Watch links get `hasRoute` on `GET /watch/{token}` and the GPX
+  from `GET /watch/{token}/route`. iOS: route button on the Go map (file picker); web: the watch page draws it.
+  Android is not done yet.
 - The exact position is shown (no hidden 300 m near the start): the runner chose to send this link to a person.
 - The secret is kept out of the request logs (`/watch/{token}` is what gets logged, and watch-link responses aren't
   captured) and out of referrers and search indexes (the page sets `noindex` and `no-referrer`).

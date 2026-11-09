@@ -78,10 +78,6 @@ struct SessionMembership: Codable, Identifiable {
     let participants: [SessionRunner]?
 }
 
-private struct RouteUploadTokenResponse: Decodable {
-    let token: String
-}
-
 struct BlockedUser: Codable, Identifiable, Hashable {
     var id: String { userId }
 
@@ -664,22 +660,16 @@ final class LocationManager {
         status = membership.role == "viewer" ? "Viewer only" : "Ready"
     }
 
-    /// URL of the web route-upload page for the active session, carrying a short-lived upload
-    /// token in the fragment (the web client has no sign-in). The server returns 403 to
-    /// non-members.
-    func createRouteUploadURL() async throws -> URL {
+    /// Uploads a GPX file as the active session's route (replacing any), signed in as this account, then
+    /// reloads the route. The server returns 403 to non-members. Throws if the file has no track.
+    func uploadRoute(gpx: Data) async throws {
         guard let membership = activeMembership else { throw DotWatcherAPIError.badResponse(0, "No active session.") }
-        let issued: RouteUploadTokenResponse = try await send(
-            path: "/sessions/\(membership.sessionId)/route-upload-token",
-            method: "POST"
-        )
-        var components = URLComponents(
-            url: webBaseURL.appendingPathComponent("route-upload/\(membership.sessionId)"),
-            resolvingAgainstBaseURL: false
-        )
-        components?.fragment = "token=\(issued.token)"
-        guard let url = components?.url else { throw DotWatcherAPIError.network() }
-        return url
+        guard GpxRouteParser.parse(gpx).count > 1 else {
+            throw DotWatcherAPIError.badResponse(0, "No route found. This GPX file has no track points.")
+        }
+        try await sendAuthorizedData(
+            path: "/sessions/\(membership.sessionId)/route", method: "POST", body: gpx, contentType: "application/gpx+xml")
+        await loadRoute()
     }
 
     /// Deletes the active session's GPX route. A 404 (already gone) counts as success.
@@ -1308,6 +1298,50 @@ final class LocationManager {
         request.setValue("ios", forHTTPHeaderField: "X-Client-Id")
         request.setValue(Self.appVersion, forHTTPHeaderField: "X-App-Version")
         _ = try? await URLSession.shared.data(for: request)
+    }
+
+    /// A call whose body and/or reply is raw bytes rather than JSON (a GPX file up, a GPX file down),
+    /// using the signed-in account's token. Returns the reply body, empty for a 204.
+    @discardableResult
+    func sendAuthorizedData(
+        path: String,
+        method: String = "GET",
+        body: Data? = nil,
+        contentType: String? = nil
+    ) async throws -> Data {
+        guard let token = accessToken else { throw DotWatcherAPIError.missingToken }
+        let normalizedPath = path.hasPrefix("/") ? path : "/\(path)"
+        guard let url = URL(string: serverBaseURL.absoluteString + normalizedPath) else {
+            throw DotWatcherAPIError.network()
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = method
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.setValue(UIDevice.current.name, forHTTPHeaderField: "X-Device-Name")
+        request.setValue(Self.deviceId, forHTTPHeaderField: "X-Device-Id")
+        request.setValue(String(apiVersion), forHTTPHeaderField: "X-Api-Version")
+        request.setValue("ios", forHTTPHeaderField: "X-Client-Id")
+        request.setValue(Self.appVersion, forHTTPHeaderField: "X-App-Version")
+        if let body {
+            request.httpBody = body
+            if let contentType { request.setValue(contentType, forHTTPHeaderField: "Content-Type") }
+        }
+
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+            let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
+            guard (200..<300).contains(statusCode) else {
+                if statusCode == 426 { updateRequired = true }
+                let message = try? JSONDecoder().decode(ServerErrorBody.self, from: data)
+                throw DotWatcherAPIError.badResponse(statusCode, message?.error)
+            }
+            return data
+        } catch let error as DotWatcherAPIError {
+            throw error
+        } catch {
+            throw Self.networkError(for: error, url: url)
+        }
     }
 
     /// A call with no response body, using the signed-in account's token (`DELETE` and the like).

@@ -11,6 +11,8 @@ import { useTerrain3d, TERRAIN_MAX_PITCH } from './useTerrain3d.ts'
 import { page, card, icon, headline, body } from './cardPageStyles.ts'
 import { initialsFor } from './components/InitialsBadge.tsx'
 import { statusLine, watchState, type WatchViewDto } from './watchView.ts'
+import { useRouteLayer } from './useRouteLayer.ts'
+import { parseGpxCoordinates } from './gpx.ts'
 
 interface Props {
   serverUrl: string
@@ -96,6 +98,26 @@ export default function WatchPage({ serverUrl, token }: Props) {
 
   const view = load.kind === 'ok' ? load.view : null
   const hasMap = load.kind !== 'notFound'
+
+  // The runner's GPX route, fetched when the poll says they have one and dropped when they remove it.
+  const [routeCoordinates, setRouteCoordinates] = useState<[number, number][] | null>(null)
+  const hasRoute = view?.hasRoute === true && !view.ended
+  useEffect(() => {
+    if (!hasRoute) { setRouteCoordinates(null); return }
+    let cancelled = false
+    void (async () => {
+      try {
+        const response = await fetch(`${serverUrl}/watch/${encodeURIComponent(token)}/route`, { cache: 'no-store' })
+        if (!response.ok || cancelled) return
+        const coordinates = parseGpxCoordinates(await response.text())
+        if (!cancelled) setRouteCoordinates(coordinates.length > 1 ? coordinates : null)
+      } catch {
+        // A route that won't load leaves the map as it was; the runner's dot is what matters.
+      }
+    })()
+    return () => { cancelled = true }
+  }, [serverUrl, token, hasRoute])
+  useRouteLayer(mapRef, routeCoordinates)
 
   useEffect(() => {
     document.title = view ? `${view.label} on Dot Watcher` : 'Dot Watcher'

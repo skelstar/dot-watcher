@@ -1,5 +1,6 @@
 import CoreLocation
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// The full-screen map shown while tracking in a named session: the same layout as the casual map
 /// (`CasualMapScreen`), with the session's runners and route on it. Stopping returns to the session
@@ -15,8 +16,8 @@ struct SessionMapScreen: View {
     @State private var stopProgress: CGFloat = 0
     @State private var showExtend = false
     @State private var showParticipants = false
-    /// The web route-upload page while it's open in the in-app browser; nil otherwise.
-    @State private var routeUploadPage: IdentifiableURL?
+    @State private var showRoutePicker = false
+    @State private var isUploadingRoute = false
     @State private var routeError: String?
     @State private var showRemoveRoute = false
     /// Who a touch-and-hold just targeted, showing the block confirmation; nil when none is up.
@@ -31,6 +32,9 @@ struct SessionMapScreen: View {
     @State private var showEndSession = false
     /// A short confirmation (or error) from the join-location button, cleared after a moment.
     @State private var nearbyNote: String?
+
+    /// What the route picker offers: .gpx files (a type the system may not know by name), or any XML.
+    private static let gpxTypes: [UTType] = [UTType(filenameExtension: "gpx"), .xml].compactMap { $0 }
 
     private struct Pin: Identifiable {
         let id: String
@@ -133,11 +137,8 @@ struct SessionMapScreen: View {
             )
             .presentationDetents([.medium, .large])
         }
-        .fullScreenCover(item: $routeUploadPage, onDismiss: {
-            Task { await location.loadRoute() }
-        }) { page in
-            SafariView(url: page.url)
-                .ignoresSafeArea()
+        .fileImporter(isPresented: $showRoutePicker, allowedContentTypes: Self.gpxTypes) { result in
+            handlePickedRoute(result)
         }
         .alert("Remove route?", isPresented: $showRemoveRoute) {
             Button("Remove", role: .destructive) {
@@ -327,7 +328,7 @@ struct SessionMapScreen: View {
             }
             Menu {
                 Button {
-                    Task { await openRouteUpload() }
+                    showRoutePicker = true
                 } label: {
                     Label(
                         location.hasRoute ? "Replace route (GPX)…" : "Add route (GPX)…",
@@ -349,6 +350,7 @@ struct SessionMapScreen: View {
                     .background(Color.white.opacity(0.85), in: Circle())
                     .shadow(color: .black.opacity(0.18), radius: 2, y: 1)
             }
+            .disabled(isUploadingRoute)
             .accessibilityLabel("Route")
         }
     }
@@ -382,13 +384,25 @@ struct SessionMapScreen: View {
         }
     }
 
-    /// Asks the server for a short-lived upload link and opens the web route-upload page in an in-app
-    /// browser. The route is refetched when that browser is dismissed.
-    private func openRouteUpload() async {
-        do {
-            routeUploadPage = IdentifiableURL(url: try await location.createRouteUploadURL())
-        } catch {
+    /// Reads the chosen GPX file and uploads it as the session's route.
+    private func handlePickedRoute(_ result: Result<URL, Error>) {
+        switch result {
+        case .failure(let error):
             routeError = error.localizedDescription
+        case .success(let url):
+            // Files outside the app's sandbox need access opened for the read and closed straight after.
+            let scoped = url.startAccessingSecurityScopedResource()
+            defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+            guard let data = try? Data(contentsOf: url) else {
+                routeError = "Couldn't read that file."
+                return
+            }
+            Task {
+                isUploadingRoute = true
+                defer { isUploadingRoute = false }
+                do { try await location.uploadRoute(gpx: data) }
+                catch { routeError = error.localizedDescription }
+            }
         }
     }
 
