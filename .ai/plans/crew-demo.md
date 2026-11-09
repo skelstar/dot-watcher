@@ -84,6 +84,12 @@ Whichever is chosen:
 
 - [ ] Demo dot goes "signal lost" partway through to show liveness states
 - [ ] One fake alert
+- [ ] "Add dot" (nice-to-have): a button in the Demo chip adds another demo runner with a random
+  colour, speed and start offset on the loop. Cheap with the server-computed-on-read approach: each
+  dot is a row (route, offset, speed, colour), so there is no live posting. Needs a cap (about 10-20
+  per demo), a per-user add throttle, the same TTL cleanup as the demo, and a check that many dots
+  on a short loop do not pile up badly (spread offsets/speeds, check clustering). Optional "Crowd"
+  button adds about 10 at once.
 
 ### Phase 3: "who can see me" (grey dots)
 
@@ -95,6 +101,9 @@ demo of behaviour the server does not enforce.
 
 ## Later
 
+- Stress testing (dozens of dots in a live session) belongs in `tools/simulator` and the admin
+  panel, not the consumer app. That tool already drives fake phones along GPX routes; add a
+  "spam N dots into this session" action there, gated so real users never see it.
 - Web client: it does not use browser geolocation today. Use a fixed demo location (a known park or
   trail with a stored route) behind a "Try demo" button on the landing page, or add a geolocation
   permission prompt.
