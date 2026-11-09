@@ -70,6 +70,21 @@ Whichever is chosen:
 - Old apps decode strictly: demo positions must use the existing `RunnerPosition` shape. Add only
   optional fields (for example `isDemo`), server first.
 
+## Crew labelling and "Ro-dots"
+
+The app never infers crew from "this dot has a name". The server already decides who is crew in
+`/casual/live`, and demo dots follow the same rule: the server marks them as crew, and only for the
+user who created the demo.
+
+- **Consumer demo (recommended):** one system/flagged "Demo Crew" entry with many virtual dots under
+  it (route, offset, speed, colour, name). No extra accounts, no mutual-link rows, no crew-limit
+  workarounds, one delete to clean up.
+- **Test pool ("Ro-dots"):** real accounts such as `rodot-01` to `rodot-20`, each with a genuine
+  mutual crew link to a test user. Crew is mutual and per-account, so this is too heavy for a
+  consumer demo (20 accounts per user, limits to bypass, cleanup risk in the shared Staging and
+  Production database). Use it only in `tools/simulator` and test environments, where real accounts
+  exercise the real crew path (limits, nicknames, crew list).
+
 ## Phases
 
 ### Phase 1: demo crew member
