@@ -138,6 +138,11 @@ Tick boxes as work lands: `- [ ]` → `- [x]`. Per `AGENTS.md`, build/test verif
 
 ### Routes
 
+- **Wandering (default, replaces loops)**: a ro-dot starts a random distance (min..max, e.g. 500-3000 m) from the person it is
+  for and wanders by hops: pick a target 400-1200 m ahead, route to it with plain Valhalla pedestrian costing
+  (no trail preference for now), repeat, rejecting hops that leave the band or retrace ground. Proved in
+  `ro-dots/spike/valhalla_wander.py` (9 walks, all stayed in band, ~6% revisit). A GPX trail later just supplies the hop
+  targets. Known fix: pass the previous heading to Valhalla to stop U-turns at hop boundaries.
 - **Phase A (MVP)**: a folder of GPX files shipped in the image, from your own Strava activities (Strava MCP is
   connected), hand-drawn routes, and public-domain loops, covering where people actually use the app first
   (Wellington, from the simulator defaults, then wherever the App Store analytics say). Selected by "passes within 2 km

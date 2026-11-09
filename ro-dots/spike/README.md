@@ -39,3 +39,42 @@ demo server (a few dozen polite requests); the service must self-host. Open `out
 4. **No Strava heatmap.** It needs a logged-in session, its API terms forbid this use, and it is built from real
    people's tracks (plan decision 8). The open equivalent is OSM public GPS traces (CC BY-SA), which are useful as a
    check on which paths people really use but are optional.
+
+---
+
+# Spike 2: wandering instead of loops
+
+```
+python ro-dots/spike/valhalla_wander.py       # writes out/wander.geojson, wander.html, *.gpx
+```
+
+A ro-dot starts 500-3000 m from a fixed "runner" and wanders by hops for 40 simulated minutes at ~5:23 /km. Each hop
+picks a target 400-1200 m away within ±100° of its current heading, routes it with **plain pedestrian costing (no
+trail preference)**, and is rejected if the route strays outside the 500-3000 m band (±), is more than 2.5× the
+straight line, or retraces ground it has already covered (over 40% overlap). Nine walks (3 starts × 3 seeds), run
+2026-11-10:
+
+| Result | Value |
+| --- | --- |
+| Distance in 40 min | 6.3-7.0 km (as designed by pace) |
+| Hops per walk | 4-7 |
+| Stayed in the 500-3000 m band | all nine (closest 669 m, furthest 3005 m) |
+| Retraced ground (forced) | 0 times in nine walks |
+| Revisited ground | 1-18% of samples (median ~6%) |
+| Hop rejections | 0-8 per walk (each a wasted request, mostly "target outside the band" or "no route") |
+| Path/track/footway share | 38-80%, with no preference for trails |
+| **Reversals at a hop junction** | **1-3 per walk, a defect** (see below) |
+
+**Verdict: wandering works and is simpler than loops.** No length targeting, no water problem (a target that can't be
+routed is simply rejected), and the band keeps the ro-dot visible but never on top of the runner.
+
+**To fix:**
+- **U-turns at hop boundaries.** A new hop is routed from where the last one ended, so it often starts by heading
+  back. Valhalla accepts a `heading` (and `heading_tolerance`) on the start location; pass the previous bearing.
+  Check this first.
+- **Rejected hops cost requests.** Self-hosting removes the rate limit; picking targets from the road/path graph
+  rather than free space cuts the waste further.
+- **Pace**: a constant pace with ±10% per hop is too regular; the movement engine needs the slow random walk and the
+  stops from the plan.
+
+**Later:** a ro-dot given a GPX trail simply replaces the hop targets with that trail's points, the rest is the same.
