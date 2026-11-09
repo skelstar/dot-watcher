@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-Ro-dots spike 2: a "wandering" ro-dot instead of a fixed loop.
+Bot-dots spike 2: a "wandering" bot-dot instead of a fixed loop.
 
-Throwaway exploration for .ai/plans/ro-dot-army.md. A ro-dot starts at a random point between MIN_M and MAX_M from a
+Throwaway exploration for .ai/plans/bot-dot-army.md. A bot-dot starts at a random point between MIN_M and MAX_M from a
 fixed "runner" and then wanders by hops: pick a nearby target roughly ahead of it, route there with Valhalla's plain
 pedestrian costing (no preference for trails), walk it at a running pace, and repeat for 40 simulated minutes. It
 must stay inside the MIN_M..MAX_M band around the runner and avoid retracing itself. Reports, per walk: distance,
@@ -12,7 +12,7 @@ of the ground was revisited. Writes GPX/GeoJSON and a Leaflet viewer to out/.
 Uses the PUBLIC Valhalla demo server with a few dozen polite requests; the service must self-host. Override with
 VALHALLA_URL.
 
-    python ro-dots/spike/valhalla_wander.py
+    python bot-dots/spike/valhalla_wander.py
 """
 import json
 import math
@@ -188,7 +188,7 @@ def main():
     for key, line in rows:
         print(f"{key:30} {line}")
     (OUT / "wander.geojson").write_text(json.dumps({"type": "FeatureCollection", "features": feats}), encoding="utf-8")
-    html = """<!doctype html><meta charset=utf-8><title>Ro-dot wander</title>
+    html = """<!doctype html><meta charset=utf-8><title>Bot-dot wander</title>
 <link rel=stylesheet href=https://unpkg.com/leaflet@1.9.4/dist/leaflet.css><style>html,body,#m{height:100%;margin:0}</style>
 <div id=m></div><script src=https://unpkg.com/leaflet@1.9.4/dist/leaflet.js></script><script>
 const map=L.map('m').setView([-41.285,174.77],12);

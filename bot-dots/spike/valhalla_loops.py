@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Ro-dots spike: can Valhalla build believable trail/path loops from OpenStreetMap?
+Bot-dots spike: can Valhalla build believable trail/path loops from OpenStreetMap?
 
 Throwaway exploration, not production code. Builds triangle loops (start -> A -> B -> start) at several bearings
 from a few Wellington starting points, routes them with Valhalla's pedestrian costing, then asks trace_attributes
@@ -8,9 +8,9 @@ how much of each loop is path/track/footway versus road/sidewalk. Writes GPX fil
 next to this script, and prints a summary table.
 
 Uses the PUBLIC Valhalla demo server with a handful of requests, which is fine for a spike and NOT for the service
-(see .ai/plans/ro-dot-army.md, Routes). Override with VALHALLA_URL to point at a self-hosted instance.
+(see .ai/plans/bot-dot-army.md, Routes). Override with VALHALLA_URL to point at a self-hosted instance.
 
-    python ro-dots/spike/valhalla_loops.py
+    python bot-dots/spike/valhalla_loops.py
 """
 import json
 import math
@@ -104,7 +104,7 @@ def loop(start, bearing, profile, r):
 
 def gpx(name, shape):
     pts = "".join(f'<trkpt lat="{la:.6f}" lon="{lo:.6f}"/>' for la, lo in shape)
-    return (f'<?xml version="1.0"?><gpx version="1.1" creator="ro-dots-spike" xmlns="http://www.topografix.com/GPX/1/1">'
+    return (f'<?xml version="1.0"?><gpx version="1.1" creator="bot-dots-spike" xmlns="http://www.topografix.com/GPX/1/1">'
             f"<trk><name>{name}</name><trkseg>{pts}</trkseg></trk></gpx>")
 
 
@@ -152,7 +152,7 @@ def main():
         else:
             print(f"{key:36} {km:5.1f} {off:6.0%} {road:6.0%}  {top}")
     (OUT / "loops.geojson").write_text(json.dumps({"type": "FeatureCollection", "features": features}), encoding="utf-8")
-    html = """<!doctype html><meta charset=utf-8><title>Ro-dot loops</title>
+    html = """<!doctype html><meta charset=utf-8><title>Bot-dot loops</title>
 <link rel=stylesheet href=https://unpkg.com/leaflet@1.9.4/dist/leaflet.css><style>html,body,#m{height:100%;margin:0}</style>
 <div id=m></div><script src=https://unpkg.com/leaflet@1.9.4/dist/leaflet.js></script><script>
 const map=L.map('m').setView([-41.285,174.77],12);

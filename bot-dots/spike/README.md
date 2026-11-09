@@ -1,10 +1,10 @@
 # Valhalla loop spike
 
-Throwaway exploration for [`.ai/plans/ro-dot-army.md`](../../.ai/plans/ro-dot-army.md) (Routes, Phase B). Not part of
+Throwaway exploration for [`.ai/plans/bot-dot-army.md`](../../.ai/plans/bot-dot-army.md) (Routes, Phase B). Not part of
 the service.
 
 ```
-python ro-dots/spike/valhalla_loops.py        # writes ro-dots/spike/out/*.gpx, loops.geojson, loops.html
+python bot-dots/spike/valhalla_loops.py        # writes bot-dots/spike/out/*.gpx, loops.geojson, loops.html
 ```
 
 It builds triangle loops (start → A → B → start) at four bearings from three Wellington starts (Mt Victoria, Tinakori
@@ -45,10 +45,10 @@ demo server (a few dozen polite requests); the service must self-host. Open `out
 # Spike 2: wandering instead of loops
 
 ```
-python ro-dots/spike/valhalla_wander.py       # writes out/wander.geojson, wander.html, *.gpx
+python bot-dots/spike/valhalla_wander.py       # writes out/wander.geojson, wander.html, *.gpx
 ```
 
-A ro-dot starts 500-3000 m from a fixed "runner" and wanders by hops for 40 simulated minutes at ~5:23 /km. Each hop
+A bot-dot starts 500-3000 m from a fixed "runner" and wanders by hops for 40 simulated minutes at ~5:23 /km. Each hop
 picks a target 400-1200 m away within ±100° of its current heading, routes it with **plain pedestrian costing (no
 trail preference)**, and is rejected if the route strays outside the 500-3000 m band (±), is more than 2.5× the
 straight line, or retraces ground it has already covered (over 40% overlap). Nine walks (3 starts × 3 seeds), run
@@ -66,7 +66,7 @@ straight line, or retraces ground it has already covered (over 40% overlap). Nin
 | **Reversals at a hop junction** | **1-3 per walk, a defect** (see below) |
 
 **Verdict: wandering works and is simpler than loops.** No length targeting, no water problem (a target that can't be
-routed is simply rejected), and the band keeps the ro-dot visible but never on top of the runner.
+routed is simply rejected), and the band keeps the bot-dot visible but never on top of the runner.
 
 **To fix:**
 - **U-turns at hop boundaries.** A new hop is routed from where the last one ended, so it often starts by heading
@@ -77,4 +77,4 @@ routed is simply rejected), and the band keeps the ro-dot visible but never on t
 - **Pace**: a constant pace with ±10% per hop is too regular; the movement engine needs the slow random walk and the
   stops from the plan.
 
-**Later:** a ro-dot given a GPX trail simply replaces the hop targets with that trail's points, the rest is the same.
+**Later:** a bot-dot given a GPX trail simply replaces the hop targets with that trail's points, the rest is the same.
