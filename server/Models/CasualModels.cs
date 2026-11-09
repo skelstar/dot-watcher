@@ -35,7 +35,23 @@ public record NearbyDot(
     double Latitude,
     double Longitude,
     double? Heading,
-    bool InSession
+    bool InSession,
+    // A bot-dot (see .ai/plans/bot-dot-army.md). Omitted from the JSON when false, so a poll with no
+    // bot-dots in it is byte-for-byte what it was before bot-dots existed.
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingDefault)]
+    bool IsBot = false
+);
+
+/// <summary>
+/// One roughly 5 km geohash cell with people out in it, for the bot-dots service (GET /admin/casual/cells).
+/// Deliberately coarse: a cell centre, never a user id or an exact position.
+/// </summary>
+public record CasualCell(
+    string Cell,
+    double Latitude,
+    double Longitude,
+    int RealCount,
+    int BotDotCount
 );
 
 /// <summary>Participants and positions use the same shape as POST /location (positions are one-element arrays).</summary>
@@ -59,7 +75,9 @@ public record CasualLiveEntry(
     // The runner's own setting: when true, non-crew don't see them near where the run began.
     bool HideStartArea = true,
     // The runner's own setting: when false, their crew don't see them.
-    bool VisibleToCrew = true
+    bool VisibleToCrew = true,
+    // The account is a bot-dot (username starts with BotDots.UsernamePrefix).
+    bool IsBot = false
 );
 
 public enum CasualPostOutcome

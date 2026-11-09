@@ -95,7 +95,7 @@ public static class CasualVisibility
                 && GeoMath.DistanceMeters(startLat, startLon, p.Latitude, p.Longitude) < StartFuzzMeters)
                 continue;
 
-            nearby.Add(new NearbyDot(p.Latitude, p.Longitude, p.Heading, entry.InSession));
+            nearby.Add(new NearbyDot(p.Latitude, p.Longitude, p.Heading, entry.InSession, entry.IsBot));
         }
 
         return new CasualLiveResponse(participants, positions, nearby);

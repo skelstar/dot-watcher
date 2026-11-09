@@ -35,6 +35,12 @@ public partial class SessionStore
     /// </summary>
     public TimeSpan CasualSnapshotLifetime { get; set; } = TimeSpan.FromSeconds(5);
 
+    /// <summary>
+    /// <c>Bots:Enabled</c>. Off (the default), bot-dot accounts are left out of every live read, so nothing of
+    /// theirs is drawn even if the service is still running.
+    /// </summary>
+    public bool BotDotsEnabled { get; set; }
+
     private sealed class CasualRun(string id, DateTimeOffset lastSeen, double? startLatitude, double? startLongitude)
     {
         public string Id { get; } = id;
@@ -450,6 +456,38 @@ public partial class SessionStore
             viewerVisibleToCrew);
     }
 
+    /// <summary>
+    /// Where the bot-dots service should keep bot-dots: the roughly 5 km cells that have at least one real
+    /// runner out who is visible to people nearby (someone who would actually see a grey dot), with how
+    /// many real runners and bot-dots are already out there. Cells with only bot-dots are listed too, so
+    /// the service can retire them. Coarse by design: no user ids, no exact positions.
+    /// </summary>
+    public IReadOnlyList<CasualCell> GetCasualCells(DateTimeOffset now)
+    {
+        var real = new Dictionary<string, int>();
+        var botDots = new Dictionary<string, int>();
+        foreach (var entry in GetCasualSnapshot(now))
+        {
+            if (!CasualVisibility.IsLive(entry, now))
+                continue;
+
+            var cell = GeoHash.Encode(entry.Position.Latitude, entry.Position.Longitude, BotDots.CellPrecision);
+            if (entry.IsBot)
+                botDots[cell] = botDots.GetValueOrDefault(cell) + 1;
+            else if (entry.VisibleToNonCrew)
+                real[cell] = real.GetValueOrDefault(cell) + 1;
+        }
+
+        return real.Keys.Union(botDots.Keys)
+            .Order(StringComparer.Ordinal)
+            .Select(cell =>
+            {
+                var centre = GeoHash.DecodeCentre(cell)!.Value;
+                return new CasualCell(cell, centre.Latitude, centre.Longitude, real.GetValueOrDefault(cell), botDots.GetValueOrDefault(cell));
+            })
+            .ToList();
+    }
+
     private IReadOnlyList<CasualLiveEntry> GetCasualSnapshot(DateTimeOffset now)
     {
         lock (_casualSnapshotLock)
@@ -483,13 +521,16 @@ public partial class SessionStore
                    l.runner_user_id, l.runner_name, l.latitude, l.longitude, l.heading, l.timestamp,
                    l.next_expected_at, l.is_ultra_constrained, l.battery_level, l.in_session, l.received_at,
                    u.casual_visible_to_non_crew, r.start_lat, r.start_lon, u.casual_hide_start_area,
-                   u.casual_visible_to_crew
+                   u.casual_visible_to_crew, starts_with(u.username, @botPrefix) AS is_bot
             FROM location_updates l
             JOIN casual_runs r ON r.id = l.casual_run_id AND r.ended_at IS NULL
             JOIN users u ON u.id = l.runner_user_id
             WHERE l.session_id = @sessionId AND l.received_at >= @since
+              AND (@botEnabled OR NOT starts_with(u.username, @botPrefix))
             ORDER BY l.runner_user_id, l.received_at DESC
             """;
+        cmd.Parameters.AddWithValue("@botPrefix", BotDots.UsernamePrefix);
+        cmd.Parameters.AddWithValue("@botEnabled", BotDotsEnabled);
         cmd.Parameters.AddWithValue("@sessionId", CasualSessionId);
         cmd.Parameters.AddWithValue("@since", ToIso(now - CasualHardStaleCap));
         using var reader = cmd.ExecuteReader();
@@ -513,7 +554,8 @@ public partial class SessionStore
                 reader.IsDBNull(13) ? null : reader.GetDouble(13),
                 DateTimeOffset.Parse(reader.GetString(10)),
                 reader.GetBoolean(14),
-                reader.GetBoolean(15)));
+                reader.GetBoolean(15),
+                reader.GetBoolean(16)));
         }
         return entries;
     }
@@ -557,7 +599,8 @@ public partial class SessionStore
     /// deletes casual positions and finished runs older than <paramref name="retention"/>. Safe to
     /// run from both servers at once.
     /// </summary>
-    public (int ClosedRuns, int DeletedPositions, int DeletedRuns) PurgeCasualData(DateTimeOffset now, TimeSpan retention)
+    public (int ClosedRuns, int DeletedPositions, int DeletedRuns) PurgeCasualData(
+        DateTimeOffset now, TimeSpan retention, TimeSpan? botDotRetention = null)
     {
         using var conn = Connect();
 
@@ -592,6 +635,24 @@ public partial class SessionStore
             cmd.Parameters.AddWithValue("@sessionId", CasualSessionId);
             cmd.Parameters.AddWithValue("@cutoff", cutoff);
             deletedPositions = cmd.ExecuteNonQuery();
+        }
+
+        // Bot-dot positions are never replayed, so they are kept far less long than a person's.
+        if (botDotRetention is { } botRetention)
+        {
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = """
+                DELETE FROM location_updates l
+                USING users u
+                WHERE l.session_id = @sessionId
+                  AND u.id = l.runner_user_id
+                  AND starts_with(u.username, @botPrefix)
+                  AND COALESCE(l.received_at, l.timestamp) < @botCutoff
+                """;
+            cmd.Parameters.AddWithValue("@sessionId", CasualSessionId);
+            cmd.Parameters.AddWithValue("@botPrefix", BotDots.UsernamePrefix);
+            cmd.Parameters.AddWithValue("@botCutoff", ToIso(now - botRetention));
+            deletedPositions += cmd.ExecuteNonQuery();
         }
 
         int deletedRuns;

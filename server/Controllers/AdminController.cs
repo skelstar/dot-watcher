@@ -3,7 +3,12 @@ using Microsoft.AspNetCore.Mvc;
 namespace DotWatcher.Server.Controllers;
 
 [ApiController]
-public class AdminController(SessionStore store, BearerTokenAuth auth, FeatureFlags features, PaletteProvider palette) : ControllerBase
+public class AdminController(
+    SessionStore store,
+    BearerTokenAuth auth,
+    FeatureFlags features,
+    PaletteProvider palette,
+    TimeProvider timeProvider) : ControllerBase
 {
     /// <summary>Admin/ops: lists all registered user accounts.</summary>
     [HttpGet("/admin/users")]
@@ -15,6 +20,25 @@ public class AdminController(SessionStore store, BearerTokenAuth auth, FeatureFl
             return Unauthorized();
 
         return Ok(store.GetAllUsers());
+    }
+
+    /// <summary>
+    /// Admin/ops, for the bot-dots service: the roughly 5 km cells with people out in casual, and how many real
+    /// runners and bot-dots are in each. Coarse cells only. 404 while <c>Bots:Enabled</c> is off.
+    /// </summary>
+    [HttpGet("/admin/casual/cells")]
+    [ProducesResponseType(typeof(IReadOnlyList<CasualCell>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public IActionResult GetCasualCells()
+    {
+        if (!auth.IsAuthorized(Request))
+            return Unauthorized();
+
+        if (!store.BotDotsEnabled)
+            return NotFound();
+
+        return Ok(store.GetCasualCells(timeProvider.GetUtcNow()));
     }
 
     /// <summary>Admin/ops: replaces the features granted to an account (e.g. "crew"). An empty list revokes all.</summary>

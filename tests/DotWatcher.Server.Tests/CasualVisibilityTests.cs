@@ -217,6 +217,19 @@ public class CasualVisibilityTests
     }
 
     [Fact]
+    public void BotDots_AreFlaggedOnTheirDot_RealPeopleAreNot()
+    {
+        var response = View([
+            Entry("zed", latitude: -41.16) with { IsBot = true },
+            Entry("amy", latitude: -41.165),
+        ]);
+
+        Assert.Equal(2, response.Nearby.Count);
+        Assert.True(response.Nearby.Single(d => Math.Abs(d.Latitude - -41.16) < 1e-9).IsBot);
+        Assert.False(response.Nearby.Single(d => Math.Abs(d.Latitude - -41.165) < 1e-9).IsBot);
+    }
+
+    [Fact]
     public void StalePositions_AreDropped()
     {
         var response = View([Entry("zed", latitude: -41.16, age: TimeSpan.FromMinutes(20))]);
