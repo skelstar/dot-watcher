@@ -42,8 +42,16 @@ public record NearbyDot(
 public record CasualLiveResponse(
     IReadOnlyList<string> Participants,
     IReadOnlyList<RunnerPosition[]> Positions,
-    IReadOnlyList<NearbyDot> Nearby
+    IReadOnlyList<NearbyDot> Nearby,
+    // Which of the people above (the viewer and their visible crew, never anonymous dots) have loaded a
+    // route. Only a reference: the GPX itself is fetched from GET /casual/runs/{runId}/route when
+    // UploadedAt changes, so a poll stays small. Absent from older servers.
+    IReadOnlyList<CasualRouteRef>? Routes = null
 );
+
+/// <summary>A route loaded by someone the viewer can see. <see cref="RunnerName"/> matches that person's
+/// entry in <see cref="CasualLiveResponse.Participants"/>.</summary>
+public record CasualRouteRef(string RunnerName, string RunId, DateTimeOffset UploadedAt);
 
 /// <summary>One person currently out, as held in the store's live snapshot.</summary>
 public record CasualLiveEntry(
@@ -59,7 +67,9 @@ public record CasualLiveEntry(
     // The runner's own setting: when true, non-crew don't see them near where the run began.
     bool HideStartArea = true,
     // The runner's own setting: when false, their crew don't see them.
-    bool VisibleToCrew = true
+    bool VisibleToCrew = true,
+    // The run this position belongs to; null where it isn't known (a watch-link check).
+    string? RunId = null
 );
 
 public enum CasualPostOutcome
@@ -104,5 +114,7 @@ public record CasualWatchView(
     string Label,
     bool Ended,
     bool Live,
-    WatchPosition? Position
+    WatchPosition? Position,
+    // True while the runner has a route loaded; fetch it from GET /watch/{token}/route.
+    bool HasRoute = false
 );

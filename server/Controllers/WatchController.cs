@@ -37,4 +37,29 @@ public class WatchController(
         limiter.RecordMiss(key);
         return NotFound();
     }
+
+    /// <summary>The GPX route the runner behind a watch link loaded, if any. 404 for a bad or revoked link, an ended run, or no route.</summary>
+    [HttpGet("/watch/{token}/route")]
+    [ProducesResponseType(typeof(string), StatusCodes.Status200OK, "application/gpx+xml")]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status429TooManyRequests)]
+    public IActionResult GetRoute(string token)
+    {
+        Response.Headers.CacheControl = "no-store";
+
+        var key = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+        var gpx = SessionStore.LooksLikeWatchToken(token) ? store.GetCasualWatchRoute(token) : null;
+        if (gpx is not null)
+            return Content(gpx, "application/gpx+xml");
+
+        // A link with no route yet is a normal state, not a guess, so only a malformed or unknown
+        // token counts towards the rate limit.
+        if (!SessionStore.LooksLikeWatchToken(token) || store.GetCasualWatchView(token, timeProvider.GetUtcNow()) is null)
+        {
+            if (limiter.IsLimited(key))
+                return StatusCode(StatusCodes.Status429TooManyRequests, new { error = "Too many attempts. Try again later." });
+            limiter.RecordMiss(key);
+        }
+        return NotFound();
+    }
 }
