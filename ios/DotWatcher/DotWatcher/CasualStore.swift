@@ -1,3 +1,4 @@
+import CoreLocation
 import Foundation
 import Observation
 
@@ -46,10 +47,20 @@ struct CasualNearbyDot: Decodable {
     let inSession: Bool?
 }
 
+/// A GPX route loaded by yourself or a crew member who is out. Only a reference: the file is fetched
+/// from `/casual/runs/{runId}/route` when `uploadedAt` changes.
+private struct CasualRouteRef: Decodable {
+    let runnerName: String
+    let runId: String
+    let uploadedAt: String
+}
+
 private struct CasualLiveResponse: Decodable {
     let participants: [String]?
     let positions: [[CasualPosition]]?
     let nearby: [CasualNearbyDot]?
+    /// Absent from an older server, which has no routes.
+    let routes: [CasualRouteRef]?
 }
 
 /// Casual state and actions for the signed-in account. Shares `LocationManager`'s network stack
@@ -97,6 +108,23 @@ final class CasualStore {
     /// What the map shows: this person and their crew by name, and anonymous dots nearby.
     private(set) var people: [CasualPosition] = []
     private(set) var nearby: [CasualNearbyDot] = []
+
+    /// GPX routes to draw: this person's own and those of crew who are out, as lines. Kept in step with
+    /// the live poll (`loadLive`), so a route someone adds or removes appears for everyone within a poll.
+    var routeLines: [[CLLocationCoordinate2D]] { loadedRoutes.values.map(\.coordinates) }
+    /// Whether this person has a route on their run now (the menu offers Replace and Remove).
+    private(set) var hasOwnRoute = false
+    var routeError: String?
+    private(set) var isUploadingRoute = false
+
+    private struct LoadedRoute {
+        let uploadedAt: String
+        let coordinates: [CLLocationCoordinate2D]
+    }
+    /// By run id.
+    private var loadedRoutes: [String: LoadedRoute] = [:]
+    /// Runs whose route is being fetched, so back-to-back polls don't fetch the same file twice.
+    @ObservationIgnored private var fetchingRoutes: Set<String> = []
 
     /// The sheets and the map are presented once at the top of `ContentView` (see `CasualHost`).
     var isBeforeYouGoPresented = false
@@ -146,6 +174,67 @@ final class CasualStore {
         people = everyone
         nearby = live.nearby ?? []
         crewOut = everyone.filter { $0.isSelf != true }.count
+        await syncRoutes(live.routes ?? [], selfName: everyone.first { $0.isSelf == true }?.runnerName)
+    }
+
+    // MARK: - Routes
+
+    /// Fetches routes that are new or changed and forgets ones that are gone. A route that fails to
+    /// download is simply not drawn; the next poll tries again.
+    private func syncRoutes(_ refs: [CasualRouteRef], selfName: String?) async {
+        guard let location else { return }
+        hasOwnRoute = selfName.map { name in refs.contains { $0.runnerName == name } } ?? false
+
+        let live = Set(refs.map(\.runId))
+        for runId in Array(loadedRoutes.keys) where !live.contains(runId) { loadedRoutes[runId] = nil }
+
+        for ref in refs where loadedRoutes[ref.runId]?.uploadedAt != ref.uploadedAt {
+            guard fetchingRoutes.insert(ref.runId).inserted else { continue }
+            defer { fetchingRoutes.remove(ref.runId) }
+            guard let data = try? await location.sendAuthorizedData(path: "/casual/runs/\(ref.runId)/route") else { continue }
+            let coordinates = GpxRouteParser.parse(data)
+            if coordinates.count > 1 {
+                loadedRoutes[ref.runId] = LoadedRoute(uploadedAt: ref.uploadedAt, coordinates: coordinates)
+            }
+        }
+    }
+
+    /// Puts a GPX file on this person's current run. Their crew and anyone with a watch link then see it
+    /// too. The file is checked here first so a file with no track gets a clear message.
+    func setRoute(gpx: Data) async {
+        guard let location, !isUploadingRoute else { return }
+        guard GpxRouteParser.parse(gpx).count > 1 else {
+            routeError = "No route found. This GPX file has no track points."
+            return
+        }
+        isUploadingRoute = true
+        routeError = nil
+        defer { isUploadingRoute = false }
+        do {
+            try await location.sendAuthorizedData(
+                path: "/casual/route", method: "POST", body: gpx, contentType: "application/gpx+xml")
+            await loadLive()
+        } catch {
+            routeError = error.localizedDescription
+        }
+    }
+
+    /// Takes the route off this person's run, for everyone who could see it.
+    func removeRoute() async {
+        guard let location else { return }
+        routeError = nil
+        do {
+            try await location.sendAuthorizedEmpty(path: "/casual/route", method: "DELETE")
+            await loadLive()
+        } catch {
+            routeError = error.localizedDescription
+        }
+    }
+
+    private func forgetRoutes() {
+        loadedRoutes = [:]
+        hasOwnRoute = false
+        routeError = nil
     }
 
     /// Forgets everything: signing out or deleting the account must not leave this person's choice
@@ -159,6 +248,7 @@ final class CasualStore {
         crewOut = nil
         people = []
         nearby = []
+        forgetRoutes()
         watchLink = nil
         watchLinkError = nil
         settingsError = nil
@@ -260,6 +350,7 @@ final class CasualStore {
             guard location.isTracking else { return }
             people = []
             nearby = []
+            forgetRoutes()
             watchLink = nil
             watchLinkError = nil
             isMapPresented = true
@@ -273,6 +364,7 @@ final class CasualStore {
     func stop() {
         location?.stop()
         isMapPresented = false
+        forgetRoutes()
         watchLink = nil
         watchLinkError = nil
         Task { await refresh() }

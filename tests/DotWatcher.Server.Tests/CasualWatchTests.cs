@@ -63,7 +63,7 @@ public class CasualWatchTests
 
         using var document = JsonDocument.Parse(json);
         Assert.Equal(
-            new[] { "ended", "label", "live", "position" },
+            new[] { "ended", "hasRoute", "label", "live", "position" },
             document.RootElement.EnumerateObject().Select(p => p.Name).Order().ToArray());
         Assert.DoesNotContain(alice.User.UserId, json);
         Assert.DoesNotContain("alice", json);

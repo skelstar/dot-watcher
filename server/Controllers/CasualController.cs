@@ -104,6 +104,64 @@ public class CasualController(
     }
 
     /// <summary>
+    /// Sets the GPX route for the caller's current run (raw XML in the body), replacing any they have.
+    /// The caller, their crew and anyone with a watch link then see it on the map. It is deleted when
+    /// the run ends. 409 when the caller isn't out; 400 for an invalid or oversized body.
+    /// </summary>
+    [HttpPost("/casual/route")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    public async Task<IActionResult> SetRoute()
+    {
+        if (Gate(out var user) is { } denied)
+            return denied;
+
+        using var reader = new StreamReader(Request.Body);
+        var content = await reader.ReadToEndAsync();
+        if (string.IsNullOrWhiteSpace(content) || content.Length > SessionStore.CasualRouteMaxLength)
+            return BadRequest(new { error = "Invalid GPX route." });
+
+        return store.SaveCasualRoute(user.UserId, content, timeProvider.GetUtcNow())
+            ? NoContent()
+            : Conflict(new { error = "Start tracking before adding a route." });
+    }
+
+    /// <summary>Removes the route from the caller's current run. Safe to repeat.</summary>
+    [HttpDelete("/casual/route")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public IActionResult DeleteRoute()
+    {
+        if (Gate(out var user) is { } denied)
+            return denied;
+
+        store.DeleteCasualRoute(user.UserId);
+        return NoContent();
+    }
+
+    /// <summary>
+    /// The GPX route for a run listed in GET /casual/live's <c>routes</c>. 404 unless the caller can see
+    /// that person right now (themselves, or crew who haven't hidden from them) and the run has a route.
+    /// </summary>
+    [HttpGet("/casual/runs/{runId}/route")]
+    [ProducesResponseType(typeof(string), StatusCodes.Status200OK, "application/gpx+xml")]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public IActionResult GetRoute(string runId)
+    {
+        if (Gate(out var user) is { } denied)
+            return denied;
+
+        var gpx = store.GetCasualRouteForViewer(
+            user.UserId, runId, store.GetCasualAccount(user.UserId), features.IsOn(Features.Crew), timeProvider.GetUtcNow());
+        return gpx is null ? NotFound() : Content(gpx, "application/gpx+xml");
+    }
+
+    /// <summary>
     /// Gets who can see the caller: people who aren't in their crew (off by default), and their crew
     /// (on by default).
     /// </summary>
