@@ -43,7 +43,7 @@ public record NearbyDot(
 );
 
 /// <summary>
-/// One roughly 5 km geohash cell with people out in it, for the bot-dots service (GET /admin/casual/cells).
+/// One roughly 1 km geohash cell with people out in it, for the bot-dots service (GET /admin/casual/cells).
 /// Deliberately coarse: a cell centre, never a user id or an exact position.
 /// </summary>
 public record CasualCell(

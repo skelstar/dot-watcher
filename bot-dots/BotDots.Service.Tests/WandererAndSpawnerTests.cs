@@ -47,7 +47,7 @@ public class WandererTests
     {
         var options = new BotDotsOptions();
         var wanderer = new Wanderer(new StraightRouter(), options);
-        var bot = Bot(start: Geo.Destination(Centre, 45, 1500));
+        var bot = Bot(start: Geo.Destination(Centre, 45, options.SpawnMaxM));
         var rng = new Random(5);
 
         for (var tick = 0; tick < 240; tick++) // an hour at 15 s

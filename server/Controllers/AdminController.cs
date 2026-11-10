@@ -23,7 +23,7 @@ public class AdminController(
     }
 
     /// <summary>
-    /// Admin/ops, for the bot-dots service: the roughly 5 km cells with people out in casual, and how many real
+    /// Admin/ops, for the bot-dots service: the roughly 1 km cells with people out in casual, and how many real
     /// runners and bot-dots are in each. Coarse cells only. 404 while <c>Bots:Enabled</c> is off.
     /// </summary>
     [HttpGet("/admin/casual/cells")]

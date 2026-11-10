@@ -14,8 +14,9 @@ public static class BotDots
     /// Nobody replays them, and 40 bot-dots posting every 15 s would otherwise add ~230k rows a day.</summary>
     public static readonly TimeSpan PositionRetention = TimeSpan.FromHours(1);
 
-    /// <summary>Length of the geohash cells <c>GET /admin/casual/cells</c> reports (about 5 km square).</summary>
-    public const int CellPrecision = 5;
+    /// <summary>Length of the geohash cells <c>GET /admin/casual/cells</c> reports (about 1.2 km by 0.6 km), so the
+    /// service can start bot-dots within a few hundred metres of people without learning where anyone is exactly.</summary>
+    public const int CellPrecision = 6;
 
     public static bool IsBotDotUsername(string? username) =>
         username is not null && username.StartsWith(UsernamePrefix, StringComparison.OrdinalIgnoreCase);

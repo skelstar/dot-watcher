@@ -22,8 +22,8 @@ public class GeoHashTests
             var centre = GeoHash.DecodeCentre(cell)!.Value;
 
             Assert.Equal(cell, GeoHash.Encode(centre.Latitude, centre.Longitude, BotDots.CellPrecision));
-            // A 5-character cell is about 4.9 km by 4.9 km, so no point is further than ~3.5 km from its centre.
-            Assert.True(GeoMath.DistanceMeters(lat, lon, centre.Latitude, centre.Longitude) < 3600);
+            // A 6-character cell is about 1.2 km by 0.6 km, so no point is further than ~700 m from its centre.
+            Assert.True(GeoMath.DistanceMeters(lat, lon, centre.Latitude, centre.Longitude) < 750);
         }
     }
 

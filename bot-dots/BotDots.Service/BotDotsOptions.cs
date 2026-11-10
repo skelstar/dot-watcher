@@ -18,27 +18,27 @@ public sealed class BotDotsOptions
     public int ValhallaMinIntervalMs { get; set; }
 
     /// <summary>Most bot-dots out at once, across all cells. Also the size of the account pool (botdot-001...).</summary>
-    public int MaxBots { get; set; } = 40;
+    public int MaxBots { get; set; } = 60;
 
     /// <summary>Fill a cell with bot-dots until it has this many dots, real people and bot-dots together.</summary>
-    public int TargetPerCell { get; set; } = 3;
+    public int TargetPerCell { get; set; } = 5;
 
-    public int MaxPerCell { get; set; } = 5;
+    public int MaxPerCell { get; set; } = 6;
 
     /// <summary>Stagger: at most this many new bot-dots per cell per sync.</summary>
     public int MaxSpawnPerCellPerSync { get; set; } = 2;
 
     /// <summary>A new bot-dot starts this far from the middle of the cell (it only ever knows the cell, never a person).</summary>
-    public double SpawnMinM { get; set; } = 300;
+    public double SpawnMinM { get; set; } = 150;
 
-    public double SpawnMaxM { get; set; } = 1800;
+    public double SpawnMaxM { get; set; } = 1000;
 
     /// <summary>A bot-dot's routes stay within this distance of the cell's middle.</summary>
-    public double MaxDistanceFromCentreM { get; set; } = 2000;
+    public double MaxDistanceFromCentreM { get; set; } = 1200;
 
-    public double HopMinM { get; set; } = 400;
+    public double HopMinM { get; set; } = 300;
 
-    public double HopMaxM { get; set; } = 1200;
+    public double HopMaxM { get; set; } = 800;
 
     public int PostIntervalSeconds { get; set; } = 15;
 
