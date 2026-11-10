@@ -162,6 +162,9 @@ public partial class SessionStore
         _casualRuns.TryRemove(userId, out _);
         _casualSuppressedUntil[userId] = now + CasualStopSuppression;
 
+        // The route goes with the run: nobody should keep a copy of where someone went.
+        DeleteCasualRoute(userId);
+
         using var conn = Connect();
         using var cmd = conn.CreateCommand();
         cmd.CommandText = """
@@ -343,7 +346,8 @@ public partial class SessionStore
                     VisibleToNonCrew: true,
                     run.StartLatitude,
                     run.StartLongitude,
-                    now));
+                    now,
+                    RunId: run.Id));
         }
 
         return new CasualPostResult(CasualPostOutcome.NoRun);
@@ -447,7 +451,8 @@ public partial class SessionStore
             GetBlockedPartyIds(conn, viewerId),
             entries,
             now,
-            viewerVisibleToCrew);
+            viewerVisibleToCrew,
+            GetCasualRouteTimes(conn, entries.Select(e => e.RunId).OfType<string>().ToList()));
     }
 
     private IReadOnlyList<CasualLiveEntry> GetCasualSnapshot(DateTimeOffset now)
@@ -483,7 +488,7 @@ public partial class SessionStore
                    l.runner_user_id, l.runner_name, l.latitude, l.longitude, l.heading, l.timestamp,
                    l.next_expected_at, l.is_ultra_constrained, l.battery_level, l.in_session, l.received_at,
                    u.casual_visible_to_non_crew, r.start_lat, r.start_lon, u.casual_hide_start_area,
-                   u.casual_visible_to_crew
+                   u.casual_visible_to_crew, l.casual_run_id
             FROM location_updates l
             JOIN casual_runs r ON r.id = l.casual_run_id AND r.ended_at IS NULL
             JOIN users u ON u.id = l.runner_user_id
@@ -513,7 +518,8 @@ public partial class SessionStore
                 reader.IsDBNull(13) ? null : reader.GetDouble(13),
                 DateTimeOffset.Parse(reader.GetString(10)),
                 reader.GetBoolean(14),
-                reader.GetBoolean(15)));
+                reader.GetBoolean(15),
+                reader.IsDBNull(16) ? null : reader.GetString(16)));
         }
         return entries;
     }

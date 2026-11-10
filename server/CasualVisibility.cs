@@ -54,11 +54,21 @@ public static class CasualVisibility
         IReadOnlySet<string> blockedUserIds,
         IReadOnlyCollection<CasualLiveEntry> live,
         DateTimeOffset now,
-        bool viewerVisibleToCrew = true)
+        bool viewerVisibleToCrew = true,
+        IReadOnlyDictionary<string, DateTimeOffset>? routeTimes = null)
     {
         var participants = new List<string>();
         var positions = new List<RunnerPosition[]>();
         var nearby = new List<NearbyDot>();
+        var routes = new List<CasualRouteRef>();
+
+        // Routes are offered only for people who appear by name (the viewer and visible crew), never for
+        // anonymous nearby dots.
+        void AddRoute(CasualLiveEntry entry, string label)
+        {
+            if (entry.RunId is { } runId && routeTimes is not null && routeTimes.TryGetValue(runId, out var uploadedAt))
+                routes.Add(new CasualRouteRef(label, runId, uploadedAt));
+        }
 
         foreach (var entry in live)
         {
@@ -69,6 +79,7 @@ public static class CasualVisibility
             {
                 participants.Add(entry.Position.RunnerName);
                 positions.Add([ToCasualPosition(entry, entry.Position.RunnerName, isSelf: true)]);
+                AddRoute(entry, entry.Position.RunnerName);
                 continue;
             }
 
@@ -81,6 +92,7 @@ public static class CasualVisibility
                     continue;
                 participants.Add(label);
                 positions.Add([ToCasualPosition(entry, label, isSelf: false)]);
+                AddRoute(entry, label);
                 continue;
             }
 
@@ -98,7 +110,7 @@ public static class CasualVisibility
             nearby.Add(new NearbyDot(p.Latitude, p.Longitude, p.Heading, entry.InSession));
         }
 
-        return new CasualLiveResponse(participants, positions, nearby);
+        return new CasualLiveResponse(participants, positions, nearby, routes);
     }
 
     /// <summary>The stored position, labelled for this viewer. RunnerName at rest is the account's initials.</summary>

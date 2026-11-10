@@ -85,6 +85,8 @@ public partial class SessionStore
         if (ended)
             return new CasualWatchView(label, Ended: true, Live: false, Position: null);
 
+        var hasRoute = CasualRunHasRoute(conn, runId);
+
         using var latest = conn.CreateCommand();
         latest.CommandText = """
             SELECT latitude, longitude, heading, timestamp, received_at, next_expected_at
@@ -96,7 +98,7 @@ public partial class SessionStore
         latest.Parameters.AddWithValue("@runId", runId);
         using var row = latest.ExecuteReader();
         if (!row.Read())
-            return new CasualWatchView(label, Ended: false, Live: false, Position: null);
+            return new CasualWatchView(label, Ended: false, Live: false, Position: null, HasRoute: hasRoute);
 
         var position = new RunnerPosition(
             label,
@@ -113,6 +115,7 @@ public partial class SessionStore
             label,
             Ended: false,
             live,
-            new WatchPosition(position.Latitude, position.Longitude, position.Heading, position.Timestamp, receivedAt));
+            new WatchPosition(position.Latitude, position.Longitude, position.Heading, position.Timestamp, receivedAt),
+            hasRoute);
     }
 }

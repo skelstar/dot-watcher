@@ -1,5 +1,6 @@
 import CoreLocation
 import SwiftUI
+import UniformTypeIdentifiers
 
 // Casual tracking screens: the Go button on the start screen, "Before you go", "Who can see me", and
 // the casual map. State and calls live in `CasualStore`. Laid out like the Android app's casual
@@ -352,9 +353,13 @@ struct CasualMapScreen: View {
     @State private var showWhoCanSeeMe = false
     @State private var showShare = false
     @State private var showSettings = false
+    @State private var showRoutePicker = false
+    @State private var showRemoveRoute = false
     @State private var fittedCount = -1
 
     private static let pollInterval: Duration = .seconds(10)
+    /// What the route picker offers: .gpx files (a type the system may not know by name), or any XML.
+    private static let gpxTypes: [UTType] = [UTType(filenameExtension: "gpx"), .xml].compactMap { $0 }
 
     private struct Pin: Identifiable {
         let id: String
@@ -455,6 +460,23 @@ struct CasualMapScreen: View {
             AuthSheet(location: location, crew: crew)
                 .preferredColorScheme(location.appearanceMode.colorScheme)
         }
+        .fileImporter(isPresented: $showRoutePicker, allowedContentTypes: Self.gpxTypes) { result in
+            handlePickedRoute(result)
+        }
+        .alert("Remove route?", isPresented: $showRemoveRoute) {
+            Button("Remove", role: .destructive) { Task { await casual.removeRoute() } }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This removes your route for you, your crew and anyone watching your link.")
+        }
+        .alert("Couldn't update the route", isPresented: Binding(
+            get: { casual.routeError != nil },
+            set: { if !$0 { casual.routeError = nil } }
+        )) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            if let message = casual.routeError { Text(message) }
+        }
         // Signing out from the settings sheet hands over to the sign-in cover on `ContentView`; this
         // sheet must not still be up when it presents.
         .onChange(of: location.isAuthenticated) { _, isAuthenticated in
@@ -475,6 +497,7 @@ struct CasualMapScreen: View {
         TimelineView(.periodic(from: timelineStart, by: 1)) { context in
             LinzMapView(
                 markers: markers(at: context.date),
+                extraRoutes: casual.routeLines,
                 camera: camera,
                 onUserMovedCamera: { fitLocked = false }
             )
@@ -548,7 +571,54 @@ struct CasualMapScreen: View {
             }
             MapRailButton(symbol: "arrow.up.left.and.arrow.down.right", label: "Fit all runners") { fitAll() }
             MapRailButton(symbol: "eye", label: "Who can see me") { showWhoCanSeeMe = true }
+            routeMenu
             MapRailButton(symbol: "gearshape", label: "Settings") { showSettings = true }
+        }
+    }
+
+    /// Add or replace a GPX route, or remove it. Shown to your crew and to anyone with your watch link.
+    private var routeMenu: some View {
+        Menu {
+            Button {
+                showRoutePicker = true
+            } label: {
+                Label(
+                    casual.hasOwnRoute ? "Replace route (GPX)…" : "Add route (GPX)…",
+                    systemImage: "point.topleft.down.to.point.bottomright.curvepath"
+                )
+            }
+            if casual.hasOwnRoute {
+                Button(role: .destructive) {
+                    showRemoveRoute = true
+                } label: {
+                    Label("Remove route", systemImage: "trash")
+                }
+            }
+        } label: {
+            Image(systemName: "point.topleft.down.to.point.bottomright.curvepath")
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundStyle(.black)
+                .frame(width: 44, height: 44)
+                .background(Color.white.opacity(0.85), in: Circle())
+                .shadow(color: .black.opacity(0.18), radius: 2, y: 1)
+        }
+        .disabled(casual.isUploadingRoute)
+        .accessibilityLabel("Route")
+    }
+
+    private func handlePickedRoute(_ result: Result<URL, Error>) {
+        switch result {
+        case .failure(let error):
+            casual.routeError = error.localizedDescription
+        case .success(let url):
+            // Files outside the app's sandbox need access opened for the read and closed straight after.
+            let scoped = url.startAccessingSecurityScopedResource()
+            defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+            guard let data = try? Data(contentsOf: url) else {
+                casual.routeError = "Couldn't read that file."
+                return
+            }
+            Task { await casual.setRoute(gpx: data) }
         }
     }
 
@@ -583,7 +653,7 @@ struct CasualMapScreen: View {
 
 // MARK: - Map pieces
 
-/// A person who is not in the crew: a grey dot with a white edge and "??" for initials, and a padlock
+/// A person who is not in the crew: a grey dot with a white edge and "?" for initials, and a padlock
 /// when they are in a named session. Nothing that says who it is. 80% of a normal dot (27 pt).
 private struct NearbyDotView: View {
     let isLocked: Bool
@@ -596,7 +666,7 @@ private struct NearbyDotView: View {
             .overlay(Circle().stroke(.white, lineWidth: 2))
             .frame(width: size, height: size)
             .overlay {
-                Text("??")
+                Text("?")
                     .font(.system(size: size * 0.4, weight: .bold))
                     .foregroundStyle(.white)
             }
