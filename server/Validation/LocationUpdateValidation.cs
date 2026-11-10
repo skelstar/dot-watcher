@@ -1,3 +1,5 @@
+using System.Diagnostics.CodeAnalysis;
+
 namespace DotWatcher.Server;
 
 public sealed class LocationUpdateValidationException(IReadOnlyList<string> errors)
@@ -68,7 +70,7 @@ public static class LocationUpdateValidation
 
     public static bool TryValidate(
         LocationUpdate update,
-        out ValidatedLocationUpdate? validated,
+        [NotNullWhen(true)] out ValidatedLocationUpdate? validated,
         out IReadOnlyList<string> errors)
     {
         errors = Validate(update);

@@ -257,6 +257,14 @@ public partial class SessionStore(string connectionString) : IDisposable
                 created_at TEXT NOT NULL
             );
             CREATE INDEX IF NOT EXISTS idx_casual_watch_links_run ON casual_watch_links(run_id);
+
+            -- The GPX route a runner loaded for their current casual run. One per run; cascades with the
+            -- run, and is deleted as soon as the run stops.
+            CREATE TABLE IF NOT EXISTS casual_run_routes (
+                run_id       TEXT PRIMARY KEY REFERENCES casual_runs(id) ON DELETE CASCADE,
+                gpx_content  TEXT NOT NULL,
+                uploaded_at  TEXT NOT NULL
+            );
             """;
         addCasual.ExecuteNonQuery();
     }

@@ -16,6 +16,8 @@ export interface WatchViewDto {
   ended: boolean
   live: boolean
   position: WatchPositionDto | null
+  // The runner has loaded a GPX route; fetch it from /watch/{token}/route. Absent from an older server.
+  hasRoute?: boolean
 }
 
 export type WatchState =
