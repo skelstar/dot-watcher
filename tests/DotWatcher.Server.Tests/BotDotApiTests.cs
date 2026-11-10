@@ -111,7 +111,7 @@ public class BotDotApiTests
 
         // Coarse by design: a cell and counts, never a person or an exact position.
         Assert.Equal(
-            new[] { "cell", "latitude", "longitude", "realCount", "botDotCount" },
+            new[] { "botDotCount", "cell", "latitude", "longitude", "realCount" },
             cell.EnumerateObject().Select(p => p.Name).Order(StringComparer.Ordinal).ToArray());
         var centre = GeoHash.DecodeCentre(cell.GetProperty("cell").GetString())!.Value;
         Assert.Equal(centre.Latitude, cell.GetProperty("latitude").GetDouble(), 9);
