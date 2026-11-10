@@ -13,7 +13,6 @@ struct SessionMapScreen: View {
     /// Fixed start for the map's per-second timeline. `.periodic(from: .now, …)` restarts on every body
     /// update, and each tick's re-frame updates the body, so ticks would fire back to back and hang.
     @State private var timelineStart = Date()
-    @State private var stopProgress: CGFloat = 0
     @State private var showExtend = false
     @State private var showParticipants = false
     @State private var showRoutePicker = false
@@ -98,7 +97,7 @@ struct SessionMapScreen: View {
                         participantsRow
                         Spacer(minLength: 12)
                         if location.isTracking {
-                            HoldToStopPill(progress: $stopProgress) { location.stop() }
+                            HoldToStopPill { location.stop() }
                         }
                     }
                     .padding(.horizontal, 14)
