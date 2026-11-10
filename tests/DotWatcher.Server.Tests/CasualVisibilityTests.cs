@@ -170,7 +170,7 @@ public class CasualVisibilityTests
 
         Assert.True(dot.InSession);
         Assert.Equal(
-            new[] { "Heading", "InSession", "Latitude", "Longitude" },
+            new[] { "Heading", "InSession", "IsBot", "Latitude", "Longitude" },
             typeof(NearbyDot).GetProperties().Select(p => p.Name).Order().ToArray());
     }
 
