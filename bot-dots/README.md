@@ -36,19 +36,37 @@ Route experiments: [`spike/`](spike/README.md).
 
 ## Running locally
 
-1. Run the server with `Bots__Enabled=true` (and Postgres, as usual).
-2. Run the service against it, using the public Valhalla demo politely:
+1. Run the server as usual (`start-local.ps1`). `Bots:Enabled` is already on in
+   `server/appsettings.Development.json`.
+2. Run the service against it, using the public Valhalla demo politely. **On macOS, use Docker:** the demo
+   only accepts TLS 1.3, which .NET on macOS can't do, so a native `dotnet run` fails every route (see
+   Troubleshooting).
 
 ```
-cd bot-dots/BotDots.Service
-BotDots__AdminBearer=<your local BearerToken> \
-BotDots__ValhallaUrl=https://valhalla1.openstreetmap.de \
-BotDots__ValhallaMinIntervalMs=1100 \
-dotnet run
+docker build -t dot-watcher-bot-dots bot-dots
+docker run -d --name bot-dots-local --rm \
+  -e BotDots__ServerUrl=http://host.docker.internal:8080 \
+  -e BotDots__AdminBearer=dev-token \
+  -e BotDots__ValhallaUrl=https://valhalla1.openstreetmap.de \
+  -e BotDots__ValhallaMinIntervalMs=1100 \
+  dot-watcher-bot-dots
+docker logs -f bot-dots-local    # docker stop bot-dots-local to end it
 ```
+
+   On Linux or Windows, `dotnet run` in `bot-dots/BotDots.Service` with the same `BotDots__` variables (and
+   the default `ServerUrl`) works too.
 
 3. Start a casual run on a phone or the simulator with "show me to people nearby" on. Within a minute, two
-   bot-dots should appear within a few km.
+   bot-dots should appear within a few km. Zoom out: they start 300-1800 m from the cell's middle, and each
+   stays hidden until it is 300 m from where it started (the usual start-area rule).
+
+### Troubleshooting
+
+- **`GET /admin/casual/cells` is 404** (the service logs "switched off on the server"): the server isn't
+  running with `Bots:Enabled`, or it is an old build from another branch.
+- **Cells show your run but `botDotCount` stays 0, and the server never sees `/auth/register`:** every route
+  is failing. Route failures are logged at Debug only; run with `Logging__LogLevel__BotDots=Debug` to see
+  them. An SSL "handshake failure" is the macOS TLS 1.3 problem above.
 
 ## Deploying (Tatooine)
 
