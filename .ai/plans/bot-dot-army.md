@@ -206,11 +206,13 @@ A bot-dot you can add as crew, to try the crew flow without recruiting a friend.
 - [ ] Pick .NET vs Node for the service.
 
 ### P1: Server (branch `bot-dots-server`)
-- [ ] `Bots:Enabled` config; `botdot-` username rule (and refusal in `/auth/register`).
-- [ ] `GET /admin/casual/cells`; `NearbyDot.isBot`; exclude bot-dots from admin counts; 1 hour purge for bot-dot positions.
-- [ ] Tests: `BotCellsTests` (admin bearer required, coarse cells only, disabled returns 404), `CasualBotVisibilityTests`
-      (honours reciprocal toggle, 5 km, start fuzz, stale), register prefix refused without admin bearer.
-- [ ] Docs: `docs/api-reference.html`, `docs/database-schema.html`, server README.
+- [x] `Bots:Enabled` config; `botdot-` username rule (and refusal in `/auth/register`).
+- [x] `GET /admin/casual/cells`; `NearbyDot.isBot`; `isBotDot` on the admin user list; 1 hour purge for bot-dot positions.
+- [x] Tests: `BotDotApiTests`, `GeoHashTests` (admin bearer required, coarse cells only, disabled returns 404),
+      `CasualVisibilityTests` (isBot flag) and the live-read tests in `BotDotApiTests` (reciprocal opt-in, switched-off
+      hides), register prefix refused without admin bearer.
+- [x] Docs: not needed, `docs/api-reference.html` has no casual or admin endpoints and there are no schema changes
+      (bot-dots are recognised by username prefix). Config: `Bots:Enabled` (default false); see this plan.
 
 ### P2: Service MVP (branch `bot-dots-service`)
 - [ ] Project skeleton, config, structured logging to Seq.

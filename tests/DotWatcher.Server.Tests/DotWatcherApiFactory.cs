@@ -57,6 +57,9 @@ public sealed class DotWatcherApiFactory : WebApplicationFactory<global::Program
     /// </summary>
     public string[] EnabledForAll { get; init; } = [Features.Crew];
 
+    /// <summary>The <c>Bots:Enabled</c> config: bot-dots (see .ai/plans/bot-dot-army.md). Off by default, as in production.</summary>
+    public bool BotDotsEnabled { get; init; }
+
     /// <summary>The <c>Palette:*</c> config entries (e.g. <c>GoBg</c>). Empty by default: no palette is served.</summary>
     public Dictionary<string, string> Palette { get; init; } = [];
 
@@ -74,6 +77,7 @@ public sealed class DotWatcherApiFactory : WebApplicationFactory<global::Program
                 // read straight back, so they must always see the latest.
                 ["Casual:SnapshotSeconds"] = "0",
             };
+            settings["Bots:Enabled"] = BotDotsEnabled ? "true" : "false";
             for (var i = 0; i < EnabledForAll.Length; i++)
                 settings[$"Features:EnabledForAll:{i}"] = EnabledForAll[i];
             foreach (var (key, value) in Palette)

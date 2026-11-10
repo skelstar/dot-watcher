@@ -8,7 +8,9 @@ public class AuthController(
     UserTokenAuth tokenAuth,
     FeatureFlags features,
     PaletteProvider palette,
-    AuthAttemptLimiter attemptLimiter) : ControllerBase
+    AuthAttemptLimiter attemptLimiter,
+    BearerTokenAuth adminAuth,
+    IConfiguration configuration) : ControllerBase
 {
     /// <summary>Gets the caller's account, including the features it can use. Clients call this to pick up a newly granted feature without signing in again.</summary>
     [HttpGet("/me")]
@@ -37,6 +39,12 @@ public class AuthController(
 
         if (username is null)
             return BadRequest(new { error = "Username must be 3-64 characters." });
+
+        // "botdot-" accounts are the bot-dots service's, so nobody else can pose as one. Only the admin
+        // bearer can create them, and only while bot-dots are enabled.
+        if (BotDots.IsBotDotUsername(username)
+            && !(configuration.GetValue<bool>("Bots:Enabled") && adminAuth.IsAuthorized(Request)))
+            return BadRequest(new { error = "That username is reserved." });
 
         if (request.Password is null || request.Password.Length < 8)
             return BadRequest(new { error = "Password must be at least 8 characters." });

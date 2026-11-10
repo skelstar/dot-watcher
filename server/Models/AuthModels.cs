@@ -171,7 +171,9 @@ public record AdminUserSummary(
     string Username,
     string DisplayName,
     string CreatedAt,
-    IReadOnlyList<string> Features
+    IReadOnlyList<string> Features,
+    // A bot-dot account (see .ai/plans/bot-dot-army.md), so counts of real people can leave them out.
+    bool IsBotDot = false
 );
 
 public record AdminSessionSummary(
