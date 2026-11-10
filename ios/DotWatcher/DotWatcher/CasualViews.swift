@@ -653,7 +653,7 @@ struct CasualMapScreen: View {
 
 // MARK: - Map pieces
 
-/// A person who is not in the crew: a grey dot with a white edge and "??" for initials, and a padlock
+/// A person who is not in the crew: a grey dot with a white edge and "?" for initials, and a padlock
 /// when they are in a named session. Nothing that says who it is. 80% of a normal dot (27 pt).
 private struct NearbyDotView: View {
     let isLocked: Bool
@@ -666,7 +666,7 @@ private struct NearbyDotView: View {
             .overlay(Circle().stroke(.white, lineWidth: 2))
             .frame(width: size, height: size)
             .overlay {
-                Text("??")
+                Text("?")
                     .font(.system(size: size * 0.4, weight: .bold))
                     .foregroundStyle(.white)
             }

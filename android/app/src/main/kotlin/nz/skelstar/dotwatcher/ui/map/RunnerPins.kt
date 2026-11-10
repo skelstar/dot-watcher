@@ -249,7 +249,7 @@ private fun drawLock(canvas: Canvas, cx: Float, cy: Float, radius: Float, discCo
     canvas.drawArc(shackle, 180f, 180f, false, white)
 }
 
-/** A person who is not in the crew: a grey dot with a white edge and "??" for initials, and a padlock
+/** A person who is not in the crew: a grey dot with a white edge and "?" for initials, and a padlock
  *  badge when they are in a named session. Nothing that says who it is. 80% of a normal pin
  *  (r 17.5 dp, 12.5 dp text). */
 fun nearbyBitmap(locked: Boolean, density: Float): Bitmap {
@@ -275,7 +275,7 @@ fun nearbyBitmap(locked: Boolean, density: Float): Bitmap {
         isFakeBoldText = true
         textAlign = Paint.Align.CENTER
     }
-    canvas.drawText("??", cx, cy - (text.descent() + text.ascent()) / 2, text)
+    canvas.drawText("?", cx, cy - (text.descent() + text.ascent()) / 2, text)
     if (locked) drawLock(canvas, cx + r * 0.78f, cy + r * 0.78f, dp(8.5f * 0.8f), 0xFF14181F.toInt(), density)
     return bitmap
 }
