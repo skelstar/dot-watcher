@@ -63,7 +63,6 @@ import nz.skelstar.dotwatcher.events.EventsModel
 import nz.skelstar.dotwatcher.ui.casual.BeforeYouGoSheet
 import nz.skelstar.dotwatcher.ui.casual.crewOutLine
 import nz.skelstar.dotwatcher.blocks.BlocksModel
-import nz.skelstar.dotwatcher.ui.casual.WhoCanSeeMeSheet
 import nz.skelstar.dotwatcher.ui.theme.AppearanceMode
 import java.time.Duration
 import nz.skelstar.dotwatcher.ui.CodeBoxField
@@ -141,7 +140,6 @@ fun SessionScreen(
     var nearbyCandidate by remember { mutableStateOf<NearbyEvent?>(null) }
     var joinAttempted by remember { mutableStateOf(false) }
     var showBeforeYouGo by remember { mutableStateOf(false) }
-    var showWhoCanSeeMe by remember { mutableStateOf(false) }
     val casualState by casual.state.collectAsState()
     val eventsState by events.state.collectAsState()
     var showCreateDialog by remember { mutableStateOf(false) }
@@ -288,21 +286,6 @@ fun SessionScreen(
 
     if (showBeforeYouGo) {
         BeforeYouGoSheet(
-            onGo = { duration ->
-                showBeforeYouGo = false
-                onStartCasual(duration)
-            },
-            onChooseWhoCanSeeMe = {
-                showBeforeYouGo = false
-                showWhoCanSeeMe = true
-            },
-            onDismiss = { showBeforeYouGo = false },
-            visibleToCrew = casualState.visibleToCrew,
-        )
-    }
-
-    if (showWhoCanSeeMe) {
-        WhoCanSeeMeSheet(
             visibleToCrew = casualState.visibleToCrew,
             visibleToNonCrew = casualState.visibleToNonCrew,
             hideStartArea = casualState.hideStartArea,
@@ -310,8 +293,13 @@ fun SessionScreen(
             onCrewVisibleChange = casual::setVisibleToCrew,
             onVisibleChange = casual::setVisibleToNonCrew,
             onHideStartAreaChange = casual::setHideStartArea,
+            onGo = { duration ->
+                showBeforeYouGo = false
+                casual.clearError()
+                onStartCasual(duration)
+            },
             onDismiss = {
-                showWhoCanSeeMe = false
+                showBeforeYouGo = false
                 casual.clearError()
             },
         )

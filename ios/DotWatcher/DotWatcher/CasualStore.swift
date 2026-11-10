@@ -128,7 +128,6 @@ final class CasualStore {
 
     /// The sheets and the map are presented once at the top of `ContentView` (see `CasualHost`).
     var isBeforeYouGoPresented = false
-    var isWhoCanSeeMePresented = false
     var isMapPresented = false
 
     var isAvailable: Bool { availability == .available }
@@ -254,7 +253,6 @@ final class CasualStore {
         settingsError = nil
         startError = nil
         isBeforeYouGoPresented = false
-        isWhoCanSeeMePresented = false
         isMapPresented = false
     }
 

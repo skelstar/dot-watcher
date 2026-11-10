@@ -20,7 +20,6 @@ import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -45,18 +44,22 @@ import java.time.Duration
 val DEFAULT_CASUAL_DURATION: Duration = Duration.ofHours(4)
 
 /**
- * Shown every time Go is held, before anything starts. Says who will see the person, asks how long
- * to share for (sharing always stops on its own, the same choices as the session consent screen),
- * and offers a way to change who can see them.
+ * Shown every time Go is held, before anything starts. Holds the "Who can see me" switches, so they
+ * can be changed without leaving this sheet, and asks how long to share for (sharing always stops on
+ * its own, the same choices as the session consent screen).
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun BeforeYouGoSheet(
+    visibleToCrew: Boolean,
+    visibleToNonCrew: Boolean,
+    hideStartArea: Boolean,
+    error: String?,
+    onCrewVisibleChange: (Boolean) -> Unit,
+    onVisibleChange: (Boolean) -> Unit,
+    onHideStartAreaChange: (Boolean) -> Unit,
     onGo: (Duration) -> Unit,
-    onChooseWhoCanSeeMe: () -> Unit,
     onDismiss: () -> Unit,
-    /** Whether "My crew" is on in "Who can see me". */
-    visibleToCrew: Boolean = true,
 ) {
     var duration by remember { mutableStateOf(DEFAULT_CASUAL_DURATION) }
 
@@ -72,26 +75,22 @@ fun BeforeYouGoSheet(
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             Text("Before you go", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-            if (visibleToCrew) {
-                Point("Your crew see your name", "While you're out, with their colour ring on the map.")
-            } else {
-                Point(
-                    "You and your crew don't see each other",
-                    "You turned off My crew. You can still share a link to watch you.",
+
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                SectionHeader("WHO CAN SEE ME")
+                WhoCanSeeMeControls(
+                    visibleToCrew = visibleToCrew,
+                    visibleToNonCrew = visibleToNonCrew,
+                    hideStartArea = hideStartArea,
+                    error = error,
+                    onCrewVisibleChange = onCrewVisibleChange,
+                    onVisibleChange = onVisibleChange,
+                    onHideStartAreaChange = onHideStartAreaChange,
                 )
             }
-            Point(
-                "Nearby runners see nothing",
-                "Unless you turn on Show me to people nearby. Then it's a grey dot with no name.",
-            )
-            Point("Stop any time", "Hold the red Stop, or it stops by itself when the time is up.")
 
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text(
-                    text = "SHARE FOR",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                SectionHeader("SHARE FOR")
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     TRACKING_DURATION_OPTIONS.forEach { option ->
                         FilterChip(
@@ -102,7 +101,7 @@ fun BeforeYouGoSheet(
                     }
                 }
                 Text(
-                    text = "Sharing always stops on its own. This picks how soon.",
+                    text = "Sharing always stops on its own. This picks how soon. Hold the red Stop to end it sooner.",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -115,19 +114,17 @@ fun BeforeYouGoSheet(
             ) {
                 Text("Go", fontWeight = FontWeight.Bold)
             }
-            OutlinedButton(onClick = onChooseWhoCanSeeMe, modifier = Modifier.fillMaxWidth()) {
-                Text("Choose who can see me")
-            }
         }
     }
 }
 
 @Composable
-private fun Point(title: String, body: String) {
-    Column {
-        Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-        Text(body, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-    }
+private fun SectionHeader(text: String) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.labelSmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
 }
 
 /** "who aren't in your crew" is underlined: it is the group the setting is about. */
@@ -163,56 +160,83 @@ fun WhoCanSeeMeSheet(
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             Text("Who can see me", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-            SwitchRow(
-                title = "My crew",
-                body = AnnotatedString(
-                    if (visibleToCrew) "They see your name." else "You and your crew don't see each other.",
-                ),
-                checked = visibleToCrew,
-                enabled = true,
-                onCheckedChange = onCrewVisibleChange,
+            WhoCanSeeMeControls(
+                visibleToCrew = visibleToCrew,
+                visibleToNonCrew = visibleToNonCrew,
+                hideStartArea = hideStartArea,
+                error = error,
+                onCrewVisibleChange = onCrewVisibleChange,
+                onVisibleChange = onVisibleChange,
+                onHideStartAreaChange = onHideStartAreaChange,
             )
-            SwitchRow(
-                title = "Show me to people nearby",
-                body = AnnotatedString("A grey dot with no name, within 5 km."),
-                checked = visibleToNonCrew,
-                enabled = true,
-                onCheckedChange = onVisibleChange,
-            )
-            SwitchRow(
-                title = "Hide my start area",
-                body = HIDE_START_AREA_BODY,
-                checked = hideStartArea,
-                enabled = visibleToNonCrew,
-                onCheckedChange = onHideStartAreaChange,
-            )
-            if (visibleToNonCrew && !hideStartArea) {
-                Text(
-                    text = "Anyone nearby can see where you set off from, which may be your home.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.error,
-                )
-            }
-            if (!visibleToCrew && !visibleToNonCrew) {
-                Text(
-                    text = "You're private: nobody sees you on the map, and you don't see your crew. You can " +
-                        "still send someone a link to watch you. On the map, tap Share.",
-                    style = MaterialTheme.typography.bodySmall,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(10.dp))
-                        .padding(12.dp),
-                )
-            }
+        }
+    }
+}
+
+/**
+ * The "Who can see me" switches and their notes, shared by that sheet (from the map) and "Before
+ * you go". Each switch saves as soon as it changes.
+ */
+@Composable
+private fun WhoCanSeeMeControls(
+    visibleToCrew: Boolean,
+    visibleToNonCrew: Boolean,
+    hideStartArea: Boolean,
+    error: String?,
+    onCrewVisibleChange: (Boolean) -> Unit,
+    onVisibleChange: (Boolean) -> Unit,
+    onHideStartAreaChange: (Boolean) -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        SwitchRow(
+            title = "My crew",
+            body = AnnotatedString(
+                if (visibleToCrew) "They see your name." else "You and your crew don't see each other.",
+            ),
+            checked = visibleToCrew,
+            enabled = true,
+            onCheckedChange = onCrewVisibleChange,
+        )
+        SwitchRow(
+            title = "Show me to people nearby",
+            body = AnnotatedString("A grey dot with no name, within 5 km."),
+            checked = visibleToNonCrew,
+            enabled = true,
+            onCheckedChange = onVisibleChange,
+        )
+        SwitchRow(
+            title = "Hide my start area",
+            body = HIDE_START_AREA_BODY,
+            checked = hideStartArea,
+            enabled = visibleToNonCrew,
+            onCheckedChange = onHideStartAreaChange,
+        )
+        if (visibleToNonCrew && !hideStartArea) {
             Text(
-                text = "Only people who have also turned on \"Show me to people nearby\" can be seen, and you " +
-                    "see them. Your choices are remembered next time.",
+                text = "Anyone nearby can see where you set off from, which may be your home.",
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = MaterialTheme.colorScheme.error,
             )
-            if (error != null) {
-                Text(error, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
-            }
+        }
+        if (!visibleToCrew && !visibleToNonCrew) {
+            Text(
+                text = "You're private: nobody sees you on the map, and you don't see your crew. You can " +
+                    "still send someone a link to watch you. On the map, tap Share.",
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(10.dp))
+                    .padding(12.dp),
+            )
+        }
+        Text(
+            text = "Only people who have also turned on \"Show me to people nearby\" can be seen, and you " +
+                "see them. Your choices are remembered next time.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        if (error != null) {
+            Text(error, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
         }
     }
 }

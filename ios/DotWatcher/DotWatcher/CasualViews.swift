@@ -113,42 +113,34 @@ func crewOutLine(_ crewOut: Int?) -> String? {
 
 // MARK: - Before you go
 
-/// Shown every time Go is held, before anything starts. Says who will see the person, asks how long to
-/// share for (sharing always stops on its own, the same choices as the session consent screen), and
-/// offers a way to change who can see them.
+/// Shown every time Go is held, before anything starts. Holds the "Who can see me" switches, so they can be
+/// changed without leaving this sheet, and asks how long to share for (sharing always stops on its own, the
+/// same choices as the session consent screen).
 struct BeforeYouGoSheet: View {
+    var casual: CasualStore
     @State private var duration = CasualStore.defaultDuration
-    /// Whether "My crew" is on in "Who can see me".
-    var visibleToCrew = true
     let onGo: (TimeInterval) -> Void
-    let onChooseWhoCanSeeMe: () -> Void
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 Text("Before you go")
                     .font(.largeTitle.bold())
-                if visibleToCrew {
-                    point("Your crew see your name", "While you're out, with their colour ring on the map.")
-                } else {
-                    point("You and your crew don't see each other",
-                          "You turned off My crew. You can still share a link to watch you.")
+
+                VStack(alignment: .leading, spacing: 14) {
+                    sectionHeader("WHO CAN SEE ME")
+                    WhoCanSeeMeControls(casual: casual)
                 }
-                point("Nearby runners see nothing",
-                      "Unless you turn on Show me to people nearby. Then it's a grey dot with no name.")
-                point("Stop any time", "Hold the red Stop, or it stops by itself when the time is up.")
 
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("SHARE FOR")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
+                    sectionHeader("SHARE FOR")
                     Picker("Share for", selection: $duration) {
                         ForEach(LocationManager.trackingDurationOptions, id: \.self) { option in
                             Text(durationLabel(option)).tag(option)
                         }
                     }
                     .pickerStyle(.segmented)
-                    Text("Sharing always stops on its own. This picks how soon.")
+                    Text("Sharing always stops on its own. This picks how soon. Hold the red Stop to end it sooner.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -163,26 +155,16 @@ struct BeforeYouGoSheet: View {
                 .buttonStyle(.borderedProminent)
                 .tint(goGreen)
                 .controlSize(.large)
-
-                Button {
-                    onChooseWhoCanSeeMe()
-                } label: {
-                    Text("Choose who can see me")
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.large)
             }
             .padding(24)
         }
         .sheetCloseButton()
     }
 
-    private func point(_ title: String, _ body: String) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(title).font(.headline)
-            Text(body).font(.subheadline).foregroundStyle(.secondary)
-        }
+    private func sectionHeader(_ text: String) -> some View {
+        Text(text)
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(.secondary)
     }
 }
 
@@ -196,6 +178,24 @@ struct BeforeYouGoSheet: View {
 struct WhoCanSeeMeSheet: View {
     var casual: CasualStore
 
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            Text("Who can see me")
+                .font(.largeTitle.bold())
+            WhoCanSeeMeControls(casual: casual)
+            Spacer(minLength: 0)
+        }
+        .padding(24)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .sheetCloseButton()
+    }
+}
+
+/// The "Who can see me" switches and their notes, shared by that sheet (from the map) and "Before you go".
+/// Each switch saves as soon as it changes.
+struct WhoCanSeeMeControls: View {
+    var casual: CasualStore
+
     /// "who aren't in your crew" is underlined: it is the group the setting is about.
     private static let hideStartAreaCaption: AttributedString = {
         var text = AttributedString("People who aren't in your crew don't see you until you are 300 m from where you started.")
@@ -207,8 +207,6 @@ struct WhoCanSeeMeSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
-            Text("Who can see me")
-                .font(.largeTitle.bold())
             Toggle(isOn: Binding(
                 get: { casual.visibleToCrew },
                 set: { visible in Task { await casual.setVisibleToCrew(visible) } }
@@ -261,11 +259,8 @@ struct WhoCanSeeMeSheet: View {
             if let error = casual.settingsError {
                 Text(error).font(.footnote).foregroundStyle(.red)
             }
-            Spacer(minLength: 0)
         }
-        .padding(24)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .sheetCloseButton()
     }
 }
 
@@ -282,28 +277,12 @@ struct CasualHost: ViewModifier {
     func body(content: Content) -> some View {
         content
             .sheet(isPresented: $casual.isBeforeYouGoPresented) {
-                BeforeYouGoSheet(
-                    visibleToCrew: casual.visibleToCrew,
-                    onGo: { duration in
-                        casual.isBeforeYouGoPresented = false
-                        Task { await casual.start(duration: duration) }
-                    },
-                    onChooseWhoCanSeeMe: {
-                        casual.isBeforeYouGoPresented = false
-                        // A second sheet can't open while the first is still closing.
-                        Task {
-                            try? await Task.sleep(for: .milliseconds(450))
-                            casual.isWhoCanSeeMePresented = true
-                        }
-                    }
-                )
+                BeforeYouGoSheet(casual: casual) { duration in
+                    casual.isBeforeYouGoPresented = false
+                    Task { await casual.start(duration: duration) }
+                }
                 .presentationDetents([.large])
                 .preferredColorScheme(location.appearanceMode.colorScheme)
-            }
-            .sheet(isPresented: $casual.isWhoCanSeeMePresented) {
-                WhoCanSeeMeSheet(casual: casual)
-                    .presentationDetents([.medium])
-                    .preferredColorScheme(location.appearanceMode.colorScheme)
             }
             .fullScreenCover(isPresented: $casual.isMapPresented) {
                 CasualMapScreen(casual: casual, crew: crew, location: location)
