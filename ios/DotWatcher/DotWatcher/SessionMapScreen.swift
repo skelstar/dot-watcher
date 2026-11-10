@@ -237,6 +237,7 @@ struct SessionMapScreen: View {
             return LinzMapMarker(id: pin.id, coordinate: pin.coordinate) {
                 RunnerMapPin(
                     name: pin.id,
+                    size: location.mapDotSize.pinSize,
                     isHighlighted: pin.isSelf,
                     heading: pin.heading,
                     isStale: age.map { $0 > MapPinAge.staleAfter } ?? false,

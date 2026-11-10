@@ -522,7 +522,7 @@ struct CasualMapScreen: View {
                 id: "nearby-\(index)",
                 coordinate: CLLocationCoordinate2D(latitude: dot.latitude, longitude: dot.longitude)
             ) {
-                NearbyDotView(isLocked: dot.inSession == true)
+                NearbyDotView(isLocked: dot.inSession == true, pinSize: location.mapDotSize.pinSize)
             }
         }
         let people = pins.map { pin in
@@ -531,6 +531,7 @@ struct CasualMapScreen: View {
                 RunnerMapPin(
                     name: pin.id,
                     label: pin.displayName,
+                    size: location.mapDotSize.pinSize,
                     isHighlighted: pin.isSelf,
                     heading: pin.heading,
                     isStale: age.map { $0 > MapPinAge.staleAfter } ?? false,
@@ -654,11 +655,14 @@ struct CasualMapScreen: View {
 // MARK: - Map pieces
 
 /// A person who is not in the crew: a grey dot with a white edge and "?" for initials, and a padlock
-/// when they are in a named session. Nothing that says who it is. 80% of a normal dot (27 pt).
+/// when they are in a named session. Nothing that says who it is. 90% of a runner's dot at the
+/// chosen dot size, so it follows the Dot size setting.
 private struct NearbyDotView: View {
     let isLocked: Bool
+    /// The `RunnerMapPin` size in use on this map.
+    let pinSize: CGFloat
 
-    private let size: CGFloat = 27 * 0.8
+    private var size: CGFloat { RunnerMapPin.circleSize(for: pinSize) * 0.9 }
 
     var body: some View {
         Circle()

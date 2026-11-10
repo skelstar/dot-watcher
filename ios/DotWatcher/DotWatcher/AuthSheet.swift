@@ -62,6 +62,18 @@ struct AuthSheet: View {
                         }
                         .pickerStyle(.segmented)
                         .labelsHidden()
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text("Dot size")
+                            Picker("Dot size", selection: $location.mapDotSize) {
+                                ForEach(MapDotSize.allCases) { size in
+                                    Text(size.label).tag(size)
+                                }
+                            }
+                            .pickerStyle(.segmented)
+                            .labelsHidden()
+                            DotSizePreview(initials: location.runnerName, pinSize: location.mapDotSize.pinSize)
+                        }
+                        .padding(.vertical, 4)
                     }
                     notificationsSection
                     #if DEBUG
@@ -238,5 +250,24 @@ struct AuthSheet: View {
             self.error = error.localizedDescription
         }
         isBusy = false
+    }
+}
+
+/// A strip of map-coloured background under the Dot size picker showing the user's own dot and
+/// another runner's at the chosen size, so the choice can be judged without leaving Settings.
+private struct DotSizePreview: View {
+    let initials: String
+    let pinSize: CGFloat
+
+    var body: some View {
+        HStack(spacing: 28) {
+            RunnerMapPin(name: initials.isEmpty ? "ME" : initials, size: pinSize, isHighlighted: true, heading: 45)
+            RunnerMapPin(name: "AB", size: pinSize, heading: 200)
+        }
+        .frame(maxWidth: .infinity)
+        .frame(height: MapDotSize.large.pinSize + 16)
+        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 10))
+        .animation(.easeInOut(duration: 0.2), value: pinSize)
+        .accessibilityHidden(true)
     }
 }
