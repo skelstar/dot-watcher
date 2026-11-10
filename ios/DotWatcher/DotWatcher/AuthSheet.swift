@@ -64,14 +64,7 @@ struct AuthSheet: View {
                         .labelsHidden()
                         VStack(alignment: .leading, spacing: 10) {
                             Text("Dot size")
-                            Picker("Dot size", selection: $location.mapDotSize) {
-                                ForEach(MapDotSize.allCases) { size in
-                                    Text(size.label).tag(size)
-                                }
-                            }
-                            .pickerStyle(.segmented)
-                            .labelsHidden()
-                            DotSizePreview(initials: location.runnerName, pinSize: location.mapDotSize.pinSize)
+                            DotSizePicker(selection: $location.mapDotSize, initials: location.runnerName)
                         }
                         .padding(.vertical, 4)
                     }
@@ -253,21 +246,35 @@ struct AuthSheet: View {
     }
 }
 
-/// A strip of map-coloured background under the Dot size picker showing the user's own dot and
-/// another runner's at the chosen size, so the choice can be judged without leaving Settings.
-private struct DotSizePreview: View {
+/// The Dot size choice as three tiles, each showing the user's own dot at that size; the chosen
+/// tile is outlined. No text on the tiles: the dots are the labels (VoiceOver still reads the names).
+private struct DotSizePicker: View {
+    @Binding var selection: MapDotSize
     let initials: String
-    let pinSize: CGFloat
 
     var body: some View {
-        HStack(spacing: 28) {
-            RunnerMapPin(name: initials.isEmpty ? "ME" : initials, size: pinSize, isHighlighted: true, heading: 45)
-            RunnerMapPin(name: "AB", size: pinSize, heading: 200)
+        HStack(spacing: 10) {
+            ForEach(MapDotSize.allCases) { size in
+                let isSelected = size == selection
+                Button {
+                    selection = size
+                } label: {
+                    RunnerMapPin(name: initials.isEmpty ? "ME" : initials, size: size.pinSize, isHighlighted: true)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 72)
+                        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 12))
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 12)
+                                .strokeBorder(isSelected ? Color.accentColor : .clear, lineWidth: 2.5)
+                        }
+                        .contentShape(RoundedRectangle(cornerRadius: 12))
+                }
+                // Plain style, or a Form row fires every button in it on any tap.
+                .buttonStyle(.plain)
+                .accessibilityLabel(size.label)
+                .accessibilityAddTraits(isSelected ? .isSelected : [])
+            }
         }
-        .frame(maxWidth: .infinity)
-        .frame(height: MapDotSize.large.pinSize + 16)
-        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 10))
-        .animation(.easeInOut(duration: 0.2), value: pinSize)
-        .accessibilityHidden(true)
+        .animation(.easeInOut(duration: 0.15), value: selection)
     }
 }
