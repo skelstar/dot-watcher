@@ -215,16 +215,19 @@ A bot-dot you can add as crew, to try the crew flow without recruiting a friend.
       (bot-dots are recognised by username prefix). Config: `Bots:Enabled` (default false); see this plan.
 
 ### P2: Service MVP (branch `bot-dots-service`)
-- [ ] Project skeleton, config, structured logging to Seq.
-- [ ] Movement engine (pure) and persona definitions, with unit tests (speed distribution, heading, stop behaviour,
-      determinism by seed).
-- [ ] GPX route library and selector; loop shift/rotation.
-- [ ] Spawner against `/admin/casual/cells`; fleet cap; retire logic.
-- [ ] Poster, backoff, shutdown clear.
-- [ ] Dockerfile, `.deploy.yaml`, namespace/secret/NetworkPolicy notes in the README, CI path filter.
+- [x] Project skeleton (`bot-dots/BotDots.Service`, .NET 9 worker), config (`BotDots` section). Logging is console
+      only; Seq is a follow-up.
+- [x] Movement engine (`BotRunner`, pure) and personas, with unit tests (pace, heading, end of path, joining hops,
+      GPS wobble, overlap).
+- [x] Wandering by hops (`Wanderer`, Valhalla with the start heading to avoid U-turns), turning back toward the
+      middle at the edge of the band. Replaces the GPX library/loops idea; a GPX trail can supply hop targets later.
+- [x] Spawner against `/admin/casual/cells`; fleet cap; per-sync stagger; retire logic (unit-tested).
+- [x] Poster (403 starts again and retries once, 401 signs in again), stop on finish and on shutdown.
+- [x] Dockerfile, `.deploy.yaml`, README (deploy notes, Valhalla), CI workflow `bot-dots-dotnet.yml`.
+- [ ] Wire the image into `release.yml`; self-hosted Valhalla on Tatooine; secret for `BotDots__AdminBearer`.
 - [ ] Run against Staging with one real phone: grey bot-dots appear and go away.
 
-### P3: Bot-crew (branch `bot-dots-crew`, name PRs "Crew: ...")
+### P3: Bot-crew (branch `bot-dots-crew`, PRs "Bot-dots: ...")
 - [ ] Server: `POST /me/crew/practice`, `/practice/run`, `GET /admin/practice-requests`; `isBot` on crew rows.
 - [ ] Service: practice trips (named, visible to crew), scenarios.
 - [ ] iOS and Android: Crew row, badge, and the run/stop button; hidden when the server has no practice endpoint.
