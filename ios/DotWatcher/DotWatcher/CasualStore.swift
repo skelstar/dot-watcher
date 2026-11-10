@@ -201,11 +201,13 @@ final class CasualStore {
 
     /// Puts a GPX file on this person's current run. Their crew and anyone with a watch link then see it
     /// too. The file is checked here first so a file with no track gets a clear message.
-    func setRoute(gpx: Data) async {
-        guard let location, !isUploadingRoute else { return }
+    /// True when the route was saved.
+    @discardableResult
+    func setRoute(gpx: Data) async -> Bool {
+        guard let location, !isUploadingRoute else { return false }
         guard GpxRouteParser.parse(gpx).count > 1 else {
             routeError = "No route found. This GPX file has no track points."
-            return
+            return false
         }
         isUploadingRoute = true
         routeError = nil
@@ -214,8 +216,10 @@ final class CasualStore {
             try await location.sendAuthorizedData(
                 path: "/casual/route", method: "POST", body: gpx, contentType: "application/gpx+xml")
             await loadLive()
+            return true
         } catch {
             routeError = error.localizedDescription
+            return false
         }
     }
 
