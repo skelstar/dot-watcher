@@ -286,6 +286,8 @@ fun SessionScreen(
 
     if (showBeforeYouGo) {
         BeforeYouGoSheet(
+            me = account.displayName,
+            crew = crewState.members,
             visibleToCrew = casualState.visibleToCrew,
             visibleToNonCrew = casualState.visibleToNonCrew,
             hideStartArea = casualState.hideStartArea,
