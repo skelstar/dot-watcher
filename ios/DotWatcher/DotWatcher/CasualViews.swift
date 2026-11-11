@@ -348,7 +348,6 @@ struct CasualMapScreen: View {
     @State private var timelineStart = Date()
     /// While set, the map re-frames everyone as positions move; fit-all sets it, dragging the map clears it.
     @State private var fitLocked = true
-    @State private var stopProgress: CGFloat = 0
     @State private var showExtend = false
     @State private var showWhoCanSeeMe = false
     @State private var showShare = false
@@ -384,7 +383,7 @@ struct CasualMapScreen: View {
                     heading: $0.heading,
                     isSelf: false,
                     isLocked: $0.inSession == true,
-                    timestamp: ISO8601DateFormatter().date(from: $0.timestamp)
+                    timestamp: positionTimestampParser.date(from: $0.timestamp)
                 )
             }
         // This device's own position straight from CoreLocation, so the dot is current without waiting
@@ -422,7 +421,7 @@ struct CasualMapScreen: View {
                     HStack(alignment: .bottom) {
                         countChip
                         Spacer()
-                        HoldToStopPill(progress: $stopProgress) { casual.stop() }
+                        HoldToStopPill { casual.stop() }
                     }
                     .padding(.horizontal, 14)
                     .padding(.bottom, 26)

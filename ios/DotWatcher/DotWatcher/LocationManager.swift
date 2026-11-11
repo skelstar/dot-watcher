@@ -1583,9 +1583,13 @@ struct RunnerPositionResponse: Codable {
     let timestamp: String
 
     var parsedTimestamp: Date? {
-        ISO8601DateFormatter().date(from: timestamp)
+        positionTimestampParser.date(from: timestamp)
     }
 }
+
+/// One shared parser for position timestamps. The maps parse every pin's timestamp on each update, and
+/// creating an `ISO8601DateFormatter` per pin is slow enough to hold up the main thread.
+let positionTimestampParser = ISO8601DateFormatter()
 
 private final class LocationDelegate: NSObject, CLLocationManagerDelegate {
     weak var owner: LocationManager?
