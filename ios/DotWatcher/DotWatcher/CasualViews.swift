@@ -113,42 +113,36 @@ func crewOutLine(_ crewOut: Int?) -> String? {
 
 // MARK: - Before you go
 
-/// Shown every time Go is held, before anything starts. Says who will see the person, asks how long to
-/// share for (sharing always stops on its own, the same choices as the session consent screen), and
-/// offers a way to change who can see them.
+/// Shown every time Go is held, before anything starts. Holds the "Who can see me" switches, so they can be
+/// changed without leaving this sheet, and asks how long to share for (sharing always stops on its own, the
+/// same choices as the session consent screen).
 struct BeforeYouGoSheet: View {
+    var casual: CasualStore
+    let me: String
+    let crew: [CrewMember]
     @State private var duration = CasualStore.defaultDuration
-    /// Whether "My crew" is on in "Who can see me".
-    var visibleToCrew = true
     let onGo: (TimeInterval) -> Void
-    let onChooseWhoCanSeeMe: () -> Void
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 Text("Before you go")
                     .font(.largeTitle.bold())
-                if visibleToCrew {
-                    point("Your crew see your name", "While you're out, with their colour ring on the map.")
-                } else {
-                    point("You and your crew don't see each other",
-                          "You turned off My crew. You can still share a link to watch you.")
+
+                VStack(alignment: .leading, spacing: 14) {
+                    sectionHeader("WHO CAN SEE ME")
+                    WhoCanSeeMeControls(casual: casual, me: me, crew: crew)
                 }
-                point("Nearby runners see nothing",
-                      "Unless you turn on Show me to people nearby. Then it's a grey dot with no name.")
-                point("Stop any time", "Hold the red Stop, or it stops by itself when the time is up.")
 
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("SHARE FOR")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
+                    sectionHeader("SHARE FOR")
                     Picker("Share for", selection: $duration) {
                         ForEach(LocationManager.trackingDurationOptions, id: \.self) { option in
                             Text(durationLabel(option)).tag(option)
                         }
                     }
                     .pickerStyle(.segmented)
-                    Text("Sharing always stops on its own. This picks how soon.")
+                    Text("Sharing always stops on its own. This picks how soon. Hold the red Stop to end it sooner.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -163,26 +157,16 @@ struct BeforeYouGoSheet: View {
                 .buttonStyle(.borderedProminent)
                 .tint(goGreen)
                 .controlSize(.large)
-
-                Button {
-                    onChooseWhoCanSeeMe()
-                } label: {
-                    Text("Choose who can see me")
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.large)
             }
             .padding(24)
         }
         .sheetCloseButton()
     }
 
-    private func point(_ title: String, _ body: String) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(title).font(.headline)
-            Text(body).font(.subheadline).foregroundStyle(.secondary)
-        }
+    private func sectionHeader(_ text: String) -> some View {
+        Text(text)
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(.secondary)
     }
 }
 
@@ -195,6 +179,30 @@ struct BeforeYouGoSheet: View {
 /// the person is private: nobody sees them on the map, but a "Share your run" link still works.
 struct WhoCanSeeMeSheet: View {
     var casual: CasualStore
+    let me: String
+    let crew: [CrewMember]
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 18) {
+                Text("Who can see me")
+                    .font(.largeTitle.bold())
+                WhoCanSeeMeControls(casual: casual, me: me, crew: crew)
+            }
+            .padding(24)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .sheetCloseButton()
+    }
+}
+
+/// The "Who can see me" switches, shared by that sheet (from the map) and "Before you go". A small picture
+/// of who sees you sits above them and follows each switch. Each switch saves as soon as it changes.
+struct WhoCanSeeMeControls: View {
+    var casual: CasualStore
+    /// This person's runner name, for the initials on their own dot.
+    let me: String
+    let crew: [CrewMember]
 
     /// "who aren't in your crew" is underlined: it is the group the setting is about.
     private static let hideStartAreaCaption: AttributedString = {
@@ -205,28 +213,29 @@ struct WhoCanSeeMeSheet: View {
         return text
     }()
 
+    /// Only while nearby is on does "Hide my start area" matter, so only then can the start be exposed.
+    private var startExposed: Bool { casual.visibleToNonCrew && !casual.hideStartArea }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
-            Text("Who can see me")
-                .font(.largeTitle.bold())
+            WhoSeesYouStrip(
+                me: me,
+                crew: crew,
+                crewVisible: casual.visibleToCrew,
+                nearbyVisible: casual.visibleToNonCrew,
+                startHidden: casual.visibleToNonCrew && casual.hideStartArea
+            )
             Toggle(isOn: Binding(
                 get: { casual.visibleToCrew },
                 set: { visible in Task { await casual.setVisibleToCrew(visible) } }
             )) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("My crew").font(.headline)
-                    Text(casual.visibleToCrew ? "They see your name." : "You and your crew don't see each other.")
-                        .font(.subheadline).foregroundStyle(.secondary)
-                }
+                Text("My crew").font(.headline)
             }
             Toggle(isOn: Binding(
                 get: { casual.visibleToNonCrew },
                 set: { visible in Task { await casual.setVisibleToNonCrew(visible) } }
             )) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Show me to people nearby").font(.headline)
-                    Text("A grey dot with no name, within 5 km.").font(.subheadline).foregroundStyle(.secondary)
-                }
+                Text("Show me to people nearby").font(.headline)
             }
             Toggle(isOn: Binding(
                 get: { casual.hideStartArea },
@@ -234,16 +243,21 @@ struct WhoCanSeeMeSheet: View {
             )) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Hide my start area").font(.headline)
-                    Text(Self.hideStartAreaCaption)
-                        .font(.subheadline).foregroundStyle(.secondary)
+                    if startExposed {
+                        Label {
+                            Text("Anyone nearby can see where you set off from, which may be your home.")
+                        } icon: {
+                            Image(systemName: "exclamationmark.circle.fill")
+                        }
+                        .font(.subheadline)
+                        .foregroundStyle(.orange)
+                    } else {
+                        Text(Self.hideStartAreaCaption)
+                            .font(.subheadline).foregroundStyle(.secondary)
+                    }
                 }
             }
             .disabled(!casual.visibleToNonCrew)
-            if casual.visibleToNonCrew && !casual.hideStartArea {
-                Text("Anyone nearby can see where you set off from, which may be your home.")
-                    .font(.footnote)
-                    .foregroundStyle(.orange)
-            }
             if casual.isPrivate {
                 Label {
                     Text("You're private: nobody sees you on the map, and you don't see your crew. You can still send someone a link to watch you. On the map, tap \(Image(systemName: "square.and.arrow.up")) Share.")
@@ -255,17 +269,112 @@ struct WhoCanSeeMeSheet: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(Color.secondary.opacity(0.12), in: RoundedRectangle(cornerRadius: 10))
             }
-            Text("Only people who have also turned on \"Show me to people nearby\" can be seen, and you see them. Your choices are remembered next time.")
-                .font(.footnote)
-                .foregroundStyle(.secondary)
             if let error = casual.settingsError {
                 Text(error).font(.footnote).foregroundStyle(.red)
             }
-            Spacer(minLength: 0)
         }
-        .padding(24)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .sheetCloseButton()
+    }
+}
+
+/// A small map strip above the "Who can see me" switches: this person at their start, up to three of their
+/// crew along a route, and two anonymous nearby dots. Turning a switch off fades its dots away, which shows
+/// the two-way part (with "My crew" off you don't see them either). With the start hidden, a dashed ring
+/// circles the start and this person's dot is half see-through. Decorative: the switches carry the meaning.
+struct WhoSeesYouStrip: View {
+    let me: String
+    let crew: [CrewMember]
+    let crewVisible: Bool
+    let nearbyVisible: Bool
+    let startHidden: Bool
+
+    /// Drawn on a 300 × 84 grid, scaled to the width it is given.
+    private static let grid = CGSize(width: 300, height: 84)
+    private static let start = CGPoint(x: 36, y: 66)
+    private static let crewSpots = [CGPoint(x: 132, y: 46), CGPoint(x: 164, y: 40), CGPoint(x: 262, y: 20)]
+    private static let nearbySpots = [CGPoint(x: 94, y: 24), CGPoint(x: 212, y: 64)]
+    /// Stand-ins when the person has no crew yet, drawn without initials.
+    private static let placeholderCrewColors: [Color] = [.orange, .green, .purple]
+    private static let nearbyGrey = Color(red: 0x9A / 255, green: 0xA3 / 255, blue: 0xAB / 255)
+
+    var body: some View {
+        GeometryReader { geometry in
+            let scale = geometry.size.width / Self.grid.width
+            ZStack(alignment: .topLeading) {
+                RoundedRectangle(cornerRadius: 12).fill(Color.green.opacity(0.14))
+                Path { path in
+                    path.move(to: point(16, 70, scale))
+                    path.addCurve(to: point(150, 44, scale), control1: point(70, 64, scale), control2: point(100, 48, scale))
+                    path.addCurve(to: point(286, 14, scale), control1: point(200, 40, scale), control2: point(240, 24, scale))
+                }
+                .stroke(Color(.systemGray3), style: StrokeStyle(lineWidth: 5 * scale, lineCap: .round))
+
+                Circle()
+                    .stroke(Color.secondary, style: StrokeStyle(lineWidth: 1.5, dash: [3, 3]))
+                    .frame(width: 48 * scale, height: 48 * scale)
+                    .position(point(Self.start.x, Self.start.y, scale))
+                    .opacity(startHidden ? 1 : 0)
+                    .scaleEffect(startHidden ? 1 : 0.4, anchor: anchor(Self.start))
+
+                ForEach(Self.nearbySpots.indices, id: \.self) { index in
+                    dot(color: Self.nearbyGrey, label: "?", scale: scale)
+                        .position(point(Self.nearbySpots[index].x, Self.nearbySpots[index].y, scale))
+                        .opacity(nearbyVisible ? 1 : 0)
+                        .scaleEffect(nearbyVisible ? 1 : 0.4, anchor: anchor(Self.nearbySpots[index]))
+                }
+
+                ForEach(Self.crewSpots.indices, id: \.self) { index in
+                    crewDot(index, scale: scale)
+                        .position(point(Self.crewSpots[index].x, Self.crewSpots[index].y, scale))
+                        .opacity(crewVisible ? 1 : 0)
+                        .scaleEffect(crewVisible ? 1 : 0.4, anchor: anchor(Self.crewSpots[index]))
+                }
+
+                dot(color: RunnerColorPalette.currentUser, label: RunnerCircle.initials(for: me), scale: scale)
+                    .position(point(Self.start.x, Self.start.y, scale))
+                    .opacity(startHidden ? 0.5 : 1)
+            }
+        }
+        .aspectRatio(Self.grid.width / Self.grid.height, contentMode: .fit)
+        .animation(.easeOut(duration: 0.25), value: crewVisible)
+        .animation(.easeOut(duration: 0.25), value: nearbyVisible)
+        .animation(.easeOut(duration: 0.25), value: startHidden)
+        .accessibilityHidden(true)
+    }
+
+    /// A crew dot coloured and labelled as on the map: colour from the name the map uses (nickname, else
+    /// display name), letters from the display name.
+    @ViewBuilder
+    private func crewDot(_ index: Int, scale: CGFloat) -> some View {
+        if index < crew.count {
+            let member = crew[index]
+            dot(color: RunnerColorPalette.color(for: member.nickname ?? member.displayName),
+                label: RunnerCircle.initials(for: member.displayName), scale: scale)
+        } else if crew.isEmpty {
+            dot(color: Self.placeholderCrewColors[index], label: nil, scale: scale)
+        }
+    }
+
+    private func dot(color: Color, label: String?, scale: CGFloat) -> some View {
+        Circle()
+            .fill(color)
+            .overlay(Circle().stroke(Color.white, lineWidth: 2))
+            .overlay {
+                if let label {
+                    Text(label)
+                        .font(.system(size: (label == "?" ? 11 : 9) * scale, weight: .bold))
+                        .foregroundStyle(.white)
+                }
+            }
+            .frame(width: 22 * scale, height: 22 * scale)
+    }
+
+    private func point(_ x: CGFloat, _ y: CGFloat, _ scale: CGFloat) -> CGPoint {
+        CGPoint(x: x * scale, y: y * scale)
+    }
+
+    private func anchor(_ spot: CGPoint) -> UnitPoint {
+        UnitPoint(x: spot.x / Self.grid.width, y: spot.y / Self.grid.height)
     }
 }
 
@@ -282,28 +391,12 @@ struct CasualHost: ViewModifier {
     func body(content: Content) -> some View {
         content
             .sheet(isPresented: $casual.isBeforeYouGoPresented) {
-                BeforeYouGoSheet(
-                    visibleToCrew: casual.visibleToCrew,
-                    onGo: { duration in
-                        casual.isBeforeYouGoPresented = false
-                        Task { await casual.start(duration: duration) }
-                    },
-                    onChooseWhoCanSeeMe: {
-                        casual.isBeforeYouGoPresented = false
-                        // A second sheet can't open while the first is still closing.
-                        Task {
-                            try? await Task.sleep(for: .milliseconds(450))
-                            casual.isWhoCanSeeMePresented = true
-                        }
-                    }
-                )
+                BeforeYouGoSheet(casual: casual, me: location.runnerName, crew: crew.members) { duration in
+                    casual.isBeforeYouGoPresented = false
+                    Task { await casual.start(duration: duration) }
+                }
                 .presentationDetents([.large])
                 .preferredColorScheme(location.appearanceMode.colorScheme)
-            }
-            .sheet(isPresented: $casual.isWhoCanSeeMePresented) {
-                WhoCanSeeMeSheet(casual: casual)
-                    .presentationDetents([.medium])
-                    .preferredColorScheme(location.appearanceMode.colorScheme)
             }
             .fullScreenCover(isPresented: $casual.isMapPresented) {
                 CasualMapScreen(casual: casual, crew: crew, location: location)
@@ -348,7 +441,6 @@ struct CasualMapScreen: View {
     @State private var timelineStart = Date()
     /// While set, the map re-frames everyone as positions move; fit-all sets it, dragging the map clears it.
     @State private var fitLocked = true
-    @State private var stopProgress: CGFloat = 0
     @State private var showExtend = false
     @State private var showWhoCanSeeMe = false
     @State private var showShare = false
@@ -384,7 +476,7 @@ struct CasualMapScreen: View {
                     heading: $0.heading,
                     isSelf: false,
                     isLocked: $0.inSession == true,
-                    timestamp: ISO8601DateFormatter().date(from: $0.timestamp)
+                    timestamp: positionTimestampParser.date(from: $0.timestamp)
                 )
             }
         // This device's own position straight from CoreLocation, so the dot is current without waiting
@@ -422,7 +514,7 @@ struct CasualMapScreen: View {
                     HStack(alignment: .bottom) {
                         countChip
                         Spacer()
-                        HoldToStopPill(progress: $stopProgress) { casual.stop() }
+                        HoldToStopPill { casual.stop() }
                     }
                     .padding(.horizontal, 14)
                     .padding(.bottom, 26)
@@ -449,8 +541,8 @@ struct CasualMapScreen: View {
             .presentationDetents([.height(240)])
         }
         .sheet(isPresented: $showWhoCanSeeMe) {
-            WhoCanSeeMeSheet(casual: casual)
-                .presentationDetents([.medium])
+            WhoCanSeeMeSheet(casual: casual, me: location.runnerName, crew: crew.members)
+                .presentationDetents([.medium, .large])
         }
         .sheet(isPresented: $showShare) {
             ShareRunSheet(casual: casual)
@@ -522,7 +614,7 @@ struct CasualMapScreen: View {
                 id: "nearby-\(index)",
                 coordinate: CLLocationCoordinate2D(latitude: dot.latitude, longitude: dot.longitude)
             ) {
-                NearbyDotView(isLocked: dot.inSession == true)
+                NearbyDotView(isLocked: dot.inSession == true, pinSize: location.mapDotSize.pinSize)
             }
         }
         let people = pins.map { pin in
@@ -531,6 +623,7 @@ struct CasualMapScreen: View {
                 RunnerMapPin(
                     name: pin.id,
                     label: pin.displayName,
+                    size: location.mapDotSize.pinSize,
                     isHighlighted: pin.isSelf,
                     heading: pin.heading,
                     isStale: age.map { $0 > MapPinAge.staleAfter } ?? false,
@@ -618,8 +711,18 @@ struct CasualMapScreen: View {
                 casual.routeError = "Couldn't read that file."
                 return
             }
-            Task { await casual.setRoute(gpx: data) }
+            Task {
+                if await casual.setRoute(gpx: data) { frameRoute(GpxRouteParser.parse(data)) }
+            }
         }
+    }
+
+    /// Shows the whole of a just-added route. The fit lock comes off so the next tick doesn't pull the camera
+    /// back to the runners; the fit-all button turns it back on.
+    private func frameRoute(_ coordinates: [CLLocationCoordinate2D]) {
+        guard let region = LinzMapRegion.fitting(coordinates) else { return }
+        fitLocked = false
+        camera.move(to: region)
     }
 
     /// "2 crew out". Tapping it opens the crew sheet, so crew can be added mid-run; with no crew yet
@@ -654,11 +757,14 @@ struct CasualMapScreen: View {
 // MARK: - Map pieces
 
 /// A person who is not in the crew: a grey dot with a white edge and "?" for initials, and a padlock
-/// when they are in a named session. Nothing that says who it is. 80% of a normal dot (27 pt).
+/// when they are in a named session. Nothing that says who it is. 90% of a runner's dot at the
+/// chosen dot size, so it follows the Dot size setting.
 private struct NearbyDotView: View {
     let isLocked: Bool
+    /// The `RunnerMapPin` size in use on this map.
+    let pinSize: CGFloat
 
-    private let size: CGFloat = 27 * 0.8
+    private var size: CGFloat { RunnerMapPin.circleSize(for: pinSize) * 0.9 }
 
     var body: some View {
         Circle()

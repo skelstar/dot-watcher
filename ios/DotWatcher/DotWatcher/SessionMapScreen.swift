@@ -13,7 +13,6 @@ struct SessionMapScreen: View {
     /// Fixed start for the map's per-second timeline. `.periodic(from: .now, …)` restarts on every body
     /// update, and each tick's re-frame updates the body, so ticks would fire back to back and hang.
     @State private var timelineStart = Date()
-    @State private var stopProgress: CGFloat = 0
     @State private var showExtend = false
     @State private var showParticipants = false
     @State private var showRoutePicker = false
@@ -98,7 +97,7 @@ struct SessionMapScreen: View {
                         participantsRow
                         Spacer(minLength: 12)
                         if location.isTracking {
-                            HoldToStopPill(progress: $stopProgress) { location.stop() }
+                            HoldToStopPill { location.stop() }
                         }
                     }
                     .padding(.horizontal, 14)
@@ -237,6 +236,7 @@ struct SessionMapScreen: View {
             return LinzMapMarker(id: pin.id, coordinate: pin.coordinate) {
                 RunnerMapPin(
                     name: pin.id,
+                    size: location.mapDotSize.pinSize,
                     isHighlighted: pin.isSelf,
                     heading: pin.heading,
                     isStale: age.map { $0 > MapPinAge.staleAfter } ?? false,
@@ -400,10 +400,21 @@ struct SessionMapScreen: View {
             Task {
                 isUploadingRoute = true
                 defer { isUploadingRoute = false }
-                do { try await location.uploadRoute(gpx: data) }
-                catch { routeError = error.localizedDescription }
+                do {
+                    try await location.uploadRoute(gpx: data)
+                    frameRoute(GpxRouteParser.parse(data))
+                } catch { routeError = error.localizedDescription }
             }
         }
+    }
+
+    /// Shows the whole of a just-added route. Following stops, so the next tick doesn't pull the camera
+    /// back to the runners; the fit-all button turns it back on.
+    private func frameRoute(_ coordinates: [CLLocationCoordinate2D]) {
+        guard let region = LinzMapRegion.fitting(coordinates) else { return }
+        followedName = nil
+        fitLocked = false
+        camera.move(to: region)
     }
 
     private func blockParticipant(name: String) async {

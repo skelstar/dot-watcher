@@ -24,7 +24,10 @@ struct RunnerMapPin: View {
     /// The circle itself renders smaller than `size` while the label keeps its normal
     /// proportional font size (computed from the full `size`), so shrinking the dot doesn't
     /// shrink the initials.
-    private var circleSize: CGFloat { size * 0.75 }
+    private var circleSize: CGFloat { Self.circleSize(for: size) }
+
+    /// The drawn circle's diameter for a pin of `size`, so other markers can size themselves to it.
+    static func circleSize(for size: CGFloat) -> CGFloat { size * 0.75 }
 
     /// The local user's own pin always uses `RunnerColorPalette.currentUser` (matching the app
     /// title badge) so it's unambiguous at a glance; every other runner gets a stable color

@@ -109,8 +109,10 @@ struct MapRailButton: View {
 /// The red stop pill: held, like Go. It fills darker left to right and stops tracking when full, so a
 /// bump or a stray tap can't end a run.
 struct HoldToStopPill: View {
-    @Binding var progress: CGFloat
     let onComplete: () -> Void
+    /// Kept here, not on the map screen: a press then redraws only the pill. Held by the screen, it re-ran
+    /// the whole screen and the map's marker update before the fill could start.
+    @State private var progress: CGFloat = 0
 
     var body: some View {
         ZStack {
