@@ -7,13 +7,14 @@ Route experiments: [`spike/`](spike/README.md).
 
 ## How it works
 
-- **Where:** every 30 s it reads `GET /admin/casual/cells` (admin bearer): ~5 km cells that have real people
-  out who can see grey dots. It never learns who or exactly where. A cell with 1 person gets 2 bot-dots, 2 people
-  get 1, 3 or more get none (`TargetPerCell` = 3). When people leave or arrive, bot-dots finish their current hop
-  and stop.
-- **How it moves:** a bot-dot starts 300-1800 m from the cell's middle and wanders by hops of 400-1200 m
-  (Valhalla pedestrian routing), roughly ahead, avoiding ground it has covered and staying within 2 km of the
-  middle. Near the edge it turns back. Pace comes from a persona (jogger, steady, walker) with a slow drift, and
+- **Where:** every 30 s it reads `GET /admin/casual/cells` (admin bearer): ~1 km cells (geohash length 6, about
+  1.2 km by 0.6 km) that have real people out who can see grey dots. It never learns who or exactly where, but
+  anyone in a cell is within ~700 m of its middle. A cell with 1 person gets 4 bot-dots, 2 people get 3, and so on
+  up to 5 or more, who get none (`TargetPerCell` = 5). New ones arrive 2 per cell per sync, so they fill in over
+  about a minute. When people leave or arrive, bot-dots finish their current hop and stop.
+- **How it moves:** a bot-dot starts 150-1000 m from the cell's middle (so anywhere from a few hundred metres to
+  about 1.5 km from a person) and wanders by hops of 300-800 m (Valhalla pedestrian routing), roughly ahead,
+  avoiding ground it has covered and staying within 1.2 km of the middle. Near the edge it turns back. Pace comes from a persona (jogger, steady, walker) with a slow drift, and
   positions carry a few metres of wandering GPS error. A trip lasts 20-60 minutes.
 - **Accounts:** a pool `botdot-001` ... `botdot-{MaxBots}`. Passwords are derived from the admin bearer, so
   nothing is stored and a restart signs straight back in. Initials are `XX`.
@@ -28,10 +29,11 @@ Route experiments: [`spike/`](spike/README.md).
 | `AdminBearer` | (required) | The server's `BearerToken`. From a secret, never a file. |
 | `ValhallaUrl` | `http://valhalla:8002` | Self-hosted Valhalla with a New Zealand extract. |
 | `ValhallaMinIntervalMs` | 0 | Set ~1100 when using the public demo server for local testing. |
-| `MaxBots` | 40 | Fleet cap and account pool size. |
-| `TargetPerCell` / `MaxPerCell` | 3 / 5 | See "Where" above. |
-| `SpawnMinM` / `SpawnMaxM` / `MaxDistanceFromCentreM` | 300 / 1800 / 2000 | Metres from the cell's middle. |
-| `HopMinM` / `HopMaxM` | 400 / 1200 | |
+| `MaxBots` | 60 | Fleet cap and account pool size. |
+| `TargetPerCell` / `MaxPerCell` | 5 / 6 | See "Where" above. |
+| `MaxSpawnPerCellPerSync` | 2 | Stagger, so a cell fills in over a few syncs. |
+| `SpawnMinM` / `SpawnMaxM` / `MaxDistanceFromCentreM` | 150 / 1000 / 1200 | Metres from the cell's middle. |
+| `HopMinM` / `HopMaxM` | 300 / 800 | |
 | `TripMinMinutes` / `TripMaxMinutes` | 20 / 60 | |
 
 ## Running locally
@@ -56,8 +58,8 @@ docker logs -f bot-dots-local    # docker stop bot-dots-local to end it
    On Linux or Windows, `dotnet run` in `bot-dots/BotDots.Service` with the same `BotDots__` variables (and
    the default `ServerUrl`) works too.
 
-3. Start a casual run on a phone or the simulator with "show me to people nearby" on. Within a minute, two
-   bot-dots should appear within a few km. Zoom out: they start 300-1800 m from the cell's middle, and each
+3. Start a casual run on a phone or the simulator with "show me to people nearby" on. Within a minute or so,
+   four bot-dots should appear, most within a kilometre or so. They start 150-1000 m from the cell's middle, and each
    stays hidden until it is 300 m from where it started (the usual start-area rule).
 
 ### Troubleshooting

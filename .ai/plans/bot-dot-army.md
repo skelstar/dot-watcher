@@ -95,7 +95,8 @@ Tick boxes as work lands: `- [ ]` → `- [x]`. Per `AGENTS.md`, build/test verif
 - "Is a bot-dot" = username starts with `botdot-`; `/auth/register` refuses the prefix without the admin bearer.
   (Alternative if you prefer an explicit column: `users.is_bot`, additive; Staging and Production share one
   database, so either must not break the older build.)
-- `GET /admin/casual/cells` (admin bearer): **coarse cells only** (geohash length 5, about 5 km) holding at least one
+- `GET /admin/casual/cells` (admin bearer): **coarse cells only** (geohash length 6, about 1.2 km by 0.6 km;
+  first shipped as length 5, about 5 km, which put bot-dots too far away to notice) holding at least one
   currently-live, opted-in casual runner, with counts of real people and bot-dots there. No user ids, no exact
   positions. This is how the service learns where to spawn without being a location store.
 - Bot-dot accounts get `visible_to_non_crew = true` from the service through the existing `PUT /me/casual/settings`,
@@ -109,7 +110,7 @@ Tick boxes as work lands: `- [ ]` → `- [x]`. Per `AGENTS.md`, build/test verif
 - **Why .NET**: the CI job already builds and discovers .NET tests, `GeoMath` can be copied or shared, and the image
   is small. Node/TS (reusing `tools/simulator` movement code) is the alternative; pick one in the spike.
 - **Spawner**: every 30 s, read `/admin/casual/cells`. For each cell: `target = clamp(K - realCount, 0, KMax)` (start with
-  K = 3, KMax = 5), cap total fleet (start 40), spawn up to target, retire extras (let their trip finish, don't
+  K = 3, KMax = 5; now K = 5, KMax = 6), cap total fleet (start 40, now 60), spawn up to target, retire extras (let their trip finish, don't
   respawn).
 - **Route source** (see Routes): picks a route that passes through the cell, never one that starts or ends at the
   demand point, so a bot-dot never converges on a particular person.
@@ -183,8 +184,10 @@ A bot-dot you can add as crew, to try the crew flow without recruiting a friend.
 ## Safety and guard rails
 
 - Off by default (`Bots:Enabled = false`), with a kill switch that works without a deploy.
-- **Never targets a person.** Demand is cells, spawn offset and route choice are independent of the exact position,
-  and a bot-dot never starts within 1 km of a viewer's last position.
+- **Never targets a person.** Demand is cells, spawn offset and route choice are independent of the exact position.
+  (The original "never starts within 1 km of a viewer" was dropped after a real run: at that distance bot-dots
+  were too far away to notice. A bot-dot can now start a few hundred metres from someone, but still only ever
+  from the ~1 km cell, never from a position.)
 - **Never presents as someone's contact.** Grey bot-dots carry no name, ever. Named bot-dots exist only for the owning
   user's practice runner.
 - **Fleet cap** and per-cell cap in config; the spawner refuses to exceed them even if demand says otherwise.

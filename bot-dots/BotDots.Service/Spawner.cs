@@ -1,6 +1,6 @@
 namespace BotDots.Service;
 
-/// <summary>One roughly 5 km cell from the server's <c>GET /admin/casual/cells</c>.</summary>
+/// <summary>One roughly 1 km cell (geohash length 6) from the server's <c>GET /admin/casual/cells</c>.</summary>
 public sealed record CellInfo(string Cell, double Latitude, double Longitude, int RealCount, int BotDotCount)
 {
     public LatLon Centre => new(Latitude, Longitude);
