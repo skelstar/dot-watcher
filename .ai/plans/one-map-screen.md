@@ -74,20 +74,29 @@ their own sheets. Android follows the same split: a `TrackingMapScaffold` around
 
 ### iOS (`one-map-screen-ios`)
 
-- [ ] One `MapPin` type (id, display name, coordinate, heading, self, locked, timestamp) and one
+- [x] One `MapPin` type (id, display name, coordinate, heading, self, locked, timestamp) and one
       `markers(at:)` that draws runners and grey dots, replacing the two private `Pin` structs.
-- [ ] `TrackingMapScreen` with the shell's parts, moved from `SessionMapScreen` (it has the superset:
+- [x] `TrackingMapScreen` with the shell's parts, moved from `SessionMapScreen` (it has the superset:
       follow, frame route, fit lock).
-- [ ] Move `SessionMapScreen` onto it. Participants row, block, nearby organiser controls and share
+- [x] Move `SessionMapScreen` onto it. Participants row, block, nearby organiser controls and share
       consent stay in the wrapper.
-- [ ] Move `CasualMapScreen` onto it. Count chip, Who can see me, Share and Settings stay in the wrapper;
-      polling `casual.loadLive()` stays in the wrapper's `.task`.
-- [ ] Satellite handling moves into the shell, not the session wrapper: `SatelliteStatusBadge`, the
+- [x] Move `CasualMapScreen` onto it. Count chip, Who can see me and Share stay in the wrapper;
+      polling `casual.loadLive()` stays in the wrapper's `.task`. Settings moved into the shell
+      instead (shown when signed in), so named sessions get it mid-run too.
+- [x] Satellite handling moves into the shell, not the session wrapper: `SatelliteStatusBadge`, the
       dimmed/frozen map and no follow while `location.isUltraConstrained`. Today only
       `SessionMapScreen` has it; the Go map shows nothing in satellite mode (found 2026-11-12).
       The Go wrapper's `loadLive()` poll must also skip while `isUltraConstrained`.
-- [ ] Go gains follow-a-runner from the shell (tap a dot), matching Android.
-- [ ] Delete the copied code from both screens.
+- [x] Go gains follow-a-runner from the shell (tap a dot), matching Android. Pins take no touches
+      (drags must still pan), so `LinzMapView.onMarkerTap` hit-tests the nearest marker to a tap.
+      The session map gains it too.
+- [x] Delete the copied code from both screens.
+
+**iOS status (2026-11-12):** code complete on `one-map-screen-ios` (stacked on
+`ios-developer-options`), unbuilt — CI builds it. Fit/follow state lives in
+`TrackingMapController`, owned by each wrapper so the session's participants row can follow too.
+Rail order is now the same on both: wrapper's top buttons, Fit all, wrapper's middle buttons,
+Route, Settings. Needs the device check below.
 
 ### Android (`one-map-screen-android`)
 
