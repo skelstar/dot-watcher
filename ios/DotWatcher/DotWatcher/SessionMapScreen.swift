@@ -400,10 +400,21 @@ struct SessionMapScreen: View {
             Task {
                 isUploadingRoute = true
                 defer { isUploadingRoute = false }
-                do { try await location.uploadRoute(gpx: data) }
-                catch { routeError = error.localizedDescription }
+                do {
+                    try await location.uploadRoute(gpx: data)
+                    frameRoute(GpxRouteParser.parse(data))
+                } catch { routeError = error.localizedDescription }
             }
         }
+    }
+
+    /// Shows the whole of a just-added route. Following stops, so the next tick doesn't pull the camera
+    /// back to the runners; the fit-all button turns it back on.
+    private func frameRoute(_ coordinates: [CLLocationCoordinate2D]) {
+        guard let region = LinzMapRegion.fitting(coordinates) else { return }
+        followedName = nil
+        fitLocked = false
+        camera.move(to: region)
     }
 
     private func blockParticipant(name: String) async {

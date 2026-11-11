@@ -618,8 +618,18 @@ struct CasualMapScreen: View {
                 casual.routeError = "Couldn't read that file."
                 return
             }
-            Task { await casual.setRoute(gpx: data) }
+            Task {
+                if await casual.setRoute(gpx: data) { frameRoute(GpxRouteParser.parse(data)) }
+            }
         }
+    }
+
+    /// Shows the whole of a just-added route. The fit lock comes off so the next tick doesn't pull the camera
+    /// back to the runners; the fit-all button turns it back on.
+    private func frameRoute(_ coordinates: [CLLocationCoordinate2D]) {
+        guard let region = LinzMapRegion.fitting(coordinates) else { return }
+        fitLocked = false
+        camera.move(to: region)
     }
 
     /// "2 crew out". Tapping it opens the crew sheet, so crew can be added mid-run; with no crew yet
