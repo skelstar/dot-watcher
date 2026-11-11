@@ -55,6 +55,32 @@ enum AppearanceMode: String, CaseIterable, Identifiable {
     }
 }
 
+/// How big runner dots are drawn on the maps. A per-device preference; never sent to the server.
+enum MapDotSize: String, CaseIterable, Identifiable {
+    case small
+    case medium
+    case large
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .small: return "Small"
+        case .medium: return "Medium"
+        case .large: return "Large"
+        }
+    }
+
+    /// The `RunnerMapPin` size. Small is the size dots were before this setting existed.
+    var pinSize: CGFloat {
+        switch self {
+        case .small: return 36
+        case .medium: return 44
+        case .large: return 54
+        }
+    }
+}
+
 struct AuthSession: Codable {
     let accessToken: String
     let user: AppUser
@@ -228,6 +254,10 @@ final class LocationManager {
 
     var appearanceMode: AppearanceMode = AppearanceMode(rawValue: UserDefaults.standard.string(forKey: "appearanceMode") ?? "") ?? .system {
         didSet { UserDefaults.standard.set(appearanceMode.rawValue, forKey: "appearanceMode") }
+    }
+
+    var mapDotSize: MapDotSize = MapDotSize(rawValue: UserDefaults.standard.string(forKey: "mapDotSize") ?? "") ?? .medium {
+        didSet { UserDefaults.standard.set(mapDotSize.rawValue, forKey: "mapDotSize") }
     }
 
     /// Local notification when the phone switches to satellite (on by default). The sound is a

@@ -62,6 +62,11 @@ struct AuthSheet: View {
                         }
                         .pickerStyle(.segmented)
                         .labelsHidden()
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text("Dot size")
+                            DotSizePicker(selection: $location.mapDotSize, initials: location.runnerName)
+                        }
+                        .padding(.vertical, 4)
                     }
                     notificationsSection
                     #if DEBUG
@@ -238,5 +243,38 @@ struct AuthSheet: View {
             self.error = error.localizedDescription
         }
         isBusy = false
+    }
+}
+
+/// The Dot size choice as three tiles, each showing the user's own dot at that size; the chosen
+/// tile is outlined. No text on the tiles: the dots are the labels (VoiceOver still reads the names).
+private struct DotSizePicker: View {
+    @Binding var selection: MapDotSize
+    let initials: String
+
+    var body: some View {
+        HStack(spacing: 10) {
+            ForEach(MapDotSize.allCases) { size in
+                let isSelected = size == selection
+                Button {
+                    selection = size
+                } label: {
+                    RunnerMapPin(name: initials.isEmpty ? "ME" : initials, size: size.pinSize, isHighlighted: true)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 72)
+                        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 12))
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 12)
+                                .strokeBorder(isSelected ? Color.accentColor : .clear, lineWidth: 2.5)
+                        }
+                        .contentShape(RoundedRectangle(cornerRadius: 12))
+                }
+                // Plain style, or a Form row fires every button in it on any tap.
+                .buttonStyle(.plain)
+                .accessibilityLabel(size.label)
+                .accessibilityAddTraits(isSelected ? .isSelected : [])
+            }
+        }
+        .animation(.easeInOut(duration: 0.15), value: selection)
     }
 }
