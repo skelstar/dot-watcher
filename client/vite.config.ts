@@ -29,6 +29,9 @@ export default defineConfig(({ mode }) => {
       'import.meta.env.VITE_APP_UPDATED_AT': JSON.stringify(appUpdatedAt),
     },
     server: {
+      // start-local.ps1 runs the dev server with --host so a phone on the same WiFi can open it by the
+      // Mac's name (http://jakkuu.local:5173); Vite refuses hostnames it doesn't know without this.
+      allowedHosts: ['.local'],
       proxy: {
         '/api': {
           target: `http://localhost:${serverPort}`,

@@ -127,16 +127,16 @@ dotnet run --urls "http://localhost:8080"
 
 Or set `ASPNETCORE_URLS=http://localhost:8080` as an environment variable.
 
-**Physical device testing:** When testing with an iOS device on the same WiFi network (using the `DotWatcher (Device)` Xcode scheme), the server must bind on all interfaces rather than just loopback:
+**Physical device testing:** When testing with an iOS device on the same WiFi network (using the `DotWatcher (Device Local)` Xcode scheme), the server must bind on all interfaces rather than just loopback. `start-local.ps1` does this; by hand:
 
 ```bash
-dotnet run --urls "http://0.0.0.0:8080"
+dotnet run --urls "http://*:8080"
 ```
 
 The device reaches the server via `http://jakkuu.local:8080`. If `dotnet run` picks up cached binaries after code changes, use `--no-incremental` to force a full rebuild:
 
 ```bash
-dotnet build --no-incremental && dotnet run --no-build --urls "http://0.0.0.0:8080"
+dotnet build --no-incremental && dotnet run --no-build --urls "http://*:8080"
 ```
 
 > If `launchSettings.json` is not present (e.g. after a manual copy), set the environment explicitly:

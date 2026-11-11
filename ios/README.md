@@ -16,10 +16,17 @@ Three Xcode build configurations control which server the app talks to:
 
 Switch between them by changing the active scheme in Xcode's toolbar:
 
-- **DotWatcher** — uses the Debug configuration (simulator, localhost)
-- **DotWatcher (Device)** — uses the Device configuration (physical device, Mac hostname)
+| Scheme | Run on | Server |
+| --- | --- | --- |
+| **DotWatcher** | Simulator | local server, `http://localhost:8080` (Debug configuration) |
+| **DotWatcher (Device Local)** | Your iPhone | local server, `http://jakkuu.local:8080` (Device configuration) |
+| **DotWatcher (Device Prod)** | Your iPhone | Production, real data (Device configuration; the scheme's run environment variables override the URLs) |
 
-The API base URL is set in `DOTWATCHER_API_BASE_URL` (build setting) and read by the app at runtime from `DotWatcherAPIBaseURL` in `Info.plist`.
+The API base URL is set in `DOTWATCHER_API_BASE_URL` (build setting) and read by the app at runtime from `DotWatcherAPIBaseURL` in `Info.plist`. In a Debug or Device build, a `DOTWATCHER_API_BASE_URL` / `DOTWATCHER_WEB_BASE_URL` environment variable in the scheme's Run action wins over the build setting. A scheme pointing at a server that doesn't exist (an old Staging scheme did this) shows up as "Network error." or a sign-in that never works.
+
+### SweetPad (VS Code)
+
+[SweetPad](https://sweetpad.hyzyla.dev) uses the same schemes, and runs each with the scheme's own build configuration and environment variables, on the Simulator and on a device. Pick one with **SweetPad: Select Xcode scheme** and leave `sweetpad.build.configuration` unset. If you ever pick a configuration by hand (**SweetPad: Select build configuration**), that pick sticks to the scheme and wins over the scheme's own one.
 
 ### Release: TestFlight and App Store
 
@@ -27,11 +34,11 @@ TestFlight and App Store builds are both archived from the same **Release** conf
 
 ### Physical device setup
 
-When running on a physical device, the server must bind on all interfaces so the phone can reach it over WiFi:
+**DotWatcher (Device Local)** needs the server and web client to listen on all interfaces so the phone can reach them over WiFi. `start-local.ps1` already does this, so start them with it as usual. If you run the server by hand instead, bind it the same way:
 
 ```bash
 cd server
-dotnet run --urls "http://0.0.0.0:8080"
+dotnet run --urls "http://*:8080"
 ```
 
 `Info.plist` contains an App Transport Security exception for `jakkuu.local` so plain HTTP is allowed on Device builds. The phone and Mac must be on the same WiFi network.
