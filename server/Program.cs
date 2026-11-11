@@ -100,9 +100,10 @@ app.UseCors();
 
 // Environment isn't set via ASPNETCORE_ENVIRONMENT in deployed containers, so it's derived from the
 // request host instead, matching the "main" -> dot-watcher-server / "staging" -> dot-watcher-server-staging
-// deployment naming convention.
+// deployment naming convention. A ".local" host is this Mac reached by name from a phone on the same WiFi.
 static string ResolveEnvironment(string host) =>
     host.Equals("localhost", StringComparison.OrdinalIgnoreCase) || host.StartsWith("127.0.0.1")
+        || host.EndsWith(".local", StringComparison.OrdinalIgnoreCase)
         ? "Local"
         : host.Contains("staging", StringComparison.OrdinalIgnoreCase)
             ? "Staging"
@@ -263,9 +264,9 @@ app.Use(async (ctx, next) =>
 
 // The server's root is what the front proxy exposes as /api/ (the proxy strips that prefix), so a
 // browser landing there is sent to the site's landing page instead. Locally the proxy is the Vite dev
-// server, which the server only sees as Host "localhost"; redirecting to "/" there would loop.
+// server on the same host; redirecting to "/" there would loop.
 app.MapGet("/", (HttpContext ctx) =>
-    Results.Redirect(ResolveEnvironment(ctx.Request.Host.Host) == "Local" ? "http://localhost:5173/" : "/"))
+    Results.Redirect(ResolveEnvironment(ctx.Request.Host.Host) == "Local" ? $"http://{ctx.Request.Host.Host}:5173/" : "/"))
     .ExcludeFromDescription();
 
 app.MapControllers();
