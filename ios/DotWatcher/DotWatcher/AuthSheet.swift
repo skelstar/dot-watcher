@@ -19,6 +19,9 @@ struct AuthSheet: View {
     @State private var isBusy = false
     @State private var showDeleteConfirmation = false
     @State private var notificationStatus: UNAuthorizationStatus = .notDetermined
+    @State private var testNotificationSentAt: Date?
+
+    private static let testNotificationDelay: TimeInterval = 5
 
     private var isValidEmail: Bool {
         username.trimmingCharacters(in: .whitespaces)
@@ -69,13 +72,9 @@ struct AuthSheet: View {
                         .padding(.vertical, 4)
                     }
                     notificationsSection
-                    #if DEBUG
-                    Section {
-                        Toggle("Force satellite mode", isOn: $location.debugForceUltraConstrained)
-                    } footer: {
-                        Text("Simulates being on a carrier satellite (Direct-to-Cell) connection — shows the on-satellite map badge, pauses GET polling, and slows the post interval to 90s. Also reachable in Release/TestFlight builds via a hidden 10-tap gesture on the build/SHA label.")
+                    if showsDeveloperSection {
+                        developerSection
                     }
-                    #endif
                     legalSection
                 } else {
                     Section {
@@ -204,6 +203,57 @@ struct AuthSheet: View {
             Text(notificationStatus == .denied
                  ? "Notifications are turned off for DotWatcher in iOS Settings, so satellite alerts can't be shown."
                  : "Alerts you when your phone switches to satellite while you're tracking.")
+        }
+    }
+
+    /// Debug builds always show the Developer section; Release/TestFlight builds only once the
+    /// hidden 10-tap gesture on the build/SHA label has unlocked it.
+    private var showsDeveloperSection: Bool {
+        #if DEBUG
+        return true
+        #else
+        return location.developerOptionsUnlocked
+        #endif
+    }
+
+    /// Tools for testing on a real device: force satellite mode mid-run, fire the satellite alert on
+    /// demand, and see how many posts landed in each network mode.
+    private var developerSection: some View {
+        Section {
+            Toggle("Force satellite mode", isOn: $location.debugForceUltraConstrained)
+            Button("Send test notification in \(Int(Self.testNotificationDelay))s") {
+                SatelliteAlerts.shared.sendTestNotification(
+                    after: Self.testNotificationDelay,
+                    playSound: location.satelliteAlertSound
+                )
+                testNotificationSentAt = Date()
+            }
+            if let testNotificationSentAt {
+                Text("Sent at \(testNotificationSentAt, style: .time) — lock the phone now.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            postStatsRow("Normal posts", location.normalPostStats)
+            postStatsRow("Satellite posts", location.satellitePostStats)
+            if location.developerOptionsUnlocked {
+                Button("Hide developer options", role: .destructive) {
+                    location.developerOptionsUnlocked = false
+                    location.debugForceUltraConstrained = false
+                }
+            }
+        } header: {
+            Text("Developer")
+        } footer: {
+            Text("Force satellite mode simulates a carrier satellite (Direct-to-Cell) connection: the on-satellite map badge, paused polling, a 90s post interval, and the satellite alert if you're tracking. It switches off when the app relaunches. Post counts reset on relaunch.")
+        }
+    }
+
+    private func postStatsRow(_ title: String, _ stats: LocationManager.PostStats) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title)
+            Text("\(stats.successes)/\(stats.attempts) sent · \(stats.transportFailures) failed · \(stats.retries) retries · \(stats.pathTriggers) path triggers")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
     }
 
