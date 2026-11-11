@@ -199,6 +199,8 @@ fun CasualMapScreen(
 
     if (showWhoCanSeeMe) {
         WhoCanSeeMeSheet(
+            me = displayName,
+            crew = crewState.members,
             visibleToCrew = casualState.visibleToCrew,
             visibleToNonCrew = casualState.visibleToNonCrew,
             hideStartArea = casualState.hideStartArea,
