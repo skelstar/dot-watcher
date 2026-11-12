@@ -131,6 +131,10 @@ struct HoldToStopPill: View {
         .shadow(color: .black.opacity(0.25), radius: 3, y: 2)
         .contentShape(Capsule())
         .holdToComplete(progress: $progress, onComplete: onComplete)
+        // The pill sits near the bottom edge, where iOS holds a still finger back for most of a second
+        // while it checks for the swipe home, so the fill started late unless the finger moved. While
+        // the pill is on screen our touches there come first; going home takes a second swipe.
+        .defersSystemGestures(on: .bottom)
         .accessibilityLabel("Stop")
         .accessibilityHint("Hold to stop tracking")
     }
