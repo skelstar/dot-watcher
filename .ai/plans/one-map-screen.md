@@ -82,6 +82,10 @@ their own sheets. Android follows the same split: a `TrackingMapScaffold` around
       consent stay in the wrapper.
 - [ ] Move `CasualMapScreen` onto it. Count chip, Who can see me, Share and Settings stay in the wrapper;
       polling `casual.loadLive()` stays in the wrapper's `.task`.
+- [ ] Satellite handling moves into the shell, not the session wrapper: `SatelliteStatusBadge`, the
+      dimmed/frozen map and no follow while `location.isUltraConstrained`. Today only
+      `SessionMapScreen` has it; the Go map shows nothing in satellite mode (found 2026-11-12).
+      The Go wrapper's `loadLive()` poll must also skip while `isUltraConstrained`.
 - [ ] Go gains follow-a-runner from the shell (tap a dot), matching Android.
 - [ ] Delete the copied code from both screens.
 
@@ -98,7 +102,10 @@ their own sheets. Android follows the same split: a `TrackingMapScaffold` around
 
 - [ ] Device check on each platform, for both a Go run and a named session:
       dots and grey dots, fit all, follow and let go, drag stops auto-fit, add/replace/remove a route
-      frames it, extend, Hold to stop, battery-paused card, the screen-specific sheets.
+      frames it, extend, Hold to stop, battery-paused card, the screen-specific sheets, satellite
+      mode (iOS: Settings > Developer > Force satellite mode, unlocked by 10 taps on the build
+      label; badge shows and polling stops on both maps). The shell's Settings button should
+      reach this mid-run for named sessions too — today only the Go map has one.
 
 ## Order
 

@@ -34,8 +34,8 @@ struct ContentView: View {
     @State private var isBusy = false
     @State private var formError: String?
     /// Counts consecutive taps on the build/SHA label (`headerSection`) toward the hidden
-    /// gesture that flips `LocationManager.debugForceUltraConstrained` — the only way to trigger
-    /// satellite-mode testing on a TestFlight/Release build, which has no visible debug UI.
+    /// gesture that unlocks the Developer section in Settings (`LocationManager.developerOptionsUnlocked`)
+    /// — the only way to reach satellite-mode testing on a TestFlight/Release build.
     @State private var versionTapCount = 0
     @State private var lastVersionTap: Date?
 
@@ -366,10 +366,11 @@ struct ContentView: View {
         }
     }
 
-    /// 10 taps within 2s of each other flips `debugForceUltraConstrained` — a deliberately
-    /// undiscoverable way to test the satellite UI on TestFlight/Release builds, which have no
-    /// visible debug menu. A single stray tap resets the count rather than accumulating forever,
-    /// so it can't be triggered by accident over unrelated taps spread through a session.
+    /// 10 taps within 2s of each other unlocks the Developer section in Settings — a deliberately
+    /// undiscoverable way to reach test tools (force satellite mode, test notification, post
+    /// stats) on TestFlight/Release builds. A single stray tap resets the count rather than
+    /// accumulating forever, so it can't be triggered by accident over unrelated taps spread
+    /// through a session.
     private func registerVersionTap() {
         let now = Date()
         if let lastVersionTap, now.timeIntervalSince(lastVersionTap) > 2 {
@@ -379,7 +380,7 @@ struct ContentView: View {
         versionTapCount += 1
         guard versionTapCount >= 10 else { return }
         versionTapCount = 0
-        location.debugForceUltraConstrained.toggle()
+        location.developerOptionsUnlocked = true
         UINotificationFeedbackGenerator().notificationOccurred(.success)
     }
 

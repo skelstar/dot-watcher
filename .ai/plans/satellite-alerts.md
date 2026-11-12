@@ -60,6 +60,14 @@ Built/tested by CI only (AGENTS.md). To test manually: Debug builds have "Force 
 in Settings — start tracking, toggle it on, expect the banner; lock the screen first to check the
 background case. Watch for a ContentView type-check timeout (the menu label gained two ternaries).
 
+**2026-11-12 (branch `ios-developer-options`):** until then, forcing satellite mode never fired
+the alert — only the `NWPathMonitor` callback ran `handlePathChange`, and the debug flag bypassed
+it. The flag now runs `handlePathChange` itself. The 10-tap gesture on the build/SHA label now
+unlocks a Developer section in Settings (persisted; Debug builds always show it) holding: Force
+satellite mode, "Send test notification in 5s" (bypasses the cooldown, so it can be fired with
+the phone locked), and post stats per network mode. Settings is reachable mid-run from the Go
+map's gear; the session map has no Settings button yet.
+
 ## Files
 
 `SatelliteAlerts.swift` (new), `LocationManager.swift`, `AuthSheet.swift`, `ContentView.swift`,
