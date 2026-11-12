@@ -61,6 +61,8 @@ private struct CasualLiveResponse: Decodable {
     let nearby: [CasualNearbyDot]?
     /// Absent from an older server, which has no routes.
     let routes: [CasualRouteRef]?
+    /// Message pins on this person's run and their visible crew's. Absent from an older server.
+    let pins: [MapMessagePin]?
 }
 
 /// Casual state and actions for the signed-in account. Shares `LocationManager`'s network stack
@@ -108,6 +110,8 @@ final class CasualStore {
     /// What the map shows: this person and their crew by name, and anonymous dots nearby.
     private(set) var people: [CasualPosition] = []
     private(set) var nearby: [CasualNearbyDot] = []
+    /// Message pins on this person's run and their crew's, oldest first. Gone when each run ends.
+    private(set) var pins: [MapMessagePin] = []
 
     /// GPX routes to draw: this person's own and those of crew who are out, as lines. Kept in step with
     /// the live poll (`loadLive`), so a route someone adds or removes appears for everyone within a poll.
@@ -172,6 +176,7 @@ final class CasualStore {
         let everyone = (live.positions ?? []).compactMap(\.first)
         people = everyone
         nearby = live.nearby ?? []
+        pins = live.pins ?? []
         crewOut = everyone.filter { $0.isSelf != true }.count
         await syncRoutes(live.routes ?? [], selfName: everyone.first { $0.isSelf == true }?.runnerName)
     }
@@ -234,6 +239,23 @@ final class CasualStore {
         }
     }
 
+    // MARK: - Message pins
+
+    /// Drops a pin on this person's current run, for them, their crew and anyone with their watch link.
+    func dropPin(at coordinate: CLLocationCoordinate2D, message: String) async throws {
+        guard let location else { return }
+        let pin: MapMessagePin = try await location.send(
+            path: "/casual/pins", method: "POST",
+            body: ["latitude": coordinate.latitude, "longitude": coordinate.longitude, "message": message])
+        if !pins.contains(where: { $0.id == pin.id }) { pins.append(pin) }
+    }
+
+    func deletePin(_ pin: MapMessagePin) async throws {
+        guard let location else { return }
+        try await location.sendAuthorizedEmpty(path: "/casual/pins/\(pin.id)", method: "DELETE")
+        pins.removeAll { $0.id == pin.id }
+    }
+
     private func forgetRoutes() {
         loadedRoutes = [:]
         hasOwnRoute = false
@@ -251,6 +273,7 @@ final class CasualStore {
         crewOut = nil
         people = []
         nearby = []
+        pins = []
         forgetRoutes()
         watchLink = nil
         watchLinkError = nil
@@ -352,6 +375,7 @@ final class CasualStore {
             guard location.isTracking else { return }
             people = []
             nearby = []
+            pins = []
             forgetRoutes()
             watchLink = nil
             watchLinkError = nil

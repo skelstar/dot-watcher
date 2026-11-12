@@ -93,6 +93,8 @@ struct TrackingMapScreen<RailTop: View, RailMiddle: View, BottomLeading: View>: 
     var joinRange: LinzJoinRange?
     /// nil hides the Route button.
     var route: RouteActions?
+    /// Message pins on this map, and dropping and deleting them; nil for none.
+    var messagePins: MessagePinActions?
     let onStop: () -> Void
     /// Rail buttons above Fit all.
     @ViewBuilder var railTop: () -> RailTop
@@ -109,8 +111,11 @@ struct TrackingMapScreen<RailTop: View, RailMiddle: View, BottomLeading: View>: 
     @State private var showRoutePicker = false
     @State private var showRemoveRoute = false
     @State private var routeError: String?
+    @State private var pendingPin: PendingMessagePin?
+    @State private var selectedPin: MapMessagePin?
 
     private static var runnerMarkerPrefix: String { "runner-" }
+    private static var messagePinMarkerPrefix: String { "msgpin-" }
 
     var body: some View {
         ZStack {
@@ -132,6 +137,7 @@ struct TrackingMapScreen<RailTop: View, RailMiddle: View, BottomLeading: View>: 
             onPickedRoute: handlePickedRoute,
             onRemoveRoute: removeRoute
         ))
+        .modifier(MessagePinSheets(actions: messagePins, pendingPin: $pendingPin, selectedPin: $selectedPin))
     }
 
     // MARK: Map
@@ -144,7 +150,8 @@ struct TrackingMapScreen<RailTop: View, RailMiddle: View, BottomLeading: View>: 
                 joinRange: joinRange,
                 camera: controller.camera,
                 onUserMovedCamera: { controller.userMovedCamera() },
-                onMarkerTap: handleMarkerTap
+                onMarkerTap: handleMarkerTap,
+                onLongPress: longPressHandler
             )
             .onChange(of: context.date) { _, _ in reframe() }
         }
@@ -194,14 +201,30 @@ struct TrackingMapScreen<RailTop: View, RailMiddle: View, BottomLeading: View>: 
                 }
             }
         }
-        return greyDots + people
+        let messages = (messagePins?.pins ?? []).map { pin in
+            LinzMapMarker(id: Self.messagePinMarkerPrefix + pin.id, coordinate: pin.coordinate, zIndex: 2) {
+                MessagePinMarker(isMine: pin.isMine == true)
+            }
+        }
+        return greyDots + people + messages
     }
 
     /// Tapping a runner's dot follows them; tapping them again goes back to everyone. Grey dots are
     /// anonymous and can't be followed.
     private func handleMarkerTap(_ markerId: String) {
+        if markerId.hasPrefix(Self.messagePinMarkerPrefix) {
+            let id = String(markerId.dropFirst(Self.messagePinMarkerPrefix.count))
+            selectedPin = messagePins?.pins.first { $0.id == id }
+            return
+        }
         guard markerId.hasPrefix(Self.runnerMarkerPrefix) else { return }
         controller.toggleFollow(String(markerId.dropFirst(Self.runnerMarkerPrefix.count)))
+    }
+
+    /// Press and hold drops a message pin there, when this map's source allows it.
+    private var longPressHandler: ((CLLocationCoordinate2D) -> Void)? {
+        guard messagePins?.canDrop == true else { return nil }
+        return { pendingPin = PendingMessagePin(coordinate: $0) }
     }
 
     /// Runs every second and on each controller request. Frozen on satellite, like the rest of the map.
@@ -398,6 +421,29 @@ private struct TrackingMapSheets: ViewModifier {
                 Button("OK", role: .cancel) {}
             } message: {
                 if let routeError { Text(routeError) }
+            }
+    }
+}
+
+/// Dropping a message pin where the person pressed and held, and a tapped pin's detail.
+private struct MessagePinSheets: ViewModifier {
+    let actions: MessagePinActions?
+    @Binding var pendingPin: PendingMessagePin?
+    @Binding var selectedPin: MapMessagePin?
+
+    func body(content: Content) -> some View {
+        content
+            .sheet(item: $pendingPin) { pending in
+                DropMessagePinSheet(audience: actions?.audience ?? "") { message in
+                    try await actions?.drop(pending.coordinate, message)
+                }
+                .presentationDetents([.medium])
+            }
+            .sheet(item: $selectedPin) { pin in
+                MessagePinDetailSheet(pin: pin) {
+                    try await actions?.delete(pin)
+                }
+                .presentationDetents([.height(240), .medium])
             }
     }
 }

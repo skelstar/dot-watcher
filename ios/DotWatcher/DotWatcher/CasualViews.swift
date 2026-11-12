@@ -484,6 +484,7 @@ struct CasualMapScreen: View {
             nearby: nearby,
             routes: casual.routeLines,
             route: routeActions,
+            messagePins: messagePinActions,
             onStop: { casual.stop() },
             railTop: {
                 MapRailButton(symbol: "square.and.arrow.up", label: "Share a link to watch me") {
@@ -536,6 +537,17 @@ struct CasualMapScreen: View {
                 await casual.removeRoute()
                 if casual.routeError != nil { throw takeRouteError() }
             }
+        )
+    }
+
+    /// Pins go on this person's own run; theirs and their crew's show. All go when each run ends.
+    private var messagePinActions: MessagePinActions {
+        MessagePinActions(
+            pins: casual.pins,
+            canDrop: location.isTracking,
+            audience: "Your crew and anyone with your watch link will see it until you stop.",
+            drop: { coordinate, message in try await casual.dropPin(at: coordinate, message: message) },
+            delete: { pin in try await casual.deletePin(pin) }
         )
     }
 
