@@ -1,6 +1,12 @@
 package nz.skelstar.dotwatcher.ui.landing
 
+import android.provider.Settings
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.keyframes
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -15,12 +21,13 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
@@ -28,14 +35,19 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.onLongClick
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import nz.skelstar.dotwatcher.ui.casual.holdToComplete
@@ -90,6 +102,8 @@ fun HoldSignButton(
     val scope = rememberCoroutineScope()
     val haptic = LocalHapticFeedback.current
     val colors = animatedSignColors()
+    // Read through derivedStateOf so the fill's frames don't recompose the sign, only the start and end.
+    val held by remember { derivedStateOf { progress.value > 0f } }
 
     Column(
         modifier = modifier
@@ -121,6 +135,7 @@ fun HoldSignButton(
                 }
                 .padding(horizontal = 20.dp, vertical = 18.dp),
             alignBottom = true,
+            nudging = !held,
         )
     }
 }
@@ -168,6 +183,7 @@ private fun SignContent(
     modifier: Modifier = Modifier,
     alignBottom: Boolean = false,
     eyebrow: String? = null,
+    nudging: Boolean = false,
 ) {
     Row(
         modifier = modifier,
@@ -203,11 +219,49 @@ private fun SignContent(
             )
         }
         Spacer(Modifier.width(12.dp))
+        val arrow = Modifier.size(arrowSize)
         Icon(
             imageVector = Icons.AutoMirrored.Filled.ArrowForward,
             contentDescription = null,
             tint = ink,
-            modifier = Modifier.size(arrowSize),
+            modifier = if (nudging && animationsEnabled()) arrow.nudge() else arrow,
         )
+    }
+}
+
+private const val NudgeMillis = 3500
+private const val NudgeStepMillis = 210
+private const val NudgePush = 7f
+
+/**
+ * Two quick 7dp pushes toward the arrow's direction, then a rest, every 3.5 seconds: a small "this
+ * way" on the Go arrow. Moves the drawing only, so the sign's layout doesn't change.
+ */
+@Composable
+private fun Modifier.nudge(): Modifier {
+    val x by rememberInfiniteTransition(label = "arrow nudge").animateFloat(
+        initialValue = 0f,
+        targetValue = 0f,
+        animationSpec = infiniteRepeatable(
+            keyframes {
+                durationMillis = NudgeMillis
+                NudgePush at NudgeStepMillis using FastOutSlowInEasing
+                0f at NudgeStepMillis * 2 using FastOutSlowInEasing
+                NudgePush at NudgeStepMillis * 3 using FastOutSlowInEasing
+                0f at NudgeStepMillis * 4
+            },
+        ),
+        label = "arrow nudge x",
+    )
+    val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
+    return graphicsLayer { translationX = x.dp.toPx() * if (rtl) -1 else 1 }
+}
+
+/** False when the system's animator duration scale is off (Settings > Accessibility > Remove animations). */
+@Composable
+private fun animationsEnabled(): Boolean {
+    val resolver = LocalContext.current.contentResolver
+    return remember(resolver) {
+        Settings.Global.getFloat(resolver, Settings.Global.ANIMATOR_DURATION_SCALE, 1f) != 0f
     }
 }

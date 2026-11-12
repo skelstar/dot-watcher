@@ -51,6 +51,8 @@ private struct SignContent: View {
     let arrowSize: CGFloat
     let ink: Color
     var alignBottom = false
+    /// Whether the arrow nudges to the right now and then (Go only).
+    var nudging = false
 
     var body: some View {
         HStack(alignment: alignBottom ? .bottom : .center, spacing: 12) {
@@ -69,9 +71,39 @@ private struct SignContent: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             Image(systemName: "arrow.right")
                 .font(.system(size: arrowSize, weight: .semibold))
+                .modifier(ArrowNudge(active: nudging))
                 .accessibilityHidden(true)
         }
         .foregroundStyle(ink)
+    }
+}
+
+/// Two quick 7pt pushes to the right, then a rest, every 3.5 seconds: a small "this way" on the Go
+/// arrow. Off while `active` is false (Go is held) and when Reduce Motion is on. Moves the drawing
+/// only, so the sign's layout doesn't change.
+private struct ArrowNudge: ViewModifier {
+    let active: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private static let push: CGFloat = 7
+    private static let step: TimeInterval = 0.21
+
+    func body(content: Content) -> some View {
+        if active && !reduceMotion {
+            content.keyframeAnimator(initialValue: CGFloat(0), repeating: true) { view, x in
+                view.offset(x: x)
+            } keyframes: { _ in
+                KeyframeTrack {
+                    CubicKeyframe(Self.push, duration: Self.step)
+                    CubicKeyframe(0, duration: Self.step)
+                    CubicKeyframe(Self.push, duration: Self.step)
+                    CubicKeyframe(0, duration: Self.step)
+                    LinearKeyframe(0, duration: 3.5 - 4 * Self.step)
+                }
+            }
+        } else {
+            content
+        }
     }
 }
 
@@ -114,7 +146,7 @@ struct HoldSignButton: View {
             colors.goBar.frame(height: signBarHeight * 1.5)
             SignContent(
                 title: title, subtitle: subtitle, titleSize: 44, arrowSize: 30,
-                ink: colors.goFg, alignBottom: true
+                ink: colors.goFg, alignBottom: true, nudging: progress == 0
             )
             .padding(.horizontal, 20)
             .padding(.vertical, 18)
