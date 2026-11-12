@@ -26,6 +26,11 @@ enum SignFont {
     private static let weightAxis = 0x7767_6874  // 'wght'
 
     static func font(size: CGFloat) -> Font {
+        Font(uiFont(size: size))
+    }
+
+    /// The same font as `font(size:)`, for reading its metrics.
+    static func uiFont(size: CGFloat) -> UIFont {
         _ = registered
         let descriptor = UIFontDescriptor(fontAttributes: [
             .name: "EBGaramond-Regular",
@@ -33,30 +38,95 @@ enum SignFont {
         ])
         let font = UIFont(descriptor: descriptor, size: size)
         guard font.familyName.contains("Garamond") else {
-            return .system(size: size, weight: .heavy, design: .serif)
+            let system = UIFont.systemFont(ofSize: size, weight: .heavy)
+            return system.fontDescriptor.withDesign(.serif).map { UIFont(descriptor: $0, size: size) } ?? system
         }
-        return Font(UIFontMetrics.default.scaledFont(for: font))
+        return UIFontMetrics.default.scaledFont(for: font)
     }
 }
 
 private let signBarHeight: CGFloat = 12
 private let signFrameWidth: CGFloat = 2
+private let signLineSpacing: CGFloat = 3
 
-/// Title and a smaller line under it on the left, an arrow on the right.
+/// The line icon on the right of a sign. All are drawn with the same stroke so they read as a set:
+/// chevrons to head off (Go, events), an arrow going in to join a run, a plus to make a new one.
+enum SignIcon {
+    case chevrons, enter, plus
+
+    /// Stroke width in the drawing's own units; the drawings are 56 units tall.
+    fileprivate static let stroke: CGFloat = 6.5
+
+    /// The drawing's box, in the units its paths use.
+    fileprivate var box: CGSize {
+        self == .chevrons ? CGSize(width: 40, height: 56) : CGSize(width: 56, height: 56)
+    }
+
+    /// The lines, inset by half the stroke so the ink fills the box exactly.
+    fileprivate var path: Path {
+        let s = Self.stroke / 2
+        var path = Path()
+        func line(_ points: CGPoint...) { path.addLines(points) }
+        switch self {
+        case .chevrons:
+            line(CGPoint(x: s, y: s), CGPoint(x: s + 15, y: 28), CGPoint(x: s, y: 56 - s))
+            line(CGPoint(x: s + 18, y: s), CGPoint(x: s + 33, y: 28), CGPoint(x: s + 18, y: 56 - s))
+        case .enter:
+            line(CGPoint(x: 31, y: s), CGPoint(x: 56 - s, y: s), CGPoint(x: 56 - s, y: 56 - s), CGPoint(x: 31, y: 56 - s))
+            line(CGPoint(x: s, y: 28), CGPoint(x: 39, y: 28))
+            line(CGPoint(x: 27.5, y: 16.5), CGPoint(x: 39, y: 28), CGPoint(x: 27.5, y: 39.5))
+        case .plus:
+            line(CGPoint(x: 28, y: s), CGPoint(x: 28, y: 56 - s))
+            line(CGPoint(x: s, y: 28), CGPoint(x: 56 - s, y: 28))
+        }
+        return path
+    }
+}
+
+private struct SignGlyph: Shape {
+    let icon: SignIcon
+
+    func path(in rect: CGRect) -> Path {
+        let scale = rect.height / icon.box.height
+        return icon.path.applying(
+            CGAffineTransform(scaleX: scale, y: scale).translatedBy(x: rect.minX / scale, y: rect.minY / scale)
+        )
+    }
+}
+
+/// Where a sign's icon goes: 80% of the height from the top of the title's capitals to the baseline of
+/// the line under it, centred on that span. Worked out from the fonts' metrics, from the top of the text.
+private struct IconPlacement {
+    let top: CGFloat
+    let height: CGFloat
+
+    init(hasEyebrow: Bool, titleSize: CGFloat) {
+        let titleFont = SignFont.uiFont(size: titleSize)
+        let subtitleFont = SignFont.uiFont(size: 15)
+        let titleTop = hasEyebrow ? SignFont.uiFont(size: 11).lineHeight + signLineSpacing : 0
+        let capTop = titleTop + titleFont.ascender - titleFont.capHeight
+        let subtitleBaseline = titleTop + titleFont.lineHeight + signLineSpacing + subtitleFont.ascender
+        let span = subtitleBaseline - capTop
+        height = span * 0.8
+        top = capTop + (span - height) / 2
+    }
+}
+
+/// Title and a smaller line under it on the left, an icon on the right.
 private struct SignContent: View {
     var eyebrow: String?
     let title: String
     let subtitle: String
     let titleSize: CGFloat
-    let arrowSize: CGFloat
+    let icon: SignIcon
     let ink: Color
-    var alignBottom = false
-    /// Whether the arrow nudges to the right now and then (Go only).
+    /// Whether the icon nudges to the right now and then (Go only).
     var nudging = false
 
     var body: some View {
-        HStack(alignment: alignBottom ? .bottom : .center, spacing: 12) {
-            VStack(alignment: .leading, spacing: 3) {
+        let placement = IconPlacement(hasEyebrow: eyebrow != nil, titleSize: titleSize)
+        HStack(alignment: .top, spacing: 12) {
+            VStack(alignment: .leading, spacing: signLineSpacing) {
                 if let eyebrow {
                     Text(eyebrow.uppercased())
                         .font(SignFont.font(size: 11))
@@ -69,9 +139,14 @@ private struct SignContent: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            Image(systemName: "arrow.right")
-                .font(.system(size: arrowSize, weight: .semibold))
+            SignGlyph(icon: icon)
+                .stroke(style: StrokeStyle(
+                    lineWidth: placement.height * SignIcon.stroke / icon.box.height,
+                    lineCap: .round, lineJoin: .round
+                ))
+                .frame(width: placement.height * icon.box.width / icon.box.height, height: placement.height)
                 .modifier(ArrowNudge(active: nudging))
+                .padding(.top, placement.top)
                 .accessibilityHidden(true)
         }
         .foregroundStyle(ink)
@@ -79,7 +154,7 @@ private struct SignContent: View {
 }
 
 /// Two quick 7pt pushes to the right, then a rest, every 3.5 seconds: a small "this way" on the Go
-/// arrow. Off while `active` is false (Go is held) and when Reduce Motion is on. Moves the drawing
+/// chevrons. Off while `active` is false (Go is held) and when Reduce Motion is on. Moves the drawing
 /// only, so the sign's layout doesn't change.
 private struct ArrowNudge: ViewModifier {
     let active: Bool
@@ -111,12 +186,13 @@ private struct ArrowNudge: ViewModifier {
 struct SignButton: View {
     let title: String
     let subtitle: String
+    let icon: SignIcon
     let action: () -> Void
 
     var body: some View {
         let colors = SignColors.current
         Button(action: action) {
-            SignContent(title: title, subtitle: subtitle, titleSize: 26, arrowSize: 24, ink: colors.altFg)
+            SignContent(title: title, subtitle: subtitle, titleSize: 26, icon: icon, ink: colors.altFg)
                 .padding(.horizontal, 16)
                 .padding(.vertical, 14)
                 .frame(maxWidth: .infinity)
@@ -145,8 +221,8 @@ struct HoldSignButton: View {
         VStack(spacing: 0) {
             colors.goBar.frame(height: signBarHeight * 1.5)
             SignContent(
-                title: title, subtitle: subtitle, titleSize: 44, arrowSize: 30,
-                ink: colors.goFg, alignBottom: true, nudging: progress == 0
+                title: title, subtitle: subtitle, titleSize: 44, icon: .chevrons,
+                ink: colors.goFg, nudging: progress == 0
             )
             .padding(.horizontal, 20)
             .padding(.vertical, 18)
@@ -182,7 +258,7 @@ struct EventSignButton: View {
             VStack(spacing: 0) {
                 colors.accentInk.frame(height: signBarHeight)
                 SignContent(
-                    eyebrow: eyebrow, title: title, subtitle: subtitle, titleSize: 28, arrowSize: 24,
+                    eyebrow: eyebrow, title: title, subtitle: subtitle, titleSize: 28, icon: .chevrons,
                     ink: colors.accentInk
                 )
                 .padding(.horizontal, 16)
