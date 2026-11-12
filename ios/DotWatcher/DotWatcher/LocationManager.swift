@@ -175,10 +175,23 @@ final class LocationManager {
     // Hidden override for exercising the satellite UI without a real Direct-to-Cell dead zone
     // (there's no way to fake `NWPath.isUltraConstrained` from code otherwise, and TestFlight/App
     // Store builds both compile as Release, so a `#if DEBUG` toggle wouldn't reach testers).
-    // Flipped by a hidden 10-tap gesture on the build/SHA label (see `ContentView.headerSection`)
-    // rather than visible UI — intentionally ships in Release builds. Deliberately not persisted
+    // Toggled from the Developer section of Settings (`AuthSheet`), which a hidden 10-tap gesture on
+    // the build/SHA label unlocks — intentionally ships in Release builds. Deliberately not persisted
     // (plain in-memory `var`, resets to `false` on relaunch) so it can never get silently stuck on.
-    var debugForceUltraConstrained = false
+    // Runs the same path-change handling as a real switch, so forcing it while tracking fires the
+    // satellite alert and an immediate post just as entering a real dead zone would.
+    var debugForceUltraConstrained = false {
+        didSet {
+            guard debugForceUltraConstrained != oldValue else { return }
+            handlePathChange(wasOffline: isOffline, wasUltraConstrained: oldValue || rawIsUltraConstrained)
+        }
+    }
+    /// Shows the Developer section in Settings on Release/TestFlight builds (Debug builds always
+    /// show it). Unlocked by the hidden 10-tap gesture on the build/SHA label; persisted so it
+    /// survives relaunches, and locked again from the section's "Hide developer options" button.
+    var developerOptionsUnlocked: Bool = UserDefaults.standard.bool(forKey: "developerOptionsUnlocked") {
+        didSet { UserDefaults.standard.set(developerOptionsUnlocked, forKey: "developerOptionsUnlocked") }
+    }
     /// True when the only available path is a carrier's satellite Direct-to-Cell connection
     /// (`NWPath.isUltraConstrained`, iOS 26.1+ only — always `false` below that). Reactive-only,
     /// per Apple's guidance: there's no way to pre-check satellite eligibility, only to detect it
@@ -194,6 +207,8 @@ final class LocationManager {
     /// recent `POST /location`. Only refreshes on that cadence (every `interval` seconds while
     /// tracking) — there's no separate polling of `GET /locations/{sessionId}`.
     private(set) var runnerPositions: [RunnerPositionResponse] = []
+    /// Message pins in the current session, oldest first (`GET /sessions/{id}/pins`).
+    private(set) var sessionPins: [MapMessagePin] = []
 
     var participants: [String] = []
     /// Display name -> userId, for participants learned via a `SessionRunner`-shaped response
@@ -243,6 +258,7 @@ final class LocationManager {
             participants = []
             participantUserIds = [:]
             runnerPositions = []
+            sessionPins = []
             lastParticipantCount = 0
             if isTracking { captureAndPost(trigger: .sessionChange) }
         }
@@ -553,6 +569,37 @@ final class LocationManager {
             participants = Array(Set(runners.map(\.displayName))).sorted()
             for runner in runners { participantUserIds[runner.displayName] = runner.userId }
         }
+        await loadSessionPins()
+    }
+
+    // MARK: - Message pins (server: SessionsController; plan: .ai/plans/session-map-pins.md)
+
+    /// Refreshes the current session's message pins. Skipped on satellite, like the other GET polling;
+    /// a failure (or an older server without pins) keeps what is shown.
+    func loadSessionPins() async {
+        guard !sessionId.isEmpty, !isUltraConstrained else { return }
+        let targetSessionId = sessionId
+        guard let pins: [MapMessagePin] = try? await send(path: "/sessions/\(targetSessionId)/pins"),
+              sessionId == targetSessionId
+        else { return }
+        sessionPins = pins
+    }
+
+    /// Drops a pin in the current session for everyone in it.
+    func dropSessionPin(at coordinate: CLLocationCoordinate2D, message: String) async throws {
+        let targetSessionId = sessionId
+        let pin: MapMessagePin = try await send(
+            path: "/sessions/\(targetSessionId)/pins", method: "POST",
+            body: ["latitude": coordinate.latitude, "longitude": coordinate.longitude, "message": message])
+        guard sessionId == targetSessionId else { return }
+        if !sessionPins.contains(where: { $0.id == pin.id }) { sessionPins.append(pin) }
+    }
+
+    func deleteSessionPin(_ pin: MapMessagePin) async throws {
+        let targetSessionId = sessionId
+        try await sendAuthorizedEmpty(path: "/sessions/\(targetSessionId)/pins/\(pin.id)", method: "DELETE")
+        guard sessionId == targetSessionId else { return }
+        sessionPins.removeAll { $0.id == pin.id }
     }
 
     /// `nearby` lets people near the organiser find and join the session (see `NearbyJoinSettings`); `name`

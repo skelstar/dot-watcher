@@ -1,110 +1,59 @@
 import CoreLocation
 import SwiftUI
-import UniformTypeIdentifiers
 
-/// The full-screen map shown while tracking in a named session: the same layout as the casual map
-/// (`CasualMapScreen`), with the session's runners and route on it. Stopping returns to the session
-/// screen, where the invite code, participants and Leave still live. See `MapChrome.swift`.
+/// The full-screen map shown while tracking in a named session: `TrackingMapScreen` fed with the session's
+/// runners and route. Adds what only a session has: the invite share, the organiser's nearby-join
+/// controls, and the participants row (tap to follow, hold to block). Stopping leaves the session.
 struct SessionMapScreen: View {
     var location: LocationManager
     var crew: CrewStore
 
-    @State private var camera = LinzMapCamera()
-    /// Fixed start for the map's per-second timeline. `.periodic(from: .now, …)` restarts on every body
-    /// update, and each tick's re-frame updates the body, so ticks would fire back to back and hang.
-    @State private var timelineStart = Date()
-    @State private var showExtend = false
+    @Environment(\.scenePhase) private var scenePhase
+    @State private var map = TrackingMapController()
     @State private var showParticipants = false
-    @State private var showRoutePicker = false
     @State private var isUploadingRoute = false
-    @State private var routeError: String?
-    @State private var showRemoveRoute = false
     /// Who a touch-and-hold just targeted, showing the block confirmation; nil when none is up.
     @State private var blockCandidate: String?
     @State private var blockError: String?
-    @State private var fittedCount = -1
-    /// The runner the map stays centred on, picked by tapping their dot; nil frames everyone.
-    @State private var followedName: String?
-    /// While set, the map re-frames everyone as positions move; fit-all sets it, dragging the map clears it.
-    @State private var fitLocked = true
     @State private var showNearbySettings = false
     @State private var showEndSession = false
     /// A short confirmation (or error) from the join-location button, cleared after a moment.
     @State private var nearbyNote: String?
 
-    /// What the route picker offers: .gpx files (a type the system may not know by name), or any XML.
-    private static let gpxTypes: [UTType] = [UTType(filenameExtension: "gpx"), .xml].compactMap { $0 }
-
-    private struct Pin: Identifiable {
-        let id: String
-        let coordinate: CLLocationCoordinate2D
-        let heading: Double?
-        let isSelf: Bool
-        /// nil for this device's own live pin, which is never stale.
-        let timestamp: Date?
-    }
-
-    private var pins: [Pin] {
+    private var pins: [MapPin] {
         var result = location.runnerPositions
             .filter { $0.runnerName != location.runnerName }
             .map {
-                Pin(
+                MapPin(
                     id: $0.runnerName,
                     coordinate: CLLocationCoordinate2D(latitude: $0.latitude, longitude: $0.longitude),
-                    heading: $0.heading, isSelf: false, timestamp: $0.parsedTimestamp)
+                    heading: $0.heading, timestamp: $0.parsedTimestamp)
             }
         // This device's own position straight from CoreLocation, so the dot is current without waiting
         // for the server.
         if let coordinate = location.currentCoordinate {
-            result.append(Pin(
+            result.append(MapPin(
                 id: location.runnerName, coordinate: coordinate,
-                heading: location.currentHeading, isSelf: true, timestamp: nil))
+                heading: location.currentHeading, isSelf: true))
         }
         return result
     }
 
     var body: some View {
-        ZStack {
-            map
-            LinzAttribution()
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
-            VStack {
-                HStack(alignment: .top) {
-                    // Nothing to count down until sharing starts: the map is also the backdrop for
-                    // the "share your location?" dialog.
-                    if location.isTracking {
-                        MapTimerPill(location: location, runnerName: location.runnerName) { showExtend = true }
-                    } else {
-                        MapWordmark(runnerName: location.runnerName)
-                    }
-                    Spacer()
-                    rail
-                }
-                .padding(.horizontal, 14)
-                .padding(.top, 8)
-                if location.isUltraConstrained {
-                    SatelliteStatusBadge(lastSent: location.lastSent, nextRetryAt: location.nextRetryAt)
-                        .padding(.horizontal, 12)
-                        .padding(.top, 10)
-                }
-                Spacer()
-                if location.pausedForBattery {
-                    BatteryPausedCard(location: location) { location.stop() }
-                        .padding(.horizontal, 12)
-                        .padding(.bottom, 16)
-                } else {
-                    HStack(alignment: .bottom) {
-                        participantsRow
-                        Spacer(minLength: 12)
-                        if location.isTracking {
-                            HoldToStopPill { location.stop() }
-                        }
-                    }
-                    .padding(.horizontal, 14)
-                    .padding(.bottom, 26)
-                }
-            }
-        }
+        TrackingMapScreen(
+            location: location,
+            crew: crew,
+            controller: map,
+            pins: pins,
+            routes: [location.routeCoordinates],
+            joinRange: joinRange,
+            route: routeActions,
+            messagePins: messagePinActions,
+            onStop: { location.stop() },
+            railTop: { inviteShare },
+            railMiddle: { nearbyMenu },
+            bottomLeading: { participantsRow }
+        )
         .modifier(NearbyOrganiserControls(
             location: location,
             sessionId: nearbySessionId,
@@ -113,21 +62,28 @@ struct SessionMapScreen: View {
             note: nearbyNote,
             onEnd: { await endSession() }
         ))
-        // Who is in the session, so a member who hasn't sent a position yet still gets a dot.
-        .task { await location.loadLatestPositions() }
+        // Who is in the session, so a member who hasn't sent a position yet still gets a dot. Then the
+        // session's message pins, which don't come with this device's own posts, on a slow poll while
+        // the map is on screen.
+        .task {
+            await location.loadLatestPositions()
+            while !Task.isCancelled {
+                try? await Task.sleep(for: Self.pinPollInterval)
+                if scenePhase == .active { await location.loadSessionPins() }
+            }
+        }
         .sheet(isPresented: $showParticipants) {
             ParticipantsSheet(
                 names: sessionNames,
                 me: location.runnerName,
-                followedName: followedName,
+                followedName: map.followedId,
                 status: { name in
                     guard let pin = pins.first(where: { $0.id == name }) else { return nil }
                     return pin.timestamp.map { Date().timeIntervalSince($0) } ?? 0
                 },
                 onSelect: { name in
-                    followedName = name
                     showParticipants = false
-                    followIfNeeded()
+                    map.follow(name)
                 },
                 onBlock: { name in
                     showParticipants = false
@@ -135,28 +91,6 @@ struct SessionMapScreen: View {
                 }
             )
             .presentationDetents([.medium, .large])
-        }
-        .fileImporter(isPresented: $showRoutePicker, allowedContentTypes: Self.gpxTypes) { result in
-            handlePickedRoute(result)
-        }
-        .alert("Remove route?", isPresented: $showRemoveRoute) {
-            Button("Remove", role: .destructive) {
-                Task {
-                    do { try await location.removeRoute() }
-                    catch { routeError = error.localizedDescription }
-                }
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("This removes the route for everyone in the session.")
-        }
-        .alert("Couldn't update the route", isPresented: Binding(
-            get: { routeError != nil },
-            set: { if !$0 { routeError = nil } }
-        )) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            if let routeError { Text(routeError) }
         }
         .confirmationDialog(
             blockCandidate ?? "",
@@ -184,67 +118,9 @@ struct SessionMapScreen: View {
         } message: {
             if let blockError { Text(blockError) }
         }
-        .sheet(isPresented: $showExtend) {
-            ExtendSheet(
-                onExtend: { location.extendTracking(by: $0) },
-                onStopNow: {
-                    showExtend = false
-                    location.stop()
-                },
-                location: location
-            )
-            .presentationDetents([.height(240)])
-        }
     }
 
-    // MARK: Map
-
-    private var map: some View {
-        TimelineView(.periodic(from: timelineStart, by: 1)) { context in
-            LinzMapView(
-                markers: markers(at: context.date),
-                route: location.routeCoordinates,
-                joinRange: joinRange,
-                camera: camera,
-                onUserMovedCamera: { fitLocked = false }
-            )
-            .onChange(of: context.date) { _, _ in
-                followIfNeeded()
-                if fitLocked { frameEveryone() }
-            }
-        }
-        // Dims the frozen last-known frame while on satellite: positions stop refreshing, so the map is
-        // left as it was rather than hidden.
-        .overlay {
-            if location.isUltraConstrained {
-                Color.black.opacity(0.35).allowsHitTesting(false)
-            }
-        }
-        .ignoresSafeArea()
-        .onChange(of: pins.count) { _, count in
-            // Frame everyone whenever someone arrives (not when they leave); the fit-all button does it on demand.
-            let arrived = count > fittedCount
-            fittedCount = count
-            if arrived { fitAll() }
-        }
-        .onAppear { fitAll() }
-    }
-
-    private func markers(at date: Date) -> [LinzMapMarker] {
-        pins.map { pin in
-            let age = pin.timestamp.map { date.timeIntervalSince($0) }
-            return LinzMapMarker(id: pin.id, coordinate: pin.coordinate) {
-                RunnerMapPin(
-                    name: pin.id,
-                    size: location.mapDotSize.pinSize,
-                    isHighlighted: pin.isSelf,
-                    heading: pin.heading,
-                    isStale: age.map { $0 > MapPinAge.staleAfter } ?? false,
-                    isDisconnected: age.map { $0 > MapPinAge.disconnectedAfter } ?? false
-                )
-            }
-        }
-    }
+    // MARK: Map inputs
 
     /// The organiser's join range: a dotted ring around the join location while nearby is on.
     private var joinRange: LinzJoinRange? {
@@ -254,104 +130,83 @@ struct SessionMapScreen: View {
         return LinzJoinRange(center: center, radiusMeters: Double(status.radiusMeters))
     }
 
-    /// Keeps the map on the followed runner (their pin moves as new positions land). Frozen on
-    /// satellite, like the rest of the map.
-    private func followIfNeeded() {
-        guard !location.isUltraConstrained, let followedName else { return }
-        fitLocked = false
-        guard let pin = pins.first(where: { $0.id == followedName }) else {
-            self.followedName = nil  // they left, or have no position any more
-            return
-        }
-        camera.move(to: LinzMapRegion(center: pin.coordinate, span: 0.01))
+    /// The session's one route, shared by everyone in it.
+    private var routeActions: RouteActions {
+        RouteActions(
+            hasRoute: location.hasRoute,
+            isUploading: isUploadingRoute,
+            removeMessage: "This removes the route for everyone in the session.",
+            upload: { data in
+                isUploadingRoute = true
+                defer { isUploadingRoute = false }
+                try await location.uploadRoute(gpx: data)
+            },
+            remove: { try await location.removeRoute() }
+        )
     }
 
-    private func fitAll() {
-        followedName = nil
-        fitLocked = true
-        frameEveryone()
-    }
+    private static let pinPollInterval: Duration = .seconds(15)
 
-    private func frameEveryone() {
-        guard !location.isUltraConstrained,
-              let region = LinzMapRegion.fitting(pins.map(\.coordinate))
-        else { return }
-        camera.move(to: region)
+    /// Runners in the session drop pins; everyone in it sees them.
+    private var messagePinActions: MessagePinActions {
+        MessagePinActions(
+            pins: location.sessionPins,
+            canDrop: location.isTracking && location.activeMembership?.role == "runner",
+            audience: "Everyone in this session will see it.",
+            drop: { coordinate, message in try await location.dropSessionPin(at: coordinate, message: message) },
+            delete: { pin in try await location.deleteSessionPin(pin) }
+        )
     }
 
     // MARK: Controls
 
-    private var rail: some View {
-        VStack(spacing: 10) {
-            if let inviteCode = location.activeMembership?.inviteCode {
-                ShareLink(item: InviteLink.shareMessage(base: location.webBaseURL, code: inviteCode)) {
-                    Image(systemName: "square.and.arrow.up")
-                        .font(.system(size: 18, weight: .semibold))
-                        .foregroundStyle(.black)
-                        .frame(width: 44, height: 44)
-                        .background(Color.white.opacity(0.85), in: Circle())
-                        .shadow(color: .black.opacity(0.18), radius: 2, y: 1)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Share the invite")
-            }
-            MapRailButton(symbol: "arrow.up.left.and.arrow.down.right", label: "Fit all runners") { fitAll() }
-            if let sessionId = nearbySessionId {
-                // Tap: move the join location to here. Touch and hold for the range, switching off and End.
-                Menu {
-                    Button {
-                        Task { await setJoinLocation(sessionId) }
-                    } label: {
-                        Label("Set join location here", systemImage: "mappin.and.ellipse")
-                    }
-                    Button {
-                        showNearbySettings = true
-                    } label: {
-                        Label("Nearby settings…", systemImage: "slider.horizontal.3")
-                    }
-                    Button(role: .destructive) {
-                        showEndSession = true
-                    } label: {
-                        Label("End session", systemImage: "xmark.circle")
-                    }
-                } label: {
-                    Image(systemName: "mappin.and.ellipse")
-                        .font(.system(size: 18, weight: .semibold))
-                        .foregroundStyle(.black)
-                        .frame(width: 44, height: 44)
-                        .background(Color.white.opacity(0.85), in: Circle())
-                        .shadow(color: .black.opacity(0.18), radius: 2, y: 1)
-                } primaryAction: {
-                    Task { await setJoinLocation(sessionId) }
-                }
-                .accessibilityLabel("Set join location")
-            }
-            Menu {
-                Button {
-                    showRoutePicker = true
-                } label: {
-                    Label(
-                        location.hasRoute ? "Replace route (GPX)…" : "Add route (GPX)…",
-                        systemImage: "point.topleft.down.to.point.bottomright.curvepath"
-                    )
-                }
-                if location.hasRoute {
-                    Button(role: .destructive) {
-                        showRemoveRoute = true
-                    } label: {
-                        Label("Remove route", systemImage: "trash")
-                    }
-                }
-            } label: {
-                Image(systemName: "point.topleft.down.to.point.bottomright.curvepath")
+    @ViewBuilder
+    private var inviteShare: some View {
+        if let inviteCode = location.activeMembership?.inviteCode {
+            ShareLink(item: InviteLink.shareMessage(base: location.webBaseURL, code: inviteCode)) {
+                Image(systemName: "square.and.arrow.up")
                     .font(.system(size: 18, weight: .semibold))
                     .foregroundStyle(.black)
                     .frame(width: 44, height: 44)
                     .background(Color.white.opacity(0.85), in: Circle())
                     .shadow(color: .black.opacity(0.18), radius: 2, y: 1)
             }
-            .disabled(isUploadingRoute)
-            .accessibilityLabel("Route")
+            .buttonStyle(.plain)
+            .accessibilityLabel("Share the invite")
+        }
+    }
+
+    @ViewBuilder
+    private var nearbyMenu: some View {
+        if let sessionId = nearbySessionId {
+            // Tap: move the join location to here. Touch and hold for the range, switching off and End.
+            Menu {
+                Button {
+                    Task { await setJoinLocation(sessionId) }
+                } label: {
+                    Label("Set join location here", systemImage: "mappin.and.ellipse")
+                }
+                Button {
+                    showNearbySettings = true
+                } label: {
+                    Label("Nearby settings…", systemImage: "slider.horizontal.3")
+                }
+                Button(role: .destructive) {
+                    showEndSession = true
+                } label: {
+                    Label("End session", systemImage: "xmark.circle")
+                }
+            } label: {
+                Image(systemName: "mappin.and.ellipse")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(.black)
+                    .frame(width: 44, height: 44)
+                    .background(Color.white.opacity(0.85), in: Circle())
+                    .shadow(color: .black.opacity(0.18), radius: 2, y: 1)
+            } primaryAction: {
+                Task { await setJoinLocation(sessionId) }
+            }
+            .accessibilityLabel("Set join location")
         }
     }
 
@@ -382,39 +237,6 @@ struct SessionMapScreen: View {
         } catch {
             await showNearbyNote(error.localizedDescription)
         }
-    }
-
-    /// Reads the chosen GPX file and uploads it as the session's route.
-    private func handlePickedRoute(_ result: Result<URL, Error>) {
-        switch result {
-        case .failure(let error):
-            routeError = error.localizedDescription
-        case .success(let url):
-            // Files outside the app's sandbox need access opened for the read and closed straight after.
-            let scoped = url.startAccessingSecurityScopedResource()
-            defer { if scoped { url.stopAccessingSecurityScopedResource() } }
-            guard let data = try? Data(contentsOf: url) else {
-                routeError = "Couldn't read that file."
-                return
-            }
-            Task {
-                isUploadingRoute = true
-                defer { isUploadingRoute = false }
-                do {
-                    try await location.uploadRoute(gpx: data)
-                    frameRoute(GpxRouteParser.parse(data))
-                } catch { routeError = error.localizedDescription }
-            }
-        }
-    }
-
-    /// Shows the whole of a just-added route. Following stops, so the next tick doesn't pull the camera
-    /// back to the runners; the fit-all button turns it back on.
-    private func frameRoute(_ coordinates: [CLLocationCoordinate2D]) {
-        guard let region = LinzMapRegion.fitting(coordinates) else { return }
-        followedName = nil
-        fitLocked = false
-        camera.move(to: region)
     }
 
     private func blockParticipant(name: String) async {
@@ -466,7 +288,7 @@ struct SessionMapScreen: View {
                     .overlay(
                         Circle()
                             .stroke(Color.black, lineWidth: 2.5)
-                            .opacity(followedName == name ? 1 : 0)
+                            .opacity(map.followedId == name ? 1 : 0)
                             .padding(-3)
                     )
                     if overlapped {
@@ -476,8 +298,7 @@ struct SessionMapScreen: View {
                         dot
                             .onTapGesture {
                                 guard pin != nil else { return }
-                                followedName = followedName == name ? nil : name
-                                if followedName == nil { fitAll() } else { followIfNeeded() }
+                                map.toggleFollow(name)
                             }
                             .onLongPressGesture {
                                 if name != me { blockCandidate = name }

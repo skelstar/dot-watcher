@@ -1,6 +1,5 @@
 import CoreLocation
 import SwiftUI
-import UniformTypeIdentifiers
 
 // Casual tracking screens: the Go button on the start screen, "Before you go", "Who can see me", and
 // the casual map. State and calls live in `CasualStore`. Laid out like the Android app's casual
@@ -425,56 +424,31 @@ struct CasualHost: ViewModifier {
 
 // MARK: - Map
 
-/// The map while out casually, laid out like the Android casual map: wordmark and auto-stop countdown
-/// top-left, a right rail, a count chip and Stop at the bottom. There is no session behind it, so no
-/// invite or web map buttons; instead an eye opens "Who can see me". Shows this person, their crew by
-/// name, and (only when both have chosen to be seen) anonymous dots within 5 km. Stopping is a hold.
+/// The map while out casually: `TrackingMapScreen` fed with this person, their crew by name, and (only
+/// when both have chosen to be seen) anonymous dots within 5 km. There is no session behind it, so no
+/// invite; instead the rail has a watch link and an eye that opens "Who can see me", and the bottom-left
+/// chip opens the crew sheet. Stopping is a hold.
 struct CasualMapScreen: View {
     var casual: CasualStore
     @Bindable var crew: CrewStore
     var location: LocationManager
 
     @Environment(\.scenePhase) private var scenePhase
-    @State private var camera = LinzMapCamera()
-    /// Fixed start for the map's per-second timeline. `.periodic(from: .now, …)` restarts on every body
-    /// update, and each tick's re-frame updates the body, so ticks would fire back to back and hang.
-    @State private var timelineStart = Date()
-    /// While set, the map re-frames everyone as positions move; fit-all sets it, dragging the map clears it.
-    @State private var fitLocked = true
-    @State private var showExtend = false
+    @State private var map = TrackingMapController()
     @State private var showWhoCanSeeMe = false
     @State private var showShare = false
-    @State private var showSettings = false
-    @State private var showRoutePicker = false
-    @State private var showRemoveRoute = false
-    @State private var fittedCount = -1
 
     private static let pollInterval: Duration = .seconds(10)
-    /// What the route picker offers: .gpx files (a type the system may not know by name), or any XML.
-    private static let gpxTypes: [UTType] = [UTType(filenameExtension: "gpx"), .xml].compactMap { $0 }
 
-    private struct Pin: Identifiable {
-        let id: String
-        /// The account's display name, for the letters on the dot; nil falls back to `id`.
-        let displayName: String?
-        let coordinate: CLLocationCoordinate2D
-        let heading: Double?
-        let isSelf: Bool
-        let isLocked: Bool
-        /// nil for this device's own live pin, which is never stale.
-        let timestamp: Date?
-    }
-
-    private var pins: [Pin] {
-        var result: [Pin] = casual.people
+    private var pins: [MapPin] {
+        var result: [MapPin] = casual.people
             .filter { $0.isSelf != true }
             .map {
-                Pin(
+                MapPin(
                     id: $0.runnerName,
                     displayName: $0.displayName,
                     coordinate: CLLocationCoordinate2D(latitude: $0.latitude, longitude: $0.longitude),
                     heading: $0.heading,
-                    isSelf: false,
                     isLocked: $0.inSession == true,
                     timestamp: positionTimestampParser.date(from: $0.timestamp)
                 )
@@ -484,61 +458,53 @@ struct CasualMapScreen: View {
         let me = casual.people.first { $0.isSelf == true }
         if let coordinate = location.currentCoordinate
             ?? me.map({ CLLocationCoordinate2D(latitude: $0.latitude, longitude: $0.longitude) }) {
-            result.append(Pin(
-                id: location.runnerName, displayName: nil, coordinate: coordinate,
-                heading: location.currentHeading ?? me?.heading,
-                isSelf: true, isLocked: false, timestamp: nil))
+            result.append(MapPin(
+                id: location.runnerName, coordinate: coordinate,
+                heading: location.currentHeading ?? me?.heading, isSelf: true))
         }
         return result
     }
 
-    var body: some View {
-        ZStack {
-            map
-            LinzAttribution()
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
-            VStack {
-                HStack(alignment: .top) {
-                    topLeft
-                    Spacer()
-                    rail
-                }
-                .padding(.horizontal, 14)
-                .padding(.top, 8)
-                Spacer()
-                if location.pausedForBattery {
-                    BatteryPausedCard(location: location) { casual.stop() }
-                        .padding(.horizontal, 12)
-                        .padding(.bottom, 16)
-                } else {
-                    HStack(alignment: .bottom) {
-                        countChip
-                        Spacer()
-                        HoldToStopPill { casual.stop() }
-                    }
-                    .padding(.horizontal, 14)
-                    .padding(.bottom, 26)
-                }
-            }
+    /// Anonymous: an index for an id, nothing that says who it is.
+    private var nearby: [MapPin] {
+        casual.nearby.enumerated().map { index, dot in
+            MapPin(
+                id: "\(index)",
+                coordinate: CLLocationCoordinate2D(latitude: dot.latitude, longitude: dot.longitude),
+                isLocked: dot.inSession == true)
         }
+    }
+
+    var body: some View {
+        TrackingMapScreen(
+            location: location,
+            crew: crew,
+            controller: map,
+            pins: pins,
+            nearby: nearby,
+            routes: casual.routeLines,
+            route: routeActions,
+            messagePins: messagePinActions,
+            onStop: { casual.stop() },
+            railTop: {
+                MapRailButton(symbol: "square.and.arrow.up", label: "Share a link to watch me") {
+                    showShare = true
+                    Task { await casual.makeWatchLink() }
+                }
+            },
+            railMiddle: {
+                MapRailButton(symbol: "eye", label: "Who can see me") { showWhoCanSeeMe = true }
+            },
+            bottomLeading: { countChip }
+        )
         .task {
             // Only while the app is visible: the tracking loop keeps sending this device's position
-            // regardless, and nobody is looking at the map with the screen locked.
+            // regardless, and nobody is looking at the map with the screen locked. Skipped on satellite,
+            // where the map is frozen and every request costs.
             while !Task.isCancelled {
-                if scenePhase == .active { await casual.loadLive() }
+                if scenePhase == .active, !location.isUltraConstrained { await casual.loadLive() }
                 try? await Task.sleep(for: Self.pollInterval)
             }
-        }
-        .sheet(isPresented: $showExtend) {
-            ExtendSheet(
-                onExtend: { location.extendTracking(by: $0) },
-                onStopNow: {
-                    showExtend = false
-                    casual.stop()
-                },
-                location: location
-            )
-            .presentationDetents([.height(240)])
         }
         .sheet(isPresented: $showWhoCanSeeMe) {
             WhoCanSeeMeSheet(casual: casual, me: location.runnerName, crew: crew.members)
@@ -547,32 +513,6 @@ struct CasualMapScreen: View {
         .sheet(isPresented: $showShare) {
             ShareRunSheet(casual: casual)
                 .presentationDetents([.large])
-        }
-        .sheet(isPresented: $showSettings) {
-            AuthSheet(location: location, crew: crew)
-                .preferredColorScheme(location.appearanceMode.colorScheme)
-        }
-        .fileImporter(isPresented: $showRoutePicker, allowedContentTypes: Self.gpxTypes) { result in
-            handlePickedRoute(result)
-        }
-        .alert("Remove route?", isPresented: $showRemoveRoute) {
-            Button("Remove", role: .destructive) { Task { await casual.removeRoute() } }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("This removes your route for you, your crew and anyone watching your link.")
-        }
-        .alert("Couldn't update the route", isPresented: Binding(
-            get: { casual.routeError != nil },
-            set: { if !$0 { casual.routeError = nil } }
-        )) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            if let message = casual.routeError { Text(message) }
-        }
-        // Signing out from the settings sheet hands over to the sign-in cover on `ContentView`; this
-        // sheet must not still be up when it presents.
-        .onChange(of: location.isAuthenticated) { _, isAuthenticated in
-            if !isAuthenticated { showSettings = false }
         }
         // The crew sheet lives here, not on `ContentView`, because the map is a full-screen cover. A
         // crew link opened during a run lands here too (`CrewStore` sets the same flag).
@@ -583,146 +523,38 @@ struct CasualMapScreen: View {
         }
     }
 
-    // MARK: Map
-
-    private var map: some View {
-        TimelineView(.periodic(from: timelineStart, by: 1)) { context in
-            LinzMapView(
-                markers: markers(at: context.date),
-                extraRoutes: casual.routeLines,
-                camera: camera,
-                onUserMovedCamera: { fitLocked = false }
-            )
-            .onChange(of: context.date) { _, _ in
-                if fitLocked { frameEveryone() }
+    /// This person's own route, shown to their crew and to anyone with their watch link. The store
+    /// reports failures in `routeError`; they're handed to the shell's alert instead.
+    private var routeActions: RouteActions {
+        RouteActions(
+            hasRoute: casual.hasOwnRoute,
+            isUploading: casual.isUploadingRoute,
+            removeMessage: "This removes your route for you, your crew and anyone watching your link.",
+            upload: { data in
+                guard await casual.setRoute(gpx: data) else { throw takeRouteError() }
+            },
+            remove: {
+                await casual.removeRoute()
+                if casual.routeError != nil { throw takeRouteError() }
             }
-        }
-        .ignoresSafeArea()
-        .onChange(of: pins.count + casual.nearby.count) { _, count in
-            // Frame everyone whenever someone arrives (not when they leave); the fit-all button does it on demand.
-            let arrived = count > fittedCount
-            fittedCount = count
-            if arrived { fitAll() }
-        }
-        .onAppear { fitAll() }
+        )
     }
 
-    /// Anonymous nearby dots under the named pins.
-    private func markers(at date: Date) -> [LinzMapMarker] {
-        let nearby = casual.nearby.enumerated().map { index, dot in
-            LinzMapMarker(
-                id: "nearby-\(index)",
-                coordinate: CLLocationCoordinate2D(latitude: dot.latitude, longitude: dot.longitude)
-            ) {
-                NearbyDotView(isLocked: dot.inSession == true, pinSize: location.mapDotSize.pinSize)
-            }
-        }
-        let people = pins.map { pin in
-            let age = pin.timestamp.map { date.timeIntervalSince($0) }
-            return LinzMapMarker(id: "runner-\(pin.id)", coordinate: pin.coordinate, zIndex: 1) {
-                RunnerMapPin(
-                    name: pin.id,
-                    label: pin.displayName,
-                    size: location.mapDotSize.pinSize,
-                    isHighlighted: pin.isSelf,
-                    heading: pin.heading,
-                    isStale: age.map { $0 > MapPinAge.staleAfter } ?? false,
-                    isDisconnected: age.map { $0 > MapPinAge.disconnectedAfter } ?? false
-                )
-                .overlay(alignment: .bottomTrailing) {
-                    if pin.isLocked { LockBadge().offset(x: 4, y: 4) }
-                }
-            }
-        }
-        return nearby + people
+    /// Pins go on this person's own run; theirs and their crew's show. All go when each run ends.
+    private var messagePinActions: MessagePinActions {
+        MessagePinActions(
+            pins: casual.pins,
+            canDrop: location.isTracking,
+            audience: "Your crew and anyone with your watch link will see it until you stop.",
+            drop: { coordinate, message in try await casual.dropPin(at: coordinate, message: message) },
+            delete: { pin in try await casual.deletePin(pin) }
+        )
     }
 
-    private func fitAll() {
-        fitLocked = true
-        frameEveryone()
-    }
-
-    private func frameEveryone() {
-        // Everyone on the map, anonymous dots included: they are why the person opened it.
-        let coordinates = pins.map(\.coordinate)
-            + casual.nearby.map { CLLocationCoordinate2D(latitude: $0.latitude, longitude: $0.longitude) }
-        guard let region = LinzMapRegion.fitting(coordinates) else { return }
-        camera.move(to: region)
-    }
-
-    // MARK: Controls
-
-    private var topLeft: some View {
-        MapTimerPill(location: location, runnerName: location.runnerName) { showExtend = true }
-    }
-
-    private var rail: some View {
-        VStack(spacing: 10) {
-            MapRailButton(symbol: "square.and.arrow.up", label: "Share a link to watch me") {
-                showShare = true
-                Task { await casual.makeWatchLink() }
-            }
-            MapRailButton(symbol: "arrow.up.left.and.arrow.down.right", label: "Fit all runners") { fitAll() }
-            MapRailButton(symbol: "eye", label: "Who can see me") { showWhoCanSeeMe = true }
-            routeMenu
-            MapRailButton(symbol: "gearshape", label: "Settings") { showSettings = true }
-        }
-    }
-
-    /// Add or replace a GPX route, or remove it. Shown to your crew and to anyone with your watch link.
-    private var routeMenu: some View {
-        Menu {
-            Button {
-                showRoutePicker = true
-            } label: {
-                Label(
-                    casual.hasOwnRoute ? "Replace route (GPX)…" : "Add route (GPX)…",
-                    systemImage: "point.topleft.down.to.point.bottomright.curvepath"
-                )
-            }
-            if casual.hasOwnRoute {
-                Button(role: .destructive) {
-                    showRemoveRoute = true
-                } label: {
-                    Label("Remove route", systemImage: "trash")
-                }
-            }
-        } label: {
-            Image(systemName: "point.topleft.down.to.point.bottomright.curvepath")
-                .font(.system(size: 18, weight: .semibold))
-                .foregroundStyle(.black)
-                .frame(width: 44, height: 44)
-                .background(Color.white.opacity(0.85), in: Circle())
-                .shadow(color: .black.opacity(0.18), radius: 2, y: 1)
-        }
-        .disabled(casual.isUploadingRoute)
-        .accessibilityLabel("Route")
-    }
-
-    private func handlePickedRoute(_ result: Result<URL, Error>) {
-        switch result {
-        case .failure(let error):
-            casual.routeError = error.localizedDescription
-        case .success(let url):
-            // Files outside the app's sandbox need access opened for the read and closed straight after.
-            let scoped = url.startAccessingSecurityScopedResource()
-            defer { if scoped { url.stopAccessingSecurityScopedResource() } }
-            guard let data = try? Data(contentsOf: url) else {
-                casual.routeError = "Couldn't read that file."
-                return
-            }
-            Task {
-                if await casual.setRoute(gpx: data) { frameRoute(GpxRouteParser.parse(data)) }
-            }
-        }
-    }
-
-    /// Shows the whole of a just-added route. The fit lock comes off so the next tick doesn't pull the camera
-    /// back to the runners; the fit-all button turns it back on.
-    private func frameRoute(_ coordinates: [CLLocationCoordinate2D]) {
-        guard let region = LinzMapRegion.fitting(coordinates) else { return }
-        fitLocked = false
-        camera.move(to: region)
+    private func takeRouteError() -> MapActionError {
+        let message = casual.routeError ?? "Couldn't update the route."
+        casual.routeError = nil
+        return MapActionError(message: message)
     }
 
     /// "2 crew out". Tapping it opens the crew sheet, so crew can be added mid-run; with no crew yet
@@ -751,49 +583,9 @@ struct CasualMapScreen: View {
         .disabled(!crew.isAvailable)
         .accessibilityHint("Opens your crew, where you can add someone")
     }
-
 }
 
 // MARK: - Map pieces
-
-/// A person who is not in the crew: a grey dot with a white edge and "?" for initials, and a padlock
-/// when they are in a named session. Nothing that says who it is. 90% of a runner's dot at the
-/// chosen dot size, so it follows the Dot size setting.
-private struct NearbyDotView: View {
-    let isLocked: Bool
-    /// The `RunnerMapPin` size in use on this map.
-    let pinSize: CGFloat
-
-    private var size: CGFloat { RunnerMapPin.circleSize(for: pinSize) * 0.9 }
-
-    var body: some View {
-        Circle()
-            .fill(Color(red: 0x9E / 255, green: 0xA3 / 255, blue: 0xA8 / 255))
-            .overlay(Circle().stroke(.white, lineWidth: 2))
-            .frame(width: size, height: size)
-            .overlay {
-                Text("?")
-                    .font(.system(size: size * 0.4, weight: .bold))
-                    .foregroundStyle(.white)
-            }
-            .overlay(alignment: .bottomTrailing) {
-                if isLocked { LockBadge().offset(x: 4, y: 4) }
-            }
-            .accessibilityLabel(isLocked ? "Someone nearby, in a session" : "Someone nearby")
-    }
-}
-
-/// The padlock on a crew member's dot when they are in a named session rather than out casually.
-private struct LockBadge: View {
-    var body: some View {
-        Image(systemName: "lock.fill")
-            .font(.system(size: 8, weight: .bold))
-            .foregroundStyle(.white)
-            .frame(width: 16, height: 16)
-            .background(Circle().fill(Color(red: 0x14 / 255, green: 0x18 / 255, blue: 0x1F / 255)))
-            .accessibilityLabel("In a session")
-    }
-}
 
 /// "Share your run": a secret link to a web map of just this person, for someone with no app or account.
 /// It can be sent through the share sheet, opened in the browser, or copied. The link stops working when

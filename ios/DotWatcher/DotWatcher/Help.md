@@ -20,6 +20,12 @@ Once you've selected a session, a link appears below it. Tap **Open map in brows
 
 Share the same link with spectators so they can watch from any device.
 
+## Message pins
+
+While you're tracking, press and hold on the map to drop a pin with a short message, like "water here". Tap a pin to read it, or to delete one you left.
+
+In a session, everyone in it sees your pins. On a Go run, your crew and anyone with your watch link see them, and they disappear when you stop.
+
 ## Privacy and Terms
 
 Privacy Policy: https://dot-watcher.skelstar.io/privacy
