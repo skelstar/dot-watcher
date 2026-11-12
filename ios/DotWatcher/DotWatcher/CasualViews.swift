@@ -9,7 +9,7 @@ private let goGreen = Color(red: 0x34 / 255, green: 0xC7 / 255, blue: 0x59 / 255
 let stopRed = Color(red: 1, green: 0x3B / 255, blue: 0x30 / 255)
 let stopRedFill = Color(red: 0xB3 / 255, green: 0x26 / 255, blue: 0x1E / 255)
 
-/// How long Go and Stop must be held. Long enough to ignore a press in a pocket, short enough that
+/// How long Go must be held. Long enough to ignore a press in a pocket, short enough that
 /// nobody has to try twice.
 private let holdDuration: TimeInterval = 0.9
 
@@ -17,7 +17,7 @@ private func durationLabel(_ duration: TimeInterval) -> String { "\(Int(duration
 
 // MARK: - Press and hold
 
-/// The same press-and-hold for Go and Stop: `progress` fills over `holdDuration` while the finger is
+/// The press-and-hold for Go: `progress` fills over `holdDuration` while the finger is
 /// down, then `onComplete` runs with a firm tap. Letting go early drains it and does nothing. VoiceOver
 /// users get a plain activation instead of a held press.
 private struct HoldToComplete: ViewModifier {

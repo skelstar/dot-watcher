@@ -50,7 +50,7 @@ import nz.skelstar.dotwatcher.location.POST_INTERVAL_SECONDS
 import nz.skelstar.dotwatcher.location.TrackingState
 import nz.skelstar.dotwatcher.network.NearbyDot
 import nz.skelstar.dotwatcher.network.RunnerPosition
-import nz.skelstar.dotwatcher.ui.casual.HoldToStopPill
+import nz.skelstar.dotwatcher.ui.casual.StopPill
 import nz.skelstar.dotwatcher.ui.casual.ShareRunSheet
 import nz.skelstar.dotwatcher.ui.casual.WatchLinkState
 import nz.skelstar.dotwatcher.ui.casual.WhoCanSeeMeSheet
@@ -282,8 +282,8 @@ fun CasualMapScreen(
                     .navigationBarsPadding()
                     .padding(start = 14.dp, bottom = 26.dp),
             )
-            HoldToStopPill(
-                onComplete = onStop,
+            StopPill(
+                onStop = onStop,
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
                     .navigationBarsPadding()

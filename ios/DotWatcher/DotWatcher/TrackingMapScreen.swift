@@ -78,7 +78,7 @@ final class TrackingMapController {
 }
 
 /// The full-screen map while sharing, for both Go and a named session: the LINZ map with everyone's dots,
-/// the timer, a rail of buttons and Hold to stop. The shell owns everything the two have in common:
+/// the timer, a rail of buttons and Stop. The shell owns everything the two have in common:
 /// the camera, fit and follow, satellite mode, the Route button and file picker, the extend sheet,
 /// Settings, and the bottom bar's Stop or battery card. `CasualMapScreen` and `SessionMapScreen` wrap
 /// it, supplying the dots, what Stop does, and their own rail buttons, bottom-left view and sheets.
@@ -251,7 +251,7 @@ struct TrackingMapScreen<RailTop: View, RailMiddle: View, BottomLeading: View>: 
                     bottomLeading()
                     Spacer(minLength: 12)
                     if location.isTracking {
-                        HoldToStopPill(onComplete: onStop)
+                        StopPill(onStop: onStop)
                     }
                 }
                 .padding(.horizontal, 14)
