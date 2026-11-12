@@ -46,7 +46,10 @@ public record CasualLiveResponse(
     // Which of the people above (the viewer and their visible crew, never anonymous dots) have loaded a
     // route. Only a reference: the GPX itself is fetched from GET /casual/runs/{runId}/route when
     // UploadedAt changes, so a poll stays small. Absent from older servers.
-    IReadOnlyList<CasualRouteRef>? Routes = null
+    IReadOnlyList<CasualRouteRef>? Routes = null,
+    // Message pins dropped by the same people (the viewer and visible crew) on their current runs,
+    // oldest first. Sent whole: at most MapPinRules.MaxPins short messages per run. Absent from older servers.
+    IReadOnlyList<MapMessagePin>? Pins = null
 );
 
 /// <summary>A route loaded by someone the viewer can see. <see cref="RunnerName"/> matches that person's
@@ -116,5 +119,7 @@ public record CasualWatchView(
     bool Live,
     WatchPosition? Position,
     // True while the runner has a route loaded; fetch it from GET /watch/{token}/route.
-    bool HasRoute = false
+    bool HasRoute = false,
+    // The runner's message pins on this run, oldest first; empty once the run has ended.
+    IReadOnlyList<MapMessagePin>? Pins = null
 );
