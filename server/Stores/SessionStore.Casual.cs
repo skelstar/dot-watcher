@@ -166,6 +166,8 @@ public partial class SessionStore
         DeleteCasualRoute(userId);
 
         using var conn = Connect();
+        // So do its pins.
+        DeleteOpenCasualRunPins(conn, userId);
         using var cmd = conn.CreateCommand();
         cmd.CommandText = """
             UPDATE casual_runs SET ended_at = @endedAt, stopped_by_user = TRUE
@@ -438,6 +440,7 @@ public partial class SessionStore
             me is null ? null : (me.Position.Latitude, me.Position.Longitude);
 
         using var conn = Connect();
+        var runIds = entries.Select(e => e.RunId).OfType<string>().ToList();
         var crewLabels = new Dictionary<string, string>();
         if (includeCrew)
             foreach (var member in GetCrewOverview(conn, viewerId).Crew)
@@ -452,7 +455,8 @@ public partial class SessionStore
             entries,
             now,
             viewerVisibleToCrew,
-            GetCasualRouteTimes(conn, entries.Select(e => e.RunId).OfType<string>().ToList()));
+            GetCasualRouteTimes(conn, runIds),
+            GetCasualRunPins(conn, runIds));
     }
 
     private IReadOnlyList<CasualLiveEntry> GetCasualSnapshot(DateTimeOffset now)
@@ -584,6 +588,9 @@ public partial class SessionStore
             cmd.Parameters.AddWithValue("@staleBefore", ToIso(now - CasualHardStaleCap));
             closed = cmd.ExecuteNonQuery();
         }
+
+        // Pins go with the run, including a run closed above as abandoned.
+        DeleteEndedCasualRunPins(conn);
 
         var cutoff = ToIso(now - retention);
 

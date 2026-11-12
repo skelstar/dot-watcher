@@ -162,6 +162,49 @@ public class CasualController(
     }
 
     /// <summary>
+    /// Drops a message pin on the caller's current run. The caller, their crew and anyone with a watch
+    /// link see it (in GET /casual/live's <c>pins</c> and the watch view); it is deleted when the run
+    /// ends. 409 when the caller isn't out or the run already has the most pins allowed; 400 for a bad
+    /// position or message.
+    /// </summary>
+    [HttpPost("/casual/pins")]
+    [ProducesResponseType(typeof(MapMessagePin), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    public IActionResult CreatePin([FromBody] CreateMapPinRequest? request)
+    {
+        if (Gate(out var user) is { } denied)
+            return denied;
+
+        var (message, error) = MapPinRules.Validate(request);
+        if (message is null)
+            return BadRequest(new { error });
+
+        var result = store.CreateCasualPin(user.UserId, request!.Latitude!.Value, request.Longitude!.Value, message, timeProvider.GetUtcNow());
+        return result.Outcome switch
+        {
+            MapPinCreateOutcome.Created => Ok(result.Pin),
+            MapPinCreateOutcome.Full => Conflict(new { error = $"This run already has {MapPinRules.MaxPins} pins." }),
+            _ => Conflict(new { error = "Start tracking before dropping a pin." }),
+        };
+    }
+
+    /// <summary>Deletes one of the pins on the caller's current run. 404 when there is no such pin there.</summary>
+    [HttpDelete("/casual/pins/{pinId}")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public IActionResult DeletePin(string pinId)
+    {
+        if (Gate(out var user) is { } denied)
+            return denied;
+
+        return store.DeleteCasualPin(user.UserId, pinId) ? NoContent() : NotFound();
+    }
+
+    /// <summary>
     /// Gets who can see the caller: people who aren't in their crew (off by default), and their crew
     /// (on by default).
     /// </summary>

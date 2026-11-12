@@ -63,7 +63,8 @@ public class CasualWatchTests
 
         using var document = JsonDocument.Parse(json);
         Assert.Equal(
-            new[] { "ended", "hasRoute", "label", "live", "position" },
+            // pins: the runner's message pins on this run, labelled with their initials (MapPinTests).
+            new[] { "ended", "hasRoute", "label", "live", "pins", "position" },
             document.RootElement.EnumerateObject().Select(p => p.Name).Order().ToArray());
         Assert.DoesNotContain(alice.User.UserId, json);
         Assert.DoesNotContain("alice", json);

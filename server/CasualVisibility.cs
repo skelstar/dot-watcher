@@ -55,19 +55,29 @@ public static class CasualVisibility
         IReadOnlyCollection<CasualLiveEntry> live,
         DateTimeOffset now,
         bool viewerVisibleToCrew = true,
-        IReadOnlyDictionary<string, DateTimeOffset>? routeTimes = null)
+        IReadOnlyDictionary<string, DateTimeOffset>? routeTimes = null,
+        IReadOnlyDictionary<string, List<StoredCasualPin>>? pinsByRun = null)
     {
         var participants = new List<string>();
         var positions = new List<RunnerPosition[]>();
         var nearby = new List<NearbyDot>();
         var routes = new List<CasualRouteRef>();
+        var pins = new List<MapMessagePin>();
 
-        // Routes are offered only for people who appear by name (the viewer and visible crew), never for
-        // anonymous nearby dots.
+        // Routes and message pins are offered only for people who appear by name (the viewer and visible
+        // crew), never for anonymous nearby dots. Only the viewer can delete pins, and only their own.
         void AddRoute(CasualLiveEntry entry, string label)
         {
-            if (entry.RunId is { } runId && routeTimes is not null && routeTimes.TryGetValue(runId, out var uploadedAt))
+            if (entry.RunId is not { } runId)
+                return;
+            if (routeTimes is not null && routeTimes.TryGetValue(runId, out var uploadedAt))
                 routes.Add(new CasualRouteRef(label, runId, uploadedAt));
+            if (pinsByRun is not null && pinsByRun.TryGetValue(runId, out var runPins))
+            {
+                var isMine = entry.UserId == viewerId;
+                pins.AddRange(runPins.Select(p => new MapMessagePin(
+                    p.Id, label, p.Latitude, p.Longitude, p.Message, p.CreatedAt, IsMine: isMine, CanDelete: isMine)));
+            }
         }
 
         foreach (var entry in live)
@@ -110,7 +120,7 @@ public static class CasualVisibility
             nearby.Add(new NearbyDot(p.Latitude, p.Longitude, p.Heading, entry.InSession));
         }
 
-        return new CasualLiveResponse(participants, positions, nearby, routes);
+        return new CasualLiveResponse(participants, positions, nearby, routes, pins);
     }
 
     /// <summary>The stored position, labelled for this viewer. RunnerName at rest is the account's initials.</summary>
