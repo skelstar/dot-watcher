@@ -1,0 +1,9 @@
+name: dot-watcher-bot-dots
+# No port or hostname: the service only makes outbound calls (to the server and to Valhalla).
+# One replica only, and redeploy with the Recreate strategy, so two copies never post at once.
+# BotDots__AdminBearer must come from a secret (the server's BearerToken), never from this file.
+env:
+  - name: BotDots__ServerUrl
+    value: http://dot-watcher-server.dot-watcher-server.svc.cluster.local:8080
+  - name: BotDots__ValhallaUrl
+    value: http://valhalla.bot-dots.svc.cluster.local:8002

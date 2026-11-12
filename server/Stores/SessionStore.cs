@@ -406,7 +406,8 @@ public partial class SessionStore(string connectionString) : IDisposable
         while (reader.Read())
             users.Add(new AdminUserSummary(
                 reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetString(3),
-                ParseFeatures(reader.GetString(4))));
+                ParseFeatures(reader.GetString(4)),
+                BotDots.IsBotDotUsername(reader.GetString(1))));
         return users;
     }
 

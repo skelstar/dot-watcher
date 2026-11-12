@@ -170,7 +170,7 @@ public class CasualVisibilityTests
 
         Assert.True(dot.InSession);
         Assert.Equal(
-            new[] { "Heading", "InSession", "Latitude", "Longitude" },
+            new[] { "Heading", "InSession", "IsBot", "Latitude", "Longitude" },
             typeof(NearbyDot).GetProperties().Select(p => p.Name).Order().ToArray());
     }
 
@@ -214,6 +214,19 @@ public class CasualVisibilityTests
             ReceivedAt = Now - TimeSpan.FromSeconds(5),
         };
         Assert.True(CasualVisibility.IsLive(slow, Now));
+    }
+
+    [Fact]
+    public void BotDots_AreFlaggedOnTheirDot_RealPeopleAreNot()
+    {
+        var response = View([
+            Entry("zed", latitude: -41.16) with { IsBot = true },
+            Entry("amy", latitude: -41.165),
+        ]);
+
+        Assert.Equal(2, response.Nearby.Count);
+        Assert.True(response.Nearby.Single(d => Math.Abs(d.Latitude - -41.16) < 1e-9).IsBot);
+        Assert.False(response.Nearby.Single(d => Math.Abs(d.Latitude - -41.165) < 1e-9).IsBot);
     }
 
     [Fact]

@@ -286,6 +286,7 @@ store.EnsureDemoSession(
 
 store.EnsureCasualSession();
 store.CasualSnapshotLifetime = TimeSpan.FromSeconds(app.Configuration.GetValue<double>("Casual:SnapshotSeconds", 5));
+store.BotDotsEnabled = app.Configuration.GetValue<bool>("Bots:Enabled");
 
 // Migrate any existing NDJSON recordings into SQLite
 var recordingsPath = app.Configuration.GetValue<string>("RecordingsPath", "recordings")!;

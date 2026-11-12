@@ -41,7 +41,7 @@ public sealed class CasualMaintenanceService(
             store.EnsureCasualSession();
 
             var retention = TimeSpan.FromDays(configuration.GetValue<double>("Casual:RetentionDays", 7));
-            var (closedRuns, deletedPositions, deletedRuns) = store.PurgeCasualData(timeProvider.GetUtcNow(), retention);
+            var (closedRuns, deletedPositions, deletedRuns) = store.PurgeCasualData(timeProvider.GetUtcNow(), retention, BotDots.PositionRetention);
             if (closedRuns + deletedPositions + deletedRuns > 0)
                 logger.LogInformation(
                     "Casual maintenance closed {ClosedRuns} runs and deleted {DeletedPositions} positions and {DeletedRuns} runs",
