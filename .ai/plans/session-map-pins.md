@@ -31,15 +31,23 @@ get a local notification when a new pin appears near them.
 - Click a pin: MapLibre popup with message, author and relative time. Render as text, never HTML.
 - Read-only for now: no create or delete in the browser.
 
-## 3. iOS (`ios/DotWatcher/DotWatcher`)
-- `NativeMapView`: long-press gesture (runners only) -> dialog with a text field and a character
-  counter -> `POST`. Annotation view for pins; tap shows a sheet with message, author, time and a
-  Delete button when allowed (creator or owner).
-- Fetch pins alongside the existing refresh and on foreground.
-- Local notifications: `UNUserNotificationCenter` permission requested the first time a runner starts
-  tracking. On each poll, diff the pin ids against the last seen set; for a new pin not created by the
-  user and within ~1 km of the runner's current location, post a notification (sound plus haptic).
-  Persist the seen ids so a relaunch does not re-notify.
+## 3. iOS (`ios/DotWatcher/DotWatcher`, branch `map-pins-ios`, on top of `one-map-screen-ios`)
+- [x] `MapMessagePins.swift`: the `MapMessagePin` model, `MessagePinActions` (what a map source
+  supplies), the marker, the drop sheet (140-char counter) and the detail sheet (Delete when
+  `canDelete`).
+- [x] `LinzMapView.onLongPress` (0.5 s hold, haptic); pins are markers with zIndex 2, so a tap on one
+  wins over a dot beside it. `TrackingMapScreen` draws them and owns the sheets, so both maps get pins.
+- [x] Go: pins arrive with `casual.loadLive()`; `CasualStore.dropPin` / `deletePin`. Dropping needs
+  to be tracking.
+- [x] Session: `LocationManager.sessionPins`, loaded with `loadLatestPositions()` and then every 15 s
+  while the map is on screen (skipped on satellite). Dropping needs the `runner` role and tracking.
+- [x] Help.md: "Message pins".
+- [ ] Device check: drop, see on the other phone, delete, author/owner rules, Go pins gone after stop.
+- [ ] Local notifications for new pins near the runner. Not done: with the screen locked, the app only
+  hears from the server through its own `POST /location`, whose response has no pins. Needs the post
+  response to carry pins (Go: the casual reply is a `CasualLiveResponse`, so add decoding of `pins`
+  there; session: add pins to the session reply), then diff ids against a persisted seen set and
+  notify for a new pin within ~1 km that isn't mine.
 
 ## 4. Android (follow-up)
 Same as iOS; notification posted from `LocationTrackingService`.
