@@ -197,6 +197,10 @@ private const val IconBoxHeight = 56f
 private const val IconStroke = 6.5f
 private val SignIcon.boxWidth get() = if (this == SignIcon.Chevrons) 40f else 56f
 
+/** How much of the span from title to subtitle the icon fills. The chevrons are drawn smaller
+ *  (0.8 x 0.8) so they don't outweigh the lettering, as in .ai/mockups/go-sign-icons.html. */
+private val SignIcon.scale get() = if (this == SignIcon.Chevrons) 0.64f else 0.8f
+
 /** Draws [icon] filling the canvas, inset by half the stroke so the ink fills it exactly. */
 private fun DrawScope.drawSignIcon(icon: SignIcon, color: Color, mirrored: Boolean) {
     val unit = size.height / IconBoxHeight
@@ -255,7 +259,7 @@ private fun SignContent(
     val subtitleStyle = base.merge(
         TextStyle(fontFamily = SignFontFamily, fontWeight = FontWeight.ExtraBold, fontSize = 15.sp, lineHeight = 18.sp),
     )
-    val placement = iconPlacement(eyebrow?.uppercase(), eyebrowStyle, title, titleStyle, subtitle, subtitleStyle)
+    val placement = iconPlacement(icon.scale, eyebrow?.uppercase(), eyebrowStyle, title, titleStyle, subtitle, subtitleStyle)
     val mirrored = LocalLayoutDirection.current == LayoutDirection.Rtl && icon != SignIcon.Plus
 
     Box(modifier = modifier, contentAlignment = if (alignBottom) Alignment.BottomStart else Alignment.TopStart) {
@@ -286,11 +290,12 @@ private val SubtitleGap = 3.dp
 private class IconPlacement(val top: Dp, val height: Dp)
 
 /**
- * Where a sign's icon goes: 80% of the height from the top of the title's capitals to the baseline of
- * the line under it, centred on that span. Measured from the text's own layout, from the top of the text.
+ * Where a sign's icon goes: [scale] of the height from the top of the title's capitals to the baseline
+ * of the line under it, centred on that span. Measured from the text's own layout, from the top of the text.
  */
 @Composable
 private fun iconPlacement(
+    scale: Float,
     eyebrow: String?,
     eyebrowStyle: TextStyle,
     title: String,
@@ -301,7 +306,7 @@ private fun iconPlacement(
     val measurer = rememberTextMeasurer()
     val density = LocalDensity.current
     val fontResolver = LocalFontFamilyResolver.current
-    return remember(eyebrow, title, subtitle, titleStyle, subtitleStyle, eyebrowStyle, density, fontResolver) {
+    return remember(scale, eyebrow, title, subtitle, titleStyle, subtitleStyle, eyebrowStyle, density, fontResolver) {
         with(density) {
             val titleTop = eyebrow?.let { measurer.measure(it, eyebrowStyle).size.height.toFloat() } ?: 0f
             val titleLayout = measurer.measure(title, titleStyle)
@@ -316,7 +321,7 @@ private fun iconPlacement(
             val capTop = titleTop + titleLayout.firstBaseline - capHeight
             val subtitleBaseline = titleTop + titleLayout.size.height + SubtitleGap.toPx() + subtitleLayout.firstBaseline
             val span = subtitleBaseline - capTop
-            val height = span * 0.8f
+            val height = span * scale
             IconPlacement(top = (capTop + (span - height) / 2).toDp(), height = height.toDp())
         }
     }

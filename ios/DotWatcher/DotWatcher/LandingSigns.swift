@@ -57,6 +57,10 @@ enum SignIcon {
     /// Stroke width in the drawing's own units; the drawings are 56 units tall.
     fileprivate static let stroke: CGFloat = 6.5
 
+    /// How much of the span from title to subtitle the icon fills. The chevrons are drawn smaller
+    /// (0.8 x 0.8) so they don't outweigh the lettering, as in .ai/mockups/go-sign-icons.html.
+    fileprivate var scale: CGFloat { self == .chevrons ? 0.64 : 0.8 }
+
     /// The drawing's box, in the units its paths use.
     fileprivate var box: CGSize {
         self == .chevrons ? CGSize(width: 40, height: 56) : CGSize(width: 56, height: 56)
@@ -94,20 +98,20 @@ private struct SignGlyph: Shape {
     }
 }
 
-/// Where a sign's icon goes: 80% of the height from the top of the title's capitals to the baseline of
-/// the line under it, centred on that span. Worked out from the fonts' metrics, from the top of the text.
+/// Where a sign's icon goes: `SignIcon.scale` of the height from the top of the title's capitals to the
+/// baseline of the line under it, centred on that span. Worked out from the fonts' metrics, from the top of the text.
 private struct IconPlacement {
     let top: CGFloat
     let height: CGFloat
 
-    init(hasEyebrow: Bool, titleSize: CGFloat) {
+    init(icon: SignIcon, hasEyebrow: Bool, titleSize: CGFloat) {
         let titleFont = SignFont.uiFont(size: titleSize)
         let subtitleFont = SignFont.uiFont(size: 15)
         let titleTop = hasEyebrow ? SignFont.uiFont(size: 11).lineHeight + signLineSpacing : 0
         let capTop = titleTop + titleFont.ascender - titleFont.capHeight
         let subtitleBaseline = titleTop + titleFont.lineHeight + signLineSpacing + subtitleFont.ascender
         let span = subtitleBaseline - capTop
-        height = span * 0.8
+        height = span * icon.scale
         top = capTop + (span - height) / 2
     }
 }
@@ -124,7 +128,7 @@ private struct SignContent: View {
     var nudging = false
 
     var body: some View {
-        let placement = IconPlacement(hasEyebrow: eyebrow != nil, titleSize: titleSize)
+        let placement = IconPlacement(icon: icon, hasEyebrow: eyebrow != nil, titleSize: titleSize)
         HStack(alignment: .top, spacing: 12) {
             VStack(alignment: .leading, spacing: signLineSpacing) {
                 if let eyebrow {

@@ -1,0 +1,307 @@
+<title>Go Arrow Bump</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=EB+Garamond:wght@800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* Layout: phone screens side by side (stacking on narrow widths), each showing one Go-sign indicator with the double nudge. */
+:root {
+  --page: #eceae4;
+  --fg: #1f2a3d;
+  --muted: #5f6672;
+  --line: #d3d0c7;
+  --phone: #ffffff;
+  --phone-edge: #1b1d22;
+  --navy: #1f3350;
+  --sand: #f2efe4;
+  --cream: #f6f1e4;
+  --chip: #1f3350;
+  --chip-fg: #f2efe4;
+  --guide: #f28c28;
+  --font-sign: "EB Garamond", Georgia, "Times New Roman", serif;
+  --font-ui: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+
+  /* ICON SIZE KNOBS. Size is a fraction of the span from the top of the title to the bottom of
+     the line under it (1 = the full span), centred on that span. Stroke is in drawing units:
+     the icons are 56 units tall, so 6.5 is about 12% of their height. Save and reload to see changes. */
+  --icon-scale: 1;          /* the middle phone (Double chevrons) */
+  --icon-scale-right: 0.8;  /* the right-hand phone (An icon per sign) */
+  --chevron-scale: 0.8;       /* extra multiplier for chevrons only, in both phones */
+  --icon-stroke: 6.5;       /* line thickness of every new icon */
+}
+.small-icons { --icon-scale: var(--icon-scale-right); }
+.chev { stroke-width: var(--icon-stroke); }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --page: #16181c; --fg: #ece9e1; --muted: #a2a6ae; --line: #2f333a;
+    --phone: #000000; --phone-edge: #3a3d44; --chip: #f2efe4; --chip-fg: #1f3350;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --page: #16181c; --fg: #ece9e1; --muted: #a2a6ae; --line: #2f333a;
+  --phone: #000000; --phone-edge: #3a3d44; --chip: #f2efe4; --chip-fg: #1f3350;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--page); color: var(--fg); font: 15px/1.5 var(--font-ui);
+  padding-block: 28px 48px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+.wrap { max-width: 1120px; margin: 0 auto; display: grid; gap: 28px; }
+header { display: grid; gap: 6px; max-width: 64ch; }
+h1 { font-family: var(--font-sign); font-weight: 800; font-size: 36px; line-height: 1.1; margin: 0; text-wrap: balance; }
+header p { margin: 0; color: var(--muted); }
+.controls { display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center; }
+.controls button {
+  font: 500 14px var(--font-ui); color: var(--chip-fg); background: var(--chip);
+  border: 0; border-radius: 999px; padding: 8px 16px; cursor: pointer;
+}
+.controls label { display: inline-flex; gap: 8px; align-items: center; color: var(--muted); cursor: pointer; }
+button:focus-visible, input:focus-visible, .go:focus-visible { outline: 3px solid var(--guide); outline-offset: 3px; }
+
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 28px; }
+.option { display: grid; gap: 12px; align-content: start; min-width: 0; }
+.option h2 { margin: 0; font: 600 16px var(--font-ui); display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+.option h2 small { font-weight: 400; color: var(--muted); font-size: 13px; }
+.option p { margin: 0; color: var(--muted); font-size: 14px; }
+.tag { font: 600 11px var(--font-ui); letter-spacing: .06em; text-transform: uppercase; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); }
+
+.phone {
+  width: 100%; max-width: 340px; border: 10px solid var(--phone-edge); border-radius: 44px;
+  background: var(--phone); padding: 54px 16px 28px; display: grid; gap: 14px; position: relative;
+}
+.phone::before {
+  content: ""; position: absolute; top: 12px; left: 50%; width: 96px; height: 26px;
+  transform: translateX(-50%); border-radius: 20px; background: var(--phone-edge);
+}
+
+.sign { font-family: var(--font-sign); font-weight: 800; display: flex; align-items: center; gap: 12px; }
+.sign .text { flex: 1; min-width: 0; display: grid; gap: 1px; }
+.sign .title { line-height: 1.05; }
+.sign .sub { font-size: 15px; line-height: 1.2; }
+.arrow { flex: none; display: block; }
+
+.go { background: var(--navy); color: var(--sand); position: relative; cursor: pointer; user-select: none; -webkit-user-select: none; touch-action: none; }
+.go .bar { height: 18px; background: var(--sand); }
+.go .body { padding: 18px 20px; min-height: 150px; display: flex; align-items: flex-end; gap: 12px; position: relative; overflow: hidden; }
+.go .title { font-size: 44px; }
+.go .arrow { width: 30px; height: 30px; margin-bottom: 4px; }
+.go .fill { position: absolute; inset: 0 auto 0 0; width: 0; background: rgba(242, 239, 228, .28); pointer-events: none; }
+
+/* The double chevron: placed by script so it runs from the top of "Go" to the bottom of "Hold to start". */
+.chev-slot { flex: none; align-self: stretch; }
+.chev { position: absolute; display: block; overflow: visible; }
+
+/* Guides at the top of "Go" and the bottom of "Hold to start". */
+.guide { position: absolute; left: 0; right: 0; height: 0; border-top: 1px dashed var(--guide); pointer-events: none; display: none; }
+.guides .guide { display: block; }
+
+.alt { background: var(--cream); color: var(--navy); border: 2px solid var(--navy); padding: 14px 16px; position: relative; }
+.alt .title { font-size: 26px; }
+.alt .arrow { width: 24px; height: 24px; }
+
+/* The double nudge, as on branch go-arrow-nudge: two 7pt pushes, then a rest, every 3.5s. */
+.anim-whole .go .arrow, .anim-whole .go .chev { animation: nudge 3.5s ease-in-out infinite; }
+@keyframes nudge {
+  0%, 30%, 100% { transform: translateX(0); }
+  6% { transform: translateX(7px); }
+  12% { transform: translateX(0); }
+  18% { transform: translateX(7px); }
+  24% { transform: translateX(0); }
+}
+.go.held .arrow, .go.held .chev { animation-play-state: paused; }
+.still .go .arrow, .still .go .chev { animation: none !important; }
+
+.note { border-top: 1px solid var(--line); padding-top: 18px; display: grid; gap: 8px; max-width: 70ch; color: var(--muted); font-size: 14px; }
+.note strong { color: var(--fg); font-weight: 600; }
+.note ul { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
+</style>
+
+<div class="wrap" id="root">
+  <header>
+    <h1>Arrow or double chevron on Go</h1>
+    <p>The current arrows, double chevrons on every sign, and a different icon for each sign. Each new icon runs from the top of the sign’s title to the bottom of the line under it. Only Go’s nudges. Press and hold a Go sign to see it stop while the sign fills.</p>
+  </header>
+
+  <div class="controls">
+    <button type="button" id="replay">Replay from the start</button>
+    <label><input type="checkbox" id="guides"> Show alignment guides</label>
+    <label><input type="checkbox" id="reduce"> Preview with Reduce Motion on</label>
+  </div>
+
+  <div class="grid" id="grid"></div>
+
+  <div class="note">
+    <p><strong>What changes with the chevron</strong></p>
+    <ul>
+      <li>On Go it is about twice the arrow’s height, so it reads as part of the sign’s lettering rather than an icon beside it.</li>
+      <li>Join and Create get the same shape, sized to their own lettering, and stay still. Go is the only sign that moves.</li>
+      <li>With an icon per sign, each icon says what its sign does: chevrons to head off, an arrow going in to join a run, a plus to make a new one.</li>
+      <li>The event sign isn’t shown here. It would take a still chevron the same way.</li>
+    </ul>
+  </div>
+</div>
+
+<template id="phone-tpl">
+  <div class="phone">
+    <div class="go" role="button" tabindex="0" aria-label="Go. Hold to start">
+      <div class="bar"></div>
+      <div class="body sign">
+        <div class="fill"></div>
+        <div class="guide g-top"></div>
+        <div class="guide g-bottom"></div>
+        <div class="text"><span class="title">Go</span><span class="sub">Hold to start</span></div>
+        <!--indicator-->
+      </div>
+    </div>
+    <div class="alt sign">
+      <div class="guide g-top"></div>
+      <div class="guide g-bottom"></div>
+      <div class="text"><span class="title">Join</span><span class="sub">Enter an invite code</span></div>
+      <!--join-indicator-->
+    </div>
+    <div class="alt sign">
+      <div class="guide g-top"></div>
+      <div class="guide g-bottom"></div>
+      <div class="text"><span class="title">Create</span><span class="sub">Set up a new run for others</span></div>
+      <!--create-indicator-->
+    </div>
+  </div>
+</template>
+
+<script>
+const ARROW = '<svg class="arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12h15M13 5.5 19.5 12 13 18.5"/></svg>';
+// Drawn in a 40 x 56 box; the stroke ends sit exactly on the box's top and bottom so the ink spans the full height.
+const CHEV_W = 40, CHEV_H = 56, CHEV_STROKE = 6.5;
+const s = CHEV_STROKE / 2;
+const CHEVRON = `<div class="chev-slot"></div><svg class="chev is-chevrons" viewBox="0 0 ${CHEV_W} ${CHEV_H}" fill="none" stroke="currentColor" stroke-width="${CHEV_STROKE}" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+  <path d="M${s} ${s} L${s + 15} ${CHEV_H / 2} L${s} ${CHEV_H - s}"/>
+  <path d="M${s + 18} ${s} L${s + 33} ${CHEV_H / 2} L${s + 18} ${CHEV_H - s}"/>
+</svg>`;
+// Square 56 x 56 icons with the chevron's stroke, so at the same height they carry the same weight.
+const icon = paths => `<div class="chev-slot"></div><svg class="chev" viewBox="0 0 56 56" fill="none" stroke="currentColor" stroke-width="${CHEV_STROKE}" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths}</svg>`;
+// An arrow going into a bracket, like a sign-in symbol.
+const ENTER = icon(`<path d="M31 ${s} H${56 - s} V${56 - s} H31"/><path d="M${s} 28 H39"/><path d="M27.5 16.5 L39 28 L27.5 39.5"/>`);
+const PLUS = icon(`<path d="M28 ${s} V${56 - s}"/><path d="M${s} 28 H${56 - s}"/>`);
+
+const options = [
+  { cls: "anim-whole", name: "Arrows", tag: "Current", indicator: ARROW, join: ARROW, create: ARROW,
+    timing: "30pt arrow on Go, double nudge",
+    desc: "What is on the go-arrow-nudge branch now." },
+  { cls: "anim-whole", name: "Double chevrons", indicator: CHEVRON, join: CHEVRON, create: CHEVRON,
+    timing: "top of the title to bottom of the line under it",
+    desc: "Go’s chevrons push together, twice, then rest. Join and Create stay still." },
+  { cls: "anim-whole small-icons", name: "An icon per sign", indicator: CHEVRON, join: ENTER, create: PLUS,
+    timing: "chevrons, enter, plus · 80% of the lettering’s height, centred",
+    desc: "Go keeps its nudging chevrons. Join gets an arrow going in, Create a plus. Both stay still." },
+];
+
+const grid = document.getElementById("grid");
+const tpl = document.getElementById("phone-tpl").innerHTML;
+for (const o of options) {
+  const col = document.createElement("section");
+  col.className = "option " + o.cls;
+  col.innerHTML = `<h2>${o.name}${o.tag ? ` <span class="tag">${o.tag}</span>` : ""}<small>${o.timing}</small></h2><p>${o.desc}</p>` +
+    tpl.replace("<!--indicator-->", o.indicator).replace("<!--join-indicator-->", o.join).replace("<!--create-indicator-->", o.create);
+  grid.appendChild(col);
+}
+
+// Where a line of text's baseline sits, measured with a zero-height inline marker.
+function baselineY(el) {
+  const m = document.createElement("span");
+  m.style.cssText = "display:inline-block;width:0;height:0;vertical-align:baseline";
+  el.appendChild(m);
+  const y = m.getBoundingClientRect().top;
+  m.remove();
+  return y;
+}
+const canvas = document.createElement("canvas").getContext("2d");
+// Height of the ink above the baseline for some text in an element's font.
+function inkAscent(el, text) {
+  const cs = getComputedStyle(el);
+  canvas.font = `${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
+  return canvas.measureText(text).actualBoundingBoxAscent;
+}
+
+// Each sign's indicator runs from the top of its title's letters to the baseline of the line under it.
+function place() {
+  document.querySelectorAll(".sign").forEach(sign => {
+    const title = sign.querySelector(".title");
+    const sub = sign.querySelector(".sub");
+    const b = sign.getBoundingClientRect();
+    const originY = b.top + sign.clientTop;
+    const top = baselineY(title) - inkAscent(title, title.textContent) - originY;
+    const bottom = baselineY(sub) - originY;
+    sign.querySelector(".g-top").style.top = top + "px";
+    sign.querySelector(".g-bottom").style.top = bottom + "px";
+    const chev = sign.querySelector(".chev");
+    if (!chev) return;
+    const span = bottom - top;
+    const knob = (name, fallback) => parseFloat(getComputedStyle(sign).getPropertyValue(name)) || fallback;
+    const h = span * knob("--icon-scale", 1) * (chev.classList.contains("is-chevrons") ? knob("--chevron-scale", 1) : 1);
+    const vb = chev.viewBox.baseVal;
+    const w = h * vb.width / vb.height;
+    chev.style.height = h + "px";
+    chev.style.width = w + "px";
+    chev.style.top = top + (span - h) / 2 + "px";
+    chev.style.right = getComputedStyle(sign).paddingRight;
+    sign.querySelector(".chev-slot").style.width = w + "px";
+  });
+}
+place();
+document.fonts?.ready.then(place);
+window.addEventListener("resize", place);
+
+// Hold to fill, as in the app: 0.9s, letting go early drains it.
+const HOLD_MS = 900;
+document.querySelectorAll(".go").forEach(go => {
+  const fill = go.querySelector(".fill");
+  let timer = null;
+  const start = e => {
+    if (timer) return;
+    if (e.type === "pointerdown") go.setPointerCapture?.(e.pointerId);
+    go.classList.add("held");
+    fill.style.transition = `width ${HOLD_MS}ms linear`;
+    fill.style.width = "100%";
+    timer = setTimeout(() => {
+      timer = null;
+      fill.style.transition = "none";
+      fill.style.width = "0";
+      go.classList.remove("held");
+    }, HOLD_MS);
+  };
+  const end = () => {
+    if (!timer) return;
+    clearTimeout(timer); timer = null;
+    fill.style.transition = "width 150ms ease-out";
+    fill.style.width = "0";
+    go.classList.remove("held");
+  };
+  go.addEventListener("pointerdown", start);
+  go.addEventListener("pointerup", end);
+  go.addEventListener("pointercancel", end);
+  go.addEventListener("keydown", e => { if ((e.key === " " || e.key === "Enter") && !e.repeat) { e.preventDefault(); start(e); } });
+  go.addEventListener("keyup", e => { if (e.key === " " || e.key === "Enter") end(); });
+});
+
+const root = document.getElementById("root");
+const reduce = document.getElementById("reduce");
+let prefersReduced = false;
+try { prefersReduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches; } catch {}
+reduce.checked = prefersReduced;
+root.classList.toggle("still", reduce.checked);
+reduce.addEventListener("change", () => root.classList.toggle("still", reduce.checked));
+
+const guides = document.getElementById("guides");
+guides.addEventListener("change", () => root.classList.toggle("guides", guides.checked));
+
+document.getElementById("replay").addEventListener("click", () => {
+  document.querySelectorAll(".go .arrow, .go .chev").forEach(a => {
+    a.style.animation = "none";
+    void a.getBoundingClientRect();
+    a.style.animation = "";
+  });
+});
+</script>
