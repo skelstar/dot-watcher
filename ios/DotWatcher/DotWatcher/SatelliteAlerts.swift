@@ -44,6 +44,20 @@ final class SatelliteAlerts: NSObject, UNUserNotificationCenterDelegate {
         UNUserNotificationCenter.current().add(request)
     }
 
+    /// Developer option: the satellite alert's content after a delay, so there's time to lock the
+    /// phone first. Skips the cooldown and doesn't count toward it, and asks for permission if it
+    /// hasn't been asked yet.
+    func sendTestNotification(after delay: TimeInterval, playSound: Bool) {
+        requestAuthorizationIfNeeded()
+        let content = UNMutableNotificationContent()
+        content.title = "On satellite (test)"
+        content.body = "No cell signal — still sending your position, less often."
+        content.sound = playSound ? .default : nil
+        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: delay, repeats: false)
+        let request = UNNotificationRequest(identifier: "satellite-test", content: content, trigger: trigger)
+        UNUserNotificationCenter.current().add(request)
+    }
+
     func userNotificationCenter(
         _ center: UNUserNotificationCenter,
         willPresent notification: UNNotification,

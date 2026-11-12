@@ -144,9 +144,13 @@ function Start-InNewWindow {
     exit 1
 }
 
-Start-InNewWindow -Title 'DotWatcher Server' -Command "cd '$serverDir'; `$env:ASPNETCORE_ENVIRONMENT = 'Development'; dotnet run --urls http://localhost:$serverPort"
+# Both bind on every interface (not just localhost) so a phone on the same WiFi can reach them by the
+# Mac's name, which is what the iOS "DotWatcher (Device Local)" scheme does (http://<name>.local:8080).
+# `*` covers IPv4 and IPv6, so localhost still works for the Simulator and the Vite proxy.
+Start-InNewWindow -Title 'DotWatcher Server' -Command "cd '$serverDir'; `$env:ASPNETCORE_ENVIRONMENT = 'Development'; dotnet run --urls http://*:$serverPort"
 
-Start-InNewWindow -Title 'DotWatcher Client' -Command "cd '$clientDir'; `$env:VITE_SERVER_PORT = '$serverPort'; npm run dev"
+Start-InNewWindow -Title 'DotWatcher Client' -Command "cd '$clientDir'; `$env:VITE_SERVER_PORT = '$serverPort'; npm run dev -- --host"
 
-Write-Host "Server starting at http://localhost:$serverPort (see 'DotWatcher Server' window)"
-Write-Host "Client starting at http://localhost:$clientPort (see 'DotWatcher Client' window)"
+$lanName = if ($IsMacOS) { "$(scutil --get LocalHostName).local".ToLower() } else { [System.Net.Dns]::GetHostName() }
+Write-Host "Server starting at http://localhost:$serverPort, and http://${lanName}:$serverPort from a phone (see 'DotWatcher Server' window)"
+Write-Host "Client starting at http://localhost:$clientPort, and http://${lanName}:$clientPort from a phone (see 'DotWatcher Client' window)"

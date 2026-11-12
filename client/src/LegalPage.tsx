@@ -4,7 +4,7 @@ interface Props {
   kind: LegalPageKind
 }
 
-const lastUpdated = '24 Jul 2026'
+const lastUpdated = '12 Nov 2026'
 const contactEmail = 'dotwatchr@skelstar.io'
 
 export default function LegalPage({ kind }: Props) {
@@ -48,9 +48,12 @@ const privacyPage = {
     {
       heading: 'Data We Collect',
       paragraphs: [
-        'Account data: username, display name, password hash, access token metadata, logout revocation records, and timestamps related to account activity.',
+        'Account data: email address or username, display name (including the name your crew sees), password hash, access token metadata, logout revocation records, and timestamps related to account activity.',
         'Session data: session codes, invite codes, membership records (including your role — runner or viewer — in each session), which sessions you own, and display names used inside a session.',
+        'Crew and visibility data: who is in your crew, and your "Who can see me" choices for runs started with Go.',
         'Location data: precise latitude and longitude, heading when available, GPS capture timestamp, session code, and the display name associated with the authenticated session member.',
+        'Device status sent with each location update: battery level (iOS, when available), whether the phone is on a very limited connection such as satellite, and when the app expects to send its next update.',
+        'Routes: GPX route files you choose to add to a session or a run.',
         'Operational data: server logs may include session codes, display names, request outcomes, and precise location details needed to debug tracking problems.',
       ],
     },
@@ -59,6 +62,8 @@ const privacyPage = {
       paragraphs: [
         'We use account and membership data to authenticate users and decide who can read or write locations for a session.',
         'We use location data to show live runner positions, provide participant lists, and support replay/recording features for sessions where the user is a member.',
+        'We use device status to show the people who can see you how much battery your phone has left, and to tell a slow but working connection apart from one that has stopped.',
+        'We use routes to draw the planned course on the map for the people who can see your session or run.',
         'We use operational data to diagnose bugs, investigate abuse, improve reliability, and understand whether the service is working as expected.',
       ],
     },
@@ -66,6 +71,8 @@ const privacyPage = {
       heading: 'Sharing and Visibility',
       paragraphs: [
         "Precise location data is visible to authenticated users who are members of the same session. Anyone with a session's invite code can join it directly and choose to join as a runner (shares location) or a viewer (does not) — there is no owner approval step.",
+        'Runs started with Go: by default your crew can see you by name, and people who are not in your crew cannot see you. If you turn on visibility to people outside your crew, they see you only as an anonymous dot, only while they are out themselves and within 5 km of you, and by default not until you are 300 m from where your run began. You can turn off both settings so that nobody sees you. Anyone you give a watch link to can see your run on the web until the run ends.',
+        'Battery level is visible to the same people who can see your location. A route added to a session can be downloaded by anyone with that session\'s invite code. A route added to a run started with Go is visible to you, your crew, and anyone with a watch link, and is deleted when the run ends.',
         'Invite links are onboarding mechanisms, not long-term credentials. Access after joining is based on stored membership and user authentication.',
         'You can block another user from account settings. Blocking ends any session membership you share with them immediately, prevents them from joining any session you own in the future, and stops your location and theirs from being visible to each other.',
         'We do not sell location data. We may disclose data if required by law or if necessary to protect users, the service, or others.',

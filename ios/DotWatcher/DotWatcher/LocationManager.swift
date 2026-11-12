@@ -175,10 +175,23 @@ final class LocationManager {
     // Hidden override for exercising the satellite UI without a real Direct-to-Cell dead zone
     // (there's no way to fake `NWPath.isUltraConstrained` from code otherwise, and TestFlight/App
     // Store builds both compile as Release, so a `#if DEBUG` toggle wouldn't reach testers).
-    // Flipped by a hidden 10-tap gesture on the build/SHA label (see `ContentView.headerSection`)
-    // rather than visible UI — intentionally ships in Release builds. Deliberately not persisted
+    // Toggled from the Developer section of Settings (`AuthSheet`), which a hidden 10-tap gesture on
+    // the build/SHA label unlocks — intentionally ships in Release builds. Deliberately not persisted
     // (plain in-memory `var`, resets to `false` on relaunch) so it can never get silently stuck on.
-    var debugForceUltraConstrained = false
+    // Runs the same path-change handling as a real switch, so forcing it while tracking fires the
+    // satellite alert and an immediate post just as entering a real dead zone would.
+    var debugForceUltraConstrained = false {
+        didSet {
+            guard debugForceUltraConstrained != oldValue else { return }
+            handlePathChange(wasOffline: isOffline, wasUltraConstrained: oldValue || rawIsUltraConstrained)
+        }
+    }
+    /// Shows the Developer section in Settings on Release/TestFlight builds (Debug builds always
+    /// show it). Unlocked by the hidden 10-tap gesture on the build/SHA label; persisted so it
+    /// survives relaunches, and locked again from the section's "Hide developer options" button.
+    var developerOptionsUnlocked: Bool = UserDefaults.standard.bool(forKey: "developerOptionsUnlocked") {
+        didSet { UserDefaults.standard.set(developerOptionsUnlocked, forKey: "developerOptionsUnlocked") }
+    }
     /// True when the only available path is a carrier's satellite Direct-to-Cell connection
     /// (`NWPath.isUltraConstrained`, iOS 26.1+ only — always `false` below that). Reactive-only,
     /// per Apple's guidance: there's no way to pre-check satellite eligibility, only to detect it

@@ -162,6 +162,9 @@ struct LinzMapView: UIViewRepresentable {
     var camera: LinzMapCamera
     /// Called when the person pans or zooms the map themselves.
     var onUserMovedCamera: () -> Void = {}
+    /// Called with a marker's id when the person taps on or near it. The markers themselves take no
+    /// touches (drags on a pin must still move the map), so the map finds the nearest one to the tap.
+    var onMarkerTap: ((String) -> Void)?
 
     func makeCoordinator() -> Coordinator { Coordinator() }
 
@@ -178,12 +181,23 @@ struct LinzMapView: UIViewRepresentable {
         let coordinator = context.coordinator
         mapView.onLayout = { [weak coordinator] in coordinator?.applyCameraIfNeeded() }
         coordinator.mapView = mapView
+
+        let tap = UITapGestureRecognizer(target: coordinator, action: #selector(Coordinator.handleTap(_:)))
+        tap.delegate = coordinator
+        // A double tap zooms; it must not also count as a tap on a pin.
+        for recognizer in mapView.gestureRecognizers ?? [] {
+            if let doubleTap = recognizer as? UITapGestureRecognizer, doubleTap.numberOfTapsRequired == 2 {
+                tap.require(toFail: doubleTap)
+            }
+        }
+        mapView.addGestureRecognizer(tap)
         return mapView
     }
 
     func updateUIView(_ mapView: LayoutReportingMapView, context: Context) {
         let coordinator = context.coordinator
         coordinator.onUserMovedCamera = onUserMovedCamera
+        coordinator.onMarkerTap = onMarkerTap
         coordinator.update(markers: markers)
         coordinator.update(routes: [route] + extraRoutes, joinRange: joinRange)
         coordinator.requestedCamera = camera
@@ -193,7 +207,10 @@ struct LinzMapView: UIViewRepresentable {
     final class Coordinator: NSObject {
         weak var mapView: MLNMapView?
         var onUserMovedCamera: () -> Void = {}
+        var onMarkerTap: ((String) -> Void)?
         var requestedCamera = LinzMapCamera()
+        /// How far from a marker's centre a tap still counts as on it: about a pin's radius plus a margin.
+        private static let tapRadius: CGFloat = 26
 
         private var appliedRevision = 0
         private var appliedRegion: LinzMapRegion?
@@ -296,6 +313,26 @@ struct LinzMapView: UIViewRepresentable {
                 gone.forEach { entries[$0] = nil }
             }
             if !added.isEmpty { mapView.addAnnotations(added) }
+        }
+
+        /// The marker nearest the tap within `tapRadius`; a marker drawn on top (higher `zIndex`) wins over
+        /// one underneath, so a runner's pin beats a grey dot beside it.
+        @objc func handleTap(_ recognizer: UITapGestureRecognizer) {
+            guard recognizer.state == .ended, let mapView, let onMarkerTap else { return }
+            let tapPoint = recognizer.location(in: mapView)
+            var best: (id: String, zIndex: CGFloat, distance: CGFloat)?
+            for (id, entry) in entries {
+                let point = mapView.convert(entry.annotation.coordinate, toPointTo: mapView)
+                let distance = hypot(point.x - tapPoint.x, point.y - tapPoint.y)
+                guard distance <= Self.tapRadius else { continue }
+                let zIndex = entry.view.layer.zPosition
+                if let current = best,
+                   current.zIndex > zIndex || (current.zIndex == zIndex && current.distance <= distance) {
+                    continue
+                }
+                best = (id, zIndex, distance)
+            }
+            if let best { onMarkerTap(best.id) }
         }
 
         fileprivate func annotationView(for annotation: MLNAnnotation) -> MLNAnnotationView? {
@@ -404,6 +441,16 @@ extension LinzMapView.Coordinator: @preconcurrency MLNMapViewDelegate {
 
     func mapView(_ mapView: MLNMapView, regionWillChangeWith reason: MLNCameraChangeReason, animated: Bool) {
         regionWillChange(reason: reason)
+    }
+}
+
+extension LinzMapView.Coordinator: UIGestureRecognizerDelegate {
+    /// The pin tap runs alongside the map's own single-tap handling rather than replacing it.
+    func gestureRecognizer(
+        _ gestureRecognizer: UIGestureRecognizer,
+        shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer
+    ) -> Bool {
+        true
     }
 }
 
