@@ -1,7 +1,7 @@
 import SwiftUI
 
 // The pieces of the full-screen map that the casual map and the session map share: the wordmark and
-// countdown at the top left, the round buttons down the right, the hold-to-stop pill and the battery
+// countdown at the top left, the round buttons down the right, the stop pill and the battery
 // card. Laid out like the Android app's casual map.
 
 /// "dot-watchr" with the person's initials as the dot, over the map.
@@ -106,37 +106,36 @@ struct MapRailButton: View {
     }
 }
 
-/// The red stop pill: held, like Go. It fills darker left to right and stops tracking when full, so a
-/// bump or a stray tap can't end a run.
-struct HoldToStopPill: View {
-    let onComplete: () -> Void
-    /// Kept here, not on the map screen: a press then redraws only the pill. Held by the screen, it re-ran
-    /// the whole screen and the map's marker update before the fill could start.
-    @State private var progress: CGFloat = 0
+/// The red stop pill. A tap asks "Stop tracking?" and only the confirm ends the run, so a bump or a
+/// stray tap can't. It used to be held like Go, but over the map the touch arrived late (the map draws
+/// on the main thread), so the hold felt broken; a tap and a confirm doesn't depend on touch-down timing.
+struct StopPill: View {
+    let onStop: () -> Void
+    @State private var confirming = false
 
     var body: some View {
-        ZStack {
-            Capsule().fill(stopRed)
-            GeometryReader { geometry in
-                Capsule()
-                    .fill(stopRedFill)
-                    .frame(width: geometry.size.width * progress)
-            }
-            .clipShape(Capsule())
-            Text("Hold to stop")
+        Button { confirming = true } label: {
+            Text("Stop")
                 .font(.system(size: 15, weight: .bold))
                 .foregroundStyle(.white)
+                .frame(width: 150, height: 48)
         }
-        .frame(width: 150, height: 48)
-        .shadow(color: .black.opacity(0.25), radius: 3, y: 2)
-        .contentShape(Capsule())
-        .holdToComplete(progress: $progress, onComplete: onComplete)
-        // The pill sits near the bottom edge, where iOS holds a still finger back for most of a second
-        // while it checks for the swipe home, so the fill started late unless the finger moved. While
-        // the pill is on screen our touches there come first; going home takes a second swipe.
-        .defersSystemGestures(on: .bottom)
-        .accessibilityLabel("Stop")
-        .accessibilityHint("Hold to stop tracking")
+        .buttonStyle(StopPillStyle())
+        .accessibilityHint("Asks before stopping tracking")
+        .confirmationDialog("Stop tracking?", isPresented: $confirming, titleVisibility: .visible) {
+            Button("Stop", role: .destructive, action: onStop)
+            Button("Keep going", role: .cancel) {}
+        }
+    }
+}
+
+/// The red capsule, darker while pressed so the tap shows straight away.
+private struct StopPillStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .background(configuration.isPressed ? stopRedFill : stopRed, in: Capsule())
+            .shadow(color: .black.opacity(0.25), radius: 3, y: 2)
+            .contentShape(Capsule())
     }
 }
 

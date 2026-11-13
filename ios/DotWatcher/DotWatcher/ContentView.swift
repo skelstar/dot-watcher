@@ -255,11 +255,11 @@ struct ContentView: View {
                     subtitle: "Allow location to see who is starting close by"
                 ) { location.requestWhenInUseAuthorizationIfNeeded() }
             }
-            SignButton(title: "Join", subtitle: "Enter an invite code") {
+            SignButton(title: "Join", subtitle: "Enter an invite code", icon: .enter) {
                 showJoinSheet = true
             }
             .disabled(isBusy)
-            SignButton(title: "Create", subtitle: "Set up a new run for others") {
+            SignButton(title: "Create", subtitle: "Set up a new run for others", icon: .plus) {
                 showCreateSession = true
             }
             .disabled(isBusy)

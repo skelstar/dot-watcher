@@ -73,7 +73,7 @@ import nz.skelstar.dotwatcher.network.RunnerPosition
 import nz.skelstar.dotwatcher.network.SessionMembership
 import nz.skelstar.dotwatcher.network.errorMessageOrStatus
 import nz.skelstar.dotwatcher.network.networkMessage
-import nz.skelstar.dotwatcher.ui.casual.HoldToStopPill
+import nz.skelstar.dotwatcher.ui.casual.StopPill
 import nz.skelstar.dotwatcher.ui.nearby.NearbyOrganiserSheet
 import java.time.Duration
 import java.time.Instant
@@ -351,8 +351,8 @@ fun LiveMapScreen(
                     .padding(start = 14.dp, bottom = 26.dp),
             )
             if (trackingState is TrackingState.Tracking) {
-                HoldToStopPill(
-                    onComplete = leaveNow,
+                StopPill(
+                    onStop = leaveNow,
                     modifier = Modifier
                         .align(Alignment.BottomEnd)
                         .navigationBarsPadding()

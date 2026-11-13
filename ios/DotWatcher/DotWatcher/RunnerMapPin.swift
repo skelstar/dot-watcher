@@ -20,6 +20,9 @@ struct RunnerMapPin: View {
     var heading: Double?
     var isStale: Bool = false
     var isDisconnected: Bool = false
+    /// Own dot while sharing: how much of the send interval is left (1 just after a send, 0 at the
+    /// next). Drawn as a white ring round the dot that sweeps away toward the next send, like Android's.
+    var sendCountdown: Double?
 
     /// The circle itself renders smaller than `size` while the label keeps its normal
     /// proportional font size (computed from the full `size`), so shrinking the dot doesn't
@@ -44,6 +47,9 @@ struct RunnerMapPin: View {
         } else {
             ZStack {
                 RunnerCircle(name: name, label: label, size: circleSize, fontSize: size * 0.3, fillColor: dotColor)
+                if let sendCountdown {
+                    SendCountdownRing(remaining: sendCountdown, diameter: circleSize)
+                }
                 if let heading {
                     // The chevron sits near the top of a full-pin-size transparent frame, then
                     // the whole frame rotates around its own center — which is the pin's
@@ -59,6 +65,28 @@ struct RunnerMapPin: View {
                 }
             }
         }
+    }
+}
+
+/// The own dot's border while sharing: a white arc from the top, clockwise, that shrinks to nothing
+/// at each send, over a faint full ring. Same proportions as Android's (a 3dp stroke on a 35dp dot).
+private struct SendCountdownRing: View {
+    let remaining: Double
+    let diameter: CGFloat
+
+    var body: some View {
+        let width = diameter * 3 / 35
+        ZStack {
+            Circle()
+                .stroke(Color.white.opacity(0.3), lineWidth: width)
+            if remaining > 0 {
+                Circle()
+                    .trim(from: 0, to: min(remaining, 1))
+                    .stroke(Color.white, style: StrokeStyle(lineWidth: width, lineCap: .round))
+                    .rotationEffect(.degrees(-90))
+            }
+        }
+        .frame(width: diameter, height: diameter)
     }
 }
 
