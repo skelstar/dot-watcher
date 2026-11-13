@@ -5,7 +5,7 @@ variables:
   - name: username
     value: skelstar@gmail.com
   - name: testAppVersion
-    value: 9.9.9
+    value: bruno-test
   - secret: true
     name: adminToken
   - secret: true

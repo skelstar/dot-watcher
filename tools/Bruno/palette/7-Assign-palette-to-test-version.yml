@@ -32,4 +32,4 @@ settings:
   maxRedirects: 5
   forwardAuthorizationHeader: true
 
-docs: Gives the palette to phones on testAppVersion (9.9.9, a version no real build has).
+docs: Gives the palette to phones on testAppVersion (bruno-test, not a number, so it is never treated as the latest version).

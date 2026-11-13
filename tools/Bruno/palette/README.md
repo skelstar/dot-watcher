@@ -16,8 +16,10 @@ Then **Run** the collection. Steps run in order and each has assertions:
 12. Deleting it while assigned is refused (409).
 13. Unassign it; 14. delete it (204); 15. a bad admin token gets a 401.
 
-`testAppVersion` is `9.9.9`, a version no real build has, so real phones never see the test palette. The requests that
-act as a phone send `X-App-Version: 9.9.9 (1)` (or `1.0.0 (1)` for "another version").
+`testAppVersion` is `bruno-test`, a version no real build has. It must not be a number: phones on an unassigned
+version get the palette of the highest numbered assigned version, so a numbered test version such as `9.9.9` would
+reach every real phone without an exact match during a run. The requests that act as a phone send
+`X-App-Version: bruno-test (1)` (or `1.0.0 (1)` for "another version").
 
 Staging and Production share one database. If a run stops part way, run **13 Unassign palette** and **14 Delete
 palette** so nothing is left assigned.

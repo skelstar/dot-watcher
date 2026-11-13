@@ -47,12 +47,6 @@
   .btn:hover { border-color: var(--ink); }
   .btn.primary { background: var(--ink); color: var(--card); border-color: var(--ink); }
 
-  .presets { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
-  .preset { text-align: left; font: inherit; font-size: 13px; padding: 8px; border: 1px solid var(--line); border-radius: 8px; background: transparent; color: inherit; cursor: pointer; }
-  .preset:hover { border-color: var(--ink); }
-  .preset .chips { display: flex; height: 18px; margin-bottom: 4px; border-radius: 3px; overflow: hidden; border: 1px solid rgba(0,0,0,.15); }
-  .preset .chips i { flex: 1; }
-
   pre { margin: 0; padding: 10px 12px; background: #1d2420; color: #e8e6da; border-radius: 8px; font: 12px/1.5 ui-monospace, Menlo, monospace; overflow: auto; white-space: pre; }
 
   /* phone preview */
@@ -155,11 +149,6 @@
 
   <div class="layout">
     <div>
-      <div class="panel">
-        <h3>Presets</h3>
-        <div class="presets" id="presets"></div>
-      </div>
-
       <div class="panel" id="library" hidden>
         <h3>Library (on the server) <span class="lib-count" id="lib-count"></span></h3>
         <div class="lib-list" id="lib-list"></div>
@@ -262,21 +251,8 @@
   var KEYS = TOKENS.map(function (t) { return t[0]; });
   var ORDER = ['goBg','goFg','goBar','altBg','altFg','accent','accentInk','screen'];
 
-  function P(name, goBg, goFg, goBar, altBg, altFg, accent, accentInk, screen) {
-    return { name: name, v: { goBg: goBg, goFg: goFg, goBar: goBar, altBg: altBg, altFg: altFg, accent: accent, accentInk: accentInk, screen: screen || '#ffffff' } };
-  }
-  var PRESETS = [
-    P('Lava Go (swatches A)',   '#6f1a07','#f7f3e3','#af9164','#f7f3e3','#2b2118','#af9164','#2b2118'),
-    P('Coffee Go (swatches B)', '#2b2118','#af9164','#6f1a07','#f7f3e3','#2b2118','#6f1a07','#f7f3e3'),
-    P('Camel Go (swatches C)',  '#af9164','#2b2118','#6f1a07','#b3b6b7','#2b2118','#2b2118','#f7f3e3'),
-    P('Sign: green + yellow',   '#243a30','#efbf3f','#efbf3f','#f6efd9','#243a30','#efbf3f','#243a30'),
-    P('Forest + coral',         '#243a30','#efbf3f','#efbf3f','#f6efd9','#243a30','#f08a5d','#2a1a12'),
-    P('Navy + orange',          '#1f3350','#f2efe4','#f2efe4','#f6f1e4','#1f3350','#f28c28','#1f2a3d'),
-    P('Forest + teal',          '#243a30','#efbf3f','#efbf3f','#f6efd9','#243a30','#8fd0d6','#173a3a'),
-    P('Charcoal + orange',      '#2a2d2f','#ffb81c','#ffb81c','#f4f1ea','#2a2d2f','#ff6a2b','#2a2d2f'),
-    P('Berry + cream',          '#5a1f3a','#f6d58a','#f6d58a','#f8efe2','#5a1f3a','#e9b949','#3d1226')
-  ];
-  var DEFAULT = PRESETS[0].v;
+  // Starting (and Reset) palette: Lava Go.
+  var DEFAULT = { goBg: '#6f1a07', goFg: '#f7f3e3', goBar: '#af9164', altBg: '#f7f3e3', altFg: '#2b2118', accent: '#af9164', accentInk: '#2b2118', screen: '#ffffff' };
   var state = Object.assign({}, DEFAULT);
   var locked = {};
   var root = document.documentElement;
@@ -422,15 +398,6 @@
       var r = document.createRange(); r.selectNodeContents(document.getElementById('out'));
       var sel = getSelection(); sel.removeAllRanges(); sel.addRange(r);
     });
-  });
-
-  // ---- presets
-  var presetsEl = document.getElementById('presets');
-  PRESETS.forEach(function (p) {
-    var b = document.createElement('button'); b.className = 'preset';
-    b.innerHTML = '<div class="chips">' + ['goBg','goFg','altBg','altFg','accent'].map(function (k) { return '<i style="background:' + p.v[k] + '"></i>'; }).join('') + '</div>' + p.name;
-    b.addEventListener('click', function () { Object.assign(state, p.v); render(); });
-    presetsEl.appendChild(b);
   });
 
   // ---- actions

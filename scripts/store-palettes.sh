@@ -1,6 +1,6 @@
 #!/bin/bash
-# Stores the nine start-screen palettes from the landing-sign mock-ups (.ai/mockups/landing-signs.html; the same
-# nine are the presets in client/public/palette-playground.html) in a server's palette library, so they can be
+# Stores the nine start-screen palettes from the landing-sign mock-ups (.ai/mockups/landing-signs.html) in a
+# server's palette library, so they can be
 # assigned to app versions (the admin Palette tab, or PUT /admin/palettes/assignments/{appVersion}).
 #
 # Safe to run twice: a palette whose name is already in the library is skipped, never duplicated or changed.
