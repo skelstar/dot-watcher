@@ -177,6 +177,11 @@ struct TrackingMapScreen<RailTop: View, RailMiddle: View, BottomLeading: View>: 
                 NearbyDotView(isLocked: dot.isLocked, pinSize: pinSize)
             }
         }
+        // While sharing, the own dot's ring counts down to the next send, in whole seconds like the
+        // 1-second timeline that redraws it. None while paused for battery: no send is coming.
+        let sendCountdown: Double? = location.isTracking && !location.pausedForBattery
+            ? ceil(location.nextPostAt(from: date).timeIntervalSince(date)) / location.interval
+            : nil
         let people = pins.map { pin in
             let age = pin.timestamp.map { date.timeIntervalSince($0) }
             return LinzMapMarker(id: Self.runnerMarkerPrefix + pin.id, coordinate: pin.coordinate, zIndex: 1) {
@@ -187,7 +192,8 @@ struct TrackingMapScreen<RailTop: View, RailMiddle: View, BottomLeading: View>: 
                     isHighlighted: pin.isSelf,
                     heading: pin.heading,
                     isStale: age.map { $0 > MapPinAge.staleAfter } ?? false,
-                    isDisconnected: age.map { $0 > MapPinAge.disconnectedAfter } ?? false
+                    isDisconnected: age.map { $0 > MapPinAge.disconnectedAfter } ?? false,
+                    sendCountdown: pin.isSelf ? sendCountdown : nil
                 )
                 .overlay(alignment: .bottomTrailing) {
                     if pin.isLocked { LockBadge().offset(x: 4, y: 4) }
