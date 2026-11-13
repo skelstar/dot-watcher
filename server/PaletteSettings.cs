@@ -30,7 +30,7 @@ public record UserConfig(
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] Palette? Palette = null
 );
 
-/// <summary>A saved palette and the app versions it is assigned to ("fallback" is every other version).</summary>
+/// <summary>A saved palette and the app versions it is assigned to ("fallback" is used only while no version is).</summary>
 public record PaletteEntry(string Id, Palette Palette, IReadOnlyList<string> AssignedTo);
 
 /// <summary>An app version, or "fallback", and the palette phones on it get.</summary>
@@ -42,9 +42,9 @@ public enum PaletteDeleteResult { Deleted, NotFound, InUse }
 
 /// <summary>
 /// Which palette a phone gets. Palettes are saved in the database and do nothing until an admin assigns one to an
-/// app version (phones send it as <c>X-App-Version</c>, e.g. "1.2.2 (20)"), or to "fallback" for every other version.
-/// A phone gets, in order: the palette for its exact version, the fallback one, the <c>Palette</c> config section,
-/// then none. A missing section or a bad hex value is rejected when saved, and ignored (with a warning logged) in
+/// app version (phones send it as <c>X-App-Version</c>, e.g. "1.2.2 (20)"), or to "fallback".
+/// A phone gets, in order: the palette for its exact version, the palette for the highest assigned version, the
+/// fallback one (so only while no version is assigned), the <c>Palette</c> config section, then none. A missing section or a bad hex value is rejected when saved, and ignored (with a warning logged) in
 /// config, so a typo leaves the apps on their built-in colours. Contrast is not checked: the playground shows the
 /// ratio as advice, and choosing readable colours is up to whoever saves the palette.
 /// </summary>
@@ -102,7 +102,47 @@ public sealed partial class PaletteProvider
         var version = AppVersionName(appVersionHeader);
         if (version is not null && assigned.TryGetValue(version, out var forVersion))
             return forVersion;
+        if (Latest(assigned.Keys) is { } latest)
+            return assigned[latest];
         return assigned.TryGetValue(FallbackKey, out var fallback) ? fallback : _configured;
+    }
+
+    /// <summary>The highest assigned app version, compared number by number ("1.10.0" beats "1.9.2"); null when none is.</summary>
+    private static string? Latest(IEnumerable<string> versions)
+    {
+        string? best = null;
+        int[]? bestParts = null;
+        foreach (var version in versions)
+        {
+            if (VersionParts(version) is not { } parts)
+                continue;
+            if (bestParts is null || Compare(parts, bestParts) > 0 || (Compare(parts, bestParts) == 0 && string.CompareOrdinal(version, best) > 0))
+                (best, bestParts) = (version, parts);
+        }
+        return best;
+    }
+
+    // "1.4.2" as [1, 4, 2]; null for anything that isn't dot-separated numbers (including the fallback key).
+    private static int[]? VersionParts(string version)
+    {
+        var pieces = version.Split('.');
+        var parts = new int[pieces.Length];
+        for (var i = 0; i < pieces.Length; i++)
+            if (!int.TryParse(pieces[i], System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out parts[i]))
+                return null;
+        return parts;
+    }
+
+    // Missing trailing numbers count as 0, so "1.4" and "1.4.0" are equal.
+    private static int Compare(int[] a, int[] b)
+    {
+        for (var i = 0; i < Math.Max(a.Length, b.Length); i++)
+        {
+            var diff = (i < a.Length ? a[i] : 0).CompareTo(i < b.Length ? b[i] : 0);
+            if (diff != 0)
+                return diff;
+        }
+        return 0;
     }
 
     /// <summary>"1.2.2" from "1.2.2 (20)"; null when the header is missing.</summary>

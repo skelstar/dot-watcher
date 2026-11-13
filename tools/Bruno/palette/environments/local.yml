@@ -7,6 +7,6 @@ variables:
   - name: username
     value: ""
   - name: testAppVersion
-    value: 9.9.9
+    value: bruno-test
   - name: password
     value: ""
