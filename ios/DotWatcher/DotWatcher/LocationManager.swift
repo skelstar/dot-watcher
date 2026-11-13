@@ -207,6 +207,8 @@ final class LocationManager {
     /// recent `POST /location`. Only refreshes on that cadence (every `interval` seconds while
     /// tracking) — there's no separate polling of `GET /locations/{sessionId}`.
     private(set) var runnerPositions: [RunnerPositionResponse] = []
+    /// Message pins in the current session, oldest first (`GET /sessions/{id}/pins`).
+    private(set) var sessionPins: [MapMessagePin] = []
 
     var participants: [String] = []
     /// Display name -> userId, for participants learned via a `SessionRunner`-shaped response
@@ -256,6 +258,7 @@ final class LocationManager {
             participants = []
             participantUserIds = [:]
             runnerPositions = []
+            sessionPins = []
             lastParticipantCount = 0
             if isTracking { captureAndPost(trigger: .sessionChange) }
         }
@@ -566,6 +569,37 @@ final class LocationManager {
             participants = Array(Set(runners.map(\.displayName))).sorted()
             for runner in runners { participantUserIds[runner.displayName] = runner.userId }
         }
+        await loadSessionPins()
+    }
+
+    // MARK: - Message pins (server: SessionsController; plan: .ai/plans/session-map-pins.md)
+
+    /// Refreshes the current session's message pins. Skipped on satellite, like the other GET polling;
+    /// a failure (or an older server without pins) keeps what is shown.
+    func loadSessionPins() async {
+        guard !sessionId.isEmpty, !isUltraConstrained else { return }
+        let targetSessionId = sessionId
+        guard let pins: [MapMessagePin] = try? await send(path: "/sessions/\(targetSessionId)/pins"),
+              sessionId == targetSessionId
+        else { return }
+        sessionPins = pins
+    }
+
+    /// Drops a pin in the current session for everyone in it.
+    func dropSessionPin(at coordinate: CLLocationCoordinate2D, message: String) async throws {
+        let targetSessionId = sessionId
+        let pin: MapMessagePin = try await send(
+            path: "/sessions/\(targetSessionId)/pins", method: "POST",
+            body: ["latitude": coordinate.latitude, "longitude": coordinate.longitude, "message": message])
+        guard sessionId == targetSessionId else { return }
+        if !sessionPins.contains(where: { $0.id == pin.id }) { sessionPins.append(pin) }
+    }
+
+    func deleteSessionPin(_ pin: MapMessagePin) async throws {
+        let targetSessionId = sessionId
+        try await sendAuthorizedEmpty(path: "/sessions/\(targetSessionId)/pins/\(pin.id)", method: "DELETE")
+        guard sessionId == targetSessionId else { return }
+        sessionPins.removeAll { $0.id == pin.id }
     }
 
     /// `nearby` lets people near the organiser find and join the session (see `NearbyJoinSettings`); `name`

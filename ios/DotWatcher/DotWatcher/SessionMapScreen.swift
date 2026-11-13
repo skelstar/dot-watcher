@@ -8,6 +8,7 @@ struct SessionMapScreen: View {
     var location: LocationManager
     var crew: CrewStore
 
+    @Environment(\.scenePhase) private var scenePhase
     @State private var map = TrackingMapController()
     @State private var showParticipants = false
     @State private var isUploadingRoute = false
@@ -47,6 +48,7 @@ struct SessionMapScreen: View {
             routes: [location.routeCoordinates],
             joinRange: joinRange,
             route: routeActions,
+            messagePins: messagePinActions,
             onStop: { location.stop() },
             railTop: { inviteShare },
             railMiddle: { nearbyMenu },
@@ -60,8 +62,16 @@ struct SessionMapScreen: View {
             note: nearbyNote,
             onEnd: { await endSession() }
         ))
-        // Who is in the session, so a member who hasn't sent a position yet still gets a dot.
-        .task { await location.loadLatestPositions() }
+        // Who is in the session, so a member who hasn't sent a position yet still gets a dot. Then the
+        // session's message pins, which don't come with this device's own posts, on a slow poll while
+        // the map is on screen.
+        .task {
+            await location.loadLatestPositions()
+            while !Task.isCancelled {
+                try? await Task.sleep(for: Self.pinPollInterval)
+                if scenePhase == .active { await location.loadSessionPins() }
+            }
+        }
         .sheet(isPresented: $showParticipants) {
             ParticipantsSheet(
                 names: sessionNames,
@@ -132,6 +142,19 @@ struct SessionMapScreen: View {
                 try await location.uploadRoute(gpx: data)
             },
             remove: { try await location.removeRoute() }
+        )
+    }
+
+    private static let pinPollInterval: Duration = .seconds(15)
+
+    /// Runners in the session drop pins; everyone in it sees them.
+    private var messagePinActions: MessagePinActions {
+        MessagePinActions(
+            pins: location.sessionPins,
+            canDrop: location.isTracking && location.activeMembership?.role == "runner",
+            audience: "Everyone in this session will see it.",
+            drop: { coordinate, message in try await location.dropSessionPin(at: coordinate, message: message) },
+            delete: { pin in try await location.deleteSessionPin(pin) }
         )
     }
 

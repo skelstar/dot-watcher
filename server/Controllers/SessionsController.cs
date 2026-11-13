@@ -354,6 +354,90 @@ public class SessionsController(
         return gpx is null ? NotFound() : Content(gpx, "application/gpx+xml");
     }
 
+    /// <summary>The session's message pins, by invite code, for the web viewer. No auth required.</summary>
+    [HttpGet("/session-invites/{inviteCode}/pins")]
+    [ProducesResponseType(typeof(IReadOnlyList<MapMessagePin>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public IActionResult GetPinsByInviteCode(string inviteCode)
+    {
+        var sessionId = store.GetSessionIdByInviteCode(inviteCode);
+        return sessionId is null
+            ? NotFound(new { error = "Invite not found." })
+            : Ok(store.GetSessionPins(sessionId, viewerId: null));
+    }
+
+    /// <summary>
+    /// The session's message pins, oldest first, without anyone the caller has blocked or been blocked
+    /// by. Each says whether the caller wrote it and whether they may delete it.
+    /// </summary>
+    [HttpGet("/sessions/{sessionId}/pins")]
+    [ProducesResponseType(typeof(IReadOnlyList<MapMessagePin>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    public IActionResult GetPins(string sessionId)
+    {
+        if (!userAuth.TryAuthenticate(Request, out var user))
+            return Unauthorized();
+
+        if (!store.CanReadSession(sessionId, user.UserId))
+            return StatusCode(StatusCodes.Status403Forbidden);
+
+        return Ok(store.GetSessionPins(sessionId, user.UserId));
+    }
+
+    /// <summary>
+    /// Drops a message pin in the session, labelled with the caller's session name. Runners only. 409
+    /// when the session already has the most pins allowed; 400 for a bad position or message.
+    /// </summary>
+    [HttpPost("/sessions/{sessionId}/pins")]
+    [ProducesResponseType(typeof(MapMessagePin), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    public IActionResult CreatePin(string sessionId, [FromBody] CreateMapPinRequest? request)
+    {
+        if (!userAuth.TryAuthenticate(Request, out var user))
+            return Unauthorized();
+
+        if (!store.CanWriteLocation(sessionId, user.UserId))
+            return StatusCode(StatusCodes.Status403Forbidden);
+
+        var (message, error) = MapPinRules.Validate(request);
+        if (message is null)
+            return BadRequest(new { error });
+
+        var result = store.CreateSessionPin(sessionId, user.UserId, request!.Latitude!.Value, request.Longitude!.Value, message, timeProvider.GetUtcNow());
+        return result.Outcome switch
+        {
+            MapPinCreateOutcome.Created => Ok(result.Pin),
+            MapPinCreateOutcome.Full => Conflict(new { error = $"This session already has {MapPinRules.MaxPins} pins." }),
+            _ => StatusCode(StatusCodes.Status403Forbidden),
+        };
+    }
+
+    /// <summary>Deletes a session pin. Only its author or the session's owner may; 404 when there is no such pin.</summary>
+    [HttpDelete("/sessions/{sessionId}/pins/{pinId}")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public IActionResult DeletePin(string sessionId, string pinId)
+    {
+        if (!userAuth.TryAuthenticate(Request, out var user))
+            return Unauthorized();
+
+        if (!store.CanReadSession(sessionId, user.UserId))
+            return StatusCode(StatusCodes.Status403Forbidden);
+
+        return store.DeleteSessionPin(sessionId, pinId, user.UserId) switch
+        {
+            null => NotFound(),
+            false => StatusCode(StatusCodes.Status403Forbidden),
+            true => NoContent(),
+        };
+    }
+
     /// <summary>Lists runners who have joined the session (not just those actively tracking).</summary>
     [HttpGet("/sessions/{sessionId}/runners")]
     [ProducesResponseType(typeof(IReadOnlyList<SessionRunner>), StatusCodes.Status200OK)]

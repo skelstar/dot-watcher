@@ -165,6 +165,9 @@ struct LinzMapView: UIViewRepresentable {
     /// Called with a marker's id when the person taps on or near it. The markers themselves take no
     /// touches (drags on a pin must still move the map), so the map finds the nearest one to the tap.
     var onMarkerTap: ((String) -> Void)?
+    /// Called with the map coordinate under the finger when the person presses and holds on the map.
+    /// nil leaves press-and-hold to the map.
+    var onLongPress: ((CLLocationCoordinate2D) -> Void)?
 
     func makeCoordinator() -> Coordinator { Coordinator() }
 
@@ -191,6 +194,11 @@ struct LinzMapView: UIViewRepresentable {
             }
         }
         mapView.addGestureRecognizer(tap)
+
+        let press = UILongPressGestureRecognizer(target: coordinator, action: #selector(Coordinator.handleLongPress(_:)))
+        press.minimumPressDuration = 0.5
+        press.delegate = coordinator
+        mapView.addGestureRecognizer(press)
         return mapView
     }
 
@@ -198,6 +206,7 @@ struct LinzMapView: UIViewRepresentable {
         let coordinator = context.coordinator
         coordinator.onUserMovedCamera = onUserMovedCamera
         coordinator.onMarkerTap = onMarkerTap
+        coordinator.onLongPress = onLongPress
         coordinator.update(markers: markers)
         coordinator.update(routes: [route] + extraRoutes, joinRange: joinRange)
         coordinator.requestedCamera = camera
@@ -208,6 +217,7 @@ struct LinzMapView: UIViewRepresentable {
         weak var mapView: MLNMapView?
         var onUserMovedCamera: () -> Void = {}
         var onMarkerTap: ((String) -> Void)?
+        var onLongPress: ((CLLocationCoordinate2D) -> Void)?
         var requestedCamera = LinzMapCamera()
         /// How far from a marker's centre a tap still counts as on it: about a pin's radius plus a margin.
         private static let tapRadius: CGFloat = 26
@@ -333,6 +343,14 @@ struct LinzMapView: UIViewRepresentable {
                 best = (id, zIndex, distance)
             }
             if let best { onMarkerTap(best.id) }
+        }
+
+        /// Fires once, as the hold is recognised, with the coordinate under the finger.
+        @objc func handleLongPress(_ recognizer: UILongPressGestureRecognizer) {
+            guard recognizer.state == .began, let mapView, let onLongPress else { return }
+            let point = recognizer.location(in: mapView)
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            onLongPress(mapView.convert(point, toCoordinateFrom: mapView))
         }
 
         fileprivate func annotationView(for annotation: MLNAnnotation) -> MLNAnnotationView? {

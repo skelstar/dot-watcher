@@ -267,6 +267,34 @@ public partial class SessionStore(string connectionString) : IDisposable
             );
             """;
         addCasual.ExecuteNonQuery();
+
+        using var addPins = conn.CreateCommand();
+        addPins.CommandText = """
+            -- Message pins dropped on the map (see .ai/plans/session-map-pins.md). A named session's pins
+            -- stay until deleted or the session goes; a casual run's go when the run stops.
+            CREATE TABLE IF NOT EXISTS session_pins (
+                id           TEXT PRIMARY KEY,
+                session_id   TEXT NOT NULL REFERENCES app_sessions(id) ON DELETE CASCADE,
+                user_id      TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                display_name TEXT NOT NULL,
+                lat          DOUBLE PRECISION NOT NULL,
+                lon          DOUBLE PRECISION NOT NULL,
+                message      TEXT NOT NULL,
+                created_at   TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_session_pins_session ON session_pins(session_id);
+
+            CREATE TABLE IF NOT EXISTS casual_run_pins (
+                id         TEXT PRIMARY KEY,
+                run_id     TEXT NOT NULL REFERENCES casual_runs(id) ON DELETE CASCADE,
+                lat        DOUBLE PRECISION NOT NULL,
+                lon        DOUBLE PRECISION NOT NULL,
+                message    TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_casual_run_pins_run ON casual_run_pins(run_id);
+            """;
+        addPins.ExecuteNonQuery();
     }
 
     // Idempotent - safe to call on every startup. Resolves (creating if missing) the permanent
