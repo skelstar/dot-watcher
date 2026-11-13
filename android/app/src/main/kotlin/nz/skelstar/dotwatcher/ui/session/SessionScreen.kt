@@ -75,6 +75,7 @@ import nz.skelstar.dotwatcher.ui.theme.AppliedSignColors
 import nz.skelstar.dotwatcher.ui.theme.PALETTE_FADE_MILLIS
 import nz.skelstar.dotwatcher.ui.theme.animatedScreenColor
 import nz.skelstar.dotwatcher.ui.landing.SignButton
+import nz.skelstar.dotwatcher.ui.landing.SignIcon
 import nz.skelstar.dotwatcher.nearby.ActiveSessionConflict
 import nz.skelstar.dotwatcher.nearby.NEARBY_MAX_TITLE_LENGTH
 import nz.skelstar.dotwatcher.nearby.NearbyDraft
@@ -272,12 +273,14 @@ fun SessionScreen(
             SignButton(
                 title = "Join",
                 subtitle = "Enter an invite code",
+                icon = SignIcon.Enter,
                 enabled = state !is SessionUiState.Loading,
                 onClick = { showJoinDialog = true },
             )
             SignButton(
                 title = "Create",
                 subtitle = "Set up a new run for others",
+                icon = SignIcon.Plus,
                 enabled = state !is SessionUiState.Loading,
                 onClick = { showCreateDialog = true },
             )
