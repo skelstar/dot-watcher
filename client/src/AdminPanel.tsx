@@ -906,10 +906,11 @@ export default function AdminPanel({ serverUrl }: { serverUrl: string }) {
           <p style={featuresNote}>
             Try start-screen colours, then save them to the library below, or copy them as a config section or an API body.
           </p>
-          {/* Same-origin static page (client/public), so the frame can follow its content's height. */}
+          {/* Same-origin static page (client/public), so the frame can follow its content's height.
+              The version in the query makes each release load a fresh copy instead of a cached one. */}
           <iframe
             ref={playgroundRef}
-            src="/palette-playground.html"
+            src={`/palette-playground.html?v=${encodeURIComponent(APP_VERSION)}`}
             title="Palette playground"
             style={playgroundFrame}
             scrolling="no"
