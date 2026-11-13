@@ -1,0 +1,337 @@
+<title>Start Screen Tiles</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=EB+Garamond:wght@800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* Layout: phones side by side (stacking when narrow): today's start screen, then two tile grids built from the
+   same park-sign colours, type and line icons. Switches above change what the live tiles show. */
+:root {
+  --page: #eceae4;
+  --fg: #1f2a3d;
+  --muted: #5f6672;
+  --line: #d3d0c7;
+  --phone: #ffffff;
+  --phone-fg: #111827;
+  --phone-muted: #6b7280;
+  --phone-edge: #1b1d22;
+  --navy: #1f3350;
+  --sand: #f2efe4;
+  --cream: #f6f1e4;
+  --orange: #f28c28;
+  --ink: #1f2a3d;
+  --tile-small: #e4dfcf;   /* the small tiles: a deeper sand so they sit behind the main three */
+  --chip: #1f3350;
+  --chip-fg: #f2efe4;
+  --font-sign: "EB Garamond", Georgia, "Times New Roman", serif;
+  --font-ui: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --gap: 8px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --page: #16181c; --fg: #ece9e1; --muted: #a2a6ae; --line: #2f333a;
+    --phone: #000000; --phone-fg: #f2f2f7; --phone-muted: #9ca3af; --phone-edge: #3a3d44;
+    --chip: #f2efe4; --chip-fg: #1f3350;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --page: #16181c; --fg: #ece9e1; --muted: #a2a6ae; --line: #2f333a;
+  --phone: #000000; --phone-fg: #f2f2f7; --phone-muted: #9ca3af; --phone-edge: #3a3d44;
+  --chip: #f2efe4; --chip-fg: #1f3350;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--page); color: var(--fg); font: 15px/1.5 var(--font-ui);
+  padding-block: 28px 48px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+.wrap { max-width: 1160px; margin: 0 auto; display: grid; gap: 28px; }
+header { display: grid; gap: 6px; max-width: 68ch; }
+h1 { font-family: var(--font-sign); font-weight: 800; font-size: 36px; line-height: 1.1; margin: 0; text-wrap: balance; }
+header p { margin: 0; color: var(--muted); }
+.controls { display: flex; flex-wrap: wrap; gap: 10px 22px; align-items: center; }
+.controls label { display: inline-flex; gap: 8px; align-items: center; color: var(--muted); cursor: pointer; }
+.controls select { font: inherit; color: var(--fg); background: transparent; border: 1px solid var(--line); border-radius: 6px; padding: 2px 6px; }
+:focus-visible { outline: 3px solid var(--orange); outline-offset: 2px; }
+
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 28px; }
+.option { display: grid; gap: 12px; align-content: start; min-width: 0; }
+.option h2 { margin: 0; font: 600 16px var(--font-ui); display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+.option h2 small { font-weight: 400; color: var(--muted); font-size: 13px; }
+.option p { margin: 0; color: var(--muted); font-size: 14px; }
+
+.phone {
+  width: 100%; max-width: 340px; height: 680px; border: 10px solid var(--phone-edge); border-radius: 44px;
+  background: var(--phone); color: var(--phone-fg); padding: 50px 16px 26px; position: relative; overflow: hidden;
+  display: flex; flex-direction: column; gap: 14px;
+}
+.phone::before {
+  content: ""; position: absolute; top: 12px; left: 50%; width: 96px; height: 26px;
+  transform: translateX(-50%); border-radius: 20px; background: var(--phone-edge);
+}
+.spacer { flex: 1; }
+
+/* Shared line icons. */
+.icon { display: block; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 6.5; flex: none; }
+
+/* ---------- Today's screen ---------- */
+.wordmark { font: 700 30px/1 var(--font-ui); letter-spacing: -.5px; display: flex; align-items: center; }
+.wordmark .o {
+  width: 30px; height: 30px; border-radius: 50%; background: var(--navy); color: var(--sand);
+  font-size: 11px; display: inline-grid; place-items: center; margin: 0 1px; letter-spacing: 0;
+}
+.head { display: flex; align-items: center; justify-content: space-between; }
+.head .btns { display: flex; gap: 14px; }
+.head svg { width: 28px; height: 28px; stroke: currentColor; fill: none; stroke-width: 1.8; }
+.crewrow { display: flex; gap: 6px; align-items: center; }
+.crewrow .lbl { font: 600 13px var(--font-ui); color: var(--phone-muted); margin-right: 4px; }
+.dotp {
+  width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center;
+  font: 700 11px var(--font-ui); color: #fff;
+}
+.crewline { font-size: 13px; color: var(--phone-muted); margin: 0; }
+
+.sign { font-family: var(--font-sign); font-weight: 800; display: flex; align-items: center; gap: 12px; }
+.sign .text { flex: 1; min-width: 0; display: grid; gap: 1px; }
+.sign .title { line-height: 1.05; }
+.sign .sub { font-size: 15px; line-height: 1.2; }
+.go { background: var(--navy); color: var(--sand); }
+.go .bar { height: 18px; background: var(--sand); }
+.go .body { padding: 18px 20px; min-height: 140px; display: flex; align-items: flex-end; gap: 12px; }
+.go .title { font-size: 44px; }
+.go .chev { width: 31px; height: 43px; margin-bottom: 9px; }
+.alt { background: var(--cream); color: var(--navy); border: 2px solid var(--navy); padding: 12px 16px; }
+.alt .title { font-size: 26px; }
+.alt .icon { width: 34px; height: 34px; }
+
+/* ---------- Tiles ---------- */
+.tiles { container-type: inline-size; display: grid; gap: var(--gap); }
+.tiles { --cell: calc((100cqw - 3 * var(--gap)) / 4); }
+.row-small { display: flex; gap: var(--gap); height: var(--cell); }
+.row-small > * { flex: 1; min-width: 0; }
+.row-pair { display: grid; grid-template-columns: 1fr 1fr; gap: var(--gap); }
+.row-pair.tall { height: calc(var(--cell) * 2 + var(--gap)); }
+.row-crew {
+  display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: var(--cell) var(--cell); gap: var(--gap);
+}
+.row-crew .crew-tile { grid-row: 1 / span 2; }
+
+.tile {
+  all: unset; box-sizing: border-box; cursor: pointer; position: relative; overflow: hidden;
+  font-family: var(--font-sign); font-weight: 800; padding: 9px 10px; display: flex; flex-direction: column;
+  justify-content: space-between; min-width: 0;
+}
+.tile .label { font-size: 15px; line-height: 1.1; }
+.tile .label small { display: block; font-size: 12px; opacity: .8; margin-top: 1px; }
+
+.small { background: var(--tile-small); color: var(--navy); }
+.small .icon { width: 26px; height: 26px; }
+.small .big { font-size: 30px; line-height: .9; }
+.badge {
+  position: absolute; top: 8px; right: 8px; min-width: 22px; height: 22px; padding: 0 6px; border-radius: 11px;
+  background: var(--orange); color: var(--ink); font: 700 12px/22px var(--font-ui); text-align: center;
+}
+.qmark { font-size: 34px; line-height: .8; }
+.acct { width: 30px; height: 30px; border-radius: 50%; background: var(--navy); color: var(--sand); display: grid; place-items: center; font: 700 11px var(--font-ui); }
+
+.medium { background: var(--cream); color: var(--navy); border: 2px solid var(--navy); padding: 12px; }
+.medium .top { display: flex; justify-content: flex-end; }
+.medium .icon { width: 30px; height: 30px; }
+.medium .title { font-size: 28px; line-height: 1; }
+.medium .sub { font-size: 13px; line-height: 1.15; margin-top: 3px; }
+.medium.short { flex-direction: row; align-items: center; gap: 8px; padding: 8px 12px; }
+.medium.short .title { font-size: 22px; }
+.medium.short .icon { width: 24px; height: 24px; }
+.medium.short .txt { flex: 1; min-width: 0; }
+
+.crew-tile { background: var(--navy); color: var(--sand); padding: 12px; }
+.faces { display: flex; }
+.faces .dotp { border: 2px solid var(--navy); margin-left: -8px; width: 34px; height: 34px; }
+.faces .dotp:first-child { margin-left: 0; }
+.crew-tile .title { font-size: 26px; line-height: 1; }
+.crew-tile .sub { font-size: 13px; margin-top: 3px; opacity: .85; }
+
+.event { background: var(--orange); color: var(--ink); flex-direction: row; align-items: center; gap: 10px; padding: 8px 12px; height: var(--cell); }
+.event .eyebrow { font-size: 10px; letter-spacing: 1px; text-transform: uppercase; }
+.event .title { font-size: 20px; line-height: 1.05; }
+.event .txt { flex: 1; min-width: 0; }
+.event .chev { width: 17px; height: 24px; }
+
+.gotile { background: var(--navy); color: var(--sand); padding: 0; height: calc(var(--cell) * 2 + var(--gap)); }
+.gotile .bar { height: 14px; background: var(--sand); flex: none; }
+.gotile .body { flex: 1; display: flex; align-items: flex-end; gap: 12px; padding: 14px 16px; }
+.gotile .txt { flex: 1; min-width: 0; }
+.gotile .title { font-size: 46px; line-height: 1; }
+.gotile .sub { font-size: 15px; margin-top: 2px; }
+.gotile .live { font: 600 12px var(--font-ui); opacity: .8; margin-bottom: auto; }
+.gotile .chev { width: 28px; height: 39px; margin-bottom: 6px; }
+
+/* The Go chevrons' double nudge. */
+.nudge { animation: nudge 3.5s ease-in-out infinite; }
+@keyframes nudge {
+  0%, 30%, 100% { transform: translateX(0); }
+  6%, 18% { transform: translateX(7px); }
+  12%, 24% { transform: translateX(0); }
+}
+@media (prefers-reduced-motion: reduce) { .nudge { animation: none; } }
+
+.toast {
+  position: absolute; left: 16px; right: 16px; bottom: 26px; background: var(--ink); color: var(--sand);
+  font: 500 13px var(--font-ui); padding: 10px 12px; border-radius: 10px; text-align: center;
+  opacity: 0; transform: translateY(8px); transition: opacity .2s, transform .2s; pointer-events: none;
+}
+.toast.show { opacity: 1; transform: none; }
+
+.note { border-top: 1px solid var(--line); padding-top: 18px; display: grid; gap: 8px; max-width: 74ch; color: var(--muted); font-size: 14px; }
+.note strong { color: var(--fg); font-weight: 600; }
+.note ul { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>Start screen as tiles</h1>
+    <p>Today’s start screen next to two tile layouts. Each keeps the park-sign colours, type and line icons and keeps Go biggest and lowest, where a thumb reaches. The small tiles take over the header icons and the crew row. Use the switches to see the tiles change.</p>
+  </header>
+
+  <div class="controls">
+    <label><input type="checkbox" id="updated" checked> Just updated (What’s new shows)</label>
+    <label><input type="checkbox" id="event"> Event nearby</label>
+    <label>Crew out <select id="out"><option value="0">0</option><option value="2" selected>2</option><option value="5">5</option></select></label>
+  </div>
+
+  <div class="grid" id="grid"></div>
+
+  <div class="note">
+    <p><strong>What moves where</strong></p>
+    <ul>
+      <li>Header icons: Account (today’s person icon, which opens Settings) and Help become small tiles.</li>
+      <li>The crew row and “2 of your crew are out” line become the Crew tile, which shows who is out.</li>
+      <li>What’s new is a small tile with a count that appears only after an update. Tapping it here hides it, as opening the list would.</li>
+      <li>Events nearby become one wide orange tile above Go, so they stay prominent but never push Go off the bottom.</li>
+      <li>The wordmark moves to the top of the empty space; the grid sits at the bottom.</li>
+    </ul>
+  </div>
+</div>
+
+<script>
+const CHEV = '<svg class="icon chev" viewBox="0 0 40 56"><path d="M3.25 3.25 L18.25 28 L3.25 52.75"/><path d="M21.25 3.25 L36.25 28 L21.25 52.75"/></svg>';
+const ENTER = '<svg class="icon" viewBox="0 0 56 56"><path d="M31 3.25 H52.75 V52.75 H31"/><path d="M3.25 28 H39"/><path d="M27.5 16.5 L39 28 L27.5 39.5"/></svg>';
+const PLUS = '<svg class="icon" viewBox="0 0 56 56"><path d="M28 3.25 V52.75"/><path d="M3.25 28 H52.75"/></svg>';
+const SPARKLE = '<svg class="icon" viewBox="0 0 56 56"><path d="M28 3.25 C30 20 36 26 52.75 28 C36 30 30 36 28 52.75 C26 36 20 30 3.25 28 C20 26 26 20 28 3.25 Z"/></svg>';
+const PEOPLE = '<svg class="icon" viewBox="0 0 56 56"><circle cx="20" cy="17" r="9"/><path d="M4 50 C4 36 11 30 20 30 C29 30 36 36 36 50"/><path d="M36 9 A9 9 0 1 1 36 25"/><path d="M42 31 C48 33 52 40 52 50"/></svg>';
+
+const CREW = [
+  { i: "MK", c: "#2e7d6b" }, { i: "JT", c: "#b5482f" }, { i: "PR", c: "#6a4c93" }, { i: "AL", c: "#3a6ea5" }, { i: "BW", c: "#8a6d1f" },
+];
+const state = { updated: true, event: false, out: 2, seen: false };
+
+const faces = n => `<div class="faces">${CREW.slice(0, n).map(p => `<span class="dotp" style="background:${p.c}">${p.i}</span>`).join("")}</div>`;
+const crewOutText = n => n === 0 ? "Nobody out right now" : `${n} of ${CREW.length} out`;
+
+// ---------- Today ----------
+function current() {
+  const n = state.out;
+  return `
+    <div class="head">
+      <div class="wordmark">d<span class="o">SK</span>t-watchr</div>
+      <div class="btns">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="10" r="3.2"/><path d="M6 18.5c1.4-2.3 3.5-3.5 6-3.5s4.6 1.2 6 3.5"/></svg>
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M9.3 9.2a2.8 2.8 0 1 1 3.6 2.7c-.6.2-.9.7-.9 1.3v.6"/><path d="M12 17h.01"/></svg>
+      </div>
+    </div>
+    <div class="crewrow"><span class="lbl">Crew</span>${CREW.map(p => `<span class="dotp" style="background:${p.c}">${p.i}</span>`).join("")}</div>
+    ${n ? `<p class="crewline">${n} of your crew ${n === 1 ? "is" : "are"} out</p>` : ""}
+    <div class="spacer"></div>
+    ${state.event ? `<div class="sign" style="background:var(--orange);color:var(--ink);padding:10px 16px;border-top:12px solid var(--ink)"><div class="text"><span style="font-size:11px;letter-spacing:1px">HAPPENING NEAR YOU · 2.3 KM</span><span class="title" style="font-size:24px">Sunday long run</span><span class="sub">Starts 7:00 at the domain gates</span></div>${CHEV.replace('class="icon chev"', 'class="icon" style="width:20px;height:28px"')}</div>` : ""}
+    <div class="go"><div class="bar"></div><div class="body sign"><div class="text"><span class="title">Go</span><span class="sub">Hold to start</span></div>${CHEV.replace("chev", "chev nudge")}</div></div>
+    <div class="alt sign"><div class="text"><span class="title">Join</span><span class="sub">Enter an invite code</span></div>${ENTER}</div>
+    <div class="alt sign"><div class="text"><span class="title">Create</span><span class="sub">Set up a new run for others</span></div>${PLUS}</div>`;
+}
+
+// ---------- Tile pieces ----------
+const showNews = () => state.updated && !state.seen;
+const newsTile = () => showNews()
+  ? `<button type="button" class="tile small" data-news aria-label="What’s new: 6 changes"><span class="badge">6</span>${SPARKLE}<span class="label">What’s new</span></button>` : "";
+const crewSmall = () => {
+  const n = state.out;
+  return `<button type="button" class="tile small" aria-label="Crew: ${crewOutText(n)}">${n ? `<span class="big">${n}</span>` : PEOPLE}<span class="label">Crew${n ? "<small>out now</small>" : ""}</span></button>`;
+};
+const helpTile = `<button type="button" class="tile small" aria-label="Help"><span class="qmark">?</span><span class="label">Help</span></button>`;
+const acctTile = `<button type="button" class="tile small" aria-label="Account and settings"><span class="acct">SK</span><span class="label">Account</span></button>`;
+const eventTile = () => state.event
+  ? `<button type="button" class="tile event"><div class="txt"><div class="eyebrow">Happening near you · 2.3 km</div><div class="title">Sunday long run</div></div>${CHEV}</button>` : "";
+const goTile = live => `<button type="button" class="tile gotile"><div class="bar"></div><div class="body"><div class="txt">${live}<div class="title">Go</div><div class="sub">Hold to start</div></div>${CHEV.replace("chev", "chev nudge")}</div></button>`;
+const wordmark = `<div class="spacer"></div><div class="wordmark" style="font-size:26px;margin-bottom:6px">d<span class="o">SK</span>t-watchr</div>`;
+
+function tilesA() {
+  return `${wordmark}
+    <div class="tiles">
+      <div class="row-small">${newsTile()}${crewSmall()}${helpTile}${acctTile}</div>
+      ${eventTile()}
+      <div class="row-pair tall">
+        <button type="button" class="tile medium"><div class="top">${ENTER}</div><div><div class="title">Join</div><div class="sub">Enter an invite code</div></div></button>
+        <button type="button" class="tile medium"><div class="top">${PLUS}</div><div><div class="title">Create</div><div class="sub">Set up a new run for others</div></div></button>
+      </div>
+      ${goTile("")}
+    </div>`;
+}
+
+function tilesB() {
+  const n = state.out;
+  return `${wordmark}
+    <div class="tiles">
+      <div class="row-crew">
+        <button type="button" class="tile crew-tile">${n ? faces(n) : PEOPLE.replace('class="icon"', 'class="icon" style="width:34px;height:34px"')}<div><div class="title">Crew</div><div class="sub">${crewOutText(n)}</div></div></button>
+        <button type="button" class="tile medium short"><div class="txt"><div class="title">Join</div><div class="sub">Invite code</div></div>${ENTER}</button>
+        <button type="button" class="tile medium short"><div class="txt"><div class="title">Create</div><div class="sub">New run</div></div>${PLUS}</button>
+      </div>
+      <div class="row-small">${newsTile()}${helpTile}${acctTile}</div>
+      ${eventTile()}
+      ${goTile(n ? `<div class="live">${n} of your crew out</div>` : "")}
+    </div>`;
+}
+
+const options = [
+  { name: "Today", timing: "for comparison", desc: "Header icons, the crew row and the three signs pinned to the bottom.", render: current },
+  { name: "Tiles A. Small row on top", timing: "4 small · 2 medium · Go",
+    desc: "One row of small tiles above medium Join and Create and a large Go. The Crew tile shows how many are out.", render: tilesA },
+  { name: "Tiles B. Crew up front", timing: "medium Crew · 2 short · small row · Go",
+    desc: "Crew becomes a medium tile with the faces of whoever is out; Join and Create shrink to short tiles beside it. Go also says who is out.", render: tilesB },
+];
+
+const grid = document.getElementById("grid");
+function render() {
+  grid.innerHTML = "";
+  for (const o of options) {
+    const col = document.createElement("section");
+    col.className = "option";
+    col.innerHTML = `<h2>${o.name}<small>${o.timing}</small></h2><p>${o.desc}</p><div class="phone">${o.render()}<div class="toast" role="status"></div></div>`;
+    grid.appendChild(col);
+  }
+}
+grid.addEventListener("click", e => {
+  const tile = e.target.closest(".tile");
+  if (!tile) return;
+  const toast = tile.closest(".phone").querySelector(".toast");
+  if (tile.hasAttribute("data-news")) {
+    state.seen = true;
+    render();
+    const t = grid.querySelectorAll(".toast");
+    t.forEach(x => { x.textContent = "Opened What’s new. The tile is hidden until the next update."; x.classList.add("show"); });
+    setTimeout(() => t.forEach(x => x.classList.remove("show")), 2200);
+    return;
+  }
+  const name = (tile.getAttribute("aria-label") || tile.querySelector(".title, .label")?.textContent || "").split(":")[0];
+  toast.textContent = `Would open ${name.trim()}`;
+  toast.classList.add("show");
+  clearTimeout(toast._t);
+  toast._t = setTimeout(() => toast.classList.remove("show"), 1400);
+});
+
+document.getElementById("updated").addEventListener("change", e => { state.updated = e.target.checked; state.seen = false; render(); });
+document.getElementById("event").addEventListener("change", e => { state.event = e.target.checked; render(); });
+document.getElementById("out").addEventListener("change", e => { state.out = Number(e.target.value); render(); });
+render();
+</script>
