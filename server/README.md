@@ -482,7 +482,9 @@ neither changes what is served. `version` is the schema version and stays `1`.
 
 **Who gets which palette.** Phones send `X-App-Version` (for example `1.2.2 (20)`). The part before the space is
 matched exactly against the assignment key. A phone gets, in order: the palette assigned to its version, the palette
-assigned to `fallback`, the `Palette` config section, then none (the built-in colours). Assignments and palettes are
+assigned to the highest version (compared number by number, so `1.10.0` beats `1.9.2`; a phone with no header gets
+it too), the palette assigned to `fallback` (so only while no version is assigned), the `Palette` config section,
+then none (the built-in colours). Assignments and palettes are
 cached for about five seconds. Apps pick the change up on their next launch or return to the front.
 
 Editing a palette that is assigned changes what those phones get straight away. To stage a change, save it as a new
