@@ -1,4 +1,4 @@
-type LegalPageKind = 'privacy' | 'terms'
+export type LegalPageKind = 'privacy' | 'terms' | 'support'
 
 interface Props {
   kind: LegalPageKind
@@ -8,7 +8,7 @@ const lastUpdated = '12 Nov 2026'
 const contactEmail = 'dotwatchr@skelstar.io'
 
 export default function LegalPage({ kind }: Props) {
-  const page = kind === 'privacy' ? privacyPage : termsPage
+  const page = { privacy: privacyPage, terms: termsPage, support: supportPage }[kind]
 
   return (
     <main style={pageShell}>
@@ -17,10 +17,11 @@ export default function LegalPage({ kind }: Props) {
         <span style={navLinks}>
           <a href="/privacy" style={navLink}>Privacy</a>
           <a href="/terms" style={navLink}>Terms</a>
+          <a href="/support" style={navLink}>Support</a>
         </span>
       </nav>
       <article style={content}>
-        <p style={eyebrow}>Last updated {lastUpdated}</p>
+        {kind !== 'support' && <p style={eyebrow}>Last updated {lastUpdated}</p>}
         <h1 style={title}>{page.title}</h1>
         {page.sections.map(section => (
           <section key={section.heading} style={sectionBlock}>
@@ -99,6 +100,43 @@ const privacyPage = {
       heading: 'Contact',
       paragraphs: [
         `Questions or privacy requests can be sent to ${contactEmail}.`,
+      ],
+    },
+  ],
+}
+
+// The App Store Support URL points here, so the contact email comes first.
+const supportPage = {
+  title: 'Support',
+  sections: [
+    {
+      heading: 'Contact',
+      paragraphs: [
+        `Email ${contactEmail} with questions, problems, or feedback about Dot Watcher. Include your display name and, if it is about a session or run, roughly when it happened, so we can find it.`,
+      ],
+    },
+    {
+      heading: 'Why does Dot Watcher need background location?',
+      paragraphs: [
+        'Your phone is usually locked in a pocket while you run, so the app needs location access in the background to keep your dot moving for the people watching. It only tracks you after you start a run with Go or join a session as a runner, and it stops when you stop.',
+      ],
+    },
+    {
+      heading: 'Who can see me?',
+      paragraphs: [
+        'On a run started with Go, your crew sees you by name and nobody else sees you unless you allow it. Tap "Who can see me" before or during a run to change this, including turning off both settings so that nobody sees you. In a session, the other members of that session can see you while you are a runner in it. The Privacy Policy has the full details.',
+      ],
+    },
+    {
+      heading: 'How do I block someone?',
+      paragraphs: [
+        'On the session map, open the list of people, then touch and hold their name and choose Block. Blocked people cannot see your location, join sessions you own, or appear in sessions you are both in. On iPhone, you can unblock people in Settings > Blocked Users.',
+      ],
+    },
+    {
+      heading: 'How do I delete my account?',
+      paragraphs: [
+        'On iPhone, go to Settings > Delete account. On any device, you can also delete it at dot-watcher.skelstar.io/delete-account. Deleting your account removes your account, your memberships, the sessions you own, and the location data linked to your account.',
       ],
     },
   ],
