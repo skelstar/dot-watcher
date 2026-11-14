@@ -85,11 +85,27 @@ export interface SessionTimelineState {
   setSpeed: (speed: number) => void
 }
 
-export function useSessionTimeline(
-  serverUrl: string,
-  inviteCode: string | null,
-): SessionTimelineState {
-  const active = Boolean(inviteCode)
+/**
+ * Where a timeline's positions come from. A session's map uses its invite code
+ * (inviteTimelineSource); the admin page replays a Go run through the admin endpoints instead.
+ */
+export interface TimelineSource {
+  /** `${recordingBase}/recording` (NDJSON, windowed by since/until) and `/recording/meta` must exist. */
+  recordingBase: string
+  /** Polled for the latest positions while following live. Null for a replay-only source, which is
+   *  then never treated as live: it rests at the start and the scrubber ends at the last position. */
+  liveUrl: string | null
+  headers: Record<string, string>
+}
+
+export function inviteTimelineSource(serverUrl: string, inviteCode: string | null): TimelineSource | null {
+  if (!inviteCode) return null
+  const recordingBase = `${serverUrl}/session-invites/${inviteCode}`
+  return { recordingBase, liveUrl: `${recordingBase}/locations`, headers: apiHeaders() }
+}
+
+export function useSessionTimeline(source: TimelineSource | null): SessionTimelineState {
+  const active = Boolean(source)
   const pageVisible = usePageVisible()
 
   const [byRunner, setByRunner] = useState<Map<string, RunnerPosition[]>>(new Map())
@@ -140,8 +156,9 @@ export function useSessionTimeline(
     }
   }
 
-  const recordingBase = inviteCode ? `${serverUrl}/session-invites/${inviteCode}` : null
-  const headers = apiHeaders()
+  const recordingBase = source?.recordingBase ?? null
+  const liveUrl = source?.liveUrl ?? null
+  const headers = source?.headers ?? {}
 
   // Reset all cached state when switching sessions/invites.
   useEffect(() => {
@@ -199,14 +216,14 @@ export function useSessionTimeline(
   // aligned to :00/:15/:30/:45 instead of drifting to whatever arbitrary phase this effect
   // happened to first run at.
   useEffect(() => {
-    if (!active || scrubTimeMs !== null || !pageVisible) return
+    if (!active || !liveUrl || scrubTimeMs !== null || !pageVisible) return
     let cancelled = false
     let stopped = false
     let timerId: ReturnType<typeof setTimeout> | undefined
 
     async function fetchAndUpdate() {
       try {
-        const res = await fetch(`${serverUrl}/session-invites/${inviteCode}/locations`, { headers })
+        const res = await fetch(liveUrl!, { headers })
         if (cancelled) return
         if (!res.ok) {
           setError(livePollingError(res.status))
@@ -240,7 +257,7 @@ export function useSessionTimeline(
       cancelled = true
       clearTimeout(timerId)
     }
-  }, [active, scrubTimeMs, pageVisible, serverUrl, inviteCode]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [active, liveUrl, scrubTimeMs, pageVisible]) // eslint-disable-line react-hooks/exhaustive-deps
 
   function fetchWindow(sinceMs: number, untilMs: number) {
     if (!recordingBase) return
@@ -416,7 +433,10 @@ export function useSessionTimeline(
 
   const polledLatestMs = useMemo(() => latestActivityMs(byRunner), [byRunner])
   const lastActivityMs = useMemo(() => maxOrNull(polledLatestMs, metaLatestMs), [polledLatestMs, metaLatestMs])
-  const isLive = useMemo(() => isSessionLive(lastActivityMs, nowMs, LIVE_STALE_MS), [lastActivityMs, nowMs])
+  const isLive = useMemo(
+    () => liveUrl !== null && isSessionLive(lastActivityMs, nowMs, LIVE_STALE_MS),
+    [liveUrl, lastActivityMs, nowMs],
+  )
 
   // A finished session's resting view defaults to its start rather than "now" (scrubTimeMs stays
   // null until this fires) — otherwise the scrubber reads as sitting at the end, since "now" for

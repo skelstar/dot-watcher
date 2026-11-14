@@ -13,6 +13,7 @@ import maplibreWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&ur
 import LegalPage, { type LegalPageKind } from './LegalPage.tsx'
 import DeleteAccountPage from './DeleteAccountPage.tsx'
 import AdminPanel from './AdminPanel.tsx'
+import AdminRunReplayPage from './AdminRunReplayPage.tsx'
 import RouteUploadPage from './RouteUploadPage.tsx'
 import LandingPage from './LandingPage.tsx'
 import JoinPage from './JoinPage.tsx'
@@ -32,6 +33,8 @@ interface RouteState {
   watchToken: string | null
   legalPage: LegalPageKind | null
   isAdmin: boolean
+  // /admin/go/{runId}: the admin replay of one Go (casual) run. Run ids are GUIDs, kept as given.
+  adminGoRunId: string | null
   isLanding: boolean
   isDeleteAccount: boolean
   routeUploadSessionId: string | null
@@ -40,13 +43,14 @@ interface RouteState {
 // The only routes the app generates: '/' (landing), '/code/{code}', '/join/{code}' and '/crew/{code}' (shared
 // via the iOS ShareLink; iOS claims /join as a universal link, so the web only shows a fallback;
 // /crew/{code} is a crew-add link, which likewise only shows a fallback page with the code),
-// plus /admin, the legal pages and /support (the App Store Support URL), /delete-account (linked from
+// plus /admin (and /admin/go/{runId}, a Go run replay opened from it), the legal pages and /support (the App Store Support URL), /delete-account (linked from
 // the Play Store listing's Data Safety section) and /route-upload/{sessionId} (opened by the iOS app with an upload token in the URL
 // fragment). Watching is invite-code only — anything else falls back to the landing page.
 function parseUrl(): RouteState {
   const parts = window.location.pathname.replace(/^\//, '').split('/')
   const norm = (s: string) => s.toUpperCase() || null
-  const base = { inviteCode: null, joinCode: null, crewCode: null, watchToken: null, legalPage: null, isAdmin: false, isLanding: false, isDeleteAccount: false, routeUploadSessionId: null }
+  const base = { inviteCode: null, joinCode: null, crewCode: null, watchToken: null, legalPage: null, isAdmin: false, adminGoRunId: null, isLanding: false, isDeleteAccount: false, routeUploadSessionId: null }
+  if (parts[0] === 'admin' && parts[1] === 'go' && parts[2]) return { ...base, adminGoRunId: parts[2] }
   if (parts[0] === 'admin') return { ...base, isAdmin: true }
   if (parts[0] === 'privacy') return { ...base, legalPage: 'privacy' }
   if (parts[0] === 'terms') return { ...base, legalPage: 'terms' }
@@ -61,7 +65,7 @@ function parseUrl(): RouteState {
 }
 
 export default function App() {
-  const { inviteCode, joinCode, crewCode, watchToken, legalPage, isAdmin, isLanding, isDeleteAccount, routeUploadSessionId } = parseUrl()
+  const { inviteCode, joinCode, crewCode, watchToken, legalPage, isAdmin, adminGoRunId, isLanding, isDeleteAccount, routeUploadSessionId } = parseUrl()
 
   // Unknown paths (e.g. /log) fall back to the landing page below; rewrite the address bar to '/' so
   // they don't sit on a URL that means nothing.
@@ -70,6 +74,10 @@ export default function App() {
       window.history.replaceState(null, '', `/${window.location.search}${window.location.hash}`)
     }
   }, [isLanding])
+
+  if (adminGoRunId) {
+    return <AdminRunReplayPage serverUrl={SERVER_URL} runId={adminGoRunId} />
+  }
 
   if (isAdmin) {
     return <AdminPanel serverUrl={SERVER_URL} />

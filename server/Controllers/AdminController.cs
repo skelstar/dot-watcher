@@ -292,6 +292,56 @@ public class AdminController(SessionStore store, BearerTokenAuth auth, FeatureFl
         return Ok(membership);
     }
 
+    /// <summary>Admin/ops: lists casual ("Go") runs, newest first, for replaying one. Only runs inside
+    /// the casual retention window (Casual:RetentionDays) still exist.</summary>
+    [HttpGet("/admin/casual/runs")]
+    [ProducesResponseType(typeof(IReadOnlyList<AdminCasualRun>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public IActionResult GetCasualRuns(int? limit)
+    {
+        if (!auth.IsAuthorized(Request))
+            return Unauthorized();
+
+        return Ok(store.GetCasualRunsForAdmin(Math.Clamp(limit ?? 200, 1, 1000)));
+    }
+
+    /// <summary>Admin/ops: a casual run's scrubbable range, the counterpart of a session's
+    /// GET /session-invites/{inviteCode}/recording/meta.</summary>
+    [HttpGet("/admin/casual/runs/{runId}/recording/meta")]
+    [ProducesResponseType(typeof(RecordingMeta), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public IActionResult GetCasualRunRecordingMeta(string runId)
+    {
+        if (!auth.IsAuthorized(Request))
+            return Unauthorized();
+
+        var meta = store.GetCasualRunRecordingMeta(runId);
+        return meta is null ? NotFound() : Ok(meta);
+    }
+
+    /// <summary>Admin/ops: a casual run's positions as recording NDJSON (the runner only - no crew,
+    /// no nearby dots), optionally windowed by since/until like a session recording. Sets
+    /// X-Truncated: true when the window held more rows than one response returns.</summary>
+    [HttpGet("/admin/casual/runs/{runId}/recording")]
+    [Produces("application/x-ndjson")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public IActionResult GetCasualRunRecording(string runId, DateTimeOffset? since, DateTimeOffset? until)
+    {
+        if (!auth.IsAuthorized(Request))
+            return Unauthorized();
+
+        if (store.GetCasualRunRecordingMeta(runId) is null)
+            return NotFound();
+
+        var (ndjson, truncated) = store.GetCasualRunRecordingAsNdjson(runId, since, until);
+        if (truncated)
+            Response.Headers.Append("X-Truncated", "true");
+        return Content(ndjson, "application/x-ndjson");
+    }
+
     /// <summary>Admin/ops: gets per-member position counts and last-seen timestamps for a session.</summary>
     [HttpGet("/admin/sessions/{sessionId}/member-stats")]
     [ProducesResponseType(typeof(IReadOnlyList<AdminMemberStats>), StatusCodes.Status200OK)]

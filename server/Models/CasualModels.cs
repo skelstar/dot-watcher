@@ -118,3 +118,18 @@ public record CasualWatchView(
     // True while the runner has a route loaded; fetch it from GET /watch/{token}/route.
     bool HasRoute = false
 );
+
+/// <summary>Admin: one casual ("Go") run, for picking one to replay. Times are ISO 8601. The position
+/// bounds are on the phone's clock, as the recording is.</summary>
+public record AdminCasualRun(
+    string RunId,
+    string UserId,
+    string Username,
+    string DisplayName,
+    DateTimeOffset StartedAt,
+    DateTimeOffset? EndedAt,
+    bool StoppedByUser,
+    int PositionCount,
+    DateTimeOffset? FirstPositionAt,
+    DateTimeOffset? LastPositionAt
+);
