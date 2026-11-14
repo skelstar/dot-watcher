@@ -85,6 +85,11 @@ export default function LandingPage() {
 
         <footer style={footer}>
           <span style={footerText}>© 2026 Sean Kelly</span>
+          <span style={footerLinks}>
+            <a href="/support" style={footerText}>Support</a>
+            <a href="/privacy" style={footerText}>Privacy</a>
+            <a href="/terms" style={footerText}>Terms</a>
+          </span>
           <a href="mailto:dotwatchr@skelstar.io" style={footerText}>dotwatchr@skelstar.io</a>
         </footer>
       </div>
@@ -506,6 +511,13 @@ const footer: React.CSSProperties = {
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'space-between',
+  flexWrap: 'wrap',
+  gap: 12,
+}
+
+const footerLinks: React.CSSProperties = {
+  display: 'flex',
+  gap: 16,
 }
 
 const footerText: React.CSSProperties = {

@@ -68,6 +68,7 @@ export default function DeleteAccountPage({ serverUrl }: { serverUrl: string }) 
         <span style={navLinks}>
           <a href="/privacy" style={navLink}>Privacy</a>
           <a href="/terms" style={navLink}>Terms</a>
+          <a href="/support" style={navLink}>Support</a>
         </span>
       </nav>
       <article style={content}>
