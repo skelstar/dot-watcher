@@ -51,6 +51,28 @@ export default function AdminRunReplayPage({ serverUrl, runId }: Props) {
     return () => { cancelled = true }
   }, [source, recordingBase])
 
+  // ← / → step back / forward one position, pausing playback. Captured on the window before the map
+  // sees it: MapLibre pans on arrow keys once the map has focus, which would fight the step.
+  const timelineRef = useRef(timeline)
+  timelineRef.current = timeline
+  useEffect(() => {
+    if (status !== 'ok') return
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return
+      if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return
+      const target = e.target as HTMLElement | null
+      if (target && (target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName))) return
+      e.preventDefault()
+      e.stopPropagation()
+      const t = timelineRef.current
+      t.pause()
+      if (e.key === 'ArrowLeft') t.skipToPreviousPosition()
+      else t.skipToNextPosition()
+    }
+    window.addEventListener('keydown', onKeyDown, { capture: true })
+    return () => window.removeEventListener('keydown', onKeyDown, { capture: true })
+  }, [status])
+
   const [showTrace, setShowTrace] = useState(() => new URLSearchParams(window.location.search).has('trace'))
   const tracePositions = useMemo(
     () => showTrace
@@ -79,6 +101,7 @@ export default function AdminRunReplayPage({ serverUrl, runId }: Props) {
         <span style={title}>
           Go run{runnerName ? ` · ${runnerName}` : ''}{startedLabel ? ` · ${startedLabel}` : ''}
         </span>
+        {status === 'ok' && <span style={keyHint} title="Arrow keys step one position back or forward">← →</span>}
       </div>
       {status === 'ok' && (
         <>
@@ -125,6 +148,12 @@ const backLink: React.CSSProperties = {
 const title: React.CSSProperties = {
   overflow: 'hidden',
   textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap',
+}
+
+const keyHint: React.CSSProperties = {
+  color: '#94a3b8',
+  fontSize: '0.8rem',
   whiteSpace: 'nowrap',
 }
 

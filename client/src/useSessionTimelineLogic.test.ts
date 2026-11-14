@@ -20,6 +20,7 @@ import {
   mergeIntoByRunner,
   mergeRange,
   nextPositionAfterMs,
+  previousPositionBeforeMs,
   normalizeUpdate,
   parseNdjson,
   positionsAtCutoff,
@@ -693,4 +694,28 @@ test('findSleepingRunners does not flag a satellite runner making steady progres
   ])
   const cutoff = new Date('2024-01-01T00:01:30Z').getTime()
   assert.deepEqual(findSleepingRunners(byRunner, cutoff), new Set())
+})
+
+test('previousPositionBeforeMs is null when nobody has an earlier position', () => {
+  assert.equal(previousPositionBeforeMs(new Map(), 0), null)
+  const byRunner = new Map([
+    ['Alice', [{ runnerName: 'Alice', latitude: 0, longitude: 0, heading: null, timestamp: '2024-01-01T00:00:10Z' }]],
+  ])
+  assert.equal(previousPositionBeforeMs(byRunner, new Date('2024-01-01T00:00:10Z').getTime()), null)
+})
+
+test('previousPositionBeforeMs is the latest strictly-earlier timestamp across all runners', () => {
+  const byRunner = new Map([
+    ['Alice', [
+      { runnerName: 'Alice', latitude: 0, longitude: 0, heading: null, timestamp: '2024-01-01T00:00:10Z' },
+      { runnerName: 'Alice', latitude: 1, longitude: 1, heading: null, timestamp: '2024-01-01T00:20:00Z' },
+    ]],
+    ['Bob', [
+      { runnerName: 'Bob', latitude: 2, longitude: 2, heading: null, timestamp: '2024-01-01T00:05:00Z' },
+    ]],
+  ])
+  const before = (iso: string) => previousPositionBeforeMs(byRunner, new Date(iso).getTime())
+  assert.equal(before('2024-01-01T00:30:00Z'), new Date('2024-01-01T00:20:00Z').getTime())
+  assert.equal(before('2024-01-01T00:20:00Z'), new Date('2024-01-01T00:05:00Z').getTime())
+  assert.equal(before('2024-01-01T00:05:00Z'), new Date('2024-01-01T00:00:10Z').getTime())
 })

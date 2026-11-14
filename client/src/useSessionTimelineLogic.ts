@@ -145,6 +145,26 @@ export function nextPositionAfterMs(
   return next
 }
 
+// The latest position timestamp across all runners that is strictly before `beforeMs`, or null if
+// there isn't one in the data given. The mirror of nextPositionAfterMs, for stepping the replay
+// back one position. Equally only as complete as the data passed in.
+export function previousPositionBeforeMs(
+  byRunner: Map<string, RunnerPosition[]>,
+  beforeMs: number,
+): number | null {
+  let previous: number | null = null
+  for (const positions of byRunner.values()) {
+    for (let i = positions.length - 1; i >= 0; i--) {
+      const ts = new Date(positions[i].timestamp).getTime()
+      if (ts < beforeMs) {
+        if (previous === null || ts > previous) previous = ts
+        break // sorted ascending, so scanning from the end the first earlier one is this runner's latest
+      }
+    }
+  }
+  return previous
+}
+
 // The more recent of two possibly-unknown timestamps. Used to combine the client's own
 // live-polled activity with the server's DB-backed recording metadata, since either source can
 // be the only one with data (e.g. the in-memory poll cache is empty right after a server restart).
