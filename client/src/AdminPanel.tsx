@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type FormEvent, Fragment } from 'react'
 import { apiHeaders } from './apiHeaders'
 import LoadRouteButton from './LoadRouteButton.tsx'
+import { BEARER_TOKEN_KEY, readAdminToken } from './adminToken.ts'
 
 interface AdminUser {
   id: string
@@ -27,6 +28,20 @@ interface AdminMemberStats {
   lastPositionAt: string | null
 }
 
+// A casual ("Go") run (server: GET /admin/casual/runs). Position bounds are on the phone's clock.
+interface AdminCasualRun {
+  runId: string
+  userId: string
+  username: string
+  displayName: string
+  startedAt: string
+  endedAt: string | null
+  stoppedByUser: boolean
+  positionCount: number
+  firstPositionAt: string | null
+  lastPositionAt: string | null
+}
+
 type MemberStatsState = AdminMemberStats[] | 'loading' | { error: string }
 
 // Owns imported demo sessions (see handleImportSubmit's default owner); excluded from bulk
@@ -40,21 +55,21 @@ const PROTECTED_USERNAMES = new Set(['dw-demo', 'dw-casual'])
 type FeatureSwitch = { feature: string; enabled: boolean }
 const FEATURE_LABELS: Record<string, string> = { crew: 'Crew', casual: 'Casual tracking', events: 'Events' }
 
-type AdminTab = 'users' | 'sessions' | 'palette'
+type AdminTab = 'users' | 'sessions' | 'go' | 'palette'
 const TABS: { id: AdminTab; label: string }[] = [
   { id: 'users', label: 'Users' },
   { id: 'sessions', label: 'Sessions' },
+  { id: 'go', label: 'Go runs' },
   { id: 'palette', label: 'Palette' },
 ]
 
-const BEARER_TOKEN_KEY = 'adminBearerToken'
 const APP_VERSION = import.meta.env.VITE_APP_VERSION ?? 'v-local'
 // Matches the simulator's own VITE_CLIENT_URL convention (tools/simulator/.env.example) —
 // each tool points at the other's default local port unless overridden.
 const SIMULATOR_URL = import.meta.env.VITE_SIMULATOR_URL ?? 'http://localhost:5174'
 
 export default function AdminPanel({ serverUrl }: { serverUrl: string }) {
-  const [token, setToken] = useState(() => sessionStorage.getItem(BEARER_TOKEN_KEY) ?? (import.meta.env.VITE_BEARER_TOKEN as string | undefined) ?? '')
+  const [token, setToken] = useState(readAdminToken)
   const [tokenInput, setTokenInput] = useState(token)
   const [users, setUsers] = useState<AdminUser[]>([])
   const [sessions, setSessions] = useState<AdminSession[]>([])
@@ -82,6 +97,8 @@ export default function AdminPanel({ serverUrl }: { serverUrl: string }) {
   const [switchesUnavailable, setSwitchesUnavailable] = useState(false)
   const [switchBusy, setSwitchBusy] = useState<string | null>(null)
   const [tab, setTab] = useState<AdminTab>('users')
+  // null until loaded; 'unsupported' on a server without GET /admin/casual/runs.
+  const [goRuns, setGoRuns] = useState<AdminCasualRun[] | 'unsupported' | null>(null)
   const playgroundRef = useRef<HTMLIFrameElement>(null)
 
   // Hands the playground the server address and admin token so its Library panel can use the palette API.
@@ -154,6 +171,7 @@ export default function AdminPanel({ serverUrl }: { serverUrl: string }) {
       setFeatureSwitches(switchesRes.ok ? await switchesRes.json() as FeatureSwitch[] : [])
       setSessions(await sessionsRes.json() as AdminSession[])
       setRecordedSessionIds(new Set(await recordedRes.json() as string[]))
+      void loadGoRuns(bearerToken)
       setSelectedUserIds(new Set())
       setSelectedSessionIds(new Set())
     } catch {
@@ -166,6 +184,15 @@ export default function AdminPanel({ serverUrl }: { serverUrl: string }) {
   useEffect(() => {
     if (token) void loadAll(token)
   }, [])
+
+  async function loadGoRuns(bearerToken: string) {
+    try {
+      const r = await fetch(`${serverUrl}/admin/casual/runs`, { headers: apiHeaders(bearerToken, 'web-admin') })
+      setGoRuns(r.ok ? await r.json() as AdminCasualRun[] : 'unsupported')
+    } catch {
+      setGoRuns('unsupported')
+    }
+  }
 
   function handleTokenSubmit(event: FormEvent) {
     event.preventDefault()
@@ -560,6 +587,7 @@ export default function AdminPanel({ serverUrl }: { serverUrl: string }) {
             setToken('')
             setTokenInput('')
             setUsers([])
+            setGoRuns(null)
           }}>
             Sign out
           </button>
@@ -901,6 +929,50 @@ export default function AdminPanel({ serverUrl }: { serverUrl: string }) {
         </>
       )}
 
+      {tab === 'go' && token && (
+        <>
+          <h2 style={subheadingNoMargin}>Go runs</h2>
+          <p style={featuresNote}>
+            Newest first. Replay shows the runner only (no crew or nearby dots). Runs and their positions are
+            deleted after the casual retention period (7 days by default).
+          </p>
+          {goRuns === 'unsupported' && <p style={errorText}>This server doesn't support Go run replay yet.</p>}
+          {goRuns === null && <p style={emptyText}>Loading…</p>}
+          {Array.isArray(goRuns) && goRuns.length === 0 && <p style={emptyText}>No Go runs stored.</p>}
+          {Array.isArray(goRuns) && goRuns.length > 0 && (
+            <table style={table}>
+              <thead>
+                <tr>
+                  <th style={th}>Runner</th>
+                  <th style={th}>Started</th>
+                  <th style={th}>Length</th>
+                  <th style={th}>Positions</th>
+                  <th style={th}>Status</th>
+                  <th style={th}></th>
+                </tr>
+              </thead>
+              <tbody>
+                {goRuns.map(run => (
+                  <tr key={run.runId} style={tr}>
+                    <td style={td} title={run.username}>{run.displayName}</td>
+                    <td style={td} title={new Date(run.startedAt).toLocaleString()}>{timeAgo(run.startedAt)}</td>
+                    <td style={td}>{runLength(run)}</td>
+                    <td style={td}>{run.positionCount}</td>
+                    <td style={td}>{run.endedAt === null ? 'Out now' : run.stoppedByUser ? 'Stopped' : 'Timed out'}</td>
+                    <td style={td}>
+                      {/* Same tab: the admin token lives in this tab's sessionStorage. */}
+                      {run.positionCount > 0
+                        ? <a href={`/admin/go/${run.runId}`} style={replayLink}>▶ Replay</a>
+                        : '—'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </>
+      )}
+
       {tab === 'palette' && (
         <>
           <p style={featuresNote}>
@@ -929,6 +1001,21 @@ export default function AdminPanel({ serverUrl }: { serverUrl: string }) {
       )}
     </div>
   )
+}
+
+// First to last stored position, e.g. "1 h 12 min".
+function runLength(run: AdminCasualRun): string {
+  if (!run.firstPositionAt || !run.lastPositionAt) return '—'
+  const mins = Math.round((Date.parse(run.lastPositionAt) - Date.parse(run.firstPositionAt)) / 60_000)
+  if (mins < 60) return `${mins} min`
+  return `${Math.floor(mins / 60)} h ${mins % 60} min`
+}
+
+const replayLink: React.CSSProperties = {
+  color: '#3b82f6',
+  textDecoration: 'none',
+  fontWeight: 600,
+  whiteSpace: 'nowrap',
 }
 
 const page: React.CSSProperties = {
