@@ -1,6 +1,8 @@
 # App Store submission checklist: DotWatcher 1.4.0
 
-Status as of 12 Nov 2026. Paused part way through. Nothing here was built or tested locally; CI verifies the PR,
+Status as of 14 Nov 2026. The version is now **1.4.2** (bumped in PR #334). Build **1.4.2 (954)**, from main `7708050`,
+uploaded to App Store Connect on 14 Nov after accepting the updated Program License Agreement (it blocked cloud signing
+with "No signing certificate iOS Distribution found"). Nothing here was built or tested locally; CI verifies the PR,
 and the privacy manifest is only truly checked by an Xcode archive.
 
 ## Done
@@ -17,16 +19,16 @@ and the privacy manifest is only truly checked by an Xcode archive.
 
 ## Still to do
 
-1. [ ] **Merge `app-store-privacy-labels`** into staging (open the PR, let CI pass), then deploy so
+1. [x] **Merge `app-store-privacy-labels`** (PR #320, on main) into staging (open the PR, let CI pass), then deploy so
        https://dot-watcher.skelstar.io/privacy shows the new text. Re-read the new paragraphs to confirm they
        describe the app correctly.
-2. [ ] **Support URL** on the 1.4.0 version page is currently `https://dot-watcher.skelstar.io/privacy`. Point it
-       at a real support/contact page if there is one (or add one); a privacy page as support URL can be flagged.
-3. [ ] **Age rating**: currently **18+** (A18 Brazil, 19+ Korea), far higher than a running app needs. Now that
-       1.4.0 exists, Edit should be available (App Information > Age Rating). Click View first to see which answer
-       caused 18+; likely "Unrestricted web access" or a user-generated content / messaging question. Location
-       sharing with chosen people plus blocking should not need 18+.
-4. [ ] **New build on the Mac** (none of the uploaded builds 883/899/916 can be used: they predate the manifest
+2. [ ] **Support URL**: branch `support-page` adds https://dot-watcher.skelstar.io/support (contact email, FAQ,
+       block and delete-account steps). Once it is live, set the Support URL to it. It was `/privacy`, which can be
+       flagged under guideline 1.5.
+3. [x] **Age rating**: the 18+ came from a manual "Override to Higher Age Rating", not from any answer (they give
+       4+). Fix on 14 Nov: set the override to Not Applicable (or 12+ if preferred).
+4. [x] **New build on the Mac**: 1.4.2 (954) uploaded 14 Nov. Still to do: rename the App Store Connect version 1.4.0 → 1.4.2.
+   Original notes (none of the uploaded builds 883/899/916 can be used: they predate the manifest
        change, and they are greyed out in Add Build):
        - Pull staging with the merged branch, open the project in current Xcode.
        - Confirm `PrivacyInfo.xcprivacy` has Target Membership for DotWatcher.
@@ -40,10 +42,14 @@ and the privacy manifest is only truly checked by an Xcode archive.
        - Optional cleanup: remove the `jakkuu.local` ATS exception from Info.plist for release.
 5. [ ] **Attach the build**: Build > + on the 1.4.0 page. If the new build is greyed out, check its status in the
        TestFlight tab (Missing Compliance / processing / internal-only).
-6. [ ] **What's New**, draft:
-       > New topographic map of New Zealand. Add a GPX route to your run or session. Choose how big the dots are
-       > on the map. Clearer "Who can see me" controls before you start, including going fully private. Smoother
-       > map following and a faster hold-to-stop.
+6. [ ] **What's New** (redrafted 14 Nov for 1.4.2, from the iOS PRs merged since 1.3.1):
+       > - New topographic map of New Zealand.
+       > - Add a GPX route to your run or session; the map zooms to fit it.
+       > - Choose how big the dots are on the map.
+       > - "Who can see me" is now on the Before you go screen, and you can go fully private.
+       > - Stopping is simpler: tap Stop, then confirm.
+       > - Your own dot shows a ring counting down to its next update.
+       > - Smoother map following, and a "?" on nearby dots you can't name yet.
 7. [ ] **Screenshots**: update; the map changed a lot since 1.3.1 (LINZ basemap, dot sizes, "Who can see me").
 8. [ ] **App Review Information**:
        - Working demo account (email + password). Ideally a second account or bot running a session the reviewer
@@ -58,6 +64,13 @@ and the privacy manifest is only truly checked by an Xcode archive.
 9. [ ] **Export compliance** should skip itself (`ITSAppUsesNonExemptEncryption` = false). If asked: no
        non-exempt encryption.
 10. [ ] **Add for Review > Submit**. Choose manual or automatic release.
+
+## Later: MapLibre dSYM warning
+
+Every upload warns "Upload Symbols Failed: the archive did not include a dSYM for MapLibre.framework". MapLibre is a
+prebuilt binary xcframework without dSYMs, so crashes inside MapLibre arrive unsymbolicated. It does not block upload
+or review. Fix: use a MapLibre release that ships dSYMs, or copy the matching dSYM from the MapLibre GitHub release
+into the archive's `dSYMs/` folder before distributing.
 
 ## If it is rejected
 

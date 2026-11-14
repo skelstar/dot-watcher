@@ -10,7 +10,7 @@ import { setWorkerUrl } from 'maplibre-gl'
 // https://maplibre.org/maplibre-gl-js/docs/guides/v5-to-v6-migration-guide/ and
 // https://github.com/maplibre/maplibre-gl-js/issues/8018.
 import maplibreWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url'
-import LegalPage from './LegalPage.tsx'
+import LegalPage, { type LegalPageKind } from './LegalPage.tsx'
 import DeleteAccountPage from './DeleteAccountPage.tsx'
 import AdminPanel from './AdminPanel.tsx'
 import RouteUploadPage from './RouteUploadPage.tsx'
@@ -30,7 +30,7 @@ interface RouteState {
   crewCode: string | null
   // The secret of a casual watch link, /watch/{token}. Case-sensitive, so it is never upper-cased.
   watchToken: string | null
-  legalPage: 'privacy' | 'terms' | null
+  legalPage: LegalPageKind | null
   isAdmin: boolean
   isLanding: boolean
   isDeleteAccount: boolean
@@ -40,8 +40,8 @@ interface RouteState {
 // The only routes the app generates: '/' (landing), '/code/{code}', '/join/{code}' and '/crew/{code}' (shared
 // via the iOS ShareLink; iOS claims /join as a universal link, so the web only shows a fallback;
 // /crew/{code} is a crew-add link, which likewise only shows a fallback page with the code),
-// plus /admin, the legal pages, /delete-account (linked from the Play Store listing's Data Safety
-// section) and /route-upload/{sessionId} (opened by the iOS app with an upload token in the URL
+// plus /admin, the legal pages and /support (the App Store Support URL), /delete-account (linked from
+// the Play Store listing's Data Safety section) and /route-upload/{sessionId} (opened by the iOS app with an upload token in the URL
 // fragment). Watching is invite-code only — anything else falls back to the landing page.
 function parseUrl(): RouteState {
   const parts = window.location.pathname.replace(/^\//, '').split('/')
@@ -50,6 +50,7 @@ function parseUrl(): RouteState {
   if (parts[0] === 'admin') return { ...base, isAdmin: true }
   if (parts[0] === 'privacy') return { ...base, legalPage: 'privacy' }
   if (parts[0] === 'terms') return { ...base, legalPage: 'terms' }
+  if (parts[0] === 'support') return { ...base, legalPage: 'support' }
   if (parts[0] === 'delete-account') return { ...base, isDeleteAccount: true }
   if (parts[0] === 'route-upload' && parts[1]) return { ...base, routeUploadSessionId: parts[1] }
   if (parts[0] === 'join' && parts[1]) return { ...base, joinCode: norm(parts[1]) }
