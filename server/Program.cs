@@ -226,9 +226,12 @@ app.Use(async (ctx, next) =>
             var message = hasRunner
                 ? hasCode ? $"{method} {path} - {logRunner} - {logCode}" : $"{method} {path} - {logRunner}"
                 : $"{method} {path}";
-            if (status >= 500) log.Error(message);
-            else if (status >= 400) log.Warning(message);
-            else log.Information(message);
+            // The message is passed as a Serilog template, so braces in it (the "{token}" of a watch
+            // link's path) would read as a missing property; doubling them logs them as plain text.
+            var template = message.Replace("{", "{{").Replace("}", "}}");
+            if (status >= 500) log.Error(template);
+            else if (status >= 400) log.Warning(template);
+            else log.Information(template);
 
             // Write directly to the DI-scoped LogBuffer — avoids global Log.Logger isolation issues in tests
             var buffer = ctx.RequestServices.GetRequiredService<LogBuffer>();
