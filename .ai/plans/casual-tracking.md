@@ -341,7 +341,10 @@ battery. The named session's behaviour is unchanged.
 
 ## Replay tasks (phase 2)
 
-- [ ] `GET /me/casual/runs`, `GET /me/casual/runs/{id}/recording` (see design).
+- [x] Admin-only first step (2026-11-15): `GET /admin/casual/runs`, `GET /admin/casual/runs/{id}/recording(/meta)`,
+      web admin **Go runs** tab → `/admin/go/{runId}` using the session player (`useSessionTimeline` now takes a
+      `TimelineSource`). Runner only, no crew; not live-following an open run.
+- [ ] `GET /me/casual/runs`, `GET /me/casual/runs/{id}/recording` (see design) - can reuse the admin store queries.
 - [ ] Replay entry point in the clients' run history.
 
 ---

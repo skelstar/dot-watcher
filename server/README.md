@@ -458,6 +458,21 @@ that use it.
 
 ---
 
+### Go run replay (`/admin/casual/runs`)
+
+Admin-only replay of casual ("Go") runs. Every position a run stores carries its run id, so a replay is exactly that
+run's rows: the runner only, never crew or anonymous nearby dots. Runs and positions are deleted after
+`Casual:RetentionDays` (default 7), so only recent runs can be replayed. All need the admin bearer token (`401`
+otherwise). The web admin page's **Go runs** tab lists them and opens `/admin/go/{runId}` with the session map's player.
+
+| Method | Path | What it does |
+| --- | --- | --- |
+| `GET` | `/admin/casual/runs?limit=` | Runs, newest first (default 200, max 1000): runner, `startedAt`/`endedAt`, `stoppedByUser`, `positionCount`, first/last position time |
+| `GET` | `/admin/casual/runs/{runId}/recording/meta` | `{ runStartTimestamp, latestTimestamp }` like a session's; `404` if the run is gone |
+| `GET` | `/admin/casual/runs/{runId}/recording?since=&until=` | The run's positions as recording NDJSON, windowed by the phone's `timestamp`; `X-Truncated: true` past 20,000 rows |
+
+---
+
 ### Palette (`/admin/palettes`)
 
 The start-screen palette comes back as `config.palette` on login, register and `GET /me`. Palettes are saved in the

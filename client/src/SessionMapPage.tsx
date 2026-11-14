@@ -10,7 +10,7 @@ import MapPlayButton from './MapPlayButton.tsx'
 import InitialsBadge from './components/InitialsBadge.tsx'
 import { useRouteLayer } from './useRouteLayer.ts'
 import { useSignalTrailLayer } from './useSignalTrailLayer.ts'
-import { useSessionTimeline } from './useSessionTimeline.ts'
+import { inviteTimelineSource, useSessionTimeline } from './useSessionTimeline.ts'
 import { parseGpxCoordinates } from './gpx.ts'
 import { apiHeaders } from './apiHeaders.ts'
 import { useAuthSession } from './useAuthSession.ts'
@@ -30,7 +30,7 @@ export default function SessionMapPage({ serverUrl, inviteCode }: Props) {
   const authSession = useAuthSession()
   const [accountOpen, setAccountOpen] = useState(false)
 
-  const timeline = useSessionTimeline(serverUrl, inviteCode)
+  const timeline = useSessionTimeline(inviteTimelineSource(serverUrl, inviteCode))
 
   useRouteLayer(mapRef, routeCoordinates, timeline.runStartMs === null)
   // Signal trace (toggle button, or ?trace in the URL to start with it on): plots every position
