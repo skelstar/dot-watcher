@@ -265,9 +265,9 @@ final class LocationManager {
         didSet { UserDefaults.standard.set(runnerName, forKey: "runnerName") }
     }
 
-    var appearanceMode: AppearanceMode = AppearanceMode(rawValue: UserDefaults.standard.string(forKey: "appearanceMode") ?? "") ?? .system {
-        didSet { UserDefaults.standard.set(appearanceMode.rawValue, forKey: "appearanceMode") }
-    }
+    /// Light only for now: the Appearance picker is hidden and any saved "appearanceMode" choice is
+    /// ignored (but left in UserDefaults, so the setting can come back without a migration).
+    var appearanceMode: AppearanceMode = .light
 
     var mapDotSize: MapDotSize = MapDotSize(rawValue: UserDefaults.standard.string(forKey: "mapDotSize") ?? "") ?? .medium {
         didSet { UserDefaults.standard.set(mapDotSize.rawValue, forKey: "mapDotSize") }
