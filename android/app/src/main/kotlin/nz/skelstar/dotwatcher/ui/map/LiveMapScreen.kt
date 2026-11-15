@@ -60,7 +60,9 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.launch
 import nz.skelstar.dotwatcher.BuildConfig
 import nz.skelstar.dotwatcher.crew.CrewModel
@@ -73,6 +75,9 @@ import nz.skelstar.dotwatcher.network.RunnerPosition
 import nz.skelstar.dotwatcher.network.SessionMembership
 import nz.skelstar.dotwatcher.network.errorMessageOrStatus
 import nz.skelstar.dotwatcher.network.networkMessage
+import nz.skelstar.dotwatcher.route.RoutePoint
+import nz.skelstar.dotwatcher.route.isDrawable
+import nz.skelstar.dotwatcher.route.parseGpxTrack
 import nz.skelstar.dotwatcher.ui.casual.StopPill
 import nz.skelstar.dotwatcher.ui.nearby.NearbyOrganiserSheet
 import java.time.Duration
@@ -201,6 +206,54 @@ fun LiveMapScreen(
         }
     }
 
+    // The session's one GPX route, shared by everyone in it. Loaded when the session changes and each
+    // time the app comes back to the front, so a route someone else added shows up then.
+    var route by remember(membership.inviteCode) { mutableStateOf<List<RoutePoint>>(emptyList()) }
+    var routeFocusTick by remember { mutableStateOf(0) }
+    suspend fun loadRoute() {
+        val response = runCatching { repository.getSessionRoute(membership.inviteCode) }.getOrNull() ?: return
+        when {
+            response.code() == 404 -> route = emptyList()
+            response.isSuccessful -> {
+                val bytes = runCatching { response.body()?.bytes() }.getOrNull() ?: return
+                route = withContext(Dispatchers.Default) { parseGpxTrack(bytes) }
+            }
+            // Anything else keeps whatever route is already shown.
+        }
+    }
+    LaunchedEffect(membership.inviteCode, lifecycleOwner) {
+        lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) { loadRoute() }
+    }
+    val routeActions = RouteActions(
+        hasRoute = route.isDrawable(),
+        removeMessage = "This removes the route for everyone in the session.",
+        upload = { gpx ->
+            val result = runCatching { repository.uploadSessionRoute(membership.sessionId, gpx) }
+            val response = result.getOrNull()
+            when {
+                response == null -> result.exceptionOrNull()?.networkMessage() ?: "Network error. Try again."
+                !response.isSuccessful -> response.errorMessageOrStatus()
+                else -> {
+                    loadRoute()
+                    null
+                }
+            }
+        },
+        remove = {
+            val result = runCatching { repository.deleteSessionRoute(membership.sessionId) }
+            val response = result.getOrNull()
+            when {
+                response == null -> result.exceptionOrNull()?.networkMessage() ?: "Network error. Try again."
+                // 404: nothing to remove, the same end state.
+                response.isSuccessful || response.code() == 404 -> {
+                    route = emptyList()
+                    null
+                }
+                else -> response.errorMessageOrStatus()
+            }
+        },
+    )
+
     (trackingState as? TrackingState.Tracking)?.takeIf { showExtendSheet }?.let { tracking ->
         ExtendSessionSheet(
             expiresAt = tracking.expiresAt,
@@ -283,6 +336,9 @@ fun LiveMapScreen(
             fitAllTick = fitAllTick,
             sendIntervalSeconds = POST_INTERVAL_SECONDS,
             ownPaused = pausedForBattery,
+            routes = listOf(route),
+            routeFocus = route,
+            routeFocusTick = routeFocusTick,
             joinRange = nearbyOrganiser
                 ?.takeIf { it.status.nearby }
                 ?.meetingPoint
@@ -329,6 +385,12 @@ fun LiveMapScreen(
             }
             RailButton(RailIcon.Globe, "Open web map") { context.openWebMap(membership) }
             RailButton(RailIcon.Hash, "Invite code") { showInviteCode = true }
+            RouteRailButton(routeActions) {
+                // Show the new route whole, and stop fitting so the next poll doesn't pull away from it.
+                followedRunner = null
+                fitAll = false
+                routeFocusTick++
+            }
             if (nearbyOrganiser != null) {
                 RailButton(RailIcon.Pin, "Nearby join") { showNearby = true }
             }
@@ -475,6 +537,12 @@ internal enum class RailIcon(val paths: List<String>) {
         "M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z",
     )),
     Battery(listOf("M4 7h13a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2zM22 11v2M6 10v4")),
+    /** A start point, a finish point and the winding path between (iOS uses the SF Symbol
+     *  point.topleft.down.to.point.bottomright.curvepath). */
+    Route(listOf(
+        "M6 3.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5M18 15.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5",
+        "M6 8.5v1.5a3 3 0 0 0 3 3h6a3 2.5 0 0 1 3 2.5",
+    )),
 }
 
 /** Placeholder durations from the redesign mock — to be confirmed. */

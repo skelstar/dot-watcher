@@ -58,13 +58,6 @@ struct AuthSheet: View {
                     }
                     crewSection
                     Section("Appearance") {
-                        Picker("Appearance", selection: $location.appearanceMode) {
-                            ForEach(AppearanceMode.allCases) { mode in
-                                Text(mode.label).tag(mode)
-                            }
-                        }
-                        .pickerStyle(.segmented)
-                        .labelsHidden()
                         VStack(alignment: .leading, spacing: 10) {
                             Text("Dot size")
                             DotSizePicker(selection: $location.mapDotSize, initials: location.runnerName)
