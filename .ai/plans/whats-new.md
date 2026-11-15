@@ -18,17 +18,31 @@ nothing below is verified locally. Nothing in this plan is built yet.
 
 ### Layout
 - **Tiles B is the layout.** The wordmark is the hero. Every tile, Go included, sits right under it on a 6-wide grid of
-  squares: 2x2 Crew (with faces), Join and Create; then a row of 1x1 tiles (What's new, Help, Account); then Go at 6x3.
+  squares: 2x2 Crew (with faces), Join and Create; then a row of 1x1 tiles (What's new, Help, Account, Settings);
+  then Go at 6x3.
 - **1x1 tiles are icon only.** Bigger tiles add a title and a short line.
 - **Badges are number only.** Navy over the corner on light tiles, sand inside Go. Go shows how many of your crew are out.
 - **Event tile.** Orange, shown above Go when an event is nearby. Allowed sizes 4x2 or 6x2.
 - **Light only**, matching #347 (the first cut drops the Appearance setting).
 
+### Account and Settings
+- **Two screens instead of one.** Today one sheet (`AuthSheet.swift` on iOS) is titled Settings when signed in and
+  Account when signed out, and mixes the two. It splits into:
+  - **Account** (person icon, the user's initials): about you, needs you signed in. Who you're signed in as, crew
+    name, blocked users, sign out, delete account. Signed out, it's the sign-in / create account form.
+  - **Settings** (gear icon): about this phone, works signed out. Map dot size, satellite alerts and sound, developer
+    options, legal.
+- **Fixes the signed-out gap:** dot size is hidden today when signed out, because it sits inside the signed-in branch.
+- Appearance (theme) is not carried over: the first cut is light only (#347).
+
 ### What's new
-- **Shows the changes since the version the phone last ran.** The phone keeps its last-run version locally and asks
-  the server for notes newer than that.
-- **Hides once the list has been opened**, until the next update that has notes.
-- **Fresh installs don't see it** (no previous version on the phone).
+- **The tile is always there.** It never hides; only its count badge comes and goes.
+- **The count is the changes since the version the phone last ran.** The phone keeps its last-run version locally
+  and asks the server for notes; the badge shows how many are newer than that version.
+- **Opening the list clears the count**, until the next update that has notes.
+- **The list always has something in it.** It shows recent versions, newest first, with the ones that are new since
+  the last-run version marked. So the tile is still useful when there is no count.
+- **Fresh installs get the tile but no count** (no previous version on the phone).
 - **Notes are tagged Both / iOS / Android.** Version numbers are shared across platforms (both apps are 1.4.x).
 - **Notes are written in a new What's new tab on `/admin`.**
 - **The list** is grouped by version, newest first, as in `whats-new.html`.
@@ -42,7 +56,7 @@ nothing below is verified locally. Nothing in this plan is built yet.
   handle cycles through the tile's allowed sizes. Drag to move; dashed slots show where tiles can go and the landing
   spot is highlighted. Tiles that are covered move to the first free space and the grid packs upward. Done (or a tap
   on empty space) finishes. Reset puts Tiles B back.
-- **Allowed sizes:** What's new, Help and Account 1x1 or 2x2. Crew, Join and Create 1x1, 2x2 or 4x2. Go 2x2, 4x2, 6x2
+- **Allowed sizes:** What's new, Help, Account and Settings 1x1 or 2x2. Crew, Join and Create 1x1, 2x2 or 4x2. Go 2x2, 4x2, 6x2
   or 6x3. Event 4x2 or 6x2.
 - **The flag gates only the editing.** The layout never leaves the phone, so the server has nothing to block. Hiding
   the controls is the whole gate.
@@ -68,10 +82,11 @@ nothing below is verified locally. Nothing in this plan is built yet.
 - [ ] Version comparison is numeric per part (`1.4.10` > `1.4.9`), not string order.
 
 ### S3. Reading notes
-- [ ] `GET /whats-new?since=<version>`: notes with version greater than `since` and at most the caller's own version
-      (from `X-App-Version`), filtered to the caller's platform plus `both`, grouped by version, newest first. Works
-      signed in or out.
-- [ ] No `since`, or nothing newer → empty list.
+- [ ] `GET /whats-new?since=<version>`: notes up to the caller's own version (from `X-App-Version`), filtered to the
+      caller's platform plus `both`, grouped by version, newest first, limited to recent versions. Each version says
+      whether it is newer than `since`, and the response carries `newCount` (notes newer than `since`). Works signed
+      in or out.
+- [ ] No `since` (fresh install) → `newCount` 0, the list still returned.
 
 ### S4. Writing notes (admin)
 - [ ] `GET` / `POST` / `PUT` / `DELETE /admin/release-notes`, admin bearer, like the other admin endpoints.
@@ -86,19 +101,21 @@ nothing below is verified locally. Nothing in this plan is built yet.
 ## iOS
 
 - [ ] Tiles B start screen in SwiftUI, replacing today's start buttons in `ContentView.swift`. Uses the remote palette.
+- [ ] Split `AuthSheet.swift` into an Account sheet and a Settings sheet as described in Decisions; Settings opens
+      signed out.
 - [ ] Badges: crew-out count on Go, counts on other tiles where the mock-up shows them.
 - [ ] Event tile above Go when an event is nearby.
-- [ ] What's new: store the last-run version; on launch after an update, fetch `GET /whats-new?since=…`. Show the 1x1
-      tile only if the list isn't empty and hasn't been opened. Opening it shows the list and records the current
-      version as seen. Fresh installs record the version without showing the tile.
+- [ ] What's new: the 1x1 tile is always shown. Store the last-seen version; on launch, fetch
+      `GET /whats-new?since=…` and show `newCount` as the badge when it is above 0. Opening the list records the
+      current version as seen, which clears the badge. Fresh installs record the version without a badge.
 - [ ] Edit mode, shown only when `tile-edit` is in the account's features: hold to select, size handle, drag with
       slots, pack upward, Done, Reset. Layout saved in `UserDefaults`.
-- [ ] Saved layouts handle tiles that come and go: a missing What's new or Event tile leaves no hole (the grid packs);
-      a tile that appears goes in its Tiles B place, or the first free space if that's taken.
+- [ ] Saved layouts handle the Event tile coming and going: when it's missing it leaves no hole (the grid packs);
+      when it appears it goes in its Tiles B place, or the first free space if that's taken.
 
 ## Android
 
-- [ ] Same as iOS, in Compose. Layout saved in DataStore. Features read from login and `GET /me` (Android doesn't use
+- [ ] Same as iOS, in Compose, including the Account / Settings split. Layout saved in DataStore. Features read from login and `GET /me` (Android doesn't use
       features since the gates were removed, so this needs adding back to the user model).
 
 ---
@@ -106,5 +123,6 @@ nothing below is verified locally. Nothing in this plan is built yet.
 ## Open questions
 
 - Losing the flag: keep the tester's saved layout (proposed) or reset to Tiles B?
-- Should the What's new tile have a badge with the number of notes, or stay icon only like the other 1x1 tiles?
-- Where Help and Account lead today, and whether they stay as they are behind the new tiles.
+- How many recent versions the list shows when nothing is new (proposed: the last five).
+- Where Help leads today, and whether it stays as it is behind the new tile.
+- Android's equivalent of `AuthSheet` and what it holds, to confirm the split matches iOS.
