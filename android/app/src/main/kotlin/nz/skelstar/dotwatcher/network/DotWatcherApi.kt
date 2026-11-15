@@ -12,6 +12,8 @@ import kotlinx.serialization.json.JsonObject
 import nz.skelstar.dotwatcher.BuildConfig
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
+import okhttp3.RequestBody
+import okhttp3.ResponseBody
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Response
 import retrofit2.Retrofit
@@ -237,11 +239,19 @@ data class NearbyDot(
 @Serializable
 data class CasualWatchLinkResponse(val token: String, val path: String)
 
+/** A GPX route on the run of someone the caller can see (themselves, or crew who are out). Only a
+ *  reference: the file is fetched from GET /casual/runs/{runId}/route, again only when [uploadedAt]
+ *  changes. [runnerName] matches that person's entry in [CasualLiveResponse.positions]. */
+@Serializable
+data class CasualRouteRef(val runnerName: String, val runId: String, val uploadedAt: String)
+
 @Serializable
 data class CasualLiveResponse(
     val participants: List<String> = emptyList(),
     val positions: List<List<CasualPosition>> = emptyList(),
     val nearby: List<NearbyDot> = emptyList(),
+    /** Null or missing on a server from before routes. */
+    val routes: List<CasualRouteRef>? = null,
 )
 
 @Serializable
@@ -513,6 +523,55 @@ interface DotWatcherApi {
         @Header("Authorization") bearerToken: String,
         @Header("X-Api-Version") apiVersion: String = API_VERSION,
     ): Response<CasualLiveResponse>
+
+    /** Sets the GPX route (raw XML) on the caller's current run, replacing any. 409 when they aren't
+     *  out; 400 for a file the server can't read as a route. */
+    @POST("casual/route")
+    suspend fun setCasualRoute(
+        @Header("Authorization") bearerToken: String,
+        @Body gpx: RequestBody,
+        @Header("X-Api-Version") apiVersion: String = API_VERSION,
+    ): Response<Unit>
+
+    /** Takes the route off the caller's current run. Safe to repeat. */
+    @DELETE("casual/route")
+    suspend fun deleteCasualRoute(
+        @Header("Authorization") bearerToken: String,
+        @Header("X-Api-Version") apiVersion: String = API_VERSION,
+    ): Response<Unit>
+
+    /** The GPX for a run listed in [CasualLiveResponse.routes]. 404 unless the caller can see that
+     *  person right now and the run has a route. */
+    @GET("casual/runs/{runId}/route")
+    suspend fun getCasualRoute(
+        @Path("runId") runId: String,
+        @Header("Authorization") bearerToken: String,
+        @Header("X-Api-Version") apiVersion: String = API_VERSION,
+    ): Response<ResponseBody>
+
+    /** Replaces the session's GPX route (raw XML). Any member; 403 for anyone else. */
+    @POST("sessions/{sessionId}/route")
+    suspend fun uploadSessionRoute(
+        @Path("sessionId") sessionId: String,
+        @Header("Authorization") bearerToken: String,
+        @Body gpx: RequestBody,
+        @Header("X-Api-Version") apiVersion: String = API_VERSION,
+    ): Response<Unit>
+
+    /** Deletes the session's GPX route. 404 when it has none. */
+    @DELETE("sessions/{sessionId}/route")
+    suspend fun deleteSessionRoute(
+        @Path("sessionId") sessionId: String,
+        @Header("Authorization") bearerToken: String,
+        @Header("X-Api-Version") apiVersion: String = API_VERSION,
+    ): Response<Unit>
+
+    /** The session's GPX route by invite code; no auth. 404 when the session has none. */
+    @GET("session-invites/{inviteCode}/route")
+    suspend fun getSessionRoute(
+        @Path("inviteCode") inviteCode: String,
+        @Header("X-Api-Version") apiVersion: String = API_VERSION,
+    ): Response<ResponseBody>
 
     /** 404 on a server without events, or for an account that hasn't been given the feature. With [lat]
      *  and [lon] the server lists the runs the person can join from there; without them it sends its

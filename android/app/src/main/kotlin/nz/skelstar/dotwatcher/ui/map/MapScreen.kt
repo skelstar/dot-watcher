@@ -26,6 +26,8 @@ import androidx.lifecycle.LifecycleEventObserver
 import nz.skelstar.dotwatcher.location.nextPostAt
 import nz.skelstar.dotwatcher.network.NearbyDot
 import nz.skelstar.dotwatcher.network.RunnerPosition
+import nz.skelstar.dotwatcher.route.RoutePoint
+import nz.skelstar.dotwatcher.route.isDrawable
 import org.maplibre.android.MapLibre
 import org.maplibre.android.camera.CameraPosition
 import org.maplibre.android.camera.CameraUpdateFactory
@@ -50,13 +52,18 @@ import org.maplibre.android.style.layers.PropertyFactory.iconImage
 import org.maplibre.android.style.layers.PropertyFactory.iconRotate
 import org.maplibre.android.style.layers.PropertyFactory.iconRotationAlignment
 import org.maplibre.android.style.layers.PropertyFactory.iconSize
+import org.maplibre.android.style.layers.Property
+import org.maplibre.android.style.layers.PropertyFactory.lineCap
 import org.maplibre.android.style.layers.PropertyFactory.lineColor
 import org.maplibre.android.style.layers.PropertyFactory.lineDasharray
+import org.maplibre.android.style.layers.PropertyFactory.lineJoin
+import org.maplibre.android.style.layers.PropertyFactory.lineOpacity
 import org.maplibre.android.style.layers.PropertyFactory.lineWidth
 import org.maplibre.android.style.layers.SymbolLayer
 import org.maplibre.android.style.sources.GeoJsonSource
 import org.maplibre.geojson.Feature
 import org.maplibre.geojson.FeatureCollection
+import org.maplibre.geojson.LineString
 import org.maplibre.geojson.Point
 import org.maplibre.geojson.Polygon
 import java.time.Duration
@@ -85,6 +92,11 @@ private const val NEARBY_LOCKED_IMAGE = "nearby-dot-locked"
 
 private const val CHEVRONS_SOURCE_ID = "chevrons-source"
 private const val CHEVRONS_LAYER_ID = "chevrons-layer"
+
+private const val ROUTE_SOURCE_ID = "route-source"
+private const val ROUTE_LAYER_ID = "route-line"
+/** Strava orange, as on iOS (LinzMap.swift). */
+private const val ROUTE_COLOR = "#FC4C02"
 
 private fun chevronIconId(colorIndex: Int) = "runner-chevron-$colorIndex"
 
@@ -126,6 +138,13 @@ fun MapScreen(
     lockedRunners: Set<String> = emptySet(),
     /** The organiser of a nearby session: the range around the join location, drawn as a dotted ring. */
     joinRange: JoinRange? = null,
+    /** GPX routes, drawn as orange lines under everything else: the session's one route, or on the
+     *  casual map this person's own and their crew's. Lines with fewer than two points are skipped. */
+    routes: List<List<RoutePoint>> = emptyList(),
+    /** A route to show whole, once per change of [routeFocusTick] (a just-added route). The caller
+     *  stops following and fitting at the same time, so the next poll doesn't pull the camera back. */
+    routeFocus: List<RoutePoint>? = null,
+    routeFocusTick: Int = 0,
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -143,6 +162,9 @@ fun MapScreen(
     val now by rememberSecondClock()
     val currentOnRunnerTapped by rememberUpdatedState(onRunnerTapped)
     val currentOnUserMoved by rememberUpdatedState(onUserMovedCamera)
+    // The route lines last sent to the map: `update` runs every second (the clock), and a long route
+    // shouldn't be re-uploaded each time.
+    val shownRoutes = remember { ShownRoutes() }
 
     // Aim the camera whenever the inputs change. Our own animations are REASON_API_ANIMATION, so
     // they never set [CameraAim.userGesture] and can't trip the release check below.
@@ -162,6 +184,17 @@ fun MapScreen(
                 }
                 else -> camera.aimed = null
             }
+        }
+    }
+
+    LaunchedEffect(style, routeFocusTick) {
+        val focus = routeFocus?.takeIf { it.isDrawable() } ?: return@LaunchedEffect
+        if (style == null || routeFocusTick == 0) return@LaunchedEffect
+        mapView.getMapAsync { map ->
+            camera.aimed = null
+            val bounds = LatLngBounds.Builder()
+            focus.forEach { bounds.include(LatLng(it.latitude, it.longitude)) }
+            runCatching { map.animateCamera(CameraUpdateFactory.newLatLngBounds(bounds.build(), 64)) }
         }
     }
 
@@ -232,6 +265,18 @@ fun MapScreen(
                                     iconIgnorePlacement(true),
                                 )
                             )
+                            loadedStyle.addSource(GeoJsonSource(ROUTE_SOURCE_ID))
+                            loadedStyle.addLayerBelow(
+                                LineLayer(ROUTE_LAYER_ID, ROUTE_SOURCE_ID).withProperties(
+                                    lineColor(ROUTE_COLOR),
+                                    lineOpacity(0.9f),
+                                    lineWidth(5f),
+                                    lineCap(Property.LINE_CAP_ROUND),
+                                    lineJoin(Property.LINE_JOIN_ROUND),
+                                ),
+                                CHEVRONS_LAYER_ID,
+                            )
+                            shownRoutes.lines = null
                             loadedStyle.addImage(NEARBY_IMAGE, nearbyBitmap(locked = false, density = density))
                             loadedStyle.addImage(NEARBY_LOCKED_IMAGE, nearbyBitmap(locked = true, density = density))
                             loadedStyle.addSource(GeoJsonSource(NEARBY_SOURCE_ID))
@@ -299,6 +344,13 @@ fun MapScreen(
                 }
                 source.setGeoJson(positions.toPinFeatures(specs))
                 currentStyle.getSourceAs<GeoJsonSource>(NEARBY_SOURCE_ID)?.setGeoJson(nearby.toNearbyFeatures())
+                val drawable = routes.filter { it.isDrawable() }
+                if (shownRoutes.lines != drawable) {
+                    currentStyle.getSourceAs<GeoJsonSource>(ROUTE_SOURCE_ID)?.let { routeSource ->
+                        routeSource.setGeoJson(drawable.toRouteFeatures())
+                        shownRoutes.lines = drawable
+                    }
+                }
                 val joinRangeSource = currentStyle.getSourceAs<GeoJsonSource>(JOIN_RANGE_SOURCE_ID)
                 if (joinRange != null) {
                     joinRangeSource?.setGeoJson(Feature.fromGeometry(joinRange.toPolygon()))
@@ -348,6 +400,17 @@ private fun JoinRange.toPolygon(): Polygon {
     }
     return Polygon.fromLngLats(listOf(ring))
 }
+
+/** Not Compose state: only read and written inside the map's `update`. Null until a style has had
+ *  its route source filled. */
+private class ShownRoutes(var lines: List<List<RoutePoint>>? = null)
+
+private fun List<List<RoutePoint>>.toRouteFeatures(): FeatureCollection =
+    FeatureCollection.fromFeatures(
+        map { line ->
+            Feature.fromGeometry(LineString.fromLngLats(line.map { Point.fromLngLat(it.longitude, it.latitude) }))
+        }
+    )
 
 /** Mutable camera bookkeeping shared between the effect that aims the camera and the listeners that
  *  decide whether the user has since pulled it away. Not Compose state: it is only read from map
