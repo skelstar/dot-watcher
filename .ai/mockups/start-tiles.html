@@ -3,8 +3,9 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=EB+Garamond:wght@800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
-/* Layout: phones side by side (stacking when narrow): today's start screen, then two tile grids built from the
-   same park-sign colours, type and line icons. Switches above change what the live tiles show. */
+/* Layout: phones side by side (stacking when narrow): today's start screen, then two tile layouts.
+   In the tile layouts the dot-watchr wordmark is the hero and every tile, Go included, sits right under it
+   on a 6-wide grid of squares. Each tile layout can be edited: drag to reorder, corner handle to resize. */
 :root {
   --page: #eceae4;
   --fg: #1f2a3d;
@@ -19,27 +20,23 @@
   --cream: #f6f1e4;
   --orange: #f28c28;
   --ink: #1f2a3d;
-  --tile-small: #e4dfcf;   /* the small tiles: a deeper sand so they sit behind the main three */
-  --chip: #1f3350;
-  --chip-fg: #f2efe4;
+  --tile-small: #e4dfcf;
   --font-sign: "EB Garamond", Georgia, "Times New Roman", serif;
   --font-ui: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
   --gap: 8px;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --page: #16181c; --fg: #ece9e1; --muted: #a2a6ae; --line: #2f333a;
-    --phone: #000000; --phone-fg: #f2f2f7; --phone-muted: #9ca3af; --phone-edge: #3a3d44;
-    --chip: #f2efe4; --chip-fg: #1f3350;
+    --page: #16181c; --fg: #ece9e1; --muted: #a2a6ae; --line: #2f333a; --phone-edge: #3a3d44;
     color-scheme: dark;
   }
 }
 :root[data-theme="dark"] {
-  --page: #16181c; --fg: #ece9e1; --muted: #a2a6ae; --line: #2f333a;
-  --phone: #000000; --phone-fg: #f2f2f7; --phone-muted: #9ca3af; --phone-edge: #3a3d44;
-  --chip: #f2efe4; --chip-fg: #1f3350;
+  --page: #16181c; --fg: #ece9e1; --muted: #a2a6ae; --line: #2f333a; --phone-edge: #3a3d44;
   color-scheme: dark;
 }
+/* First cut is light only: the phone screen stays light whatever the page theme. */
+.phone { --phone: #ffffff; --phone-fg: #111827; --phone-muted: #6b7280; color-scheme: light; }
 * { box-sizing: border-box; }
 body {
   background: var(--page); color: var(--fg); font: 15px/1.5 var(--font-ui);
@@ -61,11 +58,17 @@ header p { margin: 0; color: var(--muted); }
 .option h2 { margin: 0; font: 600 16px var(--font-ui); display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
 .option h2 small { font-weight: 400; color: var(--muted); font-size: 13px; }
 .option p { margin: 0; color: var(--muted); font-size: 14px; }
+.edit-bar { display: flex; gap: 8px; min-height: 30px; }
+.edit-bar button {
+  font: 500 13px var(--font-ui); color: var(--fg); background: transparent; border: 1px solid var(--line);
+  border-radius: 15px; padding: 4px 12px; cursor: pointer;
+}
+.edit-bar button.on { background: var(--orange); border-color: var(--orange); color: var(--ink); }
 
 .phone {
   width: 100%; max-width: 340px; height: 680px; border: 10px solid var(--phone-edge); border-radius: 44px;
   background: var(--phone); color: var(--phone-fg); padding: 50px 16px 26px; position: relative; overflow: hidden;
-  display: flex; flex-direction: column; gap: 14px;
+  display: flex; flex-direction: column; gap: 14px; container-type: inline-size;
 }
 .phone::before {
   content: ""; position: absolute; top: 12px; left: 50%; width: 96px; height: 26px;
@@ -73,7 +76,6 @@ header p { margin: 0; color: var(--muted); }
 }
 .spacer { flex: 1; }
 
-/* Shared line icons. */
 .icon { display: block; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 6.5; flex: none; }
 
 /* ---------- Today's screen ---------- */
@@ -105,68 +107,78 @@ header p { margin: 0; color: var(--muted); }
 .alt { background: var(--cream); color: var(--navy); border: 2px solid var(--navy); padding: 12px 16px; }
 .alt .title { font-size: 26px; }
 .alt .icon { width: 34px; height: 34px; }
+.event-sign { background: var(--orange); color: var(--ink); padding: 10px 16px; border-top: 12px solid var(--ink); }
+.event-sign .eyebrow { font-size: 11px; letter-spacing: 1px; text-transform: uppercase; }
+.event-sign .title { font-size: 24px; }
+.event-sign .icon { width: 20px; height: 28px; }
 
-/* ---------- Tiles ---------- */
-.tiles { container-type: inline-size; display: grid; gap: var(--gap); }
-.tiles { --cell: calc((100cqw - 3 * var(--gap)) / 4); }
-.row-small { display: flex; gap: var(--gap); height: var(--cell); }
-.row-small > * { flex: 1; min-width: 0; }
-.row-pair { display: grid; grid-template-columns: 1fr 1fr; gap: var(--gap); }
-.row-pair.tall { height: calc(var(--cell) * 2 + var(--gap)); }
-.row-crew {
-  display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: var(--cell) var(--cell); gap: var(--gap);
+/* ---------- Tiles ----------
+   6 squares across. 1x1 tiles are icon only; anything bigger adds a title and a short line. */
+.tgrid {
+  --cell: calc((100cqw - 5 * var(--gap)) / 6);
+  position: relative; display: grid; grid-template-columns: repeat(6, var(--cell)); grid-auto-rows: var(--cell);
+  gap: var(--gap);
 }
-.row-crew .crew-tile { grid-row: 1 / span 2; }
-
 .tile {
-  all: unset; box-sizing: border-box; cursor: pointer; position: relative; overflow: hidden;
-  font-family: var(--font-sign); font-weight: 800; padding: 9px 10px; display: flex; flex-direction: column;
-  justify-content: space-between; min-width: 0;
+  position: relative; z-index: 1; overflow: hidden; min-width: 0; cursor: pointer; user-select: none; -webkit-user-select: none;
+  -webkit-touch-callout: none; font-family: var(--font-sign); font-weight: 800;
+  display: flex; flex-direction: column; justify-content: space-between; padding: 9px 10px;
 }
-.tile .label { font-size: 15px; line-height: 1.1; }
-.tile .label small { display: block; font-size: 12px; opacity: .8; margin-top: 1px; }
-
-.small { background: var(--tile-small); color: var(--navy); }
-.small .icon { width: 26px; height: 26px; }
-.small .big { font-size: 30px; line-height: .9; }
+.tile.w1 { padding: 0; display: grid; place-items: center; place-content: center; }
+.tile .top { display: flex; justify-content: flex-end; align-items: flex-start; }
+.tile .icon { width: 22px; height: 22px; }
+.tile.w1 .icon { stroke-width: 7; }
+.tile .title { font-size: 22px; line-height: 1; }
+.tile .sub { font-size: 12px; line-height: 1.15; margin-top: 2px; }
+.tile.w4 .title, .tile.w6 .title { font-size: 26px; }
+.tile.w4 .sub, .tile.w6 .sub { font-size: 14px; }
+.qmark { font-size: 26px; line-height: 1; }
+.acct { width: 26px; height: 26px; border-radius: 50%; background: var(--navy); color: var(--sand); display: grid; place-items: center; font: 700 10px var(--font-ui); }
 .badge {
-  position: absolute; top: 8px; right: 8px; min-width: 22px; height: 22px; padding: 0 6px; border-radius: 11px;
-  background: var(--orange); color: var(--ink); font: 700 12px/22px var(--font-ui); text-align: center;
+  position: absolute; top: 3px; right: 3px; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 8px;
+  background: var(--sand); color: var(--navy); font: 700 10px/16px var(--font-ui); text-align: center;
 }
-.qmark { font-size: 34px; line-height: .8; }
-.acct { width: 30px; height: 30px; border-radius: 50%; background: var(--navy); color: var(--sand); display: grid; place-items: center; font: 700 11px var(--font-ui); }
+.tile:not(.w1) .badge { top: 8px; right: 8px; min-width: 20px; height: 20px; border-radius: 10px; font-size: 11px; line-height: 20px; }
+/* Light tiles: the dark accent, sitting over the top-right corner with a ring of screen colour around it. */
+.tile.k-small, .tile.k-alt { overflow: visible; }
+.tile.k-small .badge, .tile.k-alt .badge {
+  top: -7px; right: -7px; z-index: 2; background: var(--navy); color: var(--sand); box-shadow: 0 0 0 2px var(--phone);
+}
+.tile.k-small:not(.w1) .badge, .tile.k-alt:not(.w1) .badge { top: -9px; right: -9px; }
+.k-go .badge { top: 20px; right: 10px; }
+.k-go.w2 .badge { top: 18px; right: 6px; }
+.k-go.w6 .badge { top: 24px; right: 14px; min-width: 24px; height: 24px; border-radius: 12px; font-size: 13px; line-height: 24px; }
 
-.medium { background: var(--cream); color: var(--navy); border: 2px solid var(--navy); padding: 12px; }
-.medium .top { display: flex; justify-content: flex-end; }
-.medium .icon { width: 30px; height: 30px; }
-.medium .title { font-size: 28px; line-height: 1; }
-.medium .sub { font-size: 13px; line-height: 1.15; margin-top: 3px; }
-.medium.short { flex-direction: row; align-items: center; gap: 8px; padding: 8px 12px; }
-.medium.short .title { font-size: 22px; }
-.medium.short .icon { width: 24px; height: 24px; }
-.medium.short .txt { flex: 1; min-width: 0; }
-
-.crew-tile { background: var(--navy); color: var(--sand); padding: 12px; }
+.k-small { background: var(--tile-small); color: var(--navy); }
+.k-alt { background: var(--cream); color: var(--navy); border: 2px solid var(--navy); }
+.k-crew:not(.w1) { background: var(--navy); color: var(--sand); }
+.k-crew:not(.w1) .top { justify-content: flex-start; }
+.k-crew .sub { opacity: .85; }
 .faces { display: flex; }
-.faces .dotp { border: 2px solid var(--navy); margin-left: -8px; width: 34px; height: 34px; }
+.faces .dotp { border: 2px solid var(--navy); margin-left: -5px; width: 26px; height: 26px; font-size: 9px; }
 .faces .dotp:first-child { margin-left: 0; }
-.crew-tile .title { font-size: 26px; line-height: 1; }
-.crew-tile .sub { font-size: 13px; margin-top: 3px; opacity: .85; }
+.faces .more { background: var(--sand); color: var(--navy); }
 
-.event { background: var(--orange); color: var(--ink); flex-direction: row; align-items: center; gap: 10px; padding: 8px 12px; height: var(--cell); }
-.event .eyebrow { font-size: 10px; letter-spacing: 1px; text-transform: uppercase; }
-.event .title { font-size: 20px; line-height: 1.05; }
-.event .txt { flex: 1; min-width: 0; }
-.event .chev { width: 17px; height: 24px; }
+.k-go { background: var(--navy); color: var(--sand); padding: 0; justify-content: flex-start; }
+.k-go .bar { height: 12px; background: var(--sand); flex: none; }
+.k-go .body { flex: 1; display: flex; align-items: flex-end; gap: 10px; padding: 10px 14px; }
+.k-go .txt { flex: 1; min-width: 0; }
+.k-go .title { font-size: 30px; }
+.k-go.w4 .title { font-size: 38px; }
+.k-go.w6 .title { font-size: 46px; }
+.k-go.w6 .sub { font-size: 15px; }
+.k-go .chev { width: 20px; height: 28px; margin-bottom: 4px; }
+.k-go.w6 .chev { width: 28px; height: 39px; margin-bottom: 6px; }
+.k-go.w1 .chev, .k-go.w2.h1 .chev { width: 16px; height: 22px; margin: 0; }
 
-.gotile { background: var(--navy); color: var(--sand); padding: 0; height: calc(var(--cell) * 2 + var(--gap)); }
-.gotile .bar { height: 14px; background: var(--sand); flex: none; }
-.gotile .body { flex: 1; display: flex; align-items: flex-end; gap: 12px; padding: 14px 16px; }
-.gotile .txt { flex: 1; min-width: 0; }
-.gotile .title { font-size: 46px; line-height: 1; }
-.gotile .sub { font-size: 15px; margin-top: 2px; }
-.gotile .live { font: 600 12px var(--font-ui); opacity: .8; margin-bottom: auto; }
-.gotile .chev { width: 28px; height: 39px; margin-bottom: 6px; }
+.k-go.w2 .sub { display: none; }
+.k-go.w2 .body { padding: 8px 10px; }
+
+.k-event { background: var(--orange); color: var(--ink); flex-direction: row; align-items: center; gap: 10px; padding: 8px 12px; border-top: 8px solid var(--ink); }
+.k-event .txt { flex: 1; min-width: 0; }
+.k-event .eyebrow { font-size: 10px; letter-spacing: 1px; text-transform: uppercase; }
+.k-event .title { font-size: 20px; line-height: 1.05; }
+.k-event .icon { width: 17px; height: 24px; }
 
 /* The Go chevrons' double nudge. */
 .nudge { animation: nudge 3.5s ease-in-out infinite; }
@@ -175,12 +187,31 @@ header p { margin: 0; color: var(--muted); }
   6%, 18% { transform: translateX(7px); }
   12%, 24% { transform: translateX(0); }
 }
+
+/* ---------- Edit mode ----------
+   Press and hold a tile: it is selected (orange outline) and only it gets the round size handle.
+   Tap the handle to cycle sizes. While dragging, dashed slots show where tiles can go. */
+.editing .tile { touch-action: none; cursor: grab; }
+.tile.sel { overflow: visible; z-index: 3; outline: 2px solid var(--orange); outline-offset: 2px; }
+.tile.dragging { z-index: 6; cursor: grabbing; box-shadow: 0 10px 24px rgb(0 0 0 / .28); opacity: .94; }
+.handle { display: none; }
+.tile.sel .handle {
+  display: grid; place-items: center; position: absolute; right: -11px; bottom: -11px; width: 26px; height: 26px;
+  border-radius: 50%; background: var(--orange); color: var(--ink); box-shadow: 0 2px 6px rgb(0 0 0 / .25);
+  cursor: pointer; z-index: 4; padding: 0;
+}
+.tile.sel.dragging .handle { display: none; }
+.handle svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+.slot { border: 1.5px dashed #cbc5b4; border-radius: 4px; pointer-events: none; z-index: 0; }
+.ghost { background: rgb(242 140 40 / .16); border: 2px dashed var(--orange); border-radius: 4px; pointer-events: none; z-index: 0; }
+.edit-hint { font: 500 12px var(--font-ui); color: var(--phone-muted); text-align: center; margin: 0; }
+
 @media (prefers-reduced-motion: reduce) { .nudge { animation: none; } }
 
 .toast {
   position: absolute; left: 16px; right: 16px; bottom: 26px; background: var(--ink); color: var(--sand);
   font: 500 13px var(--font-ui); padding: 10px 12px; border-radius: 10px; text-align: center;
-  opacity: 0; transform: translateY(8px); transition: opacity .2s, transform .2s; pointer-events: none;
+  opacity: 0; transform: translateY(8px); transition: opacity .2s, transform .2s; pointer-events: none; z-index: 10;
 }
 .toast.show { opacity: 1; transform: none; }
 
@@ -192,7 +223,7 @@ header p { margin: 0; color: var(--muted); }
 <div class="wrap">
   <header>
     <h1>Start screen as tiles</h1>
-    <p>Today’s start screen next to two tile layouts. Each keeps the park-sign colours, type and line icons and keeps Go biggest and lowest, where a thumb reaches. The small tiles take over the header icons and the crew row. Use the switches to see the tiles change.</p>
+    <p>Today’s start screen next to two tile layouts. The dot-watchr wordmark is the hero, and every tile, Go included, sits right under it on a 6-wide grid of squares. 1x1 tiles are icon only; bigger tiles add a title and a short line. Both tile layouts can be edited: press and hold a tile, tap its round handle to change size, and drag it to a new slot.</p>
   </header>
 
   <div class="controls">
@@ -204,13 +235,16 @@ header p { margin: 0; color: var(--muted); }
   <div class="grid" id="grid"></div>
 
   <div class="note">
-    <p><strong>What moves where</strong></p>
+    <p><strong>How it works</strong></p>
     <ul>
-      <li>Header icons: Account (today’s person icon, which opens Settings) and Help become small tiles.</li>
-      <li>The crew row and “2 of your crew are out” line become the Crew tile, which shows who is out.</li>
-      <li>What’s new is a small tile with a count that appears only after an update. Tapping it here hides it, as opening the list would.</li>
-      <li>Events nearby become one wide orange tile above Go, so they stay prominent but never push Go off the bottom.</li>
-      <li>The wordmark moves to the top of the empty space; the grid sits at the bottom.</li>
+      <li>Grid: 6 squares across with an 8px gap. A 1x1 tile is about 41px on a 340px-wide phone; a 2x2 is about 90px.</li>
+      <li>Edit mode: press and hold a tile (or tap Edit tiles). The tile you held is selected and gets a round orange handle; tap the handle to cycle through its sizes. Drag any tile and dashed slots appear behind the grid, with the landing spot highlighted. Tap another tile to select it, and tap Done (or empty space) to finish. Layouts are remembered in this browser; Reset puts the starting layout back.</li>
+      <li>Allowed sizes: What’s new, Help and Account 1x1 or 2x2. Crew, Join and Create 1x1, 2x2 or 4x2. Go 2x2, 4x2, 6x2 or 6x3. Event 4x2 or 6x2.</li>
+      <li>Dropping a tile on others moves them to the first free space that fits, so two tiles of the same size swap. Everything then slides up, so the grid stays packed under the wordmark.</li>
+      <li>1x1 tiles have no visible text, so they need accessibility labels. Counts show as plain number badges. On light tiles the badge is the dark accent (navy, sand number) and sits over the top-right corner; on Go it is the light accent (sand, navy number) inside the tile.</li>
+      <li>Go shows how many of your crew are out as the same number badge, so you can see it just before you start. It disappears at 0.</li>
+      <li>What’s new appears only after an update; tapping it here hides it. The event tile appears only when something is nearby.</li>
+      <li>First cut is light only: the Appearance setting (System / Light / Dark) comes out of Settings, and the app always draws light.</li>
     </ul>
   </div>
 </div>
@@ -226,16 +260,15 @@ const CREW = [
   { i: "MK", c: "#2e7d6b" }, { i: "JT", c: "#b5482f" }, { i: "PR", c: "#6a4c93" }, { i: "AL", c: "#3a6ea5" }, { i: "BW", c: "#8a6d1f" },
 ];
 const state = { updated: true, event: false, out: 2, seen: false };
-
-const faces = n => `<div class="faces">${CREW.slice(0, n).map(p => `<span class="dotp" style="background:${p.c}">${p.i}</span>`).join("")}</div>`;
-const crewOutText = n => n === 0 ? "Nobody out right now" : `${n} of ${CREW.length} out`;
+const crewOutText = n => n === 0 ? "Nobody out" : `${n} of ${CREW.length} out`;
+const wordmarkHtml = size => `<div class="wordmark"${size ? ` style="font-size:${size}px"` : ""}>d<span class="o">SK</span>t-watchr</div>`;
 
 // ---------- Today ----------
 function current() {
   const n = state.out;
   return `
     <div class="head">
-      <div class="wordmark">d<span class="o">SK</span>t-watchr</div>
+      ${wordmarkHtml()}
       <div class="btns">
         <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="10" r="3.2"/><path d="M6 18.5c1.4-2.3 3.5-3.5 6-3.5s4.6 1.2 6 3.5"/></svg>
         <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M9.3 9.2a2.8 2.8 0 1 1 3.6 2.7c-.6.2-.9.7-.9 1.3v.6"/><path d="M12 17h.01"/></svg>
@@ -244,90 +277,284 @@ function current() {
     <div class="crewrow"><span class="lbl">Crew</span>${CREW.map(p => `<span class="dotp" style="background:${p.c}">${p.i}</span>`).join("")}</div>
     ${n ? `<p class="crewline">${n} of your crew ${n === 1 ? "is" : "are"} out</p>` : ""}
     <div class="spacer"></div>
-    ${state.event ? `<div class="sign" style="background:var(--orange);color:var(--ink);padding:10px 16px;border-top:12px solid var(--ink)"><div class="text"><span style="font-size:11px;letter-spacing:1px">HAPPENING NEAR YOU · 2.3 KM</span><span class="title" style="font-size:24px">Sunday long run</span><span class="sub">Starts 7:00 at the domain gates</span></div>${CHEV.replace('class="icon chev"', 'class="icon" style="width:20px;height:28px"')}</div>` : ""}
+    ${state.event ? `<div class="sign event-sign"><div class="text"><span class="eyebrow">Happening near you · 2.3 km</span><span class="title">Sunday long run</span><span class="sub">Starts 7:00 at the domain gates</span></div>${CHEV.replace("icon chev", "icon")}</div>` : ""}
     <div class="go"><div class="bar"></div><div class="body sign"><div class="text"><span class="title">Go</span><span class="sub">Hold to start</span></div>${CHEV.replace("chev", "chev nudge")}</div></div>
     <div class="alt sign"><div class="text"><span class="title">Join</span><span class="sub">Enter an invite code</span></div>${ENTER}</div>
     <div class="alt sign"><div class="text"><span class="title">Create</span><span class="sub">Set up a new run for others</span></div>${PLUS}</div>`;
 }
 
-// ---------- Tile pieces ----------
-const showNews = () => state.updated && !state.seen;
-const newsTile = () => showNews()
-  ? `<button type="button" class="tile small" data-news aria-label="What’s new: 6 changes"><span class="badge">6</span>${SPARKLE}<span class="label">What’s new</span></button>` : "";
-const crewSmall = () => {
-  const n = state.out;
-  return `<button type="button" class="tile small" aria-label="Crew: ${crewOutText(n)}">${n ? `<span class="big">${n}</span>` : PEOPLE}<span class="label">Crew${n ? "<small>out now</small>" : ""}</span></button>`;
+// ---------- Tiles ----------
+// Allowed sizes per tile, as [w, h] in grid squares; the handle cycles through them in this order.
+const SIZES = {
+  news: [[1, 1], [2, 2]], help: [[1, 1], [2, 2]], acct: [[1, 1], [2, 2]],
+  crew: [[1, 1], [2, 2], [4, 2]], join: [[1, 1], [2, 2], [4, 2]], create: [[1, 1], [2, 2], [4, 2]],
+  go: [[2, 2], [4, 2], [6, 2], [6, 3]], event: [[4, 2], [6, 2]],
 };
-const helpTile = `<button type="button" class="tile small" aria-label="Help"><span class="qmark">?</span><span class="label">Help</span></button>`;
-const acctTile = `<button type="button" class="tile small" aria-label="Account and settings"><span class="acct">SK</span><span class="label">Account</span></button>`;
-const eventTile = () => state.event
-  ? `<button type="button" class="tile event"><div class="txt"><div class="eyebrow">Happening near you · 2.3 km</div><div class="title">Sunday long run</div></div>${CHEV}</button>` : "";
-const goTile = live => `<button type="button" class="tile gotile"><div class="bar"></div><div class="body"><div class="txt">${live}<div class="title">Go</div><div class="sub">Hold to start</div></div>${CHEV.replace("chev", "chev nudge")}</div></button>`;
-const wordmark = `<div class="spacer"></div><div class="wordmark" style="font-size:26px;margin-bottom:6px">d<span class="o">SK</span>t-watchr</div>`;
+// [id, x, y, w, h]
+const PRESETS = {
+  A: [["join", 0, 0, 2, 2], ["create", 2, 0, 2, 2], ["news", 4, 0, 1, 1], ["crew", 5, 0, 1, 1], ["help", 4, 1, 1, 1], ["acct", 5, 1, 1, 1], ["event", 0, 2, 6, 2], ["go", 0, 4, 6, 3]],
+  B: [["crew", 0, 0, 2, 2], ["join", 2, 0, 2, 2], ["create", 4, 0, 2, 2], ["news", 0, 2, 1, 1], ["help", 1, 2, 1, 1], ["acct", 2, 2, 1, 1], ["event", 0, 3, 6, 2], ["go", 0, 5, 6, 3]],
+};
+const COLS = 6, GAP = 8, SLOT_ROWS = 11;
+const fromPreset = key => PRESETS[key].map(([id, x, y, w, h]) => ({ id, x, y, w, h }));
+const STORE = "start-tiles-layouts-v3";
+const layouts = { A: fromPreset("A"), B: fromPreset("B") };
+try {
+  const saved = JSON.parse(localStorage.getItem(STORE) || "null");
+  for (const k of ["A", "B"]) {
+    const l = saved?.[k];
+    const ids = PRESETS[k].map(p => p[0]).sort().join();
+    if (Array.isArray(l) && l.map(t => t.id).sort().join() === ids
+        && l.every(t => SIZES[t.id].some(([w, h]) => w === t.w && h === t.h) && Number.isInteger(t.x) && Number.isInteger(t.y) && t.x >= 0 && t.x + t.w <= COLS && t.y >= 0))
+      layouts[k] = l;
+  }
+} catch {}
+const save = () => { try { localStorage.setItem(STORE, JSON.stringify(layouts)); } catch {} };
+const edit = { A: { on: false, sel: null }, B: { on: false, sel: null } };
 
-function tilesA() {
-  return `${wordmark}
-    <div class="tiles">
-      <div class="row-small">${newsTile()}${crewSmall()}${helpTile}${acctTile}</div>
-      ${eventTile()}
-      <div class="row-pair tall">
-        <button type="button" class="tile medium"><div class="top">${ENTER}</div><div><div class="title">Join</div><div class="sub">Enter an invite code</div></div></button>
-        <button type="button" class="tile medium"><div class="top">${PLUS}</div><div><div class="title">Create</div><div class="sub">Set up a new run for others</div></div></button>
-      </div>
-      ${goTile("")}
-    </div>`;
+const visible = t => (t.id !== "news" || (state.updated && !state.seen)) && (t.id !== "event" || state.event);
+
+// ---------- Grid placement ----------
+const overlaps = (a, b) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+const hits = (t, placed) => placed.some(p => p !== t && overlaps(t, p));
+const byYX = (a, b) => a.y - b.y || a.x - b.x;
+function firstFit(t, placed) {
+  for (let y = 0; ; y++) for (let x = 0; x + t.w <= COLS; x++) {
+    if (!hits({ ...t, x, y }, placed)) { t.x = x; t.y = y; return; }
+  }
+}
+// Place `pinned` where it is, move anything it covers to the first free space that fits, then slide every
+// tile up as far as it goes. Works on copies of the visible tiles and returns them.
+function settle(tiles, pinnedId) {
+  const list = tiles.map(t => ({ ...t }));
+  const pinned = list.find(t => t.id === pinnedId);
+  const placed = pinned ? [pinned] : [];
+  for (const t of list.filter(t => t !== pinned).sort(byYX)) {
+    t.x = Math.min(t.x, COLS - t.w);
+    if (hits(t, placed)) firstFit(t, placed);
+    placed.push(t);
+  }
+  const done = [];
+  for (const t of placed.sort((a, b) => byYX(a, b) || (a === pinned ? -1 : b === pinned ? 1 : 0))) {
+    while (t.y > 0 && !hits({ ...t, y: t.y - 1 }, done)) t.y--;
+    done.push(t);
+  }
+  return list;
+}
+function commit(key, settled) {
+  for (const s of settled) Object.assign(layouts[key].find(t => t.id === s.id), { x: s.x, y: s.y, w: s.w, h: s.h });
+}
+const normalize = key => commit(key, settle(layouts[key].filter(visible), null));
+
+// ---------- Tile content ----------
+const LABELS = {
+  news: () => "What’s new: 6 changes", crew: () => `Crew: ${crewOutText(state.out)}`, help: () => "Help",
+  acct: () => "Account and settings", join: () => "Join", create: () => "Create", go: () => "Go", event: () => "Sunday long run",
+};
+const NAMES = { news: "What’s new", crew: "Crew", help: "Help", acct: "Account", join: "Join", create: "Create", go: "Go", event: "Event" };
+const HANDLE = '<span class="handle" aria-hidden="true"><svg viewBox="0 0 16 16"><path d="M9.5 2.5h4v4"/><path d="M13.5 2.5 9 7"/><path d="M6.5 13.5h-4v-4"/><path d="M2.5 13.5 7 9"/></svg></span>';
+
+function tileInner({ id, w }) {
+  const one = w === 1;
+  const text = (title, sub) => `<div><div class="title">${title}</div><div class="sub">${sub}</div></div>`;
+  const n = state.out;
+  switch (id) {
+    case "news": return `<span class="badge">6</span>` + (one ? SPARKLE : `<div class="top" style="justify-content:flex-start">${SPARKLE}</div>${text("What’s new", "6 changes")}`);
+    case "help": return one ? `<span class="qmark">?</span>` : `<div class="top" style="justify-content:flex-start"><span class="qmark">?</span></div>${text("Help", "How it works")}`;
+    case "acct": return one ? `<span class="acct">SK</span>` : `<div class="top" style="justify-content:flex-start"><span class="acct">SK</span></div>${text("Account", "Settings")}`;
+    case "join": return one ? ENTER : `<div class="top">${ENTER}</div>${text("Join", w >= 4 ? "Enter an invite code" : "Invite code")}`;
+    case "create": return one ? PLUS : `<div class="top">${PLUS}</div>${text("Create", w >= 4 ? "Set up a new run for others" : "New run")}`;
+    case "crew": {
+      if (one) return (n ? `<span class="badge">${n}</span>` : "") + PEOPLE;
+      const max = w >= 4 ? 5 : 3;
+      const shown = CREW.slice(0, Math.min(n, max));
+      const top = n
+        ? `<div class="faces">${shown.map(p => `<span class="dotp" style="background:${p.c}">${p.i}</span>`).join("")}${n > max ? `<span class="dotp more">+${n - max}</span>` : ""}</div>`
+        : PEOPLE;
+      return `<div class="top">${top}</div>${text("Crew", w >= 4 && n ? `${n} of your crew ${n === 1 ? "is" : "are"} out` : crewOutText(n))}`;
+    }
+    case "go": return (n ? `<span class="badge" title="${n} of your crew out">${n}</span>` : "") + `<div class="bar"></div><div class="body"><div class="txt"><div class="title">Go</div><div class="sub">Hold to start</div></div>${CHEV.replace("chev", "chev nudge")}</div>`;
+    case "event": return `<div class="txt"><div class="eyebrow">Near you · 2.3 km</div><div class="title">Sunday long run</div>${w >= 6 ? `<div class="sub">Starts 7:00 at the domain gates</div>` : ""}</div>${CHEV.replace("icon chev", "icon")}`;
+  }
+}
+const KIND = { news: "k-small", help: "k-small", acct: "k-small", crew: "k-small k-crew", join: "k-alt", create: "k-alt", go: "k-go", event: "k-event" };
+const place = (el, t) => { el.style.gridColumn = `${t.x + 1} / span ${t.w}`; el.style.gridRow = `${t.y + 1} / span ${t.h}`; };
+
+function paintTile(el, t, key) {
+  const keep = el.classList.contains("dragging") ? " dragging" : "";
+  el.className = `tile ${KIND[t.id]} w${t.w} h${t.h}` + (edit[key].sel === t.id ? " sel" : "") + keep;
+  place(el, t);
+  el.setAttribute("aria-label", LABELS[t.id]());
+  const sig = `${t.w}x${t.h}|${state.out}`;
+  if (el.dataset.painted !== sig) { el.innerHTML = tileInner(t) + HANDLE; el.dataset.painted = sig; }
+}
+const gridOf = key => document.querySelector(`.tgrid[data-key="${key}"]`);
+function applyLayout(key, tiles = layouts[key]) {
+  const grid = gridOf(key);
+  for (const t of tiles) { const el = grid.querySelector(`.tile[data-id="${t.id}"]`); if (el) paintTile(el, t, key); }
+}
+// Update edit chrome in place (no re-render), so a press-and-hold can carry straight on into a drag.
+function refreshEdit(key) {
+  const grid = gridOf(key), phone = grid.closest(".phone"), col = phone.closest(".option");
+  phone.classList.toggle("editing", edit[key].on);
+  const btn = col.querySelector("[data-edit]");
+  btn.textContent = edit[key].on ? "Done" : "Edit tiles"; btn.classList.toggle("on", edit[key].on);
+  phone.querySelector(".edit-hint").hidden = !edit[key].on;
+  applyLayout(key);
 }
 
-function tilesB() {
-  const n = state.out;
-  return `${wordmark}
-    <div class="tiles">
-      <div class="row-crew">
-        <button type="button" class="tile crew-tile">${n ? faces(n) : PEOPLE.replace('class="icon"', 'class="icon" style="width:34px;height:34px"')}<div><div class="title">Crew</div><div class="sub">${crewOutText(n)}</div></div></button>
-        <button type="button" class="tile medium short"><div class="txt"><div class="title">Join</div><div class="sub">Invite code</div></div>${ENTER}</button>
-        <button type="button" class="tile medium short"><div class="txt"><div class="title">Create</div><div class="sub">New run</div></div>${PLUS}</button>
-      </div>
-      <div class="row-small">${newsTile()}${helpTile}${acctTile}</div>
-      ${eventTile()}
-      ${goTile(n ? `<div class="live">${n} of your crew out</div>` : "")}
-    </div>`;
+function tilesPhone(key) {
+  return `${wordmarkHtml(26)}
+    <div class="tgrid" data-key="${key}">${layouts[key].filter(visible).map(t => `<div class="tile" role="button" tabindex="0" data-id="${t.id}"></div>`).join("")}</div>
+    <p class="edit-hint" ${edit[key].on ? "" : "hidden"}>Drag a tile to move it · tap the round handle to resize</p>`;
 }
 
 const options = [
   { name: "Today", timing: "for comparison", desc: "Header icons, the crew row and the three signs pinned to the bottom.", render: current },
-  { name: "Tiles A. Small row on top", timing: "4 small · 2 medium · Go",
-    desc: "One row of small tiles above medium Join and Create and a large Go. The Crew tile shows how many are out.", render: tilesA },
-  { name: "Tiles B. Crew up front", timing: "medium Crew · 2 short · small row · Go",
-    desc: "Crew becomes a medium tile with the faces of whoever is out; Join and Create shrink to short tiles beside it. Go also says who is out.", render: tilesB },
+  { key: "A", name: "Tiles A. Two signs and four squares", timing: "2x2 Join, Create · 4 × 1x1 · Go 6x3",
+    desc: "Join and Create are 2x2; What’s new, Crew, Help and Account fill the last 2x2 block as icon-only squares. Go spans the width below." },
+  { key: "B", name: "Tiles B. Crew up front", timing: "2x2 Crew, Join, Create · 1x1 row · Go 6x3",
+    desc: "Crew is a 2x2 tile with the faces of whoever is out, beside Join and Create. What’s new, Help and Account sit in a row of squares, then Go, which shows how many of your crew are out." },
 ];
 
-const grid = document.getElementById("grid");
+const root = document.getElementById("grid");
 function render() {
-  grid.innerHTML = "";
+  root.innerHTML = "";
   for (const o of options) {
     const col = document.createElement("section");
     col.className = "option";
-    col.innerHTML = `<h2>${o.name}<small>${o.timing}</small></h2><p>${o.desc}</p><div class="phone">${o.render()}<div class="toast" role="status"></div></div>`;
-    grid.appendChild(col);
+    const bar = o.key
+      ? `<div class="edit-bar"><button type="button" data-edit="${o.key}" class="${edit[o.key].on ? "on" : ""}">${edit[o.key].on ? "Done" : "Edit tiles"}</button><button type="button" data-reset="${o.key}">Reset</button></div>`
+      : `<div class="edit-bar"></div>`;
+    if (o.key) normalize(o.key);
+    col.innerHTML = `<h2>${o.name}<small>${o.timing}</small></h2><p>${o.desc}</p>${bar}<div class="phone${o.key && edit[o.key].on ? " editing" : ""}">${o.key ? tilesPhone(o.key) : o.render()}<div class="toast" role="status"></div></div>`;
+    root.appendChild(col);
+    if (o.key) applyLayout(o.key);
   }
 }
-grid.addEventListener("click", e => {
-  const tile = e.target.closest(".tile");
-  if (!tile) return;
-  const toast = tile.closest(".phone").querySelector(".toast");
-  if (tile.hasAttribute("data-news")) {
-    state.seen = true;
-    render();
-    const t = grid.querySelectorAll(".toast");
-    t.forEach(x => { x.textContent = "Opened What’s new. The tile is hidden until the next update."; x.classList.add("show"); });
-    setTimeout(() => t.forEach(x => x.classList.remove("show")), 2200);
+
+function toast(phone, msg, ms = 1400) {
+  const t = phone.querySelector(".toast");
+  t.textContent = msg; t.classList.add("show");
+  clearTimeout(t._t); t._t = setTimeout(() => t.classList.remove("show"), ms);
+}
+
+function activate(el) {
+  const phone = el.closest(".phone");
+  const key = el.closest(".tgrid")?.dataset.key;
+  if (!key || edit[key].on) return;
+  if (el.dataset.id === "news") {
+    state.seen = true; render();
+    document.querySelectorAll(".tgrid").forEach(g => toast(g.closest(".phone"), "Opened What’s new. The tile is hidden until the next update.", 2200));
     return;
   }
-  const name = (tile.getAttribute("aria-label") || tile.querySelector(".title, .label")?.textContent || "").split(":")[0];
-  toast.textContent = `Would open ${name.trim()}`;
-  toast.classList.add("show");
-  clearTimeout(toast._t);
-  toast._t = setTimeout(() => toast.classList.remove("show"), 1400);
+  toast(phone, `Would open ${NAMES[el.dataset.id]}`);
+}
+
+function cycleSize(key, id) {
+  const t = layouts[key].find(t => t.id === id);
+  const sizes = SIZES[id];
+  const i = sizes.findIndex(([w, h]) => w === t.w && h === t.h);
+  [t.w, t.h] = sizes[(i + 1) % sizes.length];
+  t.x = Math.min(t.x, COLS - t.w);
+  commit(key, settle(layouts[key].filter(visible), id));
+  applyLayout(key); save();
+  toast(gridOf(key).closest(".phone"), `${NAMES[id]} · ${t.w}×${t.h}`, 900);
+}
+
+// ---------- Pointer: tap, press-and-hold, drag, handle ----------
+let p = null;
+
+root.addEventListener("pointerdown", e => {
+  const el = e.target.closest(".tgrid .tile");
+  if (!el || e.button > 0) return;
+  const key = el.closest(".tgrid").dataset.key, id = el.dataset.id;
+  p = { key, id, el, x0: e.clientX, y0: e.clientY, pid: e.pointerId, onHandle: !!e.target.closest(".handle"), armed: edit[key].on, held: false, dragging: false };
+  if (p.armed) { e.preventDefault(); el.setPointerCapture(e.pointerId); return; }
+  p.timer = setTimeout(() => {
+    if (!p) return;
+    p.held = p.armed = true;
+    edit[key].on = true; edit[key].sel = id;
+    refreshEdit(key);
+    try { el.setPointerCapture(p.pid); } catch {}
+  }, 450);
+});
+
+function startDrag(e) {
+  const { key, el, id } = p;
+  const grid = gridOf(key), r = el.getBoundingClientRect();
+  edit[key].sel = id;
+  p.dragging = true;
+  p.grabX = e.clientX - r.left; p.grabY = e.clientY - r.top;
+  p.base = layouts[key].filter(visible).map(t => ({ ...t }));
+  p.preview = p.base; p.target = null;
+  grid.insertAdjacentHTML("afterbegin",
+    Array.from({ length: SLOT_ROWS * COLS }, (_, i) => `<div class="slot" style="grid-column:${i % COLS + 1};grid-row:${Math.floor(i / COLS) + 1}"></div>`).join("") + `<div class="ghost"></div>`);
+  el.classList.add("dragging");
+  applyLayout(key);
+}
+
+root.addEventListener("pointermove", e => {
+  if (!p) return;
+  const moved = Math.hypot(e.clientX - p.x0, e.clientY - p.y0);
+  if (!p.dragging) {
+    if (moved < 6) return;
+    if (!p.armed) { clearTimeout(p.timer); p = null; return; }
+    if (p.onHandle) return;
+    startDrag(e);
+  }
+  const { key, el, id } = p;
+  const grid = gridOf(key), gr = grid.getBoundingClientRect();
+  const step = (grid.clientWidth - (COLS - 1) * GAP) / COLS + GAP;
+  const left = e.clientX - gr.left - p.grabX, top = e.clientY - gr.top - p.grabY;
+  const me = p.base.find(t => t.id === id);
+  const tx = Math.max(0, Math.min(COLS - me.w, Math.round(left / step))), ty = Math.max(0, Math.round(top / step));
+  if (!p.target || p.target[0] !== tx || p.target[1] !== ty) {
+    p.target = [tx, ty];
+    p.preview = settle(p.base.map(t => t.id === id ? { ...t, x: tx, y: ty } : t), id);
+    applyLayout(key, p.preview);
+    place(grid.querySelector(".ghost"), p.preview.find(t => t.id === id));
+  }
+  el.style.transform = `translate(${left - el.offsetLeft}px, ${top - el.offsetTop}px)`;
+});
+
+function endPointer(e, cancelled) {
+  if (!p) return;
+  clearTimeout(p.timer);
+  const { key, id, el } = p;
+  if (p.dragging) {
+    if (!cancelled) commit(key, p.preview);
+    el.style.transform = "";
+    el.classList.remove("dragging");
+    gridOf(key).querySelectorAll(".slot, .ghost").forEach(n => n.remove());
+    applyLayout(key); save();
+  } else if (!cancelled && !p.held) {
+    if (!edit[key].on) activate(el);
+    else if (p.onHandle) cycleSize(key, id);
+    else { edit[key].sel = id; applyLayout(key); }
+  }
+  p = null;
+}
+root.addEventListener("pointerup", e => endPointer(e, false));
+root.addEventListener("pointercancel", e => endPointer(e, true));
+root.addEventListener("contextmenu", e => { if (e.target.closest(".tgrid")) e.preventDefault(); });
+
+root.addEventListener("click", e => {
+  const editBtn = e.target.closest("[data-edit]"), reset = e.target.closest("[data-reset]");
+  if (editBtn) {
+    const k = editBtn.dataset.edit; edit[k].on = !edit[k].on; edit[k].sel = null; refreshEdit(k); return;
+  }
+  if (reset) { const k = reset.dataset.reset; layouts[k] = fromPreset(k); edit[k].sel = null; save(); render(); return; }
+  if (e.target.closest(".tgrid .tile")) return;
+  const phone = e.target.closest(".phone");
+  const k = phone?.querySelector(".tgrid")?.dataset.key;
+  if (k && edit[k].on) { edit[k].on = false; edit[k].sel = null; refreshEdit(k); return; }
+  const sign = e.target.closest(".go, .alt, .event-sign");
+  if (phone && sign) toast(phone, `Would open ${sign.querySelector(".title").textContent}`);
+});
+root.addEventListener("keydown", e => {
+  const el = e.target.closest(".tgrid .tile");
+  if (el && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); activate(el); }
 });
 
 document.getElementById("updated").addEventListener("change", e => { state.updated = e.target.checked; state.seen = false; render(); });
