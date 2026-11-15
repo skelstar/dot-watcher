@@ -30,6 +30,8 @@ import nz.skelstar.dotwatcher.network.UpdateCasualSettingsRequest
 import nz.skelstar.dotwatcher.network.UpdateProfileRequest
 import nz.skelstar.dotwatcher.network.bearer
 import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.ResponseBody
 import okhttp3.ResponseBody.Companion.toResponseBody
 import retrofit2.Response
 
@@ -208,6 +210,24 @@ class DotWatcherRepository(
 
     suspend fun revokeCasualWatchLinks(): Response<Unit> = api.revokeCasualWatchLinks(bearer(requireToken()))
 
+    // --- GPX routes: the same raw-XML calls iOS makes (CasualStore.setRoute, LocationManager.uploadRoute).
+
+    suspend fun setCasualRoute(gpx: ByteArray): Response<Unit> =
+        api.setCasualRoute(bearer(requireToken()), gpx.toRequestBody(GPX_MEDIA_TYPE))
+
+    suspend fun deleteCasualRoute(): Response<Unit> = api.deleteCasualRoute(bearer(requireToken()))
+
+    suspend fun getCasualRoute(runId: String): Response<ResponseBody> =
+        api.getCasualRoute(runId, bearer(requireToken()))
+
+    suspend fun uploadSessionRoute(sessionId: String, gpx: ByteArray): Response<Unit> =
+        api.uploadSessionRoute(sessionId, bearer(requireToken()), gpx.toRequestBody(GPX_MEDIA_TYPE))
+
+    suspend fun deleteSessionRoute(sessionId: String): Response<Unit> =
+        api.deleteSessionRoute(sessionId, bearer(requireToken()))
+
+    suspend fun getSessionRoute(inviteCode: String): Response<ResponseBody> = api.getSessionRoute(inviteCode)
+
     /** [fix] null asks without a position, which gets the server's placeholder. */
     suspend fun getNearbyEvents(fix: Fix? = null): Response<List<NearbyEvent>> =
         api.getNearbyEvents(bearer(requireToken()), fix?.latitude, fix?.longitude, fix?.accuracyMetres)
@@ -260,3 +280,5 @@ class DotWatcherRepository(
         return Response.error(errorBody, response.raw())
     }
 }
+
+private val GPX_MEDIA_TYPE = "application/gpx+xml".toMediaType()

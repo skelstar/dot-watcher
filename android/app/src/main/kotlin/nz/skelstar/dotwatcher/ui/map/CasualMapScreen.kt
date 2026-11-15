@@ -50,6 +50,10 @@ import nz.skelstar.dotwatcher.location.POST_INTERVAL_SECONDS
 import nz.skelstar.dotwatcher.location.TrackingState
 import nz.skelstar.dotwatcher.network.NearbyDot
 import nz.skelstar.dotwatcher.network.RunnerPosition
+import nz.skelstar.dotwatcher.network.errorMessageOrStatus
+import nz.skelstar.dotwatcher.network.networkMessage
+import nz.skelstar.dotwatcher.route.CasualRouteCache
+import nz.skelstar.dotwatcher.route.RoutePoint
 import nz.skelstar.dotwatcher.ui.casual.StopPill
 import nz.skelstar.dotwatcher.ui.casual.ShareRunSheet
 import nz.skelstar.dotwatcher.ui.casual.WatchLinkState
@@ -105,36 +109,84 @@ fun CasualMapScreen(
     val pausedForBattery = tracking?.pausedForBattery == true
     val displayName = repository.displayName.orEmpty()
 
+    // GPX routes: this person's own and those of crew who are out, kept in step with the poll so a
+    // route someone adds or removes shows for everyone within one poll (as on iOS).
+    val routeCache = remember { CasualRouteCache() }
+    var routeLines by remember { mutableStateOf<List<List<RoutePoint>>>(emptyList()) }
+    var hasOwnRoute by remember { mutableStateOf(false) }
+    var routeFocus by remember { mutableStateOf<List<RoutePoint>?>(null) }
+    var routeFocusTick by remember { mutableStateOf(0) }
+
+    suspend fun loadLive() {
+        val live = runCatching { repository.casualLive() }.getOrNull()?.body() ?: return
+        val everyone = live.positions.mapNotNull { it.firstOrNull() }
+        positions = everyone.map {
+            RunnerPosition(
+                runnerName = it.runnerName,
+                latitude = it.latitude,
+                longitude = it.longitude,
+                heading = it.heading,
+                timestamp = it.timestamp,
+                isUltraConstrained = it.isUltraConstrained,
+                displayName = it.displayName,
+            )
+        }
+        locked = everyone.filter { it.inSession }.map { it.runnerName }.toSet()
+        crewOut = everyone.count { !it.isSelf }
+        nearby = live.nearby
+
+        val refs = live.routes.orEmpty()
+        val selfName = everyone.firstOrNull { it.isSelf }?.runnerName
+        hasOwnRoute = selfName != null && refs.any { it.runnerName == selfName }
+        routeCache.sync(refs) { runId ->
+            runCatching { repository.getCasualRoute(runId) }.getOrNull()
+                ?.takeIf { it.isSuccessful }
+                ?.let { response -> runCatching { response.body()?.bytes() }.getOrNull() }
+        }
+        routeLines = routeCache.lines
+    }
+
     // Only while the app is visible: the foreground service keeps sending this device's position
     // regardless, and nobody is looking at the map with the screen locked.
     val lifecycleOwner = LocalLifecycleOwner.current
     LaunchedEffect(lifecycleOwner) {
         lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
             while (isActive) {
-                runCatching { repository.casualLive() }
-                    .onSuccess { response ->
-                        response.body()?.let { live ->
-                            val everyone = live.positions.mapNotNull { it.firstOrNull() }
-                            positions = everyone.map {
-                                RunnerPosition(
-                                    runnerName = it.runnerName,
-                                    latitude = it.latitude,
-                                    longitude = it.longitude,
-                                    heading = it.heading,
-                                    timestamp = it.timestamp,
-                                    isUltraConstrained = it.isUltraConstrained,
-                                    displayName = it.displayName,
-                                )
-                            }
-                            locked = everyone.filter { it.inSession }.map { it.runnerName }.toSet()
-                            crewOut = everyone.count { !it.isSelf }
-                            nearby = live.nearby
-                        }
-                    }
+                loadLive()
                 delay(POLL_INTERVAL_MS)
             }
         }
     }
+
+    // This person's own route, shown to their crew and to anyone with their watch link.
+    val routeActions = RouteActions(
+        hasRoute = hasOwnRoute,
+        removeMessage = "This removes your route for you, your crew and anyone watching your link.",
+        upload = { gpx ->
+            val result = runCatching { repository.setCasualRoute(gpx) }
+            val response = result.getOrNull()
+            when {
+                response == null -> result.exceptionOrNull()?.networkMessage() ?: "Network error. Try again."
+                !response.isSuccessful -> response.errorMessageOrStatus()
+                else -> {
+                    loadLive()
+                    null
+                }
+            }
+        },
+        remove = {
+            val result = runCatching { repository.deleteCasualRoute() }
+            val response = result.getOrNull()
+            when {
+                response == null -> result.exceptionOrNull()?.networkMessage() ?: "Network error. Try again."
+                !response.isSuccessful -> response.errorMessageOrStatus()
+                else -> {
+                    loadLive()
+                    null
+                }
+            }
+        },
+    )
 
     fun makeWatchLink() {
         watchLink = WatchLinkState.Creating
@@ -227,6 +279,9 @@ fun CasualMapScreen(
             ownPaused = pausedForBattery,
             nearby = nearby,
             lockedRunners = locked,
+            routes = routeLines,
+            routeFocus = routeFocus,
+            routeFocusTick = routeFocusTick,
             onRunnerTapped = { name ->
                 followedRunner = if (name == followedRunner) null else name
                 fitAll = false
@@ -267,6 +322,13 @@ fun CasualMapScreen(
                 fitAllTick++
             }
             RailButton(RailIcon.Eye, "Who can see me") { showWhoCanSeeMe = true }
+            RouteRailButton(routeActions) { points ->
+                // Show the new route whole, and stop fitting so the next poll doesn't pull away from it.
+                followedRunner = null
+                fitAll = false
+                routeFocus = points
+                routeFocusTick++
+            }
             RailButton(RailIcon.Settings, "Settings") { showSettings = true }
         }
 
