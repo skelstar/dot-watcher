@@ -104,7 +104,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     val blocks = BlocksModel(repository)
 
     private val appearancePrefs = AppearancePrefs(application)
-    private val _appearance = MutableStateFlow(appearancePrefs.mode)
+    // Light only for now: the Appearance picker is hidden and any saved choice is ignored (but kept,
+    // so the setting can come back without a migration).
+    private val _appearance = MutableStateFlow(AppearanceMode.Light)
     val appearance: StateFlow<AppearanceMode> = _appearance
 
     fun setAppearance(mode: AppearanceMode) {

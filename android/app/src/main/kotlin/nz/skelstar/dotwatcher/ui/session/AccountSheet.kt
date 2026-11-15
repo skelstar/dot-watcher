@@ -16,9 +16,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -142,18 +139,6 @@ fun AccountSheet(
                     enabled = !deleting && nicknameDraft.trim() != nickname.orEmpty(),
                     modifier = Modifier.fillMaxWidth(),
                 ) { Text("Save name") }
-            }
-
-            Text("Appearance", style = MaterialTheme.typography.titleSmall)
-            SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
-                val modes = AppearanceMode.entries
-                modes.forEachIndexed { index, mode ->
-                    SegmentedButton(
-                        selected = mode == appearance,
-                        onClick = { onAppearanceChange(mode) },
-                        shape = SegmentedButtonDefaults.itemShape(index, modes.size),
-                    ) { Text(mode.label) }
-                }
             }
 
             OutlinedButton(
