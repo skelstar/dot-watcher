@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>DotWatcher — iOS TestFlight Uploads</title>
+  <style>
+    :root {
+      --bg: #f1f5f9;
+      --card: #ffffff;
+      --text: #1e293b;
+      --muted: #64748b;
+      --faint: #94a3b8;
+      --line: #e2e8f0;
+      --code-bg: #f1f5f9;
+      --accent: #2563eb;
+      --accent-soft: #dbeafe;
+      --ok: #15803d;
+      --ok-soft: #dcfce7;
+      --warn: #b45309;
+      --warn-soft: #fef3c7;
+      --bad: #b91c1c;
+      --bad-soft: #fee2e2;
+      --shadow: 0 1px 3px rgba(0,0,0,0.07), 0 4px 16px rgba(0,0,0,0.04);
+    }
+    @media (prefers-color-scheme: dark) {
+      :root:not([data-theme="light"]) {
+        --bg: #0f172a;
+        --card: #1e293b;
+        --text: #e2e8f0;
+        --muted: #94a3b8;
+        --faint: #64748b;
+        --line: #334155;
+        --code-bg: #0f172a;
+        --accent: #60a5fa;
+        --accent-soft: #1e3a5f;
+        --ok: #4ade80;
+        --ok-soft: #14532d;
+        --warn: #fbbf24;
+        --warn-soft: #422006;
+        --bad: #f87171;
+        --bad-soft: #450a0a;
+        --shadow: none;
+      }
+    }
+    :root[data-theme="dark"] {
+      --bg: #0f172a;
+      --card: #1e293b;
+      --text: #e2e8f0;
+      --muted: #94a3b8;
+      --faint: #64748b;
+      --line: #334155;
+      --code-bg: #0f172a;
+      --accent: #60a5fa;
+      --accent-soft: #1e3a5f;
+      --ok: #4ade80;
+      --ok-soft: #14532d;
+      --warn: #fbbf24;
+      --warn-soft: #422006;
+      --bad: #f87171;
+      --bad-soft: #450a0a;
+      --shadow: none;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      padding: 2.5rem 1rem 4rem;
+      line-height: 1.55;
+    }
+
+    .page { max-width: 900px; margin: 0 auto; }
+
+    header { margin-bottom: 2rem; }
+    header h1 { font-size: 1.75rem; font-weight: 700; margin-bottom: 0.4rem; }
+    header p { color: var(--muted); font-size: 0.95rem; }
+    header .meta { margin-top: 0.75rem; font-size: 0.85rem; color: var(--faint); }
+
+    nav {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.4rem;
+      margin-bottom: 1rem;
+    }
+    nav a {
+      font-size: 0.82rem;
+      color: var(--accent);
+      background: var(--card);
+      border-radius: 999px;
+      padding: 0.25rem 0.75rem;
+      text-decoration: none;
+      box-shadow: var(--shadow);
+    }
+    nav a:hover { text-decoration: underline; }
+
+    .section-title {
+      font-size: 0.75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--faint);
+      margin: 2.25rem 0 0.75rem;
+    }
+
+    .card {
+      background: var(--card);
+      border-radius: 14px;
+      padding: 1.5rem 1.75rem;
+      margin-bottom: 1rem;
+      box-shadow: var(--shadow);
+    }
+    .card h2 { font-size: 1.15rem; margin-bottom: 0.6rem; }
+    .card h3 { font-size: 1rem; margin: 1.1rem 0 0.4rem; }
+    .card p, .card li { font-size: 0.95rem; }
+    .card p + p { margin-top: 0.6rem; }
+    .card ul, .card ol { padding-left: 1.3rem; margin-top: 0.4rem; }
+    .card li + li { margin-top: 0.3rem; }
+
+    code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.86em;
+      background: var(--code-bg);
+      border: 1px solid var(--line);
+      border-radius: 5px;
+      padding: 0.05rem 0.35rem;
+      overflow-wrap: anywhere;
+    }
+    pre {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.85rem;
+      background: var(--code-bg);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 0.75rem 1rem;
+      margin-top: 0.6rem;
+      overflow-x: auto;
+    }
+
+    .flow {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 0.5rem;
+      margin-top: 0.8rem;
+      counter-reset: step;
+    }
+    .flow div {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 0.7rem 0.8rem;
+      font-size: 0.86rem;
+      counter-increment: step;
+    }
+    .flow div::before {
+      content: counter(step);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 1.4rem;
+      height: 1.4rem;
+      border-radius: 50%;
+      background: var(--accent-soft);
+      color: var(--accent);
+      font-weight: 700;
+      font-size: 0.78rem;
+      margin-bottom: 0.35rem;
+    }
+    .flow strong { display: block; }
+
+    .numbers {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 0.75rem;
+      margin-top: 0.8rem;
+    }
+    .number {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 0.9rem 1rem;
+    }
+    .number .big {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 1.6rem;
+      font-weight: 700;
+      color: var(--accent);
+    }
+    .number .label {
+      font-size: 0.75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--faint);
+    }
+    .number p { font-size: 0.88rem; margin-top: 0.35rem; }
+
+    .callout {
+      border-radius: 10px;
+      padding: 0.8rem 1rem;
+      margin-top: 0.9rem;
+      font-size: 0.92rem;
+    }
+    .callout.warn { background: var(--warn-soft); color: var(--text); border-left: 4px solid var(--warn); }
+    .callout.ok { background: var(--ok-soft); color: var(--text); border-left: 4px solid var(--ok); }
+
+    .table-wrap { overflow-x: auto; margin-top: 0.7rem; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+    th, td { text-align: left; padding: 0.55rem 0.6rem; border-bottom: 1px solid var(--line); vertical-align: top; }
+    th { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--faint); }
+
+    .timeline { margin-top: 0.8rem; }
+    .timeline .row {
+      display: grid;
+      grid-template-columns: 7.5rem 1fr;
+      gap: 0.75rem;
+      padding: 0.5rem 0;
+      border-bottom: 1px solid var(--line);
+      font-size: 0.9rem;
+    }
+    .timeline .row:last-child { border-bottom: none; }
+    .tag {
+      display: inline-block;
+      font-size: 0.72rem;
+      font-weight: 700;
+      border-radius: 999px;
+      padding: 0.05rem 0.5rem;
+      margin-left: 0.3rem;
+      white-space: nowrap;
+    }
+    .tag.ok { background: var(--ok-soft); color: var(--ok); }
+    .tag.bad { background: var(--bad-soft); color: var(--bad); }
+    .build {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-weight: 700;
+    }
+
+    @media (max-width: 520px) {
+      body { padding: 1.5rem 16px 3rem; }
+      .card { padding: 1.1rem 1.1rem; }
+      .timeline .row { grid-template-columns: 1fr; gap: 0.15rem; }
+    }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <header>
+    <h1>iOS TestFlight uploads</h1>
+    <p>How the <strong>iOS TestFlight</strong> GitHub Actions workflow builds and uploads the app, how the version and build numbers work, and what to do in the common situations.</p>
+    <p class="meta">Workflow: <code>.github/workflows/ios-testflight.yml</code> · Project: <code>ios/DotWatcher/DotWatcher.xcodeproj</code></p>
+  </header>
+
+  <nav>
+    <a href="#what">What it does</a>
+    <a href="#numbers">Version and build</a>
+    <a href="#recipes">What do I do when…</a>
+    <a href="#branches">Branches and build numbers</a>
+    <a href="#run">Running it</a>
+    <a href="#setup">One-time setup</a>
+    <a href="#errors">Errors</a>
+  </nav>
+
+  <div class="section-title" id="what">What it does</div>
+  <div class="card">
+    <h2>One run, one TestFlight build</h2>
+    <p>Each run takes one commit and turns it into one build in TestFlight. It never submits anything for App Store review: that stays a button you press in App Store Connect.</p>
+    <div class="flow">
+      <div><strong>Check out</strong>The branch you picked (or the tagged commit), with full git history.</div>
+      <div><strong>Check the tag</strong>Tag runs only: the tag must match the project's version.</div>
+      <div><strong>Add secrets</strong>Writes <code>Secrets.xcconfig</code> (map key) and the API key file.</div>
+      <div><strong>Archive</strong>Release configuration, so it talks to Production. Signs itself with the API key.</div>
+      <div><strong>Upload</strong>Straight to App Store Connect. Shows in TestFlight after Apple's processing (5–15 min).</div>
+    </div>
+    <div class="callout warn"><strong>TestFlight builds use real data.</strong> Release builds always point at Production; there is no Staging server.</div>
+  </div>
+
+  <div class="section-title" id="numbers">Version and build: the two numbers</div>
+  <div class="card">
+    <h2>Testers see "1.4.3 (965)"</h2>
+    <p>Every iOS build carries two numbers. Apple groups builds by the first and tells them apart by the second.</p>
+    <div class="numbers">
+      <div class="number">
+        <div class="label">Version</div>
+        <div class="big">1.4.3</div>
+        <p><strong>You set this.</strong> In Xcode: the DotWatcher target → General → Version (it is <code>MARKETING_VERSION</code> in the project file). The workflow never changes it.</p>
+      </div>
+      <div class="number">
+        <div class="label">Build</div>
+        <div class="big">965</div>
+        <p><strong>Set automatically.</strong> The number of commits in the history of the commit being built (<code>git rev-list --count HEAD</code>), stamped by the project's "Stamp Git Commit SHA and Build Number" build phase. Ignore the <code>864</code> in <code>Info.plist</code>: it is replaced at build time.</p>
+      </div>
+    </div>
+
+    <h3>The rules Apple enforces</h3>
+    <ul>
+      <li><strong>Each build number can be uploaded once per version, and it must be higher than the builds already uploaded for that version.</strong> Uploading the same commit twice gives the same build number, so the second upload is refused.</li>
+      <li><strong>Once a version is approved for the App Store, it is closed.</strong> No more builds of 1.4.3 can be uploaded after 1.4.3 is approved; the next upload has to be 1.4.4 or higher.</li>
+      <li>A new version starts its builds afresh, so after a version bump any build number is fine.</li>
+      <li>TestFlight builds expire after 90 days.</li>
+    </ul>
+
+    <h3>Things that are <em>not</em> the version</h3>
+    <ul>
+      <li><strong><code>ios-v*</code> tags</strong> are labels. Pushing <code>ios-v1.4.3</code> doesn't set anything; the workflow checks that it matches the project's version and stops if it doesn't.</li>
+      <li><strong>Server releases</strong> (<code>v1.x.y</code> tags from <code>release.yml</code>) have their own numbers, unrelated to the app's.</li>
+      <li><strong><code>X-Api-Version</code></strong> (the <code>apiVersion</code> constant in <code>LocationManager.swift</code>) is what the server uses to decide whether a phone is too old. Bump it only for changes that could break against the server, never just because the app version changed.</li>
+    </ul>
+    <div class="callout ok">Builds you archive by hand on a Mac use exactly the same numbering, so manual and workflow uploads can be mixed. The same rules apply to both.</div>
+  </div>
+
+  <div class="section-title" id="recipes">What do I do when…</div>
+  <div class="card">
+    <h3>…I want testers to try the latest staging?</h3>
+    <p>Run the workflow on <code>staging</code>. The version stays the same and the build number has gone up because there are new commits. Nothing to edit.</p>
+
+    <h3>…I'm starting a new version (say 1.4.4)?</h3>
+    <ol>
+      <li>In Xcode, change Version to <code>1.4.4</code>, then commit and merge to <code>staging</code>.</li>
+      <li>Either run the workflow on <code>staging</code>, or tag it: <code>git tag ios-v1.4.4 &amp;&amp; git push origin ios-v1.4.4</code>.</li>
+    </ol>
+
+    <h3>…1.4.3 has just been approved for the App Store?</h3>
+    <p>1.4.3 is now closed. Bump the version (above) before the next upload, even for a small fix.</p>
+
+    <h3>…I want to test a feature branch?</h3>
+    <p>Run the workflow on that branch; it works. But that build uses up a build number for the current version, which can block a later <code>staging</code> upload. See <a href="#branches">branches and build numbers</a> below.</p>
+
+    <h3>…I ran it and nothing has changed since the last upload?</h3>
+    <p>Same commit, same build number: the upload is refused. Make a commit first (even a small one) or bump the version.</p>
+
+    <h3>…I start two runs at once?</h3>
+    <p>The second waits for the first to finish. It is never cancelled.</p>
+
+    <h3>…I want it in the App Store?</h3>
+    <p>Do that in App Store Connect: pick the build under the version, fill in what's new, and submit for review. The workflow never does this.</p>
+  </div>
+
+  <div class="section-title" id="branches">Branches and build numbers</div>
+  <div class="card">
+    <h2>Commit counts differ between branches</h2>
+    <p>The build number is the commit count of whatever you build, and different branches have different counts. Here is how that can bite, with <code>staging</code> at 964 commits and the version at 1.4.3:</p>
+    <div class="timeline">
+      <div class="row"><div><span class="build">964</span></div><div>Upload from <code>staging</code>. <span class="tag ok">accepted</span></div></div>
+      <div class="row"><div><span class="build">967</span></div><div>Upload from <code>my-feature</code>: branched from <code>staging</code> plus 3 commits. <span class="tag ok">accepted</span></div></div>
+      <div class="row"><div><span class="build">966</span></div><div><code>staging</code> gets 2 more commits, then you upload it. 966 is lower than 967, which is already uploaded for 1.4.3. <span class="tag bad">refused</span></div></div>
+      <div class="row"><div><span class="build">969+</span></div><div>Merge <code>my-feature</code> into <code>staging</code>. Its commits and the merge commit now count too, so <code>staging</code> is past 967 again. <span class="tag ok">accepted</span></div></div>
+    </div>
+    <p style="margin-top:0.9rem"><strong>If an upload is refused for this reason</strong>, either merge the feature branch first (as above), wait until the branch you're building has more commits than the last upload, or bump the version: a new version accepts any build number.</p>
+    <div class="callout ok"><strong>Rule of thumb:</strong> upload from <code>staging</code> as normal. Upload a feature branch only when you need testers on it, and merge it soon after.</div>
+  </div>
+
+  <div class="section-title" id="run">Running it</div>
+  <div class="card">
+    <h3>By hand, on any branch</h3>
+    <ol>
+      <li>GitHub → <strong>Actions</strong> → <strong>iOS TestFlight</strong> → <strong>Run workflow</strong>.</li>
+      <li>Pick the branch and press <strong>Run workflow</strong>.</li>
+      <li>When it finishes, the run's summary shows the version, build and commit that went up.</li>
+    </ol>
+    <p>The button only appears once the workflow file is on <code>staging</code>, the default branch. A branch made before the workflow was added doesn't have it, so it won't run there until that branch is updated from <code>staging</code>.</p>
+
+    <h3>With a tag</h3>
+    <pre>git tag ios-v1.4.3
+git push origin ios-v1.4.3</pre>
+    <p>The tag must match the project's version exactly, or the run stops before building. Tag the commit you mean to ship (usually the tip of <code>staging</code>).</p>
+
+    <h3>From the command line</h3>
+    <pre>gh workflow run ios-testflight.yml --ref my-branch</pre>
+  </div>
+
+  <div class="section-title" id="setup">One-time setup</div>
+  <div class="card">
+    <ol>
+      <li><strong>Make an App Store Connect API key.</strong> App Store Connect → Users and Access → Integrations → App Store Connect API → Team Keys → add a key with the <strong>Admin</strong> role. Admin is what lets the build create its own distribution certificate and profile. Download the <code>.p8</code> file: Apple lets you download it once.</li>
+      <li><strong>Add repository secrets</strong> (GitHub → Settings → Secrets and variables → Actions):
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Secret</th><th>Value</th></tr></thead>
+            <tbody>
+              <tr><td><code>ASC_KEY_ID</code></td><td>The key's ID, shown next to it in App Store Connect.</td></tr>
+              <tr><td><code>ASC_ISSUER_ID</code></td><td>The Issuer ID at the top of the API keys page.</td></tr>
+              <tr><td><code>ASC_KEY_P8</code></td><td>The whole contents of the <code>AuthKey_….p8</code> file, including the BEGIN and END lines.</td></tr>
+              <tr><td><code>LINZ_API_KEY</code></td><td>The map key from your local <code>Secrets.xcconfig</code>. Without it the build still works, but the map is blank (the run warns).</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </li>
+      <li>Merge the workflow into <code>staging</code>, then do a first run by hand.</li>
+    </ol>
+    <p>The API key file is written to the runner's temporary folder during the run and deleted at the end. If the key is ever leaked, revoke it in App Store Connect and make a new one.</p>
+  </div>
+
+  <div class="section-title" id="errors">When it fails</div>
+  <div class="card">
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Where / message</th><th>Meaning</th><th>Fix</th></tr></thead>
+        <tbody>
+          <tr>
+            <td>"Check tag matches the project version"</td>
+            <td>The tag says one version, the project another.</td>
+            <td>Change Version in Xcode and commit, or delete the tag and tag the right version.</td>
+          </tr>
+          <tr>
+            <td>Upload: bundle version "must be higher than the previously uploaded version", or "already been used"</td>
+            <td>That build number is already uploaded for this version, or a higher one is.</td>
+            <td>See <a href="#branches">branches</a>: build from a branch with more commits, merge first, or bump the version.</td>
+          </tr>
+          <tr>
+            <td>Upload: "must contain a higher version than that of the previously approved version"</td>
+            <td>This version has been approved for the App Store and is closed.</td>
+            <td>Bump the version.</td>
+          </tr>
+          <tr>
+            <td>Archive: signing or provisioning errors</td>
+            <td>The API key is wrong or doesn't have the Admin role.</td>
+            <td>Check the three <code>ASC_*</code> secrets; make an Admin key if needed.</td>
+          </tr>
+          <tr>
+            <td>"Select Xcode": no Xcode 26, or the job never starts</td>
+            <td>GitHub's Mac machine doesn't have the Xcode this project needs (iOS 26 SDK).</td>
+            <td>Change <code>runs-on:</code> in the workflow to a Mac image that has Xcode 26.</td>
+          </tr>
+          <tr>
+            <td>Build in TestFlight, but the map is blank</td>
+            <td><code>LINZ_API_KEY</code> isn't set.</td>
+            <td>Add the secret and run again (after a new commit, since the build number must change).</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>
