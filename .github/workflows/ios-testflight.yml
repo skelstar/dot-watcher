@@ -1,0 +1,145 @@
+# .github/workflows/ios-testflight.yml
+#
+# Builds the iOS app (Release, so Production) and uploads it to TestFlight. Run it by hand from the
+# Actions tab and pick any branch, or push an ios-v* tag (e.g. ios-v1.4.3). It never submits for App
+# Store review: that stays a manual step in App Store Connect.
+#
+# The version (MARKETING_VERSION) comes from the project. The build number is the commit count, stamped
+# by the project's own build phase, hence the full-history checkout. TestFlight refuses a build number it
+# has already seen for the same version, so a branch with fewer commits than the last upload fails at
+# the upload step; bump the version or upload from a newer branch.
+#
+# Signing is automatic: the App Store Connect API key (Admin role) lets xcodebuild create the
+# distribution certificate and profile itself, so no certificates are stored here.
+#
+# Repository secrets:
+#   ASC_KEY_ID      App Store Connect API key ID
+#   ASC_ISSUER_ID   App Store Connect issuer ID
+#   ASC_KEY_P8      contents of the AuthKey_<id>.p8 file
+#   LINZ_API_KEY    LINZ Basemaps key (without it the build works but the map is blank)
+name: iOS TestFlight
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ["ios-v*"]
+
+# Two uploads at once would race for the same build number.
+concurrency:
+  group: ios-testflight
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  PROJECT: ios/DotWatcher/DotWatcher.xcodeproj
+  SCHEME: DotWatcher
+  TEAM_ID: 8A9JZATC8G
+
+jobs:
+  testflight:
+    runs-on: macos-26
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # the build number is the commit count
+
+      - name: Select Xcode
+        run: |
+          set -euo pipefail
+          xcode=$(ls -d /Applications/Xcode_26*.app | sort -V | tail -1)
+          sudo xcode-select -s "$xcode"
+          xcodebuild -version
+
+      # The tag is only a label: the version comes from the project. Refuse a tag that disagrees, so
+      # ios-v1.4.4 can't quietly upload another 1.4.3.
+      - name: Check tag matches the project version
+        if: startsWith(github.ref, 'refs/tags/ios-v')
+        run: |
+          set -euo pipefail
+          tag_version="${GITHUB_REF_NAME#ios-v}"
+          project_version=$(xcodebuild -showBuildSettings -project "$PROJECT" -scheme "$SCHEME" -configuration Release 2>/dev/null \
+            | awk -F' = ' '/ MARKETING_VERSION = / { print $2; exit }')
+          if [[ "$tag_version" != "$project_version" ]]; then
+            echo "::error::Tag $GITHUB_REF_NAME says $tag_version but the project's version is $project_version. Change MARKETING_VERSION in Xcode, or tag ios-v$project_version."
+            exit 1
+          fi
+          echo "Tag and project agree: $project_version"
+
+      - name: Write secrets
+        env:
+          LINZ_API_KEY: ${{ secrets.LINZ_API_KEY }}
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+        run: |
+          set -euo pipefail
+          [[ -n "$LINZ_API_KEY" ]] || echo "::warning::LINZ_API_KEY is not set; the map will be blank in this build"
+          printf 'LINZ_API_KEY = %s\n' "$LINZ_API_KEY" > ios/DotWatcher/Config/Secrets.xcconfig
+          [[ -n "$ASC_KEY_P8" ]] || { echo "::error::ASC_KEY_P8 is not set"; exit 1; }
+          printf '%s\n' "$ASC_KEY_P8" > "$RUNNER_TEMP/AuthKey.p8"
+
+      - name: Archive
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+        run: |
+          set -euo pipefail
+          xcodebuild archive \
+            -project "$PROJECT" \
+            -scheme "$SCHEME" \
+            -configuration Release \
+            -destination "generic/platform=iOS" \
+            -archivePath "$RUNNER_TEMP/DotWatcher.xcarchive" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$RUNNER_TEMP/AuthKey.p8" \
+            -authenticationKeyID "$ASC_KEY_ID" \
+            -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
+            DEVELOPMENT_TEAM="$TEAM_ID"
+
+      - name: Upload to TestFlight
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+        run: |
+          set -euo pipefail
+          # destination=upload sends the build straight to App Store Connect. Xcode must not renumber
+          # it: the commit count is the build number.
+          cat > "$RUNNER_TEMP/ExportOptions.plist" <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key><string>app-store-connect</string>
+            <key>destination</key><string>upload</string>
+            <key>teamID</key><string>$TEAM_ID</string>
+            <key>signingStyle</key><string>automatic</string>
+            <key>manageAppVersionAndBuildNumber</key><false/>
+            <key>uploadSymbols</key><true/>
+          </dict>
+          </plist>
+          EOF
+          xcodebuild -exportArchive \
+            -archivePath "$RUNNER_TEMP/DotWatcher.xcarchive" \
+            -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist" \
+            -exportPath "$RUNNER_TEMP/export" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$RUNNER_TEMP/AuthKey.p8" \
+            -authenticationKeyID "$ASC_KEY_ID" \
+            -authenticationKeyIssuerID "$ASC_ISSUER_ID"
+
+      - name: Summary
+        continue-on-error: true # the upload has already happened; don't fail the run over a summary
+        run: |
+          plist="$RUNNER_TEMP/DotWatcher.xcarchive/Products/Applications/DotWatcher.app/Info.plist"
+          version=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$plist")
+          build=$(/usr/libexec/PlistBuddy -c "Print :CFBundleVersion" "$plist")
+          {
+            echo "### Uploaded to TestFlight"
+            echo "Version **$version** build **$build** from \`$GITHUB_REF_NAME\` ($(git rev-parse --short HEAD))."
+            echo "It appears in TestFlight once Apple finishes processing, usually 5–15 minutes."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Remove API key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/AuthKey.p8"

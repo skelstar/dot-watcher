@@ -1408,7 +1408,8 @@ public partial class SessionStore(string connectionString) : IDisposable
     // Redeeming makes the two people crew immediately (the owner consented by sending the code).
     // The claim is a single conditional UPDATE, so if several people hold the same code exactly one
     // wins and the rest see the same answer as for an unknown code. Redeeming a code for someone
-    // who is already crew succeeds without using the code up.
+    // who is already crew succeeds and still uses the code up: two people who swap codes would
+    // otherwise each be left with a live code that shows as an invite waiting.
     public (CrewCodeOutcome Outcome, CrewMember? Owner) RedeemCrewCode(
         string redeemerUserId, string? rawCode, DateTimeOffset now)
     {
@@ -1432,6 +1433,20 @@ public partial class SessionStore(string connectionString) : IDisposable
         var (low, high) = OrderedPair(ownerId, redeemerUserId);
         if (IsCrew(conn, ownerId, redeemerUserId))
         {
+            // If someone else claims it first, that's fine: these two are crew either way.
+            using (var use = conn.CreateCommand())
+            {
+                use.CommandText = """
+                    UPDATE crew_codes
+                    SET redeemed_by_user_id = @redeemer, redeemed_at = @now
+                    WHERE code = @code AND redeemed_at IS NULL AND expires_at > @now
+                    """;
+                use.Parameters.AddWithValue("@redeemer", redeemerUserId);
+                use.Parameters.AddWithValue("@now", nowText);
+                use.Parameters.AddWithValue("@code", code);
+                use.ExecuteNonQuery();
+            }
+
             return (CrewCodeOutcome.Ok, new CrewMember(
                 ownerId, owner.Value.Nickname, owner.Value.DisplayName, GetCrewSince(conn, low, high) ?? nowText));
         }
