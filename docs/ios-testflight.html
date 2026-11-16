@@ -275,12 +275,11 @@
       <li><strong>Run #2</strong> (branch <code>ios-testflight-runner</code>, <code>runs-on: macos-15</code>): a job was created, but after 15 minutes it failed without starting: <em>"The job was not acquired by Runner of type hosted even after multiple attempts"</em>, with GitHub's notice <em>"Due to capacity constraints, jobs targeting macOS arm64 runners may experience longer queue times."</em> Run #1 was probably the same shortage.</li>
       <li><strong>Run #3:</strong> <strong>Re-run jobs</strong> on run #2 about 15 minutes later got a Mac straight away and succeeded. The shortage was temporary.</li>
     </ul>
-    <h3>Next</h3>
-    <ol>
-      <li>Merge <code>ios-testflight-runner</code> into <code>staging</code>.</li>
-      <li>Tag run: after the merge, <code>git tag ios-v1.4.3 origin/staging &amp;&amp; git push origin ios-v1.4.3</code>. The merge adds commits, so the build number is above 974 and the upload should be accepted. This proves the tag check.</li>
-      <li>If a run gets stuck in the queue again, press <strong>Re-run jobs</strong> later. If the shortage keeps happening, try <code>runs-on: macos-15-intel</code> (a separate Intel pool; slower, and GitHub retires it in 2027), or move to <a href="#xcode-cloud">Xcode Cloud</a>.</li>
-    </ol>
+    <ul>
+      <li><strong>Done:</strong> <code>ios-testflight-runner</code> merged (PR #355). The tag run on <code>ios-v1.4.3</code> (<code>44d13d1</code>) succeeded, which proves the tag check.</li>
+      <li><strong>Next:</strong> the workflow takes a typed version and tags what it uploaded (see <a href="#run">Running it</a>), so Kraken can start uploads. First run with a typed version is still to come.</li>
+    </ul>
+    <p>If a run gets stuck in the queue again, press <strong>Re-run jobs</strong> later. If the shortage keeps happening, try <code>runs-on: macos-15-intel</code> (a separate Intel pool; slower, and GitHub retires it in 2027), or move to <a href="#xcode-cloud">Xcode Cloud</a>.</p>
   </div>
 
   <div class="section-title" id="what">What it does</div>
@@ -289,10 +288,11 @@
     <p>Each run takes one commit and turns it into one build in TestFlight. It never submits anything for App Store review: that stays a button you press in App Store Connect.</p>
     <div class="flow">
       <div><strong>Check out</strong>The branch you picked (or the tagged commit), with full git history.</div>
-      <div><strong>Check the tag</strong>Tag runs only: the tag must match the project's version.</div>
+      <div><strong>Check the version</strong>A typed version must look like <code>1.4.4</code> and not be tagged on another commit. Tag runs: the tag must match the project's version.</div>
       <div><strong>Add secrets</strong>Writes <code>Secrets.xcconfig</code> (map key) and the API key file.</div>
-      <div><strong>Archive</strong>Release configuration, so it talks to Production. Signs itself with the API key.</div>
+      <div><strong>Archive</strong>Release configuration, so it talks to Production. Signs itself with the API key. Uses the typed version, if any.</div>
       <div><strong>Upload</strong>Straight to App Store Connect. Shows in TestFlight after Apple's processing (5–15 min).</div>
+      <div><strong>Tag</strong>Runs started by hand or from Kraken only: tags the built commit <code>ios-v&lt;version&gt;</code> if that tag doesn't exist yet.</div>
     </div>
     <div class="callout warn"><strong>TestFlight builds use real data.</strong> Release builds always point at Production; there is no Staging server.</div>
   </div>
@@ -305,7 +305,7 @@
       <div class="number">
         <div class="label">Version</div>
         <div class="big">1.4.3</div>
-        <p><strong>You set this.</strong> In Xcode: the DotWatcher target → General → Version (it is <code>MARKETING_VERSION</code> in the project file). The workflow never changes it.</p>
+        <p><strong>You set this.</strong> In Xcode: the DotWatcher target → General → Version (it is <code>MARKETING_VERSION</code> in the project file). A version typed when starting the workflow overrides it for that one build; the project file is never changed.</p>
       </div>
       <div class="number">
         <div class="label">Build</div>
@@ -324,7 +324,7 @@
 
     <h3>Things that are <em>not</em> the version</h3>
     <ul>
-      <li><strong><code>ios-v*</code> tags</strong> are labels. Pushing <code>ios-v1.4.3</code> doesn't set anything; the workflow checks that it matches the project's version and stops if it doesn't.</li>
+      <li><strong><code>ios-v*</code> tags</strong> are labels. Pushing <code>ios-v1.4.3</code> doesn't set anything; the workflow checks that it matches the project's version and stops if it doesn't. Runs started by hand or from Kraken add the tag themselves after a successful upload, so the newest <code>ios-v*</code> tag is the newest upload.</li>
       <li><strong>Server releases</strong> (<code>v1.x.y</code> tags from <code>release.yml</code>) have their own numbers, unrelated to the app's.</li>
       <li><strong><code>X-Api-Version</code></strong> (the <code>apiVersion</code> constant in <code>LocationManager.swift</code>) is what the server uses to decide whether a phone is too old. Bump it only for changes that could break against the server, never just because the app version changed.</li>
     </ul>
@@ -337,6 +337,8 @@
     <p>Run the workflow on <code>staging</code>. The version stays the same and the build number has gone up because there are new commits. Nothing to edit.</p>
 
     <h3>…I'm starting a new version (say 1.4.4)?</h3>
+    <p><strong>Quickest:</strong> run the workflow on <code>staging</code> (or press the button in Kraken) and type <code>1.4.4</code> as the version. Nothing is committed: the Xcode project still says 1.4.3, so builds archived on a Mac keep using 1.4.3 until you bump it.</p>
+    <p><strong>To keep the project in step:</strong></p>
     <ol>
       <li>In Xcode, change Version to <code>1.4.4</code>, then commit and merge to <code>staging</code>.</li>
       <li>Either run the workflow on <code>staging</code>, or tag it: <code>git tag ios-v1.4.4 &amp;&amp; git push origin ios-v1.4.4</code>.</li>
@@ -377,9 +379,10 @@
     <h3>By hand, on any branch</h3>
     <ol>
       <li>GitHub → <strong>Actions</strong> → <strong>iOS TestFlight</strong> → <strong>Run workflow</strong>.</li>
-      <li>Pick the branch and press <strong>Run workflow</strong>.</li>
-      <li>When it finishes, the run's summary shows the version, build and commit that went up.</li>
+      <li>Pick the branch. Optionally type a version such as <code>1.4.4</code> (blank uses the project's). Leave <em>request_id</em> blank; Kraken sets it. Press <strong>Run workflow</strong>.</li>
+      <li>When it finishes, the run's summary shows the version, build and commit that went up, and the commit is tagged <code>ios-v&lt;version&gt;</code>.</li>
     </ol>
+    <p>A typed version is refused before building if it isn't three numbers, or if its <code>ios-v*</code> tag is already on a different commit (that version was uploaded from somewhere else).</p>
     <p>The button only appears once the workflow file is on <code>staging</code>, the default branch. A branch made before the workflow was added doesn't have it, so it won't run there until that branch is updated from <code>staging</code>.</p>
 
     <h3>With a tag</h3>
@@ -388,7 +391,7 @@ git push origin ios-v1.4.3</pre>
     <p>The tag must match the project's version exactly, or the run stops before building. Tag the commit you mean to ship (usually the tip of <code>staging</code>).</p>
 
     <h3>From the command line</h3>
-    <pre>gh workflow run ios-testflight.yml --ref my-branch</pre>
+    <pre>gh workflow run ios-testflight.yml --ref my-branch -f version=1.4.4</pre>
   </div>
 
   <div class="section-title" id="setup">One-time setup</div>
