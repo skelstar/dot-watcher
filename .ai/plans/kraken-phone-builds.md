@@ -1,7 +1,7 @@
 # Phone builds from Kraken — Plan
 
-*DotWatcher + Kraken — plan, November 2026. Status: step 0 in progress. Workflow merged and secrets added; no run
-has reached a Mac yet because of GitHub's macOS capacity (see the step 0 progress log).*
+*DotWatcher + Kraken — plan, November 2026. Status: step 0 nearly done. The workflow uploaded 1.4.3 (974) to TestFlight;
+the tag run and merging `ios-testflight-runner` remain (see the step 0 progress log).*
 
 Goal: in Kraken (kraken.skelstar.io, repo `skelstar/tatooine-deploy`), pick a branch, type a version such as
 `1.4.4`, press **Upload to TestFlight**, and watch it go up. Kraken never builds anything itself (an iOS build needs a
@@ -42,8 +42,8 @@ Branch `ios-testflight-workflow` (merged, PR #352).
 - [x] Merge the `ios-testflight-workflow` PR into `staging`.
 - [x] Create the App Store Connect API key (Admin role, under **Team Keys**) and the repository secrets `ASC_KEY_ID`,
       `ASC_ISSUER_ID`, `ASC_KEY_P8`, `LINZ_API_KEY`. Not yet proven: no run has reached a step that uses them.
-- [ ] First manual run succeeds and the build appears in TestFlight. Blocked by GitHub's macOS arm64 capacity (see
-      progress log). Branch `ios-testflight-runner` moves the job to `macos-15`; merge its PR once a run works.
+- [x] First manual run succeeds and the build appears in TestFlight: run #3 uploaded 1.4.3 (974) after a GitHub macOS capacity delay (see
+      progress log). Branch `ios-testflight-runner` moves the job to `macos-15`; merge its PR.
 - [ ] A tag run (`ios-v<current version>`) succeeds, which also proves the tag/version check.
 
 Nothing below starts until these are ticked. If GitHub's Macs stay unavailable, see "Alternative: Xcode Cloud"
@@ -70,6 +70,9 @@ below, which would replace this step.
 - Next: press **Re-run jobs** on run #2 at a quieter time (NZ evening); if it queues again, upload from Xcode as
   usual. If the workflow uploads later from the same commit count, it will be refused for a repeated build number;
   that's harmless. A fallback is `runs-on: macos-15-intel` (separate Intel pool, slower, being retired in 2027).
+- Run #3 (re-run of #2, about 15 minutes later): got a Mac at once and took 3 minutes. Uploaded 1.4.3 build 974;
+  Apple's processing email arrived and the build installed from TestFlight. The shortage was temporary. Xcode Cloud
+  is not needed for now.
 
 ## Step 1 — dot-watcher: the workflow takes a version
 
