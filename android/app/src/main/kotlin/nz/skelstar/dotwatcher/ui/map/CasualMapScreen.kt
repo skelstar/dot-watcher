@@ -39,9 +39,7 @@ import androidx.lifecycle.repeatOnLifecycle
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import nz.skelstar.dotwatcher.AccountInfo
 import nz.skelstar.dotwatcher.BuildConfig
-import nz.skelstar.dotwatcher.blocks.BlocksModel
 import nz.skelstar.dotwatcher.casual.CasualModel
 import nz.skelstar.dotwatcher.crew.CrewModel
 import nz.skelstar.dotwatcher.data.DotWatcherRepository
@@ -60,7 +58,7 @@ import nz.skelstar.dotwatcher.ui.casual.WatchLinkState
 import nz.skelstar.dotwatcher.ui.casual.WhoCanSeeMeSheet
 import nz.skelstar.dotwatcher.ui.crew.CrewFlow
 import nz.skelstar.dotwatcher.ui.crew.CrewStage
-import nz.skelstar.dotwatcher.ui.session.AccountSheet
+import nz.skelstar.dotwatcher.ui.session.SettingsSheet
 import nz.skelstar.dotwatcher.ui.theme.AppearanceMode
 
 private const val POLL_INTERVAL_MS = 10_000L
@@ -77,11 +75,6 @@ fun CasualMapScreen(
     repository: DotWatcherRepository,
     casual: CasualModel,
     crew: CrewModel,
-    account: AccountInfo,
-    onSignOut: () -> Unit,
-    onDeleteAccount: (onError: (String) -> Unit) -> Unit,
-    onSaveInitials: (String) -> Unit,
-    blocks: BlocksModel,
     appearance: AppearanceMode,
     onAppearanceChange: (AppearanceMode) -> Unit,
     onStop: () -> Unit,
@@ -217,23 +210,10 @@ fun CasualMapScreen(
     CrewFlow(crew = crew, state = crewState, stage = crewStage, onStage = { crewStage = it })
 
     if (showSettings) {
-        AccountSheet(
-            account = account,
-            onSignOut = {
-                showSettings = false
-                onSignOut()
-            },
-            onDeleteAccount = onDeleteAccount,
-            onSaveInitials = onSaveInitials,
-            blocks = blocks,
+        SettingsSheet(
             appearance = appearance,
             onAppearanceChange = onAppearanceChange,
             onDismiss = { showSettings = false },
-            showNickname = crewState.isAvailable,
-            nickname = crewState.nickname,
-            nicknameError = crewState.nicknameError,
-            onSaveNickname = { crew.setNickname(it) },
-            onEditNickname = crew::clearNicknameError,
         )
     }
 

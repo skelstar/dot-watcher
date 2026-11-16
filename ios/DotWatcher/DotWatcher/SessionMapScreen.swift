@@ -41,7 +41,6 @@ struct SessionMapScreen: View {
     var body: some View {
         TrackingMapScreen(
             location: location,
-            crew: crew,
             controller: map,
             pins: pins,
             routes: [location.routeCoordinates],
