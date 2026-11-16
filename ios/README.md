@@ -32,7 +32,7 @@ The API base URL is set in `DOTWATCHER_API_BASE_URL` (build setting) and read by
 
 TestFlight and App Store builds are both archived from the same **Release** configuration and both use Production (`DOTWATCHER_API_BASE_URL` → `https://dot-watcher.skelstar.io/api`). There is no Staging server, so a TestFlight build sees real data. Any scheme can archive: they all archive with Release.
 
-To upload without a Mac, run the **iOS TestFlight** workflow (`.github/workflows/ios-testflight.yml`) from the Actions tab on any branch, or push an `ios-v*` tag. It archives, signs with an App Store Connect API key and uploads to TestFlight; submitting for review stays manual. The secrets it needs are listed at the top of the workflow.
+To upload without a Mac, run the **iOS TestFlight** workflow (`.github/workflows/ios-testflight.yml`) from the Actions tab on any branch, or push an `ios-v*` tag. It archives, signs with an App Store Connect API key and uploads to TestFlight; submitting for review stays manual. The secrets it needs are listed at the top of the workflow; [docs/ios-testflight.html](../docs/ios-testflight.html) explains setup, version and build numbers, and what to do when an upload is refused.
 
 ### Physical device setup
 

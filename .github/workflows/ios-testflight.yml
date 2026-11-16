@@ -53,6 +53,21 @@ jobs:
           sudo xcode-select -s "$xcode"
           xcodebuild -version
 
+      # The tag is only a label: the version comes from the project. Refuse a tag that disagrees, so
+      # ios-v1.4.4 can't quietly upload another 1.4.3.
+      - name: Check tag matches the project version
+        if: startsWith(github.ref, 'refs/tags/ios-v')
+        run: |
+          set -euo pipefail
+          tag_version="${GITHUB_REF_NAME#ios-v}"
+          project_version=$(xcodebuild -showBuildSettings -project "$PROJECT" -scheme "$SCHEME" -configuration Release 2>/dev/null \
+            | awk -F' = ' '/ MARKETING_VERSION = / { print $2; exit }')
+          if [[ "$tag_version" != "$project_version" ]]; then
+            echo "::error::Tag $GITHUB_REF_NAME says $tag_version but the project's version is $project_version. Change MARKETING_VERSION in Xcode, or tag ios-v$project_version."
+            exit 1
+          fi
+          echo "Tag and project agree: $project_version"
+
       - name: Write secrets
         env:
           LINZ_API_KEY: ${{ secrets.LINZ_API_KEY }}
