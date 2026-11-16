@@ -26,7 +26,7 @@ on:
 
 # Two uploads at once would race for the same build number.
 concurrency:
-  group: ios-testflight
+  group: ios-testflight-upload
   cancel-in-progress: false
 
 permissions:
@@ -39,7 +39,7 @@ env:
 
 jobs:
   testflight:
-    runs-on: macos-26
+    runs-on: macos-15 # has Xcode 26 installed; the step below picks it. macos-26 never got a runner.
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
