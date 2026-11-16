@@ -16,6 +16,7 @@ import {
   mergeIntoByRunner,
   mergeRange,
   nextPositionAfterMs,
+  previousPositionBeforeMs,
   parseNdjson,
   positionsAtCutoff,
   type RunnerCountdown,
@@ -77,6 +78,8 @@ export interface SessionTimelineState {
   canSkip: boolean
   skipping: boolean
   skipToNextPosition: () => void
+  /** Steps the playhead back to the position before the current one (or the last one, when following). */
+  skipToPreviousPosition: () => void
   dragTo: (ms: number) => void
   dragEnd: () => void
   goLive: () => void
@@ -397,6 +400,44 @@ export function useSessionTimeline(source: TimelineSource | null): SessionTimeli
     }
   }
 
+  // The mirror of skipToNextPosition: steps back to the latest position anyone reported before the
+  // playhead, searching backward in SKIP_LOOKAHEAD_MS steps down to the run start. The search starts
+  // no later than just past the last known position (so following, or a playhead parked after the
+  // run ended, steps straight onto the last position instead of sweeping empty windows back from
+  // now). A cached candidate is only trusted once everything between it and the playhead is loaded,
+  // so a closer position in an unfetched gap can't be stepped over.
+  async function skipToPreviousPosition() {
+    const floor = effectiveRunStartMs
+    if (floor === null || lastActivityMs === null || skippingRef.current) return
+    const from = Math.min(scrubTimeMs ?? Infinity, lastActivityMs + 1)
+    if (from <= floor) return
+    skippingRef.current = true
+    setSkipping(true)
+    try {
+      const fetched: RunnerPosition[] = []
+      let searchedFrom = from
+      for (;;) {
+        const previous = previousPositionBeforeMs(mergeIntoByRunner(byRunnerRef.current, fetched), from)
+        if (previous !== null && (previous >= searchedFrom || isRangeCovered(fetchedRangesRef.current, previous, from))) {
+          ensureCovered(previous)
+          setScrubTimeMs(previous)
+          return
+        }
+        if (searchedFrom <= floor) return
+        const windowEnd = searchedFrom
+        searchedFrom = Math.max(searchedFrom - SKIP_LOOKAHEAD_MS, floor)
+        if (!isRangeCovered(fetchedRangesRef.current, searchedFrom, windowEnd - 1)) {
+          fetched.push(...await fetchForwardWindow(searchedFrom, windowEnd - 1))
+        }
+      }
+    } catch (err) {
+      console.error('[useSessionTimeline] skip back failed', err)
+    } finally {
+      skippingRef.current = false
+      setSkipping(false)
+    }
+  }
+
   // Virtual clock driving playback once scrubbed. Rejoins live when it catches up to "now".
   // Also pauses (without touching `playing`/`scrubTimeMs`) while the page is hidden, so a
   // backgrounded replay doesn't keep ticking and issuing window fetches unseen — it resumes
@@ -522,6 +563,7 @@ export function useSessionTimeline(source: TimelineSource | null): SessionTimeli
     canSkip: scrubTimeMs !== null && lastActivityMs !== null && scrubTimeMs < lastActivityMs,
     skipping,
     skipToNextPosition: () => void skipToNextPosition(),
+    skipToPreviousPosition: () => void skipToPreviousPosition(),
     dragTo,
     dragEnd,
     goLive,
