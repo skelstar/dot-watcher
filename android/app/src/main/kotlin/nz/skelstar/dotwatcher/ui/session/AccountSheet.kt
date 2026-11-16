@@ -25,22 +25,19 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.unit.dp
 import nz.skelstar.dotwatcher.AccountInfo
 import nz.skelstar.dotwatcher.blocks.BlocksModel
 import nz.skelstar.dotwatcher.crew.MAX_NICKNAME_LENGTH
 import nz.skelstar.dotwatcher.ui.InitialsDot
-import nz.skelstar.dotwatcher.ui.theme.AppearanceMode
 
 private const val INITIALS_LENGTH = 2
-private const val PRIVACY_URL = "https://dot-watcher.skelstar.io/privacy"
-private const val TERMS_URL = "https://dot-watcher.skelstar.io/terms"
 
 /**
- * What the account icon opens when you're signed in: who you are and how your dot looks, with Sign
- * out and Delete account. Tapping the icon used to sign you out on the spot, which dropped you on
- * the sign-in screen with no way back. Mirrors the signed-in half of iOS's `AuthSheet`.
+ * What the account icon opens when you're signed in: who you are (initials, crew name, blocked
+ * users), with Sign out and Delete account. App preferences live in [SettingsSheet]. Tapping the
+ * icon used to sign you out on the spot, which dropped you on the sign-in screen with no way back.
+ * Mirrors the signed-in half of iOS's `AuthSheet`.
  *
  * Deleting the account is permanent (it also deletes the sessions you own, server-side), so it
  * takes a confirmation, and a failure leaves you signed in with the reason shown.
@@ -53,8 +50,6 @@ fun AccountSheet(
     onDeleteAccount: (onError: (String) -> Unit) -> Unit,
     onSaveInitials: (String) -> Unit,
     blocks: BlocksModel,
-    appearance: AppearanceMode,
-    onAppearanceChange: (AppearanceMode) -> Unit,
     onDismiss: () -> Unit,
     /** Crew: the name the person's crew sees. Only offered once the server has crew. */
     showNickname: Boolean = false,
@@ -68,7 +63,6 @@ fun AccountSheet(
     var deleting by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var showBlocked by remember { mutableStateOf(false) }
-    val uriHandler = LocalUriHandler.current
     var savedInitials by remember(account.displayName) { mutableStateOf(account.displayName) }
     var initialsDraft by remember(account.displayName) { mutableStateOf(account.displayName) }
 
@@ -80,7 +74,7 @@ fun AccountSheet(
                 .padding(start = 24.dp, end = 24.dp, bottom = 32.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            Text("Settings", style = MaterialTheme.typography.titleLarge)
+            Text("Account", style = MaterialTheme.typography.titleLarge)
 
             Row(verticalAlignment = Alignment.CenterVertically) {
                 InitialsDot(initials = savedInitials)
@@ -166,16 +160,6 @@ fun AccountSheet(
             error?.let {
                 Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium)
             }
-
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                TextButton(onClick = { uriHandler.openUri(PRIVACY_URL) }) { Text("Privacy Policy") }
-                TextButton(onClick = { uriHandler.openUri(TERMS_URL) }) { Text("Terms of Use") }
-            }
-            Text(
-                "Location data can be delayed, inaccurate, or unavailable.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
         }
     }
 

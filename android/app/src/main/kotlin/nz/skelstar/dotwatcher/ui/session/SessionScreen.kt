@@ -23,6 +23,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.HelpOutline
 import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.ContentPaste
+import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -145,6 +146,7 @@ fun SessionScreen(
     val eventsState by events.state.collectAsState()
     var showCreateDialog by remember { mutableStateOf(false) }
     var showAccount by remember { mutableStateOf(false) }
+    var showSettings by remember { mutableStateOf(false) }
     var crewStage by remember { mutableStateOf(CrewStage.None) }
     val crewState by crew.state.collectAsState()
 
@@ -199,7 +201,7 @@ fun SessionScreen(
                     .verticalScroll(rememberScrollState())
                     .padding(start = 24.dp, top = 8.dp, end = 24.dp),
             ) {
-                AppHeader(onAccountClick = { showAccount = true })
+                AppHeader(onAccountClick = { showAccount = true }, onSettingsClick = { showSettings = true })
                 Spacer(modifier = Modifier.height(24.dp))
 
                 // Hidden entirely until the server says it has crew (see CrewRow).
@@ -320,14 +322,20 @@ fun SessionScreen(
             onDeleteAccount = onDeleteAccount,
             onSaveInitials = onSaveInitials,
             blocks = blocks,
-            appearance = appearance,
-            onAppearanceChange = onAppearanceChange,
             onDismiss = { showAccount = false },
             showNickname = crewState.isAvailable,
             nickname = crewState.nickname,
             nicknameError = crewState.nicknameError,
             onSaveNickname = { crew.setNickname(it) },
             onEditNickname = crew::clearNicknameError,
+        )
+    }
+
+    if (showSettings) {
+        SettingsSheet(
+            appearance = appearance,
+            onAppearanceChange = onAppearanceChange,
+            onDismiss = { showSettings = false },
         )
     }
 
@@ -382,13 +390,13 @@ fun SessionScreen(
 private val HeaderIconSize = 34.dp
 private val HeaderButtonSize = 44.dp
 
-/** App wordmark + badge + build info, with account/help icon buttons — matches the iOS header
+/** App wordmark + badge + build info, with account/settings/help icon buttons — matches the iOS header
  *  shown atop every no-session-screen state (media-files/Simulator Screenshot ... 16.19.49.png).
  *  No git-commit short-SHA (iOS's "1105bf8"): that needs a dedicated build-time step this app
  *  doesn't have yet, so this only shows [BuildConfig.VERSION_NAME]/[BuildConfig.VERSION_CODE],
  *  which are already available. */
 @Composable
-private fun AppHeader(onAccountClick: () -> Unit) {
+private fun AppHeader(onAccountClick: () -> Unit, onSettingsClick: () -> Unit) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
@@ -433,6 +441,15 @@ private fun AppHeader(onAccountClick: () -> Unit) {
                 Icon(
                     imageVector = Icons.Default.AccountCircle,
                     contentDescription = "Account",
+                    modifier = Modifier.size(HeaderIconSize),
+                    tint = MaterialTheme.colorScheme.onSurface,
+                )
+            }
+            // App preferences; the same sheet as the gear on the map rail.
+            IconButton(onClick = onSettingsClick, modifier = Modifier.size(HeaderButtonSize)) {
+                Icon(
+                    imageVector = Icons.Outlined.Settings,
+                    contentDescription = "Settings",
                     modifier = Modifier.size(HeaderIconSize),
                     tint = MaterialTheme.colorScheme.onSurface,
                 )
