@@ -265,20 +265,21 @@
 
   <div class="section-title" id="status">Status</div>
   <div class="card">
-    <h2>Set up, but no run has reached a Mac yet</h2>
+    <h2>Working: first upload reached TestFlight</h2>
     <p><strong>17 November 2026 (NZ; the runs are dated 16 Nov UTC).</strong></p>
+    <div class="callout ok"><strong>Run #3</strong> (re-run of #2, <code>ios-testflight-runner</code>, <code>macos-15</code> with Xcode 26.3) took 3 minutes and uploaded <strong>1.4.3 (974)</strong>. Apple's "completed processing" email arrived and the build installed from TestFlight. The map key was present. Harmless warnings: no dSYM for <code>MapLibre.framework</code> (its crash frames won't be symbolicated) and <code>actions/checkout@v4</code> running on deprecated Node 20.</div>
+    <p>How we got here:</p>
     <ul>
       <li><strong>Done:</strong> the workflow is merged into <code>staging</code> (PR #352). The API key (Team Keys, Admin) and all four repository secrets are added.</li>
       <li><strong>Run #1</strong> (<code>staging</code>, <code>runs-on: macos-26</code>): sat in Queued and no job was ever created. <strong>Cancel</strong> fails because there is no job to stop. <strong>Delete</strong> is only offered for finished runs. GitHub cancels a run left queued for 24 hours; after that it can be deleted.</li>
       <li><strong>Run #2</strong> (branch <code>ios-testflight-runner</code>, <code>runs-on: macos-15</code>): a job was created, but after 15 minutes it failed without starting: <em>"The job was not acquired by Runner of type hosted even after multiple attempts"</em>, with GitHub's notice <em>"Due to capacity constraints, jobs targeting macOS arm64 runners may experience longer queue times."</em> Run #1 was probably the same shortage.</li>
-      <li><strong>Not yet proven:</strong> none of the workflow's steps has run, so the secrets, signing and upload are all still untested.</li>
+      <li><strong>Run #3:</strong> <strong>Re-run jobs</strong> on run #2 about 15 minutes later got a Mac straight away and succeeded. The shortage was temporary.</li>
     </ul>
     <h3>Next</h3>
     <ol>
-      <li>Press <strong>Re-run jobs</strong> on run #2 at a quieter time (NZ evening or morning, outside US working hours).</li>
-      <li>If it queues again, upload from Xcode on the Mac as usual. If the workflow later uploads the same build number, it is refused, which is harmless.</li>
-      <li>Once a run works: merge <code>ios-testflight-runner</code>, then do a tag run (<code>ios-v1.4.3</code>) to prove the tag check.</li>
-      <li>If the shortage keeps happening, try <code>runs-on: macos-15-intel</code> (a separate Intel pool; slower, and GitHub retires it in 2027), or move to <a href="#xcode-cloud">Xcode Cloud</a>.</li>
+      <li>Merge <code>ios-testflight-runner</code> into <code>staging</code>.</li>
+      <li>Tag run: after the merge, <code>git tag ios-v1.4.3 origin/staging &amp;&amp; git push origin ios-v1.4.3</code>. The merge adds commits, so the build number is above 974 and the upload should be accepted. This proves the tag check.</li>
+      <li>If a run gets stuck in the queue again, press <strong>Re-run jobs</strong> later. If the shortage keeps happening, try <code>runs-on: macos-15-intel</code> (a separate Intel pool; slower, and GitHub retires it in 2027), or move to <a href="#xcode-cloud">Xcode Cloud</a>.</li>
     </ol>
   </div>
 
@@ -461,7 +462,7 @@ git push origin ios-v1.4.3</pre>
   <div class="section-title" id="xcode-cloud">Alternative: Xcode Cloud (not decided)</div>
   <div class="card">
     <h2>Apple's Macs instead of GitHub's</h2>
-    <p>If GitHub's macOS shortage keeps blocking runs, Xcode Cloud could do the same job. It's a medium change, not a rewrite.</p>
+    <p>Not needed for now: the GitHub workflow works. If GitHub's macOS shortage keeps blocking runs, Xcode Cloud could do the same job. It's a medium change, not a rewrite.</p>
     <h3>What it gives</h3>
     <ul>
       <li>Builds on Apple's own Macs, so there's no GitHub queue.</li>
