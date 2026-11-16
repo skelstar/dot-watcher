@@ -32,6 +32,8 @@ The API base URL is set in `DOTWATCHER_API_BASE_URL` (build setting) and read by
 
 TestFlight and App Store builds are both archived from the same **Release** configuration and both use Production (`DOTWATCHER_API_BASE_URL` → `https://dot-watcher.skelstar.io/api`). There is no Staging server, so a TestFlight build sees real data. Any scheme can archive: they all archive with Release.
 
+To upload without a Mac, run the **iOS TestFlight** workflow (`.github/workflows/ios-testflight.yml`) from the Actions tab on any branch, or push an `ios-v*` tag. It archives, signs with an App Store Connect API key and uploads to TestFlight; submitting for review stays manual. The secrets it needs are listed at the top of the workflow.
+
 ### Physical device setup
 
 **DotWatcher (Device Local)** needs the server and web client to listen on all interfaces so the phone can reach them over WiFi. `start-local.ps1` already does this, so start them with it as usual. If you run the server by hand instead, bind it the same way:
@@ -98,7 +100,7 @@ This depends on three things lining up: the `applinks:` entries in `DotWatcher.e
 
 ## Verification boundary
 
-GitHub Actions does not currently build or run the iOS project. iOS verification is manual because it depends on local Xcode, signing, simulator/device availability, Keychain behavior, background-location permissions, and real GPS/background execution.
+GitHub Actions does not build or test the iOS project on pull requests; it only builds it when you run the TestFlight upload. iOS verification is manual because it depends on local Xcode, signing, simulator/device availability, Keychain behavior, background-location permissions, and real GPS/background execution.
 
 Manual pre-release checks should cover sign-in/register, Keychain persistence, logout revocation, create session, join via invite, owner/runner-only posting, `401`/`403` handling, the `426` update-required screen, background location, clock-aligned posting, offline retry, and TestFlight packaging.
 
