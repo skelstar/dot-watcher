@@ -1,6 +1,7 @@
 # Phone builds from Kraken — Plan
 
-*DotWatcher + Kraken — plan, November 2026. Status: drafted, not started. Waiting on the TestFlight workflow (step 0).*
+*DotWatcher + Kraken — plan, November 2026. Status: step 0 in progress. Workflow merged and secrets added; no run
+has reached a Mac yet because of GitHub's macOS capacity (see the step 0 progress log).*
 
 Goal: in Kraken (kraken.skelstar.io, repo `skelstar/tatooine-deploy`), pick a branch, type a version such as
 `1.4.4`, press **Upload to TestFlight**, and watch it go up. Kraken never builds anything itself (an iOS build needs a
@@ -36,16 +37,39 @@ is verified locally.
 
 ## Step 0 — prerequisite: the workflow uploads on its own
 
-Branch `ios-testflight-workflow` (pushed; PR to `staging`).
+Branch `ios-testflight-workflow` (merged, PR #352).
 
-- [ ] Merge the `ios-testflight-workflow` PR into `staging`.
-- [ ] Create the App Store Connect API key (Admin role) and the repository secrets `ASC_KEY_ID`, `ASC_ISSUER_ID`,
-      `ASC_KEY_P8`, `LINZ_API_KEY`.
-- [ ] First manual run on `staging` succeeds and the build appears in TestFlight. Fix `runs-on: macos-26` if the
-      image or Xcode 26 isn't available.
+- [x] Merge the `ios-testflight-workflow` PR into `staging`.
+- [x] Create the App Store Connect API key (Admin role, under **Team Keys**) and the repository secrets `ASC_KEY_ID`,
+      `ASC_ISSUER_ID`, `ASC_KEY_P8`, `LINZ_API_KEY`. Not yet proven: no run has reached a step that uses them.
+- [ ] First manual run succeeds and the build appears in TestFlight. Blocked by GitHub's macOS arm64 capacity (see
+      progress log). Branch `ios-testflight-runner` moves the job to `macos-15`; merge its PR once a run works.
 - [ ] A tag run (`ios-v<current version>`) succeeds, which also proves the tag/version check.
 
-Nothing below starts until these are ticked.
+Nothing below starts until these are ticked. If GitHub's Macs stay unavailable, see "Alternative: Xcode Cloud"
+below, which would replace this step.
+
+### Progress log
+
+**17 November 2026 (NZ morning; runs are 16 Nov UTC)**
+
+- Secrets added. The issuer ID is only shown for Team Keys (Individual keys have none and `xcodebuild` can't sign
+  with them).
+- Run #1 (`staging`, `runs-on: macos-26`, run 43922308234): sat in Queued with **no job created**. Cancel fails
+  ("Failed to cancel workflow") because there is no job to stop, and Delete is only offered for finished runs.
+  Force-cancel needs the API (`POST /repos/skelstar/dot-watcher/actions/runs/43922308234/force-cancel`), which
+  wasn't available from here; GitHub cancels runs left queued for 24 hours, after which it can be deleted.
+- Branch `ios-testflight-runner` (commit 64c0645): `runs-on: macos-15` (has Xcode 26; the Select Xcode step picks
+  it) and the concurrency group renamed to `ios-testflight-upload` so the stuck run can't hold up new ones. Not yet
+  merged.
+- Run #2 (`ios-testflight-runner`, run 43925054638): a job was created this time, but it failed after 15 minutes
+  without starting: "The job was not acquired by Runner of type hosted even after multiple attempts", plus GitHub
+  notices "Due to capacity constraints, jobs targeting macOS arm64 runners may experience longer queue times."
+  None of our steps ran, so the secrets and signing are still untested. Run #1 was probably the same shortage, so
+  `macos-26` may have been fine after all.
+- Next: press **Re-run jobs** on run #2 at a quieter time (NZ evening); if it queues again, upload from Xcode as
+  usual. If the workflow uploads later from the same commit count, it will be refused for a repeated build number;
+  that's harmless. A fallback is `runs-on: macos-15-intel` (separate Intel pool, slower, being retired in 2027).
 
 ## Step 1 — dot-watcher: the workflow takes a version
 
@@ -131,6 +155,37 @@ response now includes the run id, use that and keep the name search as a fallbac
 - [ ] Domain tests for version parsing, suggestion and warnings, and for the step-to-stage mapping.
 - [ ] A fake-mode scenario per state: idle, running, failed at upload (build number refused), token without Actions
       permission.
+
+## Alternative: Xcode Cloud (not decided)
+
+If GitHub's macOS runners keep failing for capacity, Apple's Xcode Cloud could build and upload instead. It's a
+medium change, not a rewrite.
+
+**What it gives:** Apple's own Macs (no GitHub queue), 25 compute hours a month included with the developer
+membership, and signing plus TestFlight upload built in (no `ASC_*` secrets needed for the build itself).
+
+**Setup:**
+
+- [ ] In Xcode on the Mac: Integrate → Create Workflow. Grant Apple access to the GitHub repo; Archive action;
+      post-action "TestFlight (internal testing only)"; start condition manual (and/or `ios-v*` tags).
+- [ ] `ios/DotWatcher/ci_scripts/ci_post_clone.sh` (next to the `.xcodeproj`): writes `Config/Secrets.xcconfig`
+      from an Xcode Cloud secret environment variable `LINZ_API_KEY`, so the map isn't blank.
+- [ ] First build: check the build number. Xcode Cloud numbers builds itself, which replaces the commit-count
+      scheme; set its "next build number" above the last uploaded build. How it interacts with the project's
+      build-number build phase is unchecked.
+
+**What it changes in this plan:**
+
+- Step 0 becomes "an Xcode Cloud build reaches TestFlight", and `ios-testflight.yml` is kept as a fallback or removed.
+- Step 1 (typed version) is unclear: Xcode Cloud workflows don't take inputs per build the way `workflow_dispatch`
+  does. Needs checking whether the App Store Connect API (`ciBuildRuns`) can pass a version through, or whether a
+  `ci_pre_xcodebuild.sh` script can set `MARKETING_VERSION` from something else (e.g. the tag being built).
+- Step 2: Kraken would start builds and read progress through the App Store Connect API (`ciWorkflows`,
+  `ciBuildRuns`, `ciBuildActions`) using the API key already created, instead of the GitHub Actions API. The rest of
+  Kraken's side (config, store, views, safety) stays the same.
+
+**Suggested:** retry GitHub a few times first; GitHub's arm64 shortages are usually temporary. Switch if they keep
+recurring.
 
 ## Later, not in this plan
 
