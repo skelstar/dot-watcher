@@ -175,7 +175,7 @@ final class LocationManager {
     // Hidden override for exercising the satellite UI without a real Direct-to-Cell dead zone
     // (there's no way to fake `NWPath.isUltraConstrained` from code otherwise, and TestFlight/App
     // Store builds both compile as Release, so a `#if DEBUG` toggle wouldn't reach testers).
-    // Toggled from the Developer section of Settings (`AuthSheet`), which a hidden 10-tap gesture on
+    // Toggled from the Developer section of Settings (`SettingsSheet`), which a hidden 10-tap gesture on
     // the build/SHA label unlocks — intentionally ships in Release builds. Deliberately not persisted
     // (plain in-memory `var`, resets to `false` on relaunch) so it can never get silently stuck on.
     // Runs the same path-change handling as a real switch, so forcing it while tracking fires the

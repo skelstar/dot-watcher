@@ -478,7 +478,6 @@ struct CasualMapScreen: View {
     var body: some View {
         TrackingMapScreen(
             location: location,
-            crew: crew,
             controller: map,
             pins: pins,
             nearby: nearby,
