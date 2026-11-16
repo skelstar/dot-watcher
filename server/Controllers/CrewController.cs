@@ -111,7 +111,7 @@ public class CrewController(
     /// <summary>
     /// Redeems a crew code: the caller and the code's owner become crew straight away. The code
     /// works once; if several people hold it, the first to redeem wins and the rest get a 404.
-    /// Redeeming for someone who is already crew succeeds without using the code up.
+    /// Redeeming for someone who is already crew succeeds and still uses the code up.
     /// </summary>
     [HttpPost("/me/crew/codes/{code}/redeem")]
     [ProducesResponseType(typeof(CrewMember), StatusCodes.Status200OK)]

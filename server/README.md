@@ -446,7 +446,7 @@ as `features` on `AuthenticatedUser`, but nothing gates on it. History: `.ai/pla
 If several people hold the same code the first to redeem wins; the claim is a single conditional `UPDATE`, so
 simultaneous redemptions still produce exactly one winner. Everyone else gets the same `404` as for an unknown,
 expired, used, malformed or blocked code. Redeeming your own code is a `400`; redeeming for someone who is already
-crew succeeds without using the code up. A user holds at most three live codes (a fourth retires the oldest).
+crew succeeds and still uses the code up, so two people who swap codes aren't each left with an invite waiting. A user holds at most three live codes (a fourth retires the oldest).
 Previews and redemptions are limited to 20 per user per hour (`429`). Crew is capped at 50 people (`409`).
 
 **Blocking** removes the crew link, and `GET /me/crew` also hides blocked pairs at read time.

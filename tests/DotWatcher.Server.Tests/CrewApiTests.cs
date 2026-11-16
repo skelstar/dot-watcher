@@ -160,7 +160,7 @@ public class CrewApiTests
     }
 
     [Fact]
-    public async Task Redeem_WhenAlreadyCrew_SucceedsWithoutUsingTheCodeUp()
+    public async Task Redeem_WhenAlreadyCrew_SucceedsAndUsesTheCodeUp()
     {
         using var factory = new DotWatcherApiFactory();
         using var client = factory.CreateClient();
@@ -178,11 +178,32 @@ public class CrewApiTests
         var again = await SendAsync(client, HttpMethod.Post, $"/me/crew/codes/{second.Code}/redeem", bob.AccessToken);
         Assert.Equal(HttpStatusCode.OK, again.StatusCode);
 
-        // The code wasn't consumed, so someone else can still use it.
+        // The code is used up, so Alice no longer has an invite waiting and nobody else can use it.
+        Assert.Empty(await GetCodesAsync(client, alice.AccessToken));
         var other = await SendAsync(client, HttpMethod.Post, $"/me/crew/codes/{second.Code}/redeem", carol.AccessToken);
-        Assert.Equal(HttpStatusCode.OK, other.StatusCode);
-        Assert.Equal(2, (await GetCrewAsync(client, alice.AccessToken)).Crew.Count);
-        Assert.Single((await GetCrewAsync(client, bob.AccessToken)).Crew);
+        Assert.Equal(HttpStatusCode.NotFound, other.StatusCode);
+        Assert.Single((await GetCrewAsync(client, alice.AccessToken)).Crew);
+    }
+
+    [Fact]
+    public async Task SwappingCodes_LeavesNeitherPersonWithAnInviteWaiting()
+    {
+        using var factory = new DotWatcherApiFactory();
+        using var client = factory.CreateClient();
+        var alice = await RegisterAsync(client, "alice", "AL");
+        var bob = await RegisterAsync(client, "bob", "BO");
+
+        // Both open "Your crew code", then each enters the other's.
+        var aliceCode = await CreateCodeAsync(client, alice.AccessToken);
+        var bobCode = await CreateCodeAsync(client, bob.AccessToken);
+        var first = await SendAsync(client, HttpMethod.Post, $"/me/crew/codes/{aliceCode.Code}/redeem", bob.AccessToken);
+        var second = await SendAsync(client, HttpMethod.Post, $"/me/crew/codes/{bobCode.Code}/redeem", alice.AccessToken);
+
+        Assert.Equal(HttpStatusCode.OK, first.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, second.StatusCode);
+        Assert.Empty(await GetCodesAsync(client, alice.AccessToken));
+        Assert.Empty(await GetCodesAsync(client, bob.AccessToken));
+        Assert.Single((await GetCrewAsync(client, alice.AccessToken)).Crew);
     }
 
     [Fact]
