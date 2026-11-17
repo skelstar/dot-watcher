@@ -10,6 +10,8 @@ import nz.skelstar.dotwatcher.network.CasualStartResponse
 import nz.skelstar.dotwatcher.network.CreateSessionRequest
 import nz.skelstar.dotwatcher.network.CrewCode
 import nz.skelstar.dotwatcher.network.CrewCodePreview
+import nz.skelstar.dotwatcher.network.CrewFindingRequest
+import nz.skelstar.dotwatcher.network.CrewFindingState
 import nz.skelstar.dotwatcher.network.CrewMember
 import nz.skelstar.dotwatcher.network.CrewOverview
 import nz.skelstar.dotwatcher.network.DotWatcherApi
@@ -196,6 +198,17 @@ class DotWatcherRepository(
 
     suspend fun redeemCrewCode(code: String): Response<CrewMember> =
         api.redeemCrewCode(code, bearer(requireToken()))
+
+    suspend fun startCrewFinding(fix: Fix): Response<CrewFindingState> =
+        api.startCrewFinding(CrewFindingRequest(fix.latitude, fix.longitude, fix.accuracyMetres), bearer(requireToken()))
+
+    suspend fun refreshCrewFinding(fix: Fix): Response<CrewFindingState> =
+        api.refreshCrewFinding(CrewFindingRequest(fix.latitude, fix.longitude, fix.accuracyMetres), bearer(requireToken()))
+
+    suspend fun stopCrewFinding(): Response<Unit> = api.stopCrewFinding(bearer(requireToken()))
+
+    suspend fun acceptCrewFinding(id: String): Response<CrewFindingState> =
+        api.acceptCrewFinding(id, bearer(requireToken()))
 
     // --- Casual ------------------------------------------------------------------------
 
