@@ -1489,6 +1489,79 @@ public partial class SessionStore(string connectionString) : IDisposable
         return (CrewCodeOutcome.Ok, new CrewMember(ownerId, owner.Value.Nickname, owner.Value.DisplayName, nowText));
     }
 
+    /// <summary>
+    /// Makes two people crew without a code: both accepted each other in "Find new crew" (see
+    /// <see cref="CrewFinder"/>), which is the consent a code otherwise stands for. Same rules as
+    /// redeeming: blocked pairs are refused (as <see cref="CrewLinkOutcome.Blocked"/>), a full crew
+    /// is refused, and two people who are already crew succeed without a second row. Returns each
+    /// person as the other sees them.
+    /// </summary>
+    public (CrewLinkOutcome Outcome, CrewMember? AsSeenByA, CrewMember? AsSeenByB) AddCrewLink(
+        string userA, string userB, DateTimeOffset now)
+    {
+        if (userA == userB)
+            return (CrewLinkOutcome.Blocked, null, null);
+
+        var nowText = ToIso(now);
+        using var conn = Connect();
+        if (AreBlocked(conn, userA, userB))
+            return (CrewLinkOutcome.Blocked, null, null);
+
+        var a = LoadCrewIdentity(conn, userA);
+        var b = LoadCrewIdentity(conn, userB);
+        if (a is null || b is null)
+            return (CrewLinkOutcome.Blocked, null, null);
+
+        var (low, high) = OrderedPair(userA, userB);
+        var since = GetCrewSince(conn, low, high);
+        if (since is null)
+        {
+            if (CountCrew(conn, userA) >= MaxCrewSize || CountCrew(conn, userB) >= MaxCrewSize)
+                return (CrewLinkOutcome.CrewFull, null, null);
+
+            using var link = conn.CreateCommand();
+            link.CommandText = """
+                INSERT INTO crew_links (user_low_id, user_high_id, created_at)
+                VALUES (@low, @high, @createdAt)
+                ON CONFLICT DO NOTHING
+                """;
+            link.Parameters.AddWithValue("@low", low);
+            link.Parameters.AddWithValue("@high", high);
+            link.Parameters.AddWithValue("@createdAt", nowText);
+            link.ExecuteNonQuery();
+            since = GetCrewSince(conn, low, high) ?? nowText;
+        }
+
+        return (CrewLinkOutcome.Ok,
+            new CrewMember(userB, b.Value.Nickname, b.Value.DisplayName, since),
+            new CrewMember(userA, a.Value.Nickname, a.Value.DisplayName, since));
+    }
+
+    /// <summary>The name a crew sees for someone (nickname, else initials), or null for an unknown account.</summary>
+    public (string? Nickname, string DisplayName)? GetCrewIdentity(string userId)
+    {
+        using var conn = Connect();
+        return LoadCrewIdentity(conn, userId);
+    }
+
+    /// <summary>The ids of everyone in the user's crew, blocked pairs included (callers filter those separately).</summary>
+    public IReadOnlySet<string> GetCrewIds(string userId)
+    {
+        using var conn = Connect();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = """
+            SELECT CASE WHEN user_low_id = @userId THEN user_high_id ELSE user_low_id END
+            FROM crew_links
+            WHERE user_low_id = @userId OR user_high_id = @userId
+            """;
+        cmd.Parameters.AddWithValue("@userId", userId);
+        using var reader = cmd.ExecuteReader();
+        var ids = new HashSet<string>();
+        while (reader.Read())
+            ids.Add(reader.GetString(0));
+        return ids;
+    }
+
     private static string? FindLiveCrewCodeOwner(NpgsqlConnection conn, string code, string nowText)
     {
         using var cmd = conn.CreateCommand();
