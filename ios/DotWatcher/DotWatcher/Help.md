@@ -48,6 +48,8 @@ Your crew is the people you have chosen. It is mutual: when you add someone you 
 
 **Add someone** — ask them to send you their crew code, then open **Your crew**, tap **Add someone** and enter it. If they show you a QR code, just open your phone's camera and point it at the code. Either way you are asked to confirm before anyone is added.
 
+**Add someone next to you** — open **Your crew** and turn on **Find new crew**. Anyone within about 50 m who also has it on appears in the list. Tap them, then **Accept**. Once they accept you too, you're crew. It turns off after 2 minutes or when you close **Your crew**.
+
 **Send your code** — in **Your crew**, tap **Add someone**, then **Show my code**. A code works once and lasts 24 hours, so send it to the one person you want to add. **Make a new code** stops the old one working.
 
 **Your name** — people in your crew see the name you choose in **Account > Crew**, or your initials if you leave it blank.
