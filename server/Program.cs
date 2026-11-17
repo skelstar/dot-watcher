@@ -38,6 +38,7 @@ builder.Services.AddSingleton<ClientErrorLimiter>();
 builder.Services.AddSingleton<CrewCodeLimiter>();
 builder.Services.AddSingleton<WatchLinkLimiter>();
 builder.Services.AddSingleton<NearbyLimiter>();
+builder.Services.AddSingleton<CrewFinder>();
 builder.Services.AddSingleton<FeatureFlags>();
 builder.Services.AddSingleton<PaletteProvider>();
 builder.Services.AddHostedService<CasualMaintenanceService>();
