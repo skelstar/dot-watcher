@@ -8,6 +8,14 @@ DotWatcher shares your location in real time so other runners in the session kno
 
 **Choose a session** — if someone gave you an invite code, enter it to join as a runner and start tracking. Only create a new session if you're organizing one yourself; that makes you its owner, but ownership doesn't grant extra tracking permissions — you track the same way as anyone else who joined.
 
+## Runs near you
+
+**Join a run near you** — tap **Find runs near you** on the start screen. DotWatcher asks for your location, then lists runs whose organiser has let people nearby join, if you are close enough to the start. Tap one, then **Join this run**. No invite code needed. Pull down to refresh the list.
+
+**Let people nearby join your run** — when you create a session, turn on **Let people nearby join** and give your run a title (people nearby see it). Choose a range: GPS can be off by 10 to 50 m, so a wider range is easier to join from. You still get an invite code to share.
+
+**Move or stop it** — on the map, tap the join-location button to move the join location to where you are now, for example from the start to the finish. Hold it to change the range, stop showing the run nearby, or end the session for everyone.
+
 ## Tracking
 
 Tap **Start Tracking** to begin sharing your location. Your position is sent every 15 seconds.

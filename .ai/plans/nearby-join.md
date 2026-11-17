@@ -1,7 +1,8 @@
 # Nearby join — Plan
 
-*DotWatcher — plan, October 2026. Status: built on three open PRs (#254 server, #255 iOS, #256 Android), not yet
-verified on a device or merged. **Start with [Handover](#handover-30-october-2026) at the end of this file.***
+*DotWatcher — plan, October 2026. Status: **shipped in 1.3.0** (#254 server, #255 iOS, #256 Android, all merged
+31 October 2026; released in #262). See [Status, 18 November 2026](#status-18-november-2026) at the end of this file
+for what is still open.*
 
 Goal: an organiser at the start of a trail creates a session; anyone physically near the organiser sees it on their
 main screen and joins in one tap, with no invite code. Related: [`casual-tracking.md`](casual-tracking.md),
@@ -20,6 +21,8 @@ they lag until the PRs merge: the Handover section is the current picture.
   invisible to discovery and works exactly as today (invite code only).
 - **Open to everyone.** No crew or watch-list gate. Anyone signed in and near the meeting point can join.
 - **Gated by the existing `events` feature flag.** Same surface as "Happening near you"; no second flag.
+  *(Since #266, 1 November 2026, there is no per-account gating: `events` is on for everyone and works as a global
+  kill switch, `PUT /admin/features/events`.)*
 - **The meeting point is set by a "Ping" button, nothing else.** The organiser taps Ping and the server stores their
   position as the session's join location. It never moves on its own: no tracking involved, no follow-the-organiser
   logic. Tap Ping again to move it (e.g. from the start to the finish). Creating the session with nearby on counts as
@@ -310,3 +313,30 @@ N9b, N10, N11), so expect a small conflict on the second one. #252 and #253 are 
 - Server tests: the test factory enables only `crew` for everyone, so nearby tests set `EnabledForAll = ["events"]`.
   With `events` on, a user can have one active session, so a test that needs two sessions needs two organisers.
 - Branch from `nearby-join-server` for client work; branch from `staging` for anything unrelated.
+
+---
+
+## Status, 18 November 2026
+
+The Handover above describes the state on 30 October. Since then:
+
+- **Merged and shipped.** #254, #255 and #256 merged on 31 October 2026 and went out in Release 1.3.0 (#262). Both
+  clients were built and released, so the "never built or run" warnings in the Handover no longer apply. The task
+  list ticks above were not all updated on `staging`; treat N9, N9b and N10 as done.
+- **No more per-account flag.** #266 removed per-account feature gating. `events` is now a global kill switch
+  (`FeatureFlags.IsOn`): on for everyone unless an admin switches it off. When it is off, the nearby endpoints return
+  404 and a nearby Create returns 400 ("Nearby join isn't available right now."). Read the Handover's flag notes with
+  that in mind. Server tests still set `EnabledForAll = ["events"]`, which does no harm.
+- **Help text.** iOS `Help.md` now has a "Runs near you" section (N11). The Android app has no help text to update.
+- **Tested on devices.** On 18 November 2026 the user tested nearby join end to end on iOS and Android, and it works.
+- **Database schema doc.** The stale `max_length_hours` wording is gone from `docs/database-schema.html`.
+
+Still open:
+
+- `.ai/mockups/create-flow.html` still shows the old pin-and-map design (N8).
+- Check the App Store and Play location declarations cover location use on the start screen, not only while
+  tracking.
+- The optional server follow-ups listed under "Still to do" (stale-fix check, `title` on Ping, Ping rate limit,
+  contract tests, removing the placeholder event).
+- No iOS tests for nearby join, and no UI tests on either client.
+- The two open questions.
