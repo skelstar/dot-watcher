@@ -99,7 +99,14 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     /** The signed-in account's crew. Shares this ViewModel's repository and scope rather than being a
      *  second ViewModel, so there is one network stack (see the class note above). */
-    val crew = CrewModel(repository, viewModelScope, CrewPrefs(application))
+    val crew = CrewModel(
+        repository,
+        viewModelScope,
+        CrewPrefs(application),
+        // Lambdas, not references: nearbyFix is declared further down, so it must be read when called.
+        currentFix = { nearbyFix.current() },
+        hasLocationPermission = { nearbyFix.hasPermission },
+    )
 
     val blocks = BlocksModel(repository)
 

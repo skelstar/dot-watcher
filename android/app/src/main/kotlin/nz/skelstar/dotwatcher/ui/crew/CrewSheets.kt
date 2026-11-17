@@ -36,6 +36,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -80,6 +81,9 @@ enum class CrewStage { None, List, Add, MyCode }
 /** The crew sheets for [stage]. Shared by the start screen and the casual map, which both open it. */
 @Composable
 fun CrewFlow(crew: CrewModel, state: CrewUiState, stage: CrewStage, onStage: (CrewStage) -> Unit) {
+    // "Find new crew" lasts only while the crew sheets are open.
+    LaunchedEffect(stage) { if (stage == CrewStage.None) crew.stopFinding() }
+    DisposableEffect(Unit) { onDispose { crew.stopFinding() } }
     when (stage) {
         CrewStage.None -> Unit
         CrewStage.List -> CrewSheet(
@@ -126,6 +130,7 @@ fun CrewSheet(
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             Text("Your crew", style = MaterialTheme.typography.titleLarge)
+            FindNewCrewSection(crew = crew, finding = state.finding)
             Text(
                 text = "People you have chosen. They see you in their crew too, and you can remove each other " +
                     "at any time. Removing someone takes effect straight away.",

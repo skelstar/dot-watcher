@@ -79,6 +79,8 @@ import nz.skelstar.dotwatcher.route.RoutePoint
 import nz.skelstar.dotwatcher.route.isDrawable
 import nz.skelstar.dotwatcher.route.parseGpxTrack
 import nz.skelstar.dotwatcher.ui.casual.StopPill
+import nz.skelstar.dotwatcher.ui.crew.CrewFlow
+import nz.skelstar.dotwatcher.ui.crew.CrewStage
 import nz.skelstar.dotwatcher.ui.nearby.NearbyOrganiserSheet
 import java.time.Duration
 import java.time.Instant
@@ -113,6 +115,7 @@ fun LiveMapScreen(
     var showPeople by remember { mutableStateOf(false) }
     var showInviteCode by remember { mutableStateOf(false) }
     var showExtendSheet by remember { mutableStateOf(false) }
+    var crewStage by remember { mutableStateOf(CrewStage.None) }
     // Fit-all is lit by default; following a runner or panning away turns it off.
     var fitAll by remember { mutableStateOf(true) }
     var followedRunner by remember { mutableStateOf<String?>(null) }
@@ -318,6 +321,9 @@ fun LiveMapScreen(
         NearbyOrganiserSheet(organiser = nearbyOrganiser, onDismiss = { showNearby = false })
     }
 
+    // The session map has no crew chip (bottom left is the runners), so its Crew button opens the sheet.
+    CrewFlow(crew = crew, state = crewState, stage = crewStage, onStage = { crewStage = it })
+
     if (showInviteCode) {
         InviteCodeDialog(
             code = membership.inviteCode,
@@ -382,6 +388,9 @@ fun LiveMapScreen(
                 followedRunner = null
                 fitAll = true
                 fitAllTick++
+            }
+            if (crewState.isAvailable) {
+                RailButton(RailIcon.Crew, "Crew") { crewStage = CrewStage.List }
             }
             RailButton(RailIcon.Globe, "Open web map") { context.openWebMap(membership) }
             RailButton(RailIcon.Hash, "Invite code") { showInviteCode = true }
@@ -531,6 +540,11 @@ internal enum class RailIcon(val paths: List<String>) {
     Hash(listOf("M5 9h14M5 15h14M10 4L8 20M16 4l-2 16")),
     Pin(listOf("M12 21s-6-5.2-6-10a6 6 0 0 1 12 0c0 4.8-6 10-6 10zM12 8.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5")),
     More(listOf("M5 12h.01M12 12h.01M19 12h.01")),
+    /** Two people, for the crew sheet. */
+    Crew(listOf(
+        "M9 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7zM2.5 20c0-3.6 2.9-6 6.5-6s6.5 2.4 6.5 6",
+        "M16 4.3a3.5 3.5 0 0 1 0 6.4M18 14.2c2.1.6 3.5 2.6 3.5 5.8",
+    )),
     Eye(listOf("M2 12s3.6-6.5 10-6.5S22 12 22 12s-3.6 6.5-10 6.5S2 12 2 12zM12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6")),
     Settings(listOf(
         "M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z",
