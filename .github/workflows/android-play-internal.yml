@@ -154,7 +154,31 @@ jobs:
           fi
           [[ -n "$LINZ_API_KEY" ]] || echo "::warning::LINZ_API_KEY is not set; the map will be blank in this build"
 
-          printf '%s' "$KEYSTORE_B64" | base64 --decode > "$RUNNER_TEMP/upload.jks"
+          # Pasted secrets often pick up a trailing line break (or a Windows \r) or spaces; an alias never
+          # has them, and passwords lose only line breaks.
+          KEY_ALIAS=$(printf '%s' "$KEY_ALIAS" | tr -d '\r\n' | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
+          STORE_PASSWORD=$(printf '%s' "$STORE_PASSWORD" | tr -d '\r\n')
+          KEY_PASSWORD=$(printf '%s' "$KEY_PASSWORD" | tr -d '\r\n')
+
+          if ! printf '%s' "$KEYSTORE_B64" | tr -d ' \r\n' | base64 --decode > "$RUNNER_TEMP/upload.jks"; then
+            echo "::error::ANDROID_UPLOAD_KEYSTORE_B64 isn't valid base64. Copy it again from the .jks file."
+            exit 1
+          fi
+
+          # Check the keystore opens and holds the alias here, where the message can be clear, rather
+          # than deep in Gradle's signing step. Aliases aren't secret, so they're listed on a mismatch.
+          export STORE_PASSWORD
+          if ! listing=$(keytool -list -keystore "$RUNNER_TEMP/upload.jks" -storepass:env STORE_PASSWORD 2>&1); then
+            echo "::error::Couldn't open the keystore: $(grep -m1 -i 'keytool error' <<<"$listing" || echo "$listing" | head -1). Check ANDROID_UPLOAD_STORE_PASSWORD and ANDROID_UPLOAD_KEYSTORE_B64."
+            exit 1
+          fi
+          aliases=$(grep -E 'PrivateKeyEntry' <<<"$listing" | cut -d, -f1 || true)
+          # JKS aliases are case-insensitive (stored in lower case).
+          if ! grep -qixF -- "$KEY_ALIAS" <<<"$aliases"; then
+            echo "::error::ANDROID_UPLOAD_KEY_ALIAS (${#KEY_ALIAS} characters) isn't a key in this keystore. The keystore's keys: $(paste -sd, <<<"$aliases"). Set the secret to one of those."
+            exit 1
+          fi
+          echo "Keystore opens and holds the key alias."
           # local.properties is a Java properties file: backslashes in values must be doubled.
           esc() { printf '%s' "$1" | sed 's/\\/\\\\/g'; }
           {

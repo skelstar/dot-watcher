@@ -404,7 +404,12 @@ git push origin android-v1.4.3</pre>
             <td>Change <code>projectVersionName</code> and commit, or delete the tag and tag the right version.</td>
           </tr>
           <tr>
-            <td>Build: keystore was tampered with / password incorrect</td>
+            <td>Write secrets: "ANDROID_UPLOAD_KEY_ALIAS … isn't a key in this keystore"</td>
+            <td>The alias secret doesn't match the keystore. (Before this check, Gradle failed with "No key with alias '***' found in keystore".)</td>
+            <td>Set the secret to one of the aliases the message lists. Typing it beats pasting.</td>
+          </tr>
+          <tr>
+            <td>Write secrets: "Couldn't open the keystore", or Build: keystore was tampered with / password incorrect</td>
             <td>A password secret is wrong, or the base64 was cut short.</td>
             <td>Re-copy the secrets from <code>local.properties</code> and the <code>.jks</code>.</td>
           </tr>

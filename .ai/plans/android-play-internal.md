@@ -1,7 +1,7 @@
 # Android Play internal testing from GitHub — Plan
 
-*DotWatcher — plan, November 2026. Status: Steps 1–3 built on branch `android-play-internal` (not yet run).
-Step 0 waits on the four keystore secrets, which are on the Mac.*
+*DotWatcher — plan, November 2026. Status: working. First upload 1.4.3 (989) on 18 Nov 2026; Step 4 checks and
+Step 5 (Kraken) remain.*
 
 Goal: the Android twin of `ios-testflight.yml`. Run a workflow by hand (or from Kraken, or with an `android-v*` tag),
 and a signed release build of that branch lands on the Play **internal testing** track, ready to install from the
@@ -73,7 +73,7 @@ About 20–30 minutes, all in the browser.
       protection → "Protect app signing key": *Releases signed by Play*). If it is, the keystore in
       `local.properties` is only the *upload* key, which Google can reset if it leaks. Confirmed on. The app is
       **not** a draft app (status Internal testing), so uploads use `status: completed`.
-- [ ] **Repository secrets** (`PLAY_SERVICE_ACCOUNT_JSON` can be added any time; the four keystore ones are on the
+- [x] **Repository secrets** (`PLAY_SERVICE_ACCOUNT_JSON` can be added any time; the four keystore ones are on the
       Mac) (GitHub → Settings → Secrets and variables → Actions):
 
       | Secret | Value |
@@ -130,10 +130,14 @@ About 20–30 minutes, all in the browser.
 
 ## Step 4 — prove it
 
-- [ ] Merge `android-play-internal` into `staging`: the **Run workflow** button only appears once the workflow file
+- [x] Merge `android-play-internal` into `staging` (PR #361): the **Run workflow** button only appears once the workflow file
       is on the default branch, so the first run can't happen before the merge. It's harmless until run.
-- [ ] First manual run (on `staging`) uploads, and the build installs from the Play Store on a test phone.
-- [ ] A tag run (`android-v1.4.3`) succeeds after the merge.
+- [x] First upload: run #3 on branch `android-keystore-check` uploaded 1.4.3 (989) and tagged `android-v1.4.3` on 2d34a30.
+      Runs #1–2 failed: `ANDROID_UPLOAD_KEY_ALIAS` held a 16-character value, not `dotwatcher`. That branch adds a keystore
+      check in Write secrets that names the aliases on a mismatch, and trims pasted secrets.
+- [ ] The build installs from the Play Store on a test phone.
+- [ ] A tag run succeeds (needs a new tag, e.g. `android-v1.4.4` after bumping `projectVersionName`: `android-v1.4.3`
+      already exists from the first upload, and re-pushing it would not start a run).
 - [ ] Builds made locally in Android Studio after this get the commit-count version code too (check
       `versionCode` in Build → Analyze APK).
 
