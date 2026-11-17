@@ -1,10 +1,8 @@
 import SwiftUI
-import UIKit
-import UserNotifications
 
-private let privacyURL = URL(string: "https://dot-watcher.skelstar.io/privacy")!
-private let termsURL = URL(string: "https://dot-watcher.skelstar.io/terms")!
-
+/// Signed in: the Account sheet (who the person is: initials, crew name, blocked users, sign out,
+/// delete account), opened from the person icon on the start screen. Signed out: the sign-in /
+/// create-account screen. App preferences live in `SettingsSheet`.
 struct AuthSheet: View {
     @Bindable var location: LocationManager
     var crew: CrewStore
@@ -18,18 +16,12 @@ struct AuthSheet: View {
     @State private var error: String?
     @State private var isBusy = false
     @State private var showDeleteConfirmation = false
-    @State private var notificationStatus: UNAuthorizationStatus = .notDetermined
-    @State private var testNotificationSentAt: Date?
-
-    private static let testNotificationDelay: TimeInterval = 5
 
     private var isValidEmail: Bool {
         username.trimmingCharacters(in: .whitespaces)
             .range(of: #"^[^@\s]+@[^@\s]+\.[^@\s]+$"#, options: .regularExpression) != nil
     }
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.openURL) private var openURL
-    @Environment(\.scenePhase) private var scenePhase
 
     enum AuthMode: Hashable {
         case signIn
@@ -45,9 +37,14 @@ struct AuthSheet: View {
                         LabeledContent("Initials") {
                             CodeBoxField(text: $location.runnerName, length: 2, lettersOnly: true)
                         }
+                    }
+                    crewSection
+                    Section("Privacy") {
                         NavigationLink("Blocked Users") {
                             BlockedUsersView(location: location)
                         }
+                    }
+                    Section {
                         Button("Sign out", role: .destructive) {
                             Task { await location.signOut() }
                         }
@@ -56,19 +53,6 @@ struct AuthSheet: View {
                         }
                         .disabled(isBusy)
                     }
-                    crewSection
-                    Section("Appearance") {
-                        VStack(alignment: .leading, spacing: 10) {
-                            Text("Dot size")
-                            DotSizePicker(selection: $location.mapDotSize, initials: location.runnerName)
-                        }
-                        .padding(.vertical, 4)
-                    }
-                    notificationsSection
-                    if showsDeveloperSection {
-                        developerSection
-                    }
-                    legalSection
                 } else {
                     Section {
                         Picker("Mode", selection: $mode) {
@@ -112,7 +96,12 @@ struct AuthSheet: View {
                         }
                         .disabled(isBusy || username.trimmingCharacters(in: .whitespaces).isEmpty || password.count < 8 || (mode == .register && (displayName.count != 2 || !isValidEmail)))
                     }
-                    legalSection
+                    Section {
+                        Link("Privacy Policy", destination: LegalLinks.privacy)
+                        Link("Terms of Use", destination: LegalLinks.terms)
+                    } footer: {
+                        Text(LegalLinks.disclaimer)
+                    }
                 }
 
                 if let error {
@@ -122,18 +111,13 @@ struct AuthSheet: View {
                     }
                 }
             }
-            .navigationTitle(location.isAuthenticated ? "Settings" : "Account")
+            .navigationTitle("Account")
             .toolbar {
                 if location.isAuthenticated {
                     ToolbarItem(placement: .confirmationAction) {
                         Button("Done") { dismiss() }
                     }
                 }
-            }
-            .task { notificationStatus = await SatelliteAlerts.shared.authorizationStatus() }
-            .onChange(of: scenePhase) { _, phase in
-                guard phase == .active else { return }
-                Task { notificationStatus = await SatelliteAlerts.shared.authorizationStatus() }
             }
             .alert("Delete account?", isPresented: $showDeleteConfirmation) {
                 Button("Delete", role: .destructive) {
@@ -180,85 +164,6 @@ struct AuthSheet: View {
         }
     }
 
-    private var notificationsSection: some View {
-        Section {
-            Toggle("Satellite alerts", isOn: $location.satelliteAlertsEnabled)
-            Toggle("Play sound", isOn: $location.satelliteAlertSound)
-                .disabled(!location.satelliteAlertsEnabled)
-            if notificationStatus == .denied {
-                Button("Allow notifications in Settings") {
-                    if let url = URL(string: UIApplication.openSettingsURLString) { openURL(url) }
-                }
-            }
-        } header: {
-            Text("Notifications")
-        } footer: {
-            Text(notificationStatus == .denied
-                 ? "Notifications are turned off for DotWatcher in iOS Settings, so satellite alerts can't be shown."
-                 : "Alerts you when your phone switches to satellite while you're tracking.")
-        }
-    }
-
-    /// Debug builds always show the Developer section; Release/TestFlight builds only once the
-    /// hidden 10-tap gesture on the build/SHA label has unlocked it.
-    private var showsDeveloperSection: Bool {
-        #if DEBUG
-        return true
-        #else
-        return location.developerOptionsUnlocked
-        #endif
-    }
-
-    /// Tools for testing on a real device: force satellite mode mid-run, fire the satellite alert on
-    /// demand, and see how many posts landed in each network mode.
-    private var developerSection: some View {
-        Section {
-            Toggle("Force satellite mode", isOn: $location.debugForceUltraConstrained)
-            Button("Send test notification in \(Int(Self.testNotificationDelay))s") {
-                SatelliteAlerts.shared.sendTestNotification(
-                    after: Self.testNotificationDelay,
-                    playSound: location.satelliteAlertSound
-                )
-                testNotificationSentAt = Date()
-            }
-            if let testNotificationSentAt {
-                Text("Sent at \(testNotificationSentAt, style: .time) — lock the phone now.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            postStatsRow("Normal posts", location.normalPostStats)
-            postStatsRow("Satellite posts", location.satellitePostStats)
-            if location.developerOptionsUnlocked {
-                Button("Hide developer options", role: .destructive) {
-                    location.developerOptionsUnlocked = false
-                    location.debugForceUltraConstrained = false
-                }
-            }
-        } header: {
-            Text("Developer")
-        } footer: {
-            Text("Force satellite mode simulates a carrier satellite (Direct-to-Cell) connection: the on-satellite map badge, paused polling, a 90s post interval, and the satellite alert if you're tracking. It switches off when the app relaunches. Post counts reset on relaunch.")
-        }
-    }
-
-    private func postStatsRow(_ title: String, _ stats: LocationManager.PostStats) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(title)
-            Text("\(stats.successes)/\(stats.attempts) sent · \(stats.transportFailures) failed · \(stats.retries) retries · \(stats.pathTriggers) path triggers")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        }
-    }
-
-    private var legalSection: some View {
-        Section {
-            Link("Privacy Policy", destination: privacyURL)
-            Link("Terms of Use", destination: termsURL)
-        } footer: {
-            Text("Location data can be delayed, inaccurate, or unavailable.")
-        }
-    }
-
     private func submit() async {
         isBusy = true
         error = nil
@@ -286,38 +191,5 @@ struct AuthSheet: View {
             self.error = error.localizedDescription
         }
         isBusy = false
-    }
-}
-
-/// The Dot size choice as three tiles, each showing the user's own dot at that size; the chosen
-/// tile is outlined. No text on the tiles: the dots are the labels (VoiceOver still reads the names).
-private struct DotSizePicker: View {
-    @Binding var selection: MapDotSize
-    let initials: String
-
-    var body: some View {
-        HStack(spacing: 10) {
-            ForEach(MapDotSize.allCases) { size in
-                let isSelected = size == selection
-                Button {
-                    selection = size
-                } label: {
-                    RunnerMapPin(name: initials.isEmpty ? "ME" : initials, size: size.pinSize, isHighlighted: true)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 72)
-                        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 12))
-                        .overlay {
-                            RoundedRectangle(cornerRadius: 12)
-                                .strokeBorder(isSelected ? Color.accentColor : .clear, lineWidth: 2.5)
-                        }
-                        .contentShape(RoundedRectangle(cornerRadius: 12))
-                }
-                // Plain style, or a Form row fires every button in it on any tap.
-                .buttonStyle(.plain)
-                .accessibilityLabel(size.label)
-                .accessibilityAddTraits(isSelected ? .isSelected : [])
-            }
-        }
-        .animation(.easeInOut(duration: 0.15), value: selection)
     }
 }

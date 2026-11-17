@@ -26,7 +26,7 @@ Privacy Policy: https://dot-watcher.skelstar.io/privacy
 
 Terms of Use: https://dot-watcher.skelstar.io/terms
 
-Use **Settings > Delete account** to delete your DotWatcher account, memberships, owned sessions, and stored location rows linked to your account. Historical records without account attribution, admin uploads, or operational logs may need manual deletion.
+Use **Account > Delete account** (the person icon on the start screen) to delete your DotWatcher account, memberships, owned sessions, and stored location rows linked to your account. Historical records without account attribution, admin uploads, or operational logs may need manual deletion.
 
 Do not use DotWatcher for emergency response, rescue, medical, safety-critical tracking, or any situation where delayed or missing location data could cause harm.
 
@@ -42,4 +42,4 @@ Your crew is the people you have chosen. It is mutual: when you add someone you 
 
 **Send your code** — in **Your crew**, tap **Add someone**, then **Show my code**. A code works once and lasts 24 hours, so send it to the one person you want to add. **Make a new code** stops the old one working.
 
-**Your name** — people in your crew see the name you choose in **Settings > Crew**, or your initials if you leave it blank.
+**Your name** — people in your crew see the name you choose in **Account > Crew**, or your initials if you leave it blank.

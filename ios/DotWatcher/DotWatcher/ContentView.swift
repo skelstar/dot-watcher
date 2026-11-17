@@ -15,6 +15,7 @@ struct ContentView: View {
     @State private var nameInput: String = ""
     @State private var showHelp: Bool = false
     @State private var showAuth: Bool = false
+    @State private var showSettings: Bool = false
     @State private var showUpdateRequired: Bool = false
     @State private var showShareConsent: Bool = false
     @State private var showCreateSession: Bool = false
@@ -86,6 +87,10 @@ struct ContentView: View {
             }
             .sheet(isPresented: $showHelp) {
                 HelpView()
+                    .preferredColorScheme(location.appearanceMode.colorScheme)
+            }
+            .sheet(isPresented: $showSettings) {
+                SettingsSheet(location: location)
                     .preferredColorScheme(location.appearanceMode.colorScheme)
             }
             .sheet(isPresented: $showNameEntry) {
@@ -345,7 +350,7 @@ struct ContentView: View {
             }
             Spacer()
             HStack(spacing: 16) {
-                // Settings, as on Android. Editing the name stays on the initials dot in the wordmark.
+                // Account (who you are). Editing the name stays on the initials dot in the wordmark.
                 if location.isAuthenticated {
                     Button { showAuth = true } label: {
                         Image(systemName: "person.circle.fill")
@@ -353,8 +358,16 @@ struct ContentView: View {
                             .foregroundStyle(.primary)
                     }
                     .buttonStyle(.plain)
-                    .accessibilityLabel("Settings")
+                    .accessibilityLabel("Account")
                 }
+                // App preferences; the same sheet as the gear on the map rail.
+                Button { showSettings = true } label: {
+                    Image(systemName: "gearshape")
+                        .font(.title)
+                        .foregroundStyle(.primary)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Settings")
                 Button { showHelp = true } label: {
                     Image(systemName: "questionmark.circle")
                         .font(.title)
