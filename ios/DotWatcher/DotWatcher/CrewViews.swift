@@ -198,8 +198,13 @@ struct CrewFlowView: View {
             }
         }
         .onChange(of: crew.isFlowPresented) { _, isPresented in
-            if !isPresented { path = [] }
+            if !isPresented {
+                path = []
+                // "Find new crew" lasts only while the sheet is open.
+                crew.finding.stop()
+            }
         }
+        .onDisappear { crew.finding.stop() }
     }
 }
 
@@ -222,6 +227,7 @@ struct CrewListView: View {
             VStack(alignment: .leading, spacing: 14) {
                 // Opening the crew is what clears the start screen's "joined" note.
                 Color.clear.frame(height: 0).onAppear { crew.markMembersSeen() }
+                FindNewCrewSection(finding: crew.finding)
                 Text("People you have chosen. They see you in their crew too, and you can remove each other at any time. Removing someone takes effect straight away.")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)

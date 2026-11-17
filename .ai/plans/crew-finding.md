@@ -44,7 +44,7 @@ this window). Details in `docs/api-reference.html`.
 - [ ] F4 Two-phone test on each platform: both on within 50 m, see each other, one accepts (the other sees the
       badge), the other accepts, both get the confirmation; close the sheet mid-way (accept dropped); wait out the
       2 minutes; location off shows the explanation.
-- [ ] F5 iOS `Help.md`: a line under Crew once it ships.
+- [x] F5 iOS `Help.md`: "Add someone next to you" under Crew (on the iOS branch).
 
 ## Open
 

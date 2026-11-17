@@ -40,12 +40,18 @@ struct ContentView: View {
     @State private var versionTapCount = 0
     @State private var lastVersionTap: Date?
 
+    /// Whether the session map covers the screen; the same test `SessionMapCover` uses. The crew sheet is then
+    /// presented by that map, since a sheet can't present from beneath a full-screen cover.
+    private var isSessionMapPresented: Bool {
+        location.activeMembership != nil && (location.isTracking || showShareConsent) && !casual.isMapPresented
+    }
+
     /// The first half of `body`'s modifier chain. Split from `body` because one chain this long
     /// exceeds the Swift type-checker's budget ("unable to type-check this expression in
     /// reasonable time").
     private var bodyWithSheets: some View {
         mainContent
-            .modifier(CrewHost(crew: crew, location: location, yieldsToCasualMap: casual.isMapPresented))
+            .modifier(CrewHost(crew: crew, location: location, yieldsToCasualMap: casual.isMapPresented || isSessionMapPresented))
             .modifier(CasualHost(casual: casual, crew: crew, location: location))
             .modifier(EventsHost(events: events, location: location))
             .modifier(SessionMapCover(
