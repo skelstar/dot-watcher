@@ -1,7 +1,7 @@
 # Android Play internal testing from GitHub — Plan
 
-*DotWatcher — plan, November 2026. Status: working. First upload 1.4.3 (989) on 18 Nov 2026; Step 4 checks and
-Step 5 (Kraken) remain.*
+*DotWatcher — plan, November 2026. Status: done, 18 Nov 2026. Uploads work from the Actions tab and from Kraken
+(1.4.3 (989), then 1.4.4 (991) from Kraken). Two small checks are left for the next release (Step 4).*
 
 Goal: the Android twin of `ios-testflight.yml`. Run a workflow by hand (or from Kraken, or with an `android-v*` tag),
 and a signed release build of that branch lands on the Play **internal testing** track, ready to install from the
@@ -135,24 +135,35 @@ About 20–30 minutes, all in the browser.
 - [x] First upload: run #3 on branch `android-keystore-check` uploaded 1.4.3 (989) and tagged `android-v1.4.3` on 2d34a30.
       Runs #1–2 failed: `ANDROID_UPLOAD_KEY_ALIAS` held a 16-character value, not `dotwatcher`. That branch adds a keystore
       check in Write secrets that names the aliases on a mismatch, and trims pasted secrets.
-- [ ] The build installs from the Play Store on a test phone.
-- [ ] A tag run succeeds (needs a new tag, e.g. `android-v1.4.4` after bumping `projectVersionName`: `android-v1.4.3`
-      already exists from the first upload, and re-pushing it would not start a run).
+- [x] The build installs from the Play Store on a test phone (1.4.3 (989)).
+- [ ] A tag run succeeds. `android-v1.4.3` and `android-v1.4.4` already exist (the workflow tags dispatched uploads),
+      so this waits for the next release: merge the 1.4.5 version bump PR, then push `android-v1.4.5` instead of
+      uploading from Kraken.
 - [ ] Builds made locally in Android Studio after this get the commit-count version code too (check
       `versionCode` in Build → Analyze APK).
 
 ## Step 5 — Kraken (only after the Kraken iOS work exists)
 
-- [ ] Add `{ platform: android, workflow: android-play-internal.yml, tagPrefix: android-v, label: Play internal }`
-      to the dot-watcher `phoneBuilds` list. Kraken's code should need nothing else if it was built per platform.
-- [ ] The fine-grained token already has Actions read/write on `skelstar/dot-watcher` from the iOS work.
-- [ ] Kraken's "project version" for Android reads `versionName` from `android/app/build.gradle.kts`.
+Turned out to need more than a config line: Kraken's version reading, version PR, build-number rule and wording
+were iOS-only. Done in Kraken (`skelstar/kraken`) branch `feat/phone-android`: per-platform rules in
+`src/domain/platforms.ts`, Android checks that compare version codes against every upload (Play's rule), the
+Android workflow in fake mode, and `test/phoneAndroid.test.ts`.
+
+- [x] Add `{ platform: android, workflow: android-play-internal.yml, tagPrefix: android-v, label: Play internal,
+      versionFile: android/app/build.gradle.kts }` to the dot-watcher `phoneBuilds` list (Tatooine-Configuration
+      branch `kraken-android-builds`). The ConfigMap's name carries a content hash, so merging it restarts Kraken.
+- [x] The fine-grained token already had Actions read/write on `skelstar/dot-watcher` from the iOS work.
+- [x] Kraken's "project version" for Android reads `projectVersionName` from `android/app/build.gradle.kts`.
+- [x] First Kraken upload: 1.4.4 (991) from `staging`, tagged `android-v1.4.4` on efaf4d4. Kraken's version bump PR
+      (`android-version-1.4.4`, #363) set `projectVersionName` to 1.4.4.
+- [x] Kraken's button renamed from "Set the project to 1.4.4" to **Create version bump PR** (branch
+      `feat/version-bump-wording`), on iOS and Android.
 
 ## Open questions
 
-- Is the Play app still a **draft app** (never reviewed for any track)? Decides `completed` vs `draft` upload status.
-- Is **Play App Signing** on? (Expected yes; the upload key in GitHub is only safe to store if it is.)
-- Shallow-checkout debug builds in `android-gradle.yml`: give them full history, or a debug-only fallback?
-- Release notes: commit subject, a workflow input, or none?
+- ~~Is the Play app still a draft app?~~ No (status Internal testing); uploads use `completed`.
+- ~~Is Play App Signing on?~~ Yes ("Releases signed by Play").
+- ~~Shallow-checkout debug builds in `android-gradle.yml`?~~ Left shallow; a count of 1 is fine for debug builds.
+- Release notes: commit subject, a workflow input, or none? (None today; the release is named "1.4.4 (991)".)
 - Play may warn about missing native debug symbols (MapLibre's `.so` files). Harmless for internal testing, like
   the missing MapLibre dSYM on iOS. Uploading them is a later nicety.
