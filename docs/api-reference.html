@@ -735,6 +735,78 @@
 
     <div class="card">
       <div class="endpoint-header">
+        <span class="method method-post">POST</span>
+        <span class="path">/me/crew/finding</span>
+        <span class="auth-badge auth-required">Bearer token</span>
+      </div>
+      <p class="purpose">&ldquo;Find new crew&rdquo;: turns it on at the caller&rsquo;s position for two minutes, restarting it (new token, earlier accepts dropped) if it was already on. Lists other people who have it on, have sent a fix in the last 30 s and are within 50 m (each fix&rsquo;s accuracy forgiven up to 50 m, as for nearby join). People blocked either way and existing crew are left out. No position or distance is ever returned. Lives in server memory only. 400 for a missing or bad position; 429 after 30 starts per user per hour. Crew&rsquo;s kill switch makes it 404, like the other crew endpoints.</p>
+      <div class="details">
+        <div class="detail-block"><h4>Request Body</h4><pre>{
+  "latitude": number,
+  "longitude": number,
+  "accuracy": number | null     // metres; 100 or better
+}</pre></div>
+        <div class="detail-block"><h4>Response</h4><pre>{
+  "expiresAt": "ISO 8601 UTC",          // the window closes by itself then
+  "people": [
+    {
+      "id": "string",                   // a random token for this window, not an account id
+      "nickname": "string" | null,
+      "displayName": "string",
+      "youAccepted": boolean,
+      "acceptedYou": boolean
+    }
+  ],
+  "added": [ { "userId", "nickname", "displayName", "since" } ]   // became crew in this window
+}</pre></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="endpoint-header">
+        <span class="method method-put">PUT</span>
+        <span class="path">/me/crew/finding</span>
+        <span class="auth-badge auth-required">Bearer token</span>
+      </div>
+      <p class="purpose">A fresh position while it is on; the apps send one every few seconds and get the same state back. 410 once the window has ended (two minutes, or switched off); 429 after 60 refreshes in one window.</p>
+      <div class="details">
+        <div class="detail-block"><h4>Request Body</h4><pre>{
+  "latitude": number,
+  "longitude": number,
+  "accuracy": number | null     // metres; 100 or better
+}</pre></div>
+        <div class="detail-block"><h4>Response</h4><pre>Same as POST</pre></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="endpoint-header">
+        <span class="method method-delete">DELETE</span>
+        <span class="path">/me/crew/finding</span>
+        <span class="auth-badge auth-required">Bearer token</span>
+      </div>
+      <p class="purpose">Turns it off. The caller&rsquo;s unanswered accepts, and other people&rsquo;s accepts of the caller, are dropped. 204, also when it was already off.</p>
+      <div class="details">
+        <div class="detail-block"><h4>Request Body</h4><p class="none-label">None</p></div>
+        <div class="detail-block"><h4>Response</h4><p class="none-label">204 No Content</p></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="endpoint-header">
+        <span class="method method-post">POST</span>
+        <span class="path">/me/crew/finding/<span class="param">{id}</span>/accept</span>
+        <span class="auth-badge auth-required">Bearer token</span>
+      </div>
+      <p class="purpose">The caller accepts someone from their list (<code>id</code> is the token from <code>people</code>). If that person has already accepted the caller, the two become crew immediately and both see each other in <code>added</code> (the other person on their next refresh); otherwise the accept waits, shown to them as <code>acceptedYou</code>. 404 when that person isn&rsquo;t on or close any more, or the two are blocked; 409 if either crew is full (50); 410 when the caller&rsquo;s own window has ended.</p>
+      <div class="details">
+        <div class="detail-block"><h4>Request Body</h4><p class="none-label">None</p></div>
+        <div class="detail-block"><h4>Response</h4><pre>Same as POST /me/crew/finding</pre></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="endpoint-header">
         <span class="method method-get">GET</span>
         <span class="path">/me/profile</span>
         <span class="auth-badge auth-required">Bearer token</span>

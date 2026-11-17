@@ -15,6 +15,7 @@ struct ContentView: View {
     @State private var nameInput: String = ""
     @State private var showHelp: Bool = false
     @State private var showAuth: Bool = false
+    @State private var showSettings: Bool = false
     @State private var showUpdateRequired: Bool = false
     @State private var showShareConsent: Bool = false
     @State private var showCreateSession: Bool = false
@@ -39,12 +40,18 @@ struct ContentView: View {
     @State private var versionTapCount = 0
     @State private var lastVersionTap: Date?
 
+    /// Whether the session map covers the screen; the same test `SessionMapCover` uses. The crew sheet is then
+    /// presented by that map, since a sheet can't present from beneath a full-screen cover.
+    private var isSessionMapPresented: Bool {
+        location.activeMembership != nil && (location.isTracking || showShareConsent) && !casual.isMapPresented
+    }
+
     /// The first half of `body`'s modifier chain. Split from `body` because one chain this long
     /// exceeds the Swift type-checker's budget ("unable to type-check this expression in
     /// reasonable time").
     private var bodyWithSheets: some View {
         mainContent
-            .modifier(CrewHost(crew: crew, location: location, yieldsToCasualMap: casual.isMapPresented))
+            .modifier(CrewHost(crew: crew, location: location, yieldsToCasualMap: casual.isMapPresented || isSessionMapPresented))
             .modifier(CasualHost(casual: casual, crew: crew, location: location))
             .modifier(EventsHost(events: events, location: location))
             .modifier(SessionMapCover(
@@ -86,6 +93,10 @@ struct ContentView: View {
             }
             .sheet(isPresented: $showHelp) {
                 HelpView()
+                    .preferredColorScheme(location.appearanceMode.colorScheme)
+            }
+            .sheet(isPresented: $showSettings) {
+                SettingsSheet(location: location)
                     .preferredColorScheme(location.appearanceMode.colorScheme)
             }
             .sheet(isPresented: $showNameEntry) {
@@ -345,7 +356,7 @@ struct ContentView: View {
             }
             Spacer()
             HStack(spacing: 16) {
-                // Settings, as on Android. Editing the name stays on the initials dot in the wordmark.
+                // Account (who you are). Editing the name stays on the initials dot in the wordmark.
                 if location.isAuthenticated {
                     Button { showAuth = true } label: {
                         Image(systemName: "person.circle.fill")
@@ -353,8 +364,16 @@ struct ContentView: View {
                             .foregroundStyle(.primary)
                     }
                     .buttonStyle(.plain)
-                    .accessibilityLabel("Settings")
+                    .accessibilityLabel("Account")
                 }
+                // App preferences; the same sheet as the gear on the map rail.
+                Button { showSettings = true } label: {
+                    Image(systemName: "gearshape")
+                        .font(.title)
+                        .foregroundStyle(.primary)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Settings")
                 Button { showHelp = true } label: {
                     Image(systemName: "questionmark.circle")
                         .font(.title)

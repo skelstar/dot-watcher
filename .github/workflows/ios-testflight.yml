@@ -1,10 +1,20 @@
 # .github/workflows/ios-testflight.yml
 #
 # Builds the iOS app (Release, so Production) and uploads it to TestFlight. Run it by hand from the
-# Actions tab and pick any branch, or push an ios-v* tag (e.g. ios-v1.4.3). It never submits for App
-# Store review: that stays a manual step in App Store Connect.
+# Actions tab and pick any branch, start it from Kraken, or push an ios-v* tag (e.g. ios-v1.4.3). It
+# never submits for App Store review: that stays a manual step in App Store Connect.
 #
-# The version (MARKETING_VERSION) comes from the project. The build number is the commit count, stamped
+# Run by hand or from Kraken (workflow_dispatch), it takes an optional version such as 1.4.4. That
+# version is used for this build only (MARKETING_VERSION on the xcodebuild command line); nothing is
+# committed, so the Xcode project keeps its own version until it's bumped in a normal PR. Left blank,
+# the project's version is used, as before. After a successful upload, a dispatched run tags the built
+# commit ios-v<version> so git records what went up. Tags pushed with GITHUB_TOKEN don't start
+# workflows, so that tag doesn't trigger a second upload.
+#
+# Kraken also passes request_id (its own build id). It only appears in the run name, so Kraken can
+# find the run it started.
+#
+# Without a typed version, the version comes from the project. The build number is the commit count, stamped
 # by the project's own build phase, hence the full-history checkout. TestFlight refuses a build number it
 # has already seen for the same version, so a branch with fewer commits than the last upload fails at
 # the upload step; bump the version or upload from a newer branch.
@@ -18,19 +28,29 @@
 #   ASC_KEY_P8      contents of the AuthKey_<id>.p8 file
 #   LINZ_API_KEY    LINZ Basemaps key (without it the build works but the map is blank)
 name: iOS TestFlight
+run-name: "TestFlight ${{ inputs.version || 'project version' }} from ${{ github.ref_name }}${{ inputs.request_id && format(' [{0}]', inputs.request_id) || '' }}"
 
 on:
   workflow_dispatch:
+    inputs:
+      version:
+        description: "Version for this build only, e.g. 1.4.4. Blank = the project's version."
+        required: false
+        default: ""
+      request_id:
+        description: "Set by Kraken so it can find this run. Leave blank."
+        required: false
+        default: ""
   push:
     tags: ["ios-v*"]
 
 # Two uploads at once would race for the same build number.
 concurrency:
-  group: ios-testflight
+  group: ios-testflight-upload
   cancel-in-progress: false
 
 permissions:
-  contents: read
+  contents: write # push the ios-v* tag after a dispatched upload
 
 env:
   PROJECT: ios/DotWatcher/DotWatcher.xcodeproj
@@ -39,12 +59,43 @@ env:
 
 jobs:
   testflight:
-    runs-on: macos-26
+    runs-on: macos-15 # has Xcode 26 installed; the step below picks it. macos-26 never got a runner.
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
+      - name: Check out
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0 # the build number is the commit count
+          fetch-tags: true # for the ios-v* tag checks
+
+      # Typed version (dispatch only): X.Y.Z digits, and not already uploaded from another commit.
+      - name: Check version
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          VERSION: ${{ inputs.version }}
+          REQUEST_ID: ${{ inputs.request_id }}
+        run: |
+          set -euo pipefail
+          if [[ -n "$REQUEST_ID" && ! "$REQUEST_ID" =~ ^[A-Za-z0-9-]{1,40}$ ]]; then
+            echo "::error::request_id must be letters, digits and dashes (got '$REQUEST_ID')"
+            exit 1
+          fi
+          if [[ -z "$VERSION" ]]; then
+            echo "No version typed: using the project's."
+            exit 0
+          fi
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Version must look like 1.4.4 (three numbers, no v). Got '$VERSION'."
+            exit 1
+          fi
+          tag="ios-v$VERSION"
+          tagged=$(git rev-parse -q --verify "refs/tags/$tag^{commit}" || true)
+          if [[ -n "$tagged" && "$tagged" != "$(git rev-parse HEAD)" ]]; then
+            echo "::error::$tag already exists on ${tagged:0:7}, a different commit: $VERSION was uploaded from somewhere else. Pick a higher version."
+            exit 1
+          fi
+          project_version=$(grep -m1 -oE 'MARKETING_VERSION = [0-9.]+' "$PROJECT/project.pbxproj" | awk '{print $3}')
+          echo "Version $VERSION for this build (project says $project_version)."
 
       - name: Select Xcode
         run: |
@@ -83,8 +134,13 @@ jobs:
         env:
           ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
           ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          VERSION: ${{ inputs.version }}
         run: |
           set -euo pipefail
+          # A typed version overrides the project's for this build only. (The odd expansion below keeps
+          # an empty array safe under set -u in macOS's bash 3.2.)
+          version_setting=()
+          if [[ -n "$VERSION" ]]; then version_setting=("MARKETING_VERSION=$VERSION"); fi
           xcodebuild archive \
             -project "$PROJECT" \
             -scheme "$SCHEME" \
@@ -95,7 +151,8 @@ jobs:
             -authenticationKeyPath "$RUNNER_TEMP/AuthKey.p8" \
             -authenticationKeyID "$ASC_KEY_ID" \
             -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
-            DEVELOPMENT_TEAM="$TEAM_ID"
+            DEVELOPMENT_TEAM="$TEAM_ID" \
+            ${version_setting[@]+"${version_setting[@]}"}
 
       - name: Upload to TestFlight
         env:
@@ -128,15 +185,41 @@ jobs:
             -authenticationKeyID "$ASC_KEY_ID" \
             -authenticationKeyIssuerID "$ASC_ISSUER_ID"
 
+      # Dispatched runs only: tag pushes already have their tag. The upload has happened by now, so a
+      # tag problem is a warning, not a failed run.
+      - name: Tag the upload
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          set -uo pipefail
+          plist="$RUNNER_TEMP/DotWatcher.xcarchive/Products/Applications/DotWatcher.app/Info.plist"
+          version=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$plist")
+          tag="ios-v$version"
+          head=$(git rev-parse HEAD)
+          tagged=$(git rev-parse -q --verify "refs/tags/$tag^{commit}" || true)
+          if [[ "$tagged" == "$head" ]]; then
+            echo "$tag is already on this commit."
+          elif [[ -n "$tagged" ]]; then
+            echo "::warning::$tag is already on ${tagged:0:7}, not this commit; left it alone."
+          elif git tag "$tag" "$head" && git push origin "refs/tags/$tag"; then
+            echo "Tagged $tag on ${head:0:7}."
+          else
+            echo "::warning::Couldn't push $tag. The upload still worked; tag ${head:0:7} by hand."
+          fi
+
       - name: Summary
         continue-on-error: true # the upload has already happened; don't fail the run over a summary
+        env:
+          TYPED: ${{ inputs.version }}
         run: |
           plist="$RUNNER_TEMP/DotWatcher.xcarchive/Products/Applications/DotWatcher.app/Info.plist"
           version=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$plist")
           build=$(/usr/libexec/PlistBuddy -c "Print :CFBundleVersion" "$plist")
+          project_version=$(grep -m1 -oE 'MARKETING_VERSION = [0-9.]+' "$PROJECT/project.pbxproj" | awk '{print $3}')
+          note=""
+          if [[ -n "$TYPED" && "$TYPED" != "$project_version" ]]; then note=" (typed; project says $project_version)"; fi
           {
             echo "### Uploaded to TestFlight"
-            echo "Version **$version** build **$build** from \`$GITHUB_REF_NAME\` ($(git rev-parse --short HEAD))."
+            echo "Version **$version**$note build **$build** from \`$GITHUB_REF_NAME\` ($(git rev-parse --short HEAD))."
             echo "It appears in TestFlight once Apple finishes processing, usually 5–15 minutes."
           } >> "$GITHUB_STEP_SUMMARY"
 

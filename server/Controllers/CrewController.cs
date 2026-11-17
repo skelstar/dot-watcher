@@ -12,6 +12,7 @@ public class CrewController(
     UserTokenAuth userAuth,
     FeatureFlags features,
     CrewCodeLimiter limiter,
+    CrewFinder finder,
     TimeProvider timeProvider) : ControllerBase
 {
     private const int MaxNicknameLength = 30;
@@ -137,6 +138,154 @@ public class CrewController(
             _ => InvalidCode(),
         };
     }
+
+    // ---- Find new crew ----------------------------------------------------------------------
+    // Adding crew in person, without a code. See CrewFinder and .ai/plans/crew-finding.md.
+
+    /// <summary>
+    /// Turns "Find new crew" on at the caller's position for two minutes (restarting it if it was
+    /// already on). Returns who else nearby has it on.
+    /// </summary>
+    [HttpPost("/me/crew/finding")]
+    [ProducesResponseType(typeof(CrewFindingState), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status429TooManyRequests)]
+    public IActionResult StartFinding([FromBody] CrewFindingRequest? request)
+    {
+        if (Gate(out var user) is { } denied)
+            return denied;
+        if (ToFix(request) is not { } fix)
+            return InvalidPosition();
+
+        if (finder.Start(user.UserId, fix) == CrewFinder.StartOutcome.TooMany)
+            return TooManyAttempts();
+
+        return FindingState(user.UserId);
+    }
+
+    /// <summary>
+    /// A fresh position while "Find new crew" is on; clients send one every few seconds. 410 once the
+    /// window has ended (two minutes, or switched off).
+    /// </summary>
+    [HttpPut("/me/crew/finding")]
+    [ProducesResponseType(typeof(CrewFindingState), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status410Gone)]
+    [ProducesResponseType(StatusCodes.Status429TooManyRequests)]
+    public IActionResult RefreshFinding([FromBody] CrewFindingRequest? request)
+    {
+        if (Gate(out var user) is { } denied)
+            return denied;
+        if (ToFix(request) is not { } fix)
+            return InvalidPosition();
+
+        return finder.Refresh(user.UserId, fix) switch
+        {
+            CrewFinder.RefreshOutcome.NotOn => FindingEnded(),
+            CrewFinder.RefreshOutcome.TooMany => TooManyAttempts(),
+            _ => FindingState(user.UserId),
+        };
+    }
+
+    /// <summary>Turns "Find new crew" off. Unanswered accepts are dropped. Succeeds when it was already off.</summary>
+    [HttpDelete("/me/crew/finding")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public IActionResult StopFinding()
+    {
+        if (Gate(out var user) is { } denied)
+            return denied;
+
+        finder.Stop(user.UserId);
+        return NoContent();
+    }
+
+    /// <summary>
+    /// The caller accepts someone from their nearby list. When that person has already accepted the
+    /// caller, the two become crew straight away and both see them in <c>added</c>. 404 when that person
+    /// isn't on or nearby any more (or the two are blocked); 409 when either crew is full; 410 when the
+    /// caller's own window has ended.
+    /// </summary>
+    [HttpPost("/me/crew/finding/{id}/accept")]
+    [ProducesResponseType(typeof(CrewFindingState), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    [ProducesResponseType(StatusCodes.Status410Gone)]
+    public IActionResult AcceptFinding(string id)
+    {
+        if (Gate(out var user) is { } denied)
+            return denied;
+        if (!finder.IsOn(user.UserId))
+            return FindingEnded();
+
+        // Apply the caller's block and crew filters before recording anything, so a blocked person's
+        // token behaves exactly like one that isn't there.
+        var otherId = finder.ResolveNearby(user.UserId, id);
+        if (otherId is null || store.GetBlockedPartyIds(user.UserId).Contains(otherId))
+            return PersonGone();
+
+        var (outcome, _) = finder.Accept(user.UserId, id);
+        switch (outcome)
+        {
+            case CrewFinder.AcceptOutcome.NotOn:
+                return FindingEnded();
+            case CrewFinder.AcceptOutcome.NotFound:
+                return PersonGone();
+            case CrewFinder.AcceptOutcome.Mutual:
+                var (link, forMe, forThem) = store.AddCrewLink(user.UserId, otherId, timeProvider.GetUtcNow());
+                if (link == CrewLinkOutcome.CrewFull)
+                    return Conflict(new { error = "Crew is full, so this person can't be added." });
+                if (link != CrewLinkOutcome.Ok || forMe is null || forThem is null)
+                    return PersonGone();
+                finder.RecordAdded(user.UserId, forMe);
+                finder.RecordAdded(otherId, forThem);
+                break;
+        }
+
+        return FindingState(user.UserId);
+    }
+
+    private IActionResult FindingState(string userId)
+    {
+        if (finder.ExpiresAt(userId) is not { } expiresAt)
+            return FindingEnded();
+
+        // Strangers who blocked (or were blocked by) the caller, and people already in the crew, aren't
+        // listed: there is nothing to add, and a blocked person must not learn the caller is here.
+        var blocked = store.GetBlockedPartyIds(userId);
+        var crewIds = store.GetCrewIds(userId);
+        var people = new List<CrewNearbyPerson>();
+        foreach (var candidate in finder.Nearby(userId))
+        {
+            if (blocked.Contains(candidate.UserId) || crewIds.Contains(candidate.UserId))
+                continue;
+            if (store.GetCrewIdentity(candidate.UserId) is not { } identity)
+                continue;
+            people.Add(new CrewNearbyPerson(
+                candidate.Token, identity.Nickname, identity.DisplayName, candidate.YouAccepted, candidate.AcceptedYou));
+        }
+
+        return Ok(new CrewFindingState(
+            expiresAt.ToUniversalTime().ToString("O"), people, finder.Added(userId)));
+    }
+
+    private static CrewFinder.Fix? ToFix(CrewFindingRequest? request) =>
+        request is { Latitude: { } lat, Longitude: { } lon }
+        && NearbyJoin.IsValidPosition(lat, lon, request.Accuracy)
+            ? new CrewFinder.Fix(lat, lon, request.Accuracy)
+            : null;
+
+    private BadRequestObjectResult InvalidPosition() =>
+        BadRequest(new { error = "Find new crew needs your current position, accurate to 100 m or better." });
+
+    private ObjectResult FindingEnded() =>
+        StatusCode(StatusCodes.Status410Gone, new { error = "Find new crew has turned off." });
+
+    private NotFoundObjectResult PersonGone() =>
+        NotFound(new { error = "That person isn't nearby any more." });
 
     /// <summary>Gets the name the caller's crew sees for them (null when unset).</summary>
     [HttpGet("/me/profile")]

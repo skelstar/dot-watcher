@@ -84,7 +84,6 @@ final class TrackingMapController {
 /// it, supplying the dots, what Stop does, and their own rail buttons, bottom-left view and sheets.
 struct TrackingMapScreen<RailTop: View, RailMiddle: View, BottomLeading: View>: View {
     var location: LocationManager
-    var crew: CrewStore
     var controller: TrackingMapController
     var pins: [MapPin]
     /// Anonymous grey dots, drawn under the pins and included in fit-everyone; empty for a session.
@@ -121,7 +120,6 @@ struct TrackingMapScreen<RailTop: View, RailMiddle: View, BottomLeading: View>: 
         }
         .modifier(TrackingMapSheets(
             location: location,
-            crew: crew,
             onStop: onStop,
             showExtend: $showExtend,
             showSettings: $showSettings,
@@ -354,7 +352,6 @@ struct TrackingMapScreen<RailTop: View, RailMiddle: View, BottomLeading: View>: 
 /// Swift type-checker's budget.
 private struct TrackingMapSheets: ViewModifier {
     var location: LocationManager
-    var crew: CrewStore
     let onStop: () -> Void
     @Binding var showExtend: Bool
     @Binding var showSettings: Bool
@@ -382,11 +379,11 @@ private struct TrackingMapSheets: ViewModifier {
                 .presentationDetents([.height(240)])
             }
             .sheet(isPresented: $showSettings) {
-                AuthSheet(location: location, crew: crew)
+                SettingsSheet(location: location)
                     .preferredColorScheme(location.appearanceMode.colorScheme)
             }
-            // Signing out from the settings sheet hands over to the sign-in cover on `ContentView`; this
-            // sheet must not still be up when it presents.
+            // Losing sign-in hands over to the sign-in cover on `ContentView`; this sheet must not
+            // still be up when it presents.
             .onChange(of: location.isAuthenticated) { _, isAuthenticated in
                 if !isAuthenticated { showSettings = false }
             }

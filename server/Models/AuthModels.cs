@@ -161,6 +161,44 @@ public enum CrewCodeOutcome
     CrewFull,
 }
 
+public enum CrewLinkOutcome
+{
+    Ok,
+    // Blocked either way round, or an account that no longer exists.
+    Blocked,
+    CrewFull,
+}
+
+/// <summary>A position for "Find new crew". Accuracy in metres; 100 or better.</summary>
+public record CrewFindingRequest(
+    double? Latitude = null,
+    double? Longitude = null,
+    double? Accuracy = null
+);
+
+/// <summary>
+/// Someone near the caller who also has "Find new crew" on. <see cref="Id"/> is a random token for
+/// this person's current window, never their account id, and there is no position or distance.
+/// </summary>
+public record CrewNearbyPerson(
+    string Id,
+    string? Nickname,
+    string DisplayName,
+    // The caller tapped this person and accepted.
+    bool YouAccepted,
+    // This person tapped the caller and accepted; the caller accepting back makes them crew.
+    bool AcceptedYou
+);
+
+/// <summary>The caller's "Find new crew" window.</summary>
+public record CrewFindingState(
+    // ISO-8601 UTC time the window closes by itself.
+    string ExpiresAt,
+    IReadOnlyList<CrewNearbyPerson> People,
+    // People who became the caller's crew during this window, most recent first.
+    IReadOnlyList<CrewMember> Added
+);
+
 public record SessionRunner(
     string UserId,
     string DisplayName

@@ -1,0 +1,263 @@
+# .github/workflows/android-play-internal.yml
+#
+# Builds the Android app (release, so Production) and uploads it to the Play internal testing track.
+# The Android twin of ios-testflight.yml: run it by hand from the Actions tab on any branch, start it
+# from Kraken, or push an android-v* tag (e.g. android-v1.4.3). It never touches the production track.
+#
+# Run by hand or from Kraken (workflow_dispatch), it takes an optional version such as 1.4.4. That
+# version is used for this build only (-PappVersionName); nothing is committed, so
+# android/app/build.gradle.kts keeps its own projectVersionName until it's bumped in a normal PR. Left
+# blank, the project's version is used. After a successful upload, a dispatched run tags the built
+# commit android-v<version>. Tags pushed with GITHUB_TOKEN don't start workflows, so that tag doesn't
+# trigger a second upload. Kraken also passes request_id; it only appears in the run name.
+#
+# The version code is the commit count, hence the full-history checkout. Play refuses a version code
+# that isn't higher than every earlier upload on any track (and, unlike TestFlight, doesn't restart
+# per version), so a branch with fewer commits than the last upload fails at the upload step.
+#
+# Signing uses the upload key (Play App Signing re-signs with the app key). The keystore and
+# passwords are written into android/local.properties, the same file a local release build reads.
+#
+# Repository secrets:
+#   PLAY_SERVICE_ACCOUNT_JSON       JSON key of the Google Cloud service account invited in Play
+#                                   Console with "Release to testing tracks" on Dot-Watcher
+#   ANDROID_UPLOAD_KEYSTORE_B64     the upload keystore (.jks), base64
+#   ANDROID_UPLOAD_STORE_PASSWORD   its store password (RELEASE_STORE_PASSWORD)
+#   ANDROID_UPLOAD_KEY_ALIAS        its key alias (RELEASE_KEY_ALIAS)
+#   ANDROID_UPLOAD_KEY_PASSWORD     its key password (RELEASE_KEY_PASSWORD)
+#   LINZ_API_KEY                    LINZ Basemaps key, shared with iOS (without it the map is blank)
+name: Android Play internal
+run-name: "Play internal ${{ inputs.version || 'project version' }} from ${{ github.ref_name }}${{ inputs.request_id && format(' [{0}]', inputs.request_id) || '' }}"
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version for this build only, e.g. 1.4.4. Blank = the project's version."
+        required: false
+        default: ""
+      request_id:
+        description: "Set by Kraken so it can find this run. Leave blank."
+        required: false
+        default: ""
+  push:
+    tags: ["android-v*"]
+
+# Two uploads at once would race for the same version code.
+concurrency:
+  group: android-play-upload
+  cancel-in-progress: false
+
+permissions:
+  contents: write # push the android-v* tag after a dispatched upload
+
+env:
+  PACKAGE_NAME: nz.skelstar.dotwatcher
+  GRADLE_FILE: android/app/build.gradle.kts
+  AAB: android/app/build/outputs/bundle/release/app-release.aab
+
+jobs:
+  upload:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # the version code is the commit count
+          fetch-tags: true # for the android-v* tag checks
+
+      # Works out the version name and code once; later steps read them from the step outputs.
+      - name: Work out the version
+        id: version
+        env:
+          TYPED: ${{ inputs.version }}
+          REQUEST_ID: ${{ inputs.request_id }}
+        run: |
+          set -euo pipefail
+          if [[ -n "$REQUEST_ID" && ! "$REQUEST_ID" =~ ^[A-Za-z0-9-]{1,40}$ ]]; then
+            echo "::error::request_id must be letters, digits and dashes (got '$REQUEST_ID')"
+            exit 1
+          fi
+          project_version=$(grep -m1 -oE '^val projectVersionName = "[0-9.]+"' "$GRADLE_FILE" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' || true)
+          if [[ -z "$project_version" ]]; then
+            echo "::error::Couldn't read projectVersionName from $GRADLE_FILE."
+            exit 1
+          fi
+          version="$project_version"
+          if [[ -n "$TYPED" ]]; then
+            if [[ ! "$TYPED" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "::error::Version must look like 1.4.4 (three numbers, no v). Got '$TYPED'."
+              exit 1
+            fi
+            tag="android-v$TYPED"
+            tagged=$(git rev-parse -q --verify "refs/tags/$tag^{commit}" || true)
+            if [[ -n "$tagged" && "$tagged" != "$(git rev-parse HEAD)" ]]; then
+              echo "::error::$tag already exists on ${tagged:0:7}, a different commit: $TYPED was uploaded from somewhere else. Pick a higher version."
+              exit 1
+            fi
+            version="$TYPED"
+          fi
+          code=$(git rev-list --count HEAD)
+          echo "Version $version, version code $code (project says $project_version)."
+          {
+            echo "name=$version"
+            echo "code=$code"
+            echo "project=$project_version"
+          } >> "$GITHUB_OUTPUT"
+
+      # The tag is only a label: the version comes from the project. Refuse a tag that disagrees, so
+      # android-v1.4.4 can't quietly upload another 1.4.3.
+      - name: Check tag matches the project version
+        if: startsWith(github.ref, 'refs/tags/android-v')
+        env:
+          PROJECT_VERSION: ${{ steps.version.outputs.project }}
+        run: |
+          set -euo pipefail
+          tag_version="${GITHUB_REF_NAME#android-v}"
+          if [[ "$tag_version" != "$PROJECT_VERSION" ]]; then
+            echo "::error::Tag $GITHUB_REF_NAME says $tag_version but the project's version is $PROJECT_VERSION. Change projectVersionName in $GRADLE_FILE, or tag android-v$PROJECT_VERSION."
+            exit 1
+          fi
+          echo "Tag and project agree: $PROJECT_VERSION"
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      # Without every signing value, build.gradle.kts quietly builds an unsigned bundle, which Play
+      # rejects; fail here instead with a clear message.
+      - name: Write secrets
+        env:
+          LINZ_API_KEY: ${{ secrets.LINZ_API_KEY }}
+          KEYSTORE_B64: ${{ secrets.ANDROID_UPLOAD_KEYSTORE_B64 }}
+          STORE_PASSWORD: ${{ secrets.ANDROID_UPLOAD_STORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_UPLOAD_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_UPLOAD_KEY_PASSWORD }}
+          PLAY_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+        run: |
+          set -euo pipefail
+          missing=()
+          [[ -n "$KEYSTORE_B64" ]] || missing+=(ANDROID_UPLOAD_KEYSTORE_B64)
+          [[ -n "$STORE_PASSWORD" ]] || missing+=(ANDROID_UPLOAD_STORE_PASSWORD)
+          [[ -n "$KEY_ALIAS" ]] || missing+=(ANDROID_UPLOAD_KEY_ALIAS)
+          [[ -n "$KEY_PASSWORD" ]] || missing+=(ANDROID_UPLOAD_KEY_PASSWORD)
+          [[ -n "$PLAY_JSON" ]] || missing+=(PLAY_SERVICE_ACCOUNT_JSON)
+          if (( ${#missing[@]} )); then
+            echo "::error::Missing repository secrets: ${missing[*]}"
+            exit 1
+          fi
+          [[ -n "$LINZ_API_KEY" ]] || echo "::warning::LINZ_API_KEY is not set; the map will be blank in this build"
+
+          # Pasted secrets often pick up a trailing line break (or a Windows \r) or spaces; an alias never
+          # has them, and passwords lose only line breaks.
+          KEY_ALIAS=$(printf '%s' "$KEY_ALIAS" | tr -d '\r\n' | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
+          STORE_PASSWORD=$(printf '%s' "$STORE_PASSWORD" | tr -d '\r\n')
+          KEY_PASSWORD=$(printf '%s' "$KEY_PASSWORD" | tr -d '\r\n')
+
+          if ! printf '%s' "$KEYSTORE_B64" | tr -d ' \r\n' | base64 --decode > "$RUNNER_TEMP/upload.jks"; then
+            echo "::error::ANDROID_UPLOAD_KEYSTORE_B64 isn't valid base64. Copy it again from the .jks file."
+            exit 1
+          fi
+
+          # Check the keystore opens and holds the alias here, where the message can be clear, rather
+          # than deep in Gradle's signing step. Aliases aren't secret, so they're listed on a mismatch.
+          export STORE_PASSWORD
+          if ! listing=$(keytool -list -keystore "$RUNNER_TEMP/upload.jks" -storepass:env STORE_PASSWORD 2>&1); then
+            echo "::error::Couldn't open the keystore: $(grep -m1 -i 'keytool error' <<<"$listing" || echo "$listing" | head -1). Check ANDROID_UPLOAD_STORE_PASSWORD and ANDROID_UPLOAD_KEYSTORE_B64."
+            exit 1
+          fi
+          aliases=$(grep -E 'PrivateKeyEntry' <<<"$listing" | cut -d, -f1 || true)
+          # JKS aliases are case-insensitive (stored in lower case).
+          if ! grep -qixF -- "$KEY_ALIAS" <<<"$aliases"; then
+            echo "::error::ANDROID_UPLOAD_KEY_ALIAS (${#KEY_ALIAS} characters) isn't a key in this keystore. The keystore's keys: $(paste -sd, <<<"$aliases"). Set the secret to one of those."
+            exit 1
+          fi
+          echo "Keystore opens and holds the key alias."
+          # local.properties is a Java properties file: backslashes in values must be doubled.
+          esc() { printf '%s' "$1" | sed 's/\\/\\\\/g'; }
+          {
+            echo "LINZ_API_KEY=$(esc "$LINZ_API_KEY")"
+            echo "RELEASE_STORE_FILE=$RUNNER_TEMP/upload.jks"
+            echo "RELEASE_STORE_PASSWORD=$(esc "$STORE_PASSWORD")"
+            echo "RELEASE_KEY_ALIAS=$(esc "$KEY_ALIAS")"
+            echo "RELEASE_KEY_PASSWORD=$(esc "$KEY_PASSWORD")"
+          } > android/local.properties
+
+      - name: Build release bundle
+        working-directory: android
+        env:
+          VERSION_NAME: ${{ steps.version.outputs.name }}
+          VERSION_CODE: ${{ steps.version.outputs.code }}
+        run: |
+          ./gradlew :app:bundleRelease \
+            -PappVersionCode="$VERSION_CODE" \
+            -PappVersionName="$VERSION_NAME" \
+            --stacktrace
+
+      - name: Check the bundle is signed
+        run: |
+          set -euo pipefail
+          out=$(jarsigner -verify "$AAB" 2>&1 || true)
+          if ! grep -q "jar verified" <<<"$out"; then
+            echo "$out"
+            echo "::error::$AAB isn't signed. Check the ANDROID_UPLOAD_* secrets."
+            exit 1
+          fi
+          echo "Signed: $(du -h "$AAB" | cut -f1)"
+
+      - name: Upload to Play internal testing
+        uses: r0adkll/upload-google-play@v1.1.3
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          packageName: ${{ env.PACKAGE_NAME }}
+          releaseFiles: ${{ env.AAB }}
+          track: internal
+          status: completed
+          releaseName: "${{ steps.version.outputs.name }} (${{ steps.version.outputs.code }})"
+
+      # Dispatched runs only: tag pushes already have their tag. The upload has happened by now, so a
+      # tag problem is a warning, not a failed run.
+      - name: Tag the upload
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          VERSION_NAME: ${{ steps.version.outputs.name }}
+        run: |
+          set -uo pipefail
+          tag="android-v$VERSION_NAME"
+          head=$(git rev-parse HEAD)
+          tagged=$(git rev-parse -q --verify "refs/tags/$tag^{commit}" || true)
+          if [[ "$tagged" == "$head" ]]; then
+            echo "$tag is already on this commit."
+          elif [[ -n "$tagged" ]]; then
+            echo "::warning::$tag is already on ${tagged:0:7}, not this commit; left it alone."
+          elif git tag "$tag" "$head" && git push origin "refs/tags/$tag"; then
+            echo "Tagged $tag on ${head:0:7}."
+          else
+            echo "::warning::Couldn't push $tag. The upload still worked; tag ${head:0:7} by hand."
+          fi
+
+      - name: Summary
+        continue-on-error: true # the upload has already happened; don't fail the run over a summary
+        env:
+          VERSION_NAME: ${{ steps.version.outputs.name }}
+          VERSION_CODE: ${{ steps.version.outputs.code }}
+          PROJECT_VERSION: ${{ steps.version.outputs.project }}
+        run: |
+          note=""
+          if [[ "$VERSION_NAME" != "$PROJECT_VERSION" ]]; then note=" (typed; project says $PROJECT_VERSION)"; fi
+          {
+            echo "### Uploaded to Play internal testing"
+            echo "Version **$VERSION_NAME**$note, version code **$VERSION_CODE**, from \`$GITHUB_REF_NAME\` ($(git rev-parse --short HEAD))."
+            echo "Testers get it from the Play Store once Google has processed it, usually within minutes."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # The upload action writes the service account JSON to a file in the workspace; remove it too.
+      - name: Remove signing files
+        if: always()
+        run: rm -f "$RUNNER_TEMP/upload.jks" android/local.properties serviceAccountJson.json

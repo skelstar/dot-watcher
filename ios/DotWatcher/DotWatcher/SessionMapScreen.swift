@@ -41,7 +41,6 @@ struct SessionMapScreen: View {
     var body: some View {
         TrackingMapScreen(
             location: location,
-            crew: crew,
             controller: map,
             pins: pins,
             routes: [location.routeCoordinates],
@@ -49,7 +48,10 @@ struct SessionMapScreen: View {
             route: routeActions,
             onStop: { location.stop() },
             railTop: { inviteShare },
-            railMiddle: { nearbyMenu },
+            railMiddle: {
+                nearbyMenu
+                crewButton
+            },
             bottomLeading: { participantsRow }
         )
         .modifier(NearbyOrganiserControls(
@@ -62,6 +64,16 @@ struct SessionMapScreen: View {
         ))
         // Who is in the session, so a member who hasn't sent a position yet still gets a dot.
         .task { await location.loadLatestPositions() }
+        // The crew sheet lives here, not on `ContentView`, because this map is a full-screen cover (as on
+        // the Go map). `CrewHost` stands down while it's up.
+        .sheet(isPresented: Binding(
+            get: { crew.isFlowPresented },
+            set: { crew.isFlowPresented = $0 }
+        )) {
+            CrewFlowView(crew: crew, webBaseURL: location.webBaseURL)
+                .presentationDetents([.large])
+                .preferredColorScheme(location.appearanceMode.colorScheme)
+        }
         .sheet(isPresented: $showParticipants) {
             ParticipantsSheet(
                 names: sessionNames,
@@ -150,6 +162,15 @@ struct SessionMapScreen: View {
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Share the invite")
+        }
+    }
+
+    /// Opens the crew sheet, where "Find new crew" lives. The session map has no crew chip (bottom left is the
+    /// runners), so this is its way in.
+    @ViewBuilder
+    private var crewButton: some View {
+        if crew.isAvailable {
+            MapRailButton(symbol: "person.2", label: "Crew") { crew.isFlowPresented = true }
         }
     }
 

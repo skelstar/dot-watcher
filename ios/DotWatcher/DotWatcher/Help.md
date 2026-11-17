@@ -8,6 +8,14 @@ DotWatcher shares your location in real time so other runners in the session kno
 
 **Choose a session** — if someone gave you an invite code, enter it to join as a runner and start tracking. Only create a new session if you're organizing one yourself; that makes you its owner, but ownership doesn't grant extra tracking permissions — you track the same way as anyone else who joined.
 
+## Runs near you
+
+**Join a run near you** — tap **Find runs near you** on the start screen. DotWatcher asks for your location, then lists runs whose organiser has let people nearby join, if you are close enough to the start. Tap one, then **Join this run**. No invite code needed. Pull down to refresh the list.
+
+**Let people nearby join your run** — when you create a session, turn on **Let people nearby join** and give your run a title (people nearby see it). Choose a range: GPS can be off by 10 to 50 m, so a wider range is easier to join from. You still get an invite code to share.
+
+**Move or stop it** — on the map, tap the join-location button to move the join location to where you are now, for example from the start to the finish. Hold it to change the range, stop showing the run nearby, or end the session for everyone.
+
 ## Tracking
 
 Tap **Start Tracking** to begin sharing your location. Your position is sent every 15 seconds.
@@ -26,7 +34,7 @@ Privacy Policy: https://dot-watcher.skelstar.io/privacy
 
 Terms of Use: https://dot-watcher.skelstar.io/terms
 
-Use **Settings > Delete account** to delete your DotWatcher account, memberships, owned sessions, and stored location rows linked to your account. Historical records without account attribution, admin uploads, or operational logs may need manual deletion.
+Use **Account > Delete account** (the person icon on the start screen) to delete your DotWatcher account, memberships, owned sessions, and stored location rows linked to your account. Historical records without account attribution, admin uploads, or operational logs may need manual deletion.
 
 Do not use DotWatcher for emergency response, rescue, medical, safety-critical tracking, or any situation where delayed or missing location data could cause harm.
 
@@ -40,6 +48,8 @@ Your crew is the people you have chosen. It is mutual: when you add someone you 
 
 **Add someone** — ask them to send you their crew code, then open **Your crew**, tap **Add someone** and enter it. If they show you a QR code, just open your phone's camera and point it at the code. Either way you are asked to confirm before anyone is added.
 
+**Add someone next to you** — open **Your crew** and turn on **Find new crew**. Anyone within about 50 m who also has it on appears in the list. Tap them, then **Accept**. Once they accept you too, you're crew. It turns off after 2 minutes or when you close **Your crew**.
+
 **Send your code** — in **Your crew**, tap **Add someone**, then **Show my code**. A code works once and lasts 24 hours, so send it to the one person you want to add. **Make a new code** stops the old one working.
 
-**Your name** — people in your crew see the name you choose in **Settings > Crew**, or your initials if you leave it blank.
+**Your name** — people in your crew see the name you choose in **Account > Crew**, or your initials if you leave it blank.

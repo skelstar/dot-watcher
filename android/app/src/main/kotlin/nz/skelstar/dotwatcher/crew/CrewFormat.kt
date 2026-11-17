@@ -1,6 +1,7 @@
 package nz.skelstar.dotwatcher.crew
 
 import nz.skelstar.dotwatcher.network.CrewCodePreview
+import nz.skelstar.dotwatcher.network.CrewNearbyPerson
 import nz.skelstar.dotwatcher.network.CrewMember
 import java.time.Duration
 import java.time.Instant
@@ -15,6 +16,8 @@ import java.util.Locale
 fun CrewMember.label(): String = nickname?.takeIf { it.isNotBlank() } ?: displayName
 
 fun CrewCodePreview.label(): String = nickname?.takeIf { it.isNotBlank() } ?: displayName
+
+fun CrewNearbyPerson.label(): String = nickname?.takeIf { it.isNotBlank() } ?: displayName
 
 /** How many faces the main-screen row shows before collapsing the rest into "+N". */
 const val CREW_ROW_FACES = 4

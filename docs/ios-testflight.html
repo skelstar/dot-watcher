@@ -247,11 +247,12 @@
 
   <header>
     <h1>iOS TestFlight uploads</h1>
-    <p>How the <strong>iOS TestFlight</strong> GitHub Actions workflow builds and uploads the app, how the version and build numbers work, and what to do in the common situations.</p>
+    <p>How the <strong>iOS TestFlight</strong> GitHub Actions workflow builds and uploads the app, how the version and build numbers work, and what to do in the common situations. The Android equivalent is <a href="android-play-internal.html">Android Play internal uploads</a>.</p>
     <p class="meta">Workflow: <code>.github/workflows/ios-testflight.yml</code> · Project: <code>ios/DotWatcher/DotWatcher.xcodeproj</code></p>
   </header>
 
   <nav>
+    <a href="#status">Status</a>
     <a href="#what">What it does</a>
     <a href="#numbers">Version and build</a>
     <a href="#recipes">What do I do when…</a>
@@ -259,7 +260,27 @@
     <a href="#run">Running it</a>
     <a href="#setup">One-time setup</a>
     <a href="#errors">Errors</a>
+    <a href="#xcode-cloud">Xcode Cloud</a>
   </nav>
+
+  <div class="section-title" id="status">Status</div>
+  <div class="card">
+    <h2>Working: first upload reached TestFlight</h2>
+    <p><strong>17 November 2026 (NZ; the runs are dated 16 Nov UTC).</strong></p>
+    <div class="callout ok"><strong>Run #3</strong> (re-run of #2, <code>ios-testflight-runner</code>, <code>macos-15</code> with Xcode 26.3) took 3 minutes and uploaded <strong>1.4.3 (974)</strong>. Apple's "completed processing" email arrived and the build installed from TestFlight. The map key was present. Harmless warnings: no dSYM for <code>MapLibre.framework</code> (its crash frames won't be symbolicated) and <code>actions/checkout@v4</code> running on deprecated Node 20.</div>
+    <p>How we got here:</p>
+    <ul>
+      <li><strong>Done:</strong> the workflow is merged into <code>staging</code> (PR #352). The API key (Team Keys, Admin) and all four repository secrets are added.</li>
+      <li><strong>Run #1</strong> (<code>staging</code>, <code>runs-on: macos-26</code>): sat in Queued and no job was ever created. <strong>Cancel</strong> fails because there is no job to stop. <strong>Delete</strong> is only offered for finished runs. GitHub cancels a run left queued for 24 hours; after that it can be deleted.</li>
+      <li><strong>Run #2</strong> (branch <code>ios-testflight-runner</code>, <code>runs-on: macos-15</code>): a job was created, but after 15 minutes it failed without starting: <em>"The job was not acquired by Runner of type hosted even after multiple attempts"</em>, with GitHub's notice <em>"Due to capacity constraints, jobs targeting macOS arm64 runners may experience longer queue times."</em> Run #1 was probably the same shortage.</li>
+      <li><strong>Run #3:</strong> <strong>Re-run jobs</strong> on run #2 about 15 minutes later got a Mac straight away and succeeded. The shortage was temporary.</li>
+    </ul>
+    <ul>
+      <li><strong>Done:</strong> <code>ios-testflight-runner</code> merged (PR #355). The tag run on <code>ios-v1.4.3</code> (<code>44d13d1</code>) succeeded, which proves the tag check.</li>
+      <li><strong>Next:</strong> the workflow takes a typed version and tags what it uploaded (see <a href="#run">Running it</a>), so Kraken can start uploads. First run with a typed version is still to come.</li>
+    </ul>
+    <p>If a run gets stuck in the queue again, press <strong>Re-run jobs</strong> later. If the shortage keeps happening, try <code>runs-on: macos-15-intel</code> (a separate Intel pool; slower, and GitHub retires it in 2027), or move to <a href="#xcode-cloud">Xcode Cloud</a>.</p>
+  </div>
 
   <div class="section-title" id="what">What it does</div>
   <div class="card">
@@ -267,10 +288,11 @@
     <p>Each run takes one commit and turns it into one build in TestFlight. It never submits anything for App Store review: that stays a button you press in App Store Connect.</p>
     <div class="flow">
       <div><strong>Check out</strong>The branch you picked (or the tagged commit), with full git history.</div>
-      <div><strong>Check the tag</strong>Tag runs only: the tag must match the project's version.</div>
+      <div><strong>Check the version</strong>A typed version must look like <code>1.4.4</code> and not be tagged on another commit. Tag runs: the tag must match the project's version.</div>
       <div><strong>Add secrets</strong>Writes <code>Secrets.xcconfig</code> (map key) and the API key file.</div>
-      <div><strong>Archive</strong>Release configuration, so it talks to Production. Signs itself with the API key.</div>
+      <div><strong>Archive</strong>Release configuration, so it talks to Production. Signs itself with the API key. Uses the typed version, if any.</div>
       <div><strong>Upload</strong>Straight to App Store Connect. Shows in TestFlight after Apple's processing (5–15 min).</div>
+      <div><strong>Tag</strong>Runs started by hand or from Kraken only: tags the built commit <code>ios-v&lt;version&gt;</code> if that tag doesn't exist yet.</div>
     </div>
     <div class="callout warn"><strong>TestFlight builds use real data.</strong> Release builds always point at Production; there is no Staging server.</div>
   </div>
@@ -283,7 +305,7 @@
       <div class="number">
         <div class="label">Version</div>
         <div class="big">1.4.3</div>
-        <p><strong>You set this.</strong> In Xcode: the DotWatcher target → General → Version (it is <code>MARKETING_VERSION</code> in the project file). The workflow never changes it.</p>
+        <p><strong>You set this.</strong> In Xcode: the DotWatcher target → General → Version (it is <code>MARKETING_VERSION</code> in the project file). A version typed when starting the workflow overrides it for that one build; the project file is never changed.</p>
       </div>
       <div class="number">
         <div class="label">Build</div>
@@ -302,7 +324,7 @@
 
     <h3>Things that are <em>not</em> the version</h3>
     <ul>
-      <li><strong><code>ios-v*</code> tags</strong> are labels. Pushing <code>ios-v1.4.3</code> doesn't set anything; the workflow checks that it matches the project's version and stops if it doesn't.</li>
+      <li><strong><code>ios-v*</code> tags</strong> are labels. Pushing <code>ios-v1.4.3</code> doesn't set anything; the workflow checks that it matches the project's version and stops if it doesn't. Runs started by hand or from Kraken add the tag themselves after a successful upload, so the newest <code>ios-v*</code> tag is the newest upload.</li>
       <li><strong>Server releases</strong> (<code>v1.x.y</code> tags from <code>release.yml</code>) have their own numbers, unrelated to the app's.</li>
       <li><strong><code>X-Api-Version</code></strong> (the <code>apiVersion</code> constant in <code>LocationManager.swift</code>) is what the server uses to decide whether a phone is too old. Bump it only for changes that could break against the server, never just because the app version changed.</li>
     </ul>
@@ -315,6 +337,8 @@
     <p>Run the workflow on <code>staging</code>. The version stays the same and the build number has gone up because there are new commits. Nothing to edit.</p>
 
     <h3>…I'm starting a new version (say 1.4.4)?</h3>
+    <p><strong>Quickest:</strong> run the workflow on <code>staging</code> (or press the button in Kraken) and type <code>1.4.4</code> as the version. Nothing is committed: the Xcode project still says 1.4.3, so builds archived on a Mac keep using 1.4.3 until you bump it.</p>
+    <p><strong>To keep the project in step:</strong></p>
     <ol>
       <li>In Xcode, change Version to <code>1.4.4</code>, then commit and merge to <code>staging</code>.</li>
       <li>Either run the workflow on <code>staging</code>, or tag it: <code>git tag ios-v1.4.4 &amp;&amp; git push origin ios-v1.4.4</code>.</li>
@@ -355,9 +379,10 @@
     <h3>By hand, on any branch</h3>
     <ol>
       <li>GitHub → <strong>Actions</strong> → <strong>iOS TestFlight</strong> → <strong>Run workflow</strong>.</li>
-      <li>Pick the branch and press <strong>Run workflow</strong>.</li>
-      <li>When it finishes, the run's summary shows the version, build and commit that went up.</li>
+      <li>Pick the branch. Optionally type a version such as <code>1.4.4</code> (blank uses the project's). Leave <em>request_id</em> blank; Kraken sets it. Press <strong>Run workflow</strong>.</li>
+      <li>When it finishes, the run's summary shows the version, build and commit that went up, and the commit is tagged <code>ios-v&lt;version&gt;</code>.</li>
     </ol>
+    <p>A typed version is refused before building if it isn't three numbers, or if its <code>ios-v*</code> tag is already on a different commit (that version was uploaded from somewhere else).</p>
     <p>The button only appears once the workflow file is on <code>staging</code>, the default branch. A branch made before the workflow was added doesn't have it, so it won't run there until that branch is updated from <code>staging</code>.</p>
 
     <h3>With a tag</h3>
@@ -366,13 +391,13 @@ git push origin ios-v1.4.3</pre>
     <p>The tag must match the project's version exactly, or the run stops before building. Tag the commit you mean to ship (usually the tip of <code>staging</code>).</p>
 
     <h3>From the command line</h3>
-    <pre>gh workflow run ios-testflight.yml --ref my-branch</pre>
+    <pre>gh workflow run ios-testflight.yml --ref my-branch -f version=1.4.4</pre>
   </div>
 
   <div class="section-title" id="setup">One-time setup</div>
   <div class="card">
     <ol>
-      <li><strong>Make an App Store Connect API key.</strong> App Store Connect → Users and Access → Integrations → App Store Connect API → Team Keys → add a key with the <strong>Admin</strong> role. Admin is what lets the build create its own distribution certificate and profile. Download the <code>.p8</code> file: Apple lets you download it once.</li>
+      <li><strong>Make an App Store Connect API key.</strong> App Store Connect → Users and Access → Integrations → App Store Connect API → <strong>Team Keys</strong> (not Individual Keys: those have no issuer ID and <code>xcodebuild</code> can't sign with them) → add a key with the <strong>Admin</strong> role. If Team Keys only shows "Request Access", the Account Holder has to accept the API terms once first. Admin is what lets the build create its own distribution certificate and profile. Download the <code>.p8</code> file: Apple lets you download it once.</li>
       <li><strong>Add repository secrets</strong> (GitHub → Settings → Secrets and variables → Actions):
         <div class="table-wrap">
           <table>
@@ -380,7 +405,7 @@ git push origin ios-v1.4.3</pre>
             <tbody>
               <tr><td><code>ASC_KEY_ID</code></td><td>The key's ID, shown next to it in App Store Connect.</td></tr>
               <tr><td><code>ASC_ISSUER_ID</code></td><td>The Issuer ID at the top of the API keys page.</td></tr>
-              <tr><td><code>ASC_KEY_P8</code></td><td>The whole contents of the <code>AuthKey_….p8</code> file, including the BEGIN and END lines.</td></tr>
+              <tr><td><code>ASC_KEY_P8</code></td><td>The whole file, line breaks kept: <code>-----BEGIN PRIVATE KEY-----</code>, the key lines between, and <code>-----END PRIVATE KEY-----</code>. Open it in a text editor, select all, copy, paste.</td></tr>
               <tr><td><code>LINZ_API_KEY</code></td><td>The map key from your local <code>Secrets.xcconfig</code>. Without it the build still works, but the map is blank (the run warns).</td></tr>
             </tbody>
           </table>
@@ -418,9 +443,14 @@ git push origin ios-v1.4.3</pre>
             <td>Check the three <code>ASC_*</code> secrets; make an Admin key if needed.</td>
           </tr>
           <tr>
-            <td>"Select Xcode": no Xcode 26, or the job never starts</td>
+            <td>"Select Xcode": no Xcode 26</td>
             <td>GitHub's Mac machine doesn't have the Xcode this project needs (iOS 26 SDK).</td>
             <td>Change <code>runs-on:</code> in the workflow to a Mac image that has Xcode 26.</td>
+          </tr>
+          <tr>
+            <td>Queued for a long time; "The job was not acquired by Runner of type hosted even after multiple attempts"; notice about macOS arm64 capacity</td>
+            <td>GitHub had no free Mac. Nothing in the workflow ran; it is not a setup problem.</td>
+            <td><strong>Re-run jobs</strong> later, try <code>macos-15-intel</code>, or upload from Xcode. A run stuck in Queued with no job can't be cancelled from the page; it clears itself after 24 hours.</td>
           </tr>
           <tr>
             <td>Build in TestFlight, but the map is blank</td>
@@ -430,6 +460,31 @@ git push origin ios-v1.4.3</pre>
         </tbody>
       </table>
     </div>
+  </div>
+
+  <div class="section-title" id="xcode-cloud">Alternative: Xcode Cloud (not decided)</div>
+  <div class="card">
+    <h2>Apple's Macs instead of GitHub's</h2>
+    <p>Not needed for now: the GitHub workflow works. If GitHub's macOS shortage keeps blocking runs, Xcode Cloud could do the same job. It's a medium change, not a rewrite.</p>
+    <h3>What it gives</h3>
+    <ul>
+      <li>Builds on Apple's own Macs, so there's no GitHub queue.</li>
+      <li>25 compute hours a month included with the developer membership (roughly 60–100 uploads).</li>
+      <li>Signing and the TestFlight upload are built in; the <code>ASC_*</code> secrets aren't needed for the build.</li>
+    </ul>
+    <h3>Setup</h3>
+    <ol>
+      <li>In Xcode on the Mac: <strong>Integrate → Create Workflow</strong>. Grant Apple access to the GitHub repo, choose the Archive action and the post-action "TestFlight (internal testing only)", and start it by hand and/or on <code>ios-v*</code> tags.</li>
+      <li>Add <code>ios/DotWatcher/ci_scripts/ci_post_clone.sh</code> (next to the <code>.xcodeproj</code>). It writes <code>Config/Secrets.xcconfig</code> from an Xcode Cloud secret variable <code>LINZ_API_KEY</code>, so the map isn't blank.</li>
+      <li>On the first build, check the build number.</li>
+    </ol>
+    <h3>Catches</h3>
+    <ul>
+      <li><strong>Build numbers.</strong> Xcode Cloud numbers builds itself, replacing the commit-count scheme on this page. Set its "next build number" above the last uploaded build. How it interacts with the project's build-number build phase is unchecked.</li>
+      <li><strong>Kraken.</strong> The Kraken phone builds plan (<code>.ai/plans/kraken-phone-builds.md</code>, branch <code>kraken-phone-builds-plan</code>) would start builds through the App Store Connect API (<code>ciBuildRuns</code>) with the API key already made, instead of GitHub's. Typing a version per build is harder: Xcode Cloud workflows don't take inputs the way <code>workflow_dispatch</code> does.</li>
+      <li>This workflow would stay as a fallback or be removed.</li>
+    </ul>
+    <div class="callout ok"><strong>Suggested:</strong> retry GitHub a few times first; its arm64 shortages are usually temporary. Switch if they keep recurring.</div>
   </div>
 
 </div>

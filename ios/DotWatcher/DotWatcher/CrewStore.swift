@@ -82,6 +82,8 @@ final class CrewStore {
     /// Drives the crew sheet, which is presented once at the top of `ContentView` (see `CrewHost`)
     /// so a crew link can open it from any screen.
     var isFlowPresented = false
+    /// "Find new crew": adding people standing next to you, without a code.
+    let finding = CrewFinding()
 
     var isAvailable: Bool { availability == .available }
 
@@ -93,6 +95,13 @@ final class CrewStore {
 
     func attach(_ location: LocationManager) {
         self.location = location
+        finding.attach(location)
+        finding.onAdded = { [weak self] member in
+            guard let self else { return }
+            members = [member] + members.filter { $0.userId != member.userId }
+            // Someone we added ourselves isn't news.
+            seenMemberIds = (seenMemberIds ?? []).union([member.userId])
+        }
     }
 
     // MARK: - Loading
@@ -143,6 +152,7 @@ final class CrewStore {
     /// Forgets everything: signing out or deleting the account must not leave the last person's crew
     /// behind for whoever signs in next.
     func clear() {
+        finding.stop()
         availability = .unknown
         members = []
         newMemberIds = []

@@ -138,6 +138,34 @@ data class CrewCodePreview(
     val alreadyCrew: Boolean = false,
 )
 
+// "Find new crew" (server: CrewController /me/crew/finding). Adding crew in person: both people turn it on,
+// see each other within 50 m by name only, and become crew once both have accepted. Two minutes at most.
+
+/** A position for "Find new crew"; accuracy in metres, 100 or better. */
+@Serializable
+data class CrewFindingRequest(val latitude: Double, val longitude: Double, val accuracy: Double? = null)
+
+/** Someone nearby who also has it on. [id] is a token for their current window, not an account id. */
+@Serializable
+data class CrewNearbyPerson(
+    val id: String,
+    val nickname: String? = null,
+    val displayName: String,
+    /** This person tapped them and accepted. */
+    val youAccepted: Boolean = false,
+    /** They tapped this person and accepted; accepting back makes the two crew. */
+    val acceptedYou: Boolean = false,
+)
+
+@Serializable
+data class CrewFindingState(
+    /** ISO-8601 UTC time the window closes by itself. */
+    val expiresAt: String,
+    val people: List<CrewNearbyPerson> = emptyList(),
+    /** People who became crew during this window. */
+    val added: List<CrewMember> = emptyList(),
+)
+
 @Serializable
 data class ProfileResponse(val nickname: String? = null)
 
@@ -492,6 +520,33 @@ interface DotWatcherApi {
         @Header("Authorization") bearerToken: String,
         @Header("X-Api-Version") apiVersion: String = API_VERSION,
     ): Response<CrewMember>
+
+    @POST("me/crew/finding")
+    suspend fun startCrewFinding(
+        @Body request: CrewFindingRequest,
+        @Header("Authorization") bearerToken: String,
+        @Header("X-Api-Version") apiVersion: String = API_VERSION,
+    ): Response<CrewFindingState>
+
+    @PUT("me/crew/finding")
+    suspend fun refreshCrewFinding(
+        @Body request: CrewFindingRequest,
+        @Header("Authorization") bearerToken: String,
+        @Header("X-Api-Version") apiVersion: String = API_VERSION,
+    ): Response<CrewFindingState>
+
+    @DELETE("me/crew/finding")
+    suspend fun stopCrewFinding(
+        @Header("Authorization") bearerToken: String,
+        @Header("X-Api-Version") apiVersion: String = API_VERSION,
+    ): Response<Unit>
+
+    @POST("me/crew/finding/{id}/accept")
+    suspend fun acceptCrewFinding(
+        @Path("id") id: String,
+        @Header("Authorization") bearerToken: String,
+        @Header("X-Api-Version") apiVersion: String = API_VERSION,
+    ): Response<CrewFindingState>
 
     @POST("casual/start")
     suspend fun casualStart(
