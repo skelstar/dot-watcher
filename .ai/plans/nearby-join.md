@@ -328,6 +328,7 @@ The Handover above describes the state on 30 October. Since then:
   404 and a nearby Create returns 400 ("Nearby join isn't available right now."). Read the Handover's flag notes with
   that in mind. Server tests still set `EnabledForAll = ["events"]`, which does no harm.
 - **Help text.** iOS `Help.md` now has a "Runs near you" section (N11). The Android app has no help text to update.
+- **Tested on devices.** On 18 November 2026 the user tested nearby join end to end on iOS and Android, and it works.
 - **Database schema doc.** The stale `max_length_hours` wording is gone from `docs/database-schema.html`.
 
 Still open:
@@ -339,4 +340,3 @@ Still open:
   contract tests, removing the placeholder event).
 - No iOS tests for nearby join, and no UI tests on either client.
 - The two open questions.
-- The two-phone test in "Verify before shipping" isn't recorded anywhere; worth running once if it wasn't.
