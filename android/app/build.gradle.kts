@@ -34,6 +34,32 @@ val releaseStorePassword: String? = localProperties.getProperty("RELEASE_STORE_P
 val releaseKeyAlias: String? = localProperties.getProperty("RELEASE_KEY_ALIAS")?.ifBlank { null }
 val releaseKeyPassword: String? = localProperties.getProperty("RELEASE_KEY_PASSWORD")?.ifBlank { null }
 
+// Version code = the number of commits in the history being built (`git rev-list --count HEAD`),
+// the same scheme as the iOS build number, so it never needs bumping by hand. Play refuses any
+// upload whose version code isn't higher than every earlier one, on any track, so a branch with
+// more commits than staging can block staging's next upload until it's merged; see
+// docs/android-play-internal.html. `-PappVersionCode=N` overrides it (the Play upload workflow
+// passes the count it worked out itself). Without git, or in a shallow clone (CI's debug build),
+// the count is meaningless; that's fine for builds that are never uploaded, and Play would refuse
+// the low number anyway.
+val appVersionCode: Int = (findProperty("appVersionCode") as String?)?.trim()?.toIntOrNull()
+    ?: runCatching {
+        providers.exec {
+            commandLine("git", "rev-list", "--count", "HEAD")
+            workingDir = rootProject.projectDir
+        }.standardOutput.asText.get().trim().toInt()
+    }.getOrElse {
+        logger.warn("DotWatcher: couldn't count git commits for versionCode; using 1")
+        1
+    }
+// Version name: bump projectVersionName in a normal PR when starting a new version, like
+// MARKETING_VERSION in the Xcode project. `-PappVersionName=1.4.4` overrides it for one build (the
+// workflow's typed version). The Play upload workflow reads the quoted value on this line, so keep
+// it a plain literal.
+val projectVersionName = "1.4.3"
+val appVersionName: String = (findProperty("appVersionName") as String?)?.trim()?.ifBlank { null }
+    ?: projectVersionName
+
 android {
     namespace = "nz.skelstar.dotwatcher"
     compileSdk = 36
@@ -42,8 +68,8 @@ android {
         applicationId = "nz.skelstar.dotwatcher"
         minSdk = 26
         targetSdk = 36
-        versionCode = 29
-        versionName = "1.4.3"
+        versionCode = appVersionCode
+        versionName = appVersionName
 
         buildConfigField("String", "LINZ_API_KEY", "\"$linzApiKey\"")
         // Used only to build the "join my session" share link (WEB_BASE_URL + "/code/" +

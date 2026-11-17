@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>DotWatcher — Android Play Internal Uploads</title>
+  <style>
+    :root {
+      --bg: #f1f5f9;
+      --card: #ffffff;
+      --text: #1e293b;
+      --muted: #64748b;
+      --faint: #94a3b8;
+      --line: #e2e8f0;
+      --code-bg: #f1f5f9;
+      --accent: #2563eb;
+      --accent-soft: #dbeafe;
+      --ok: #15803d;
+      --ok-soft: #dcfce7;
+      --warn: #b45309;
+      --warn-soft: #fef3c7;
+      --bad: #b91c1c;
+      --bad-soft: #fee2e2;
+      --shadow: 0 1px 3px rgba(0,0,0,0.07), 0 4px 16px rgba(0,0,0,0.04);
+    }
+    @media (prefers-color-scheme: dark) {
+      :root:not([data-theme="light"]) {
+        --bg: #0f172a;
+        --card: #1e293b;
+        --text: #e2e8f0;
+        --muted: #94a3b8;
+        --faint: #64748b;
+        --line: #334155;
+        --code-bg: #0f172a;
+        --accent: #60a5fa;
+        --accent-soft: #1e3a5f;
+        --ok: #4ade80;
+        --ok-soft: #14532d;
+        --warn: #fbbf24;
+        --warn-soft: #422006;
+        --bad: #f87171;
+        --bad-soft: #450a0a;
+        --shadow: none;
+      }
+    }
+    :root[data-theme="dark"] {
+      --bg: #0f172a;
+      --card: #1e293b;
+      --text: #e2e8f0;
+      --muted: #94a3b8;
+      --faint: #64748b;
+      --line: #334155;
+      --code-bg: #0f172a;
+      --accent: #60a5fa;
+      --accent-soft: #1e3a5f;
+      --ok: #4ade80;
+      --ok-soft: #14532d;
+      --warn: #fbbf24;
+      --warn-soft: #422006;
+      --bad: #f87171;
+      --bad-soft: #450a0a;
+      --shadow: none;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      padding: 2.5rem 1rem 4rem;
+      line-height: 1.55;
+    }
+
+    .page { max-width: 900px; margin: 0 auto; }
+
+    header { margin-bottom: 2rem; }
+    header h1 { font-size: 1.75rem; font-weight: 700; margin-bottom: 0.4rem; }
+    header p { color: var(--muted); font-size: 0.95rem; }
+    header .meta { margin-top: 0.75rem; font-size: 0.85rem; color: var(--faint); }
+
+    nav {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.4rem;
+      margin-bottom: 1rem;
+    }
+    nav a {
+      font-size: 0.82rem;
+      color: var(--accent);
+      background: var(--card);
+      border-radius: 999px;
+      padding: 0.25rem 0.75rem;
+      text-decoration: none;
+      box-shadow: var(--shadow);
+    }
+    nav a:hover { text-decoration: underline; }
+
+    .section-title {
+      font-size: 0.75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--faint);
+      margin: 2.25rem 0 0.75rem;
+    }
+
+    .card {
+      background: var(--card);
+      border-radius: 14px;
+      padding: 1.5rem 1.75rem;
+      margin-bottom: 1rem;
+      box-shadow: var(--shadow);
+    }
+    .card h2 { font-size: 1.15rem; margin-bottom: 0.6rem; }
+    .card h3 { font-size: 1rem; margin: 1.1rem 0 0.4rem; }
+    .card p, .card li { font-size: 0.95rem; }
+    .card p + p { margin-top: 0.6rem; }
+    .card ul, .card ol { padding-left: 1.3rem; margin-top: 0.4rem; }
+    .card li + li { margin-top: 0.3rem; }
+
+    code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.86em;
+      background: var(--code-bg);
+      border: 1px solid var(--line);
+      border-radius: 5px;
+      padding: 0.05rem 0.35rem;
+      overflow-wrap: anywhere;
+    }
+    pre {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.85rem;
+      background: var(--code-bg);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 0.75rem 1rem;
+      margin-top: 0.6rem;
+      overflow-x: auto;
+    }
+
+    .flow {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 0.5rem;
+      margin-top: 0.8rem;
+      counter-reset: step;
+    }
+    .flow div {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 0.7rem 0.8rem;
+      font-size: 0.86rem;
+      counter-increment: step;
+    }
+    .flow div::before {
+      content: counter(step);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 1.4rem;
+      height: 1.4rem;
+      border-radius: 50%;
+      background: var(--accent-soft);
+      color: var(--accent);
+      font-weight: 700;
+      font-size: 0.78rem;
+      margin-bottom: 0.35rem;
+    }
+    .flow strong { display: block; }
+
+    .numbers {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 0.75rem;
+      margin-top: 0.8rem;
+    }
+    .number {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 0.9rem 1rem;
+    }
+    .number .big {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 1.6rem;
+      font-weight: 700;
+      color: var(--accent);
+    }
+    .number .label {
+      font-size: 0.75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--faint);
+    }
+    .number p { font-size: 0.88rem; margin-top: 0.35rem; }
+
+    .callout {
+      border-radius: 10px;
+      padding: 0.8rem 1rem;
+      margin-top: 0.9rem;
+      font-size: 0.92rem;
+    }
+    .callout.warn { background: var(--warn-soft); color: var(--text); border-left: 4px solid var(--warn); }
+    .callout.ok { background: var(--ok-soft); color: var(--text); border-left: 4px solid var(--ok); }
+
+    .table-wrap { overflow-x: auto; margin-top: 0.7rem; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+    th, td { text-align: left; padding: 0.55rem 0.6rem; border-bottom: 1px solid var(--line); vertical-align: top; }
+    th { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--faint); }
+
+    .timeline { margin-top: 0.8rem; }
+    .timeline .row {
+      display: grid;
+      grid-template-columns: 7.5rem 1fr;
+      gap: 0.75rem;
+      padding: 0.5rem 0;
+      border-bottom: 1px solid var(--line);
+      font-size: 0.9rem;
+    }
+    .timeline .row:last-child { border-bottom: none; }
+    .tag {
+      display: inline-block;
+      font-size: 0.72rem;
+      font-weight: 700;
+      border-radius: 999px;
+      padding: 0.05rem 0.5rem;
+      margin-left: 0.3rem;
+      white-space: nowrap;
+    }
+    .tag.ok { background: var(--ok-soft); color: var(--ok); }
+    .tag.bad { background: var(--bad-soft); color: var(--bad); }
+    .build {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-weight: 700;
+    }
+
+    @media (max-width: 520px) {
+      body { padding: 1.5rem 16px 3rem; }
+      .card { padding: 1.1rem 1.1rem; }
+      .timeline .row { grid-template-columns: 1fr; gap: 0.15rem; }
+    }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <header>
+    <h1>Android Play internal uploads</h1>
+    <p>How the <strong>Android Play internal</strong> GitHub Actions workflow builds and uploads the app to the Play internal testing track, how the version name and version code work, and what to do in the common situations. The Android twin of <a href="ios-testflight.html">iOS TestFlight uploads</a>.</p>
+    <p class="meta">Workflow: <code>.github/workflows/android-play-internal.yml</code> · Project: <code>android/app/build.gradle.kts</code></p>
+  </header>
+
+  <nav>
+    <a href="#what">What it does</a>
+    <a href="#numbers">Version name and code</a>
+    <a href="#recipes">What do I do when…</a>
+    <a href="#branches">Branches and version codes</a>
+    <a href="#run">Running it</a>
+    <a href="#setup">One-time setup</a>
+    <a href="#errors">Errors</a>
+  </nav>
+
+  <div class="section-title" id="what">What it does</div>
+  <div class="card">
+    <h2>One run, one internal testing release</h2>
+    <p>Each run takes one commit and turns it into one release on the Play <strong>internal testing</strong> track. It never touches closed, open or production testing: anything beyond internal stays a button you press in Play Console.</p>
+    <div class="flow">
+      <div><strong>Check out</strong>The branch you picked (or the tagged commit), with full git history.</div>
+      <div><strong>Work out the version</strong>Version name from the project (or the typed one); version code from the commit count.</div>
+      <div><strong>Add secrets</strong>Writes <code>local.properties</code> (map key, upload keystore and passwords).</div>
+      <div><strong>Build</strong><code>bundleRelease</code>, so it talks to Production, then checks the bundle is signed.</div>
+      <div><strong>Upload</strong>To the internal track as a completed release. Testers get it from the Play Store within minutes.</div>
+    </div>
+    <div class="callout warn"><strong>Internal builds use real data.</strong> Release builds always point at Production; there is no Staging server.</div>
+  </div>
+
+  <div class="section-title" id="numbers">Version name and version code</div>
+  <div class="card">
+    <h2>Testers see "1.4.3 (981)"</h2>
+    <p>Every Android build carries two numbers. People see the first; Play only cares about the second.</p>
+    <div class="numbers">
+      <div class="number">
+        <div class="label">Version name</div>
+        <div class="big">1.4.3</div>
+        <p><strong>You set this.</strong> <code>projectVersionName</code> near the top of <code>android/app/build.gradle.kts</code>. A run can override it for one build with a typed version; nothing is committed.</p>
+      </div>
+      <div class="number">
+        <div class="label">Version code</div>
+        <div class="big">981</div>
+        <p><strong>Set automatically.</strong> The number of commits in the history of the commit being built (<code>git rev-list --count HEAD</code>), worked out by <code>build.gradle.kts</code> for local builds too. The same number as the iOS build of that commit.</p>
+      </div>
+    </div>
+
+    <h3>The rule Play enforces</h3>
+    <ul>
+      <li><strong>Every upload's version code must be higher than every version code uploaded before, on any track.</strong> Uploading the same commit twice gives the same code, so the second upload is refused.</li>
+      <li><strong>Unlike TestFlight, a new version name doesn't reset this.</strong> Bumping 1.4.3 to 1.4.4 does not let a lower version code through.</li>
+      <li>The version name is free text to Play: it isn't checked, only shown.</li>
+    </ul>
+
+    <h3>Things that are <em>not</em> the version</h3>
+    <ul>
+      <li><strong><code>android-v*</code> tags</strong> are labels. Pushing <code>android-v1.4.3</code> doesn't set anything; the workflow checks it matches <code>projectVersionName</code> and stops if it doesn't.</li>
+      <li><strong><code>ios-v*</code> tags</strong> and <strong>server releases</strong> (<code>v1.x.y</code>) are separate.</li>
+      <li><strong><code>X-Api-Version</code></strong> is what the server uses to decide whether a phone is too old. Bump it only for changes that could break against the server.</li>
+    </ul>
+    <div class="callout ok">Release bundles built in Android Studio use the same version code, so manual and workflow uploads can be mixed. The version codes before this scheme stopped at 29; the commit count is far above that, so the switch was safe.</div>
+  </div>
+
+  <div class="section-title" id="recipes">What do I do when…</div>
+  <div class="card">
+    <h3>…I want testers to try the latest staging?</h3>
+    <p>Run the workflow on <code>staging</code>. New commits mean a higher version code. Nothing to edit.</p>
+
+    <h3>…I'm starting a new version (say 1.4.4)?</h3>
+    <p>Either type <code>1.4.4</code> in the run's version box (this build only), or change <code>projectVersionName</code> to <code>"1.4.4"</code> in a normal PR and run on <code>staging</code>, or tag it: <code>git tag android-v1.4.4 &amp;&amp; git push origin android-v1.4.4</code>.</p>
+
+    <h3>…I want to test a feature branch?</h3>
+    <p>Run the workflow on that branch; it works. But its version code is then used up, and <code>staging</code> can't upload until it has more commits. See <a href="#branches">branches and version codes</a>.</p>
+
+    <h3>…I ran it and nothing has changed since the last upload?</h3>
+    <p>Same commit, same version code: the upload is refused. Make a commit first.</p>
+
+    <h3>…I start two runs at once?</h3>
+    <p>The second waits for the first to finish. It is never cancelled.</p>
+
+    <h3>…I want it in production?</h3>
+    <p>Promote the internal release in Play Console (Test and release → the release → Promote), or create a production release there. The workflow never does this.</p>
+  </div>
+
+  <div class="section-title" id="branches">Branches and version codes</div>
+  <div class="card">
+    <h2>Commit counts differ between branches</h2>
+    <p>The version code is the commit count of whatever you build. With <code>staging</code> at 980 commits:</p>
+    <div class="timeline">
+      <div class="row"><div><span class="build">980</span></div><div>Upload from <code>staging</code>. <span class="tag ok">accepted</span></div></div>
+      <div class="row"><div><span class="build">983</span></div><div>Upload from <code>my-feature</code>: <code>staging</code> plus 3 commits. <span class="tag ok">accepted</span></div></div>
+      <div class="row"><div><span class="build">982</span></div><div><code>staging</code> gets 2 more commits, then you upload it. 982 is lower than 983. <span class="tag bad">refused</span></div></div>
+      <div class="row"><div><span class="build">985+</span></div><div>Merge <code>my-feature</code> into <code>staging</code>: its commits and the merge commit now count too. <span class="tag ok">accepted</span></div></div>
+    </div>
+    <p style="margin-top:0.9rem"><strong>If an upload is refused for this reason</strong>, merge the feature branch first, or wait until the branch you're building has more commits than the last upload. Bumping the version name doesn't help on Android.</p>
+    <div class="callout ok"><strong>Rule of thumb:</strong> upload from <code>staging</code>. Upload a feature branch only when you need testers on it, and merge it soon after.</div>
+  </div>
+
+  <div class="section-title" id="run">Running it</div>
+  <div class="card">
+    <h3>By hand, on any branch</h3>
+    <ol>
+      <li>GitHub → <strong>Actions</strong> → <strong>Android Play internal</strong> → <strong>Run workflow</strong>.</li>
+      <li>Pick the branch, optionally type a version, and press <strong>Run workflow</strong>.</li>
+      <li>When it finishes, the run's summary shows the version name, version code and commit that went up. A typed-version run also tags the commit <code>android-v&lt;version&gt;</code>.</li>
+    </ol>
+    <p>The button only appears once the workflow file is on <code>staging</code>, the default branch.</p>
+
+    <h3>With a tag</h3>
+    <pre>git tag android-v1.4.3
+git push origin android-v1.4.3</pre>
+    <p>The tag must match <code>projectVersionName</code> exactly, or the run stops before building.</p>
+
+    <h3>From the command line</h3>
+    <pre>gh workflow run android-play-internal.yml --ref my-branch -f version=1.4.4</pre>
+  </div>
+
+  <div class="section-title" id="setup">One-time setup</div>
+  <div class="card">
+    <ol>
+      <li><strong>Check Play App Signing is on.</strong> Play Console → Dot-Watcher → Protected with Play → Play Store protection → "Protect app signing key" should say <em>Releases signed by Play</em>. Then the keystore below is only the upload key, which Google can reset if it leaks.</li>
+      <li><strong>Make a service account.</strong> Google Cloud project <code>dotwatcher-play</code> (organisation skelstar-org) → enable the <strong>Google Play Android Developer API</strong> → IAM &amp; Admin → Service Accounts → <code>github-play-upload</code>, no Cloud roles → Keys → Add key → JSON. The organisation blocks key creation by default (<code>iam.disableServiceAccountKeyCreation</code>, "secure by default"); it is overridden to <em>Not enforced</em> for this project only, which needs the Organisation Policy Administrator role.</li>
+      <li><strong>Invite it in Play Console.</strong> Users and permissions → Invite new users → the service account's email → App permissions → Dot-Watcher → <strong>Release to testing tracks</strong>. No account permissions. It can take a few hours to start working.</li>
+      <li><strong>Add repository secrets</strong> (GitHub → Settings → Secrets and variables → Actions):
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Secret</th><th>Value</th></tr></thead>
+            <tbody>
+              <tr><td><code>PLAY_SERVICE_ACCOUNT_JSON</code></td><td>The whole JSON key file. Never commit it: the repo is public and Google disables keys it finds in public repos.</td></tr>
+              <tr><td><code>ANDROID_UPLOAD_KEYSTORE_B64</code></td><td>The upload <code>.jks</code> as base64. Mac: <code>base64 -i dotwatcher-upload.jks | pbcopy</code>.</td></tr>
+              <tr><td><code>ANDROID_UPLOAD_STORE_PASSWORD</code></td><td><code>RELEASE_STORE_PASSWORD</code> from <code>android/local.properties</code>.</td></tr>
+              <tr><td><code>ANDROID_UPLOAD_KEY_ALIAS</code></td><td><code>RELEASE_KEY_ALIAS</code>.</td></tr>
+              <tr><td><code>ANDROID_UPLOAD_KEY_PASSWORD</code></td><td><code>RELEASE_KEY_PASSWORD</code>.</td></tr>
+              <tr><td><code>LINZ_API_KEY</code></td><td>Shared with the iOS workflow. Without it the build works but the map is blank (the run warns).</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </li>
+    </ol>
+    <p>The keystore and <code>local.properties</code> are written on the runner during the run and deleted at the end.</p>
+  </div>
+
+  <div class="section-title" id="errors">When it fails</div>
+  <div class="card">
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Where / message</th><th>Meaning</th><th>Fix</th></tr></thead>
+        <tbody>
+          <tr>
+            <td>"Missing repository secrets: …"</td>
+            <td>One of the signing or Play secrets isn't set.</td>
+            <td>Add the named secrets.</td>
+          </tr>
+          <tr>
+            <td>"Check tag matches the project version"</td>
+            <td>The tag says one version, <code>projectVersionName</code> another.</td>
+            <td>Change <code>projectVersionName</code> and commit, or delete the tag and tag the right version.</td>
+          </tr>
+          <tr>
+            <td>Build: keystore was tampered with / password incorrect</td>
+            <td>A password secret is wrong, or the base64 was cut short.</td>
+            <td>Re-copy the secrets from <code>local.properties</code> and the <code>.jks</code>.</td>
+          </tr>
+          <tr>
+            <td>"isn't signed"</td>
+            <td>The bundle built without the upload key.</td>
+            <td>Check the four <code>ANDROID_UPLOAD_*</code> secrets.</td>
+          </tr>
+          <tr>
+            <td>Upload: "Version code N has already been used"</td>
+            <td>That version code, or a higher one, is already on Play.</td>
+            <td>See <a href="#branches">branches</a>: merge first or wait for more commits.</td>
+          </tr>
+          <tr>
+            <td>Upload: "The caller does not have permission"</td>
+            <td>The service account isn't invited, lacks "Release to testing tracks", or the invite hasn't taken effect yet.</td>
+            <td>Check Play Console → Users and permissions; if it was just added, try again in a few hours.</td>
+          </tr>
+          <tr>
+            <td>Upload: "Only releases with status draft may be created on draft app"</td>
+            <td>Play treats the app as a draft (never released on any track).</td>
+            <td>Change <code>status: completed</code> to <code>draft</code> in the workflow, and roll the release out by hand in Play Console.</td>
+          </tr>
+          <tr>
+            <td>Upload: "APK signed with the wrong key" / upload certificate mismatch</td>
+            <td>The keystore in the secret isn't the upload key Play knows.</td>
+            <td>Use the keystore you upload with from Android Studio, or reset the upload key in Play Console.</td>
+          </tr>
+          <tr>
+            <td>Installed from Play, but the map is blank</td>
+            <td><code>LINZ_API_KEY</code> isn't set.</td>
+            <td>Add the secret and run again after a new commit.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>

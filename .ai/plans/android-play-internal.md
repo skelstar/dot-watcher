@@ -1,6 +1,7 @@
 # Android Play internal testing from GitHub — Plan
 
-*DotWatcher — plan, November 2026. Status: drafted, not started.*
+*DotWatcher — plan, November 2026. Status: Steps 1–3 built on branch `android-play-internal` (not yet run).
+Step 0 waits on the four keystore secrets, which are on the Mac.*
 
 Goal: the Android twin of `ios-testflight.yml`. Run a workflow by hand (or from Kraken, or with an `android-v*` tag),
 and a signed release build of that branch lands on the Play **internal testing** track, ready to install from the
@@ -26,7 +27,10 @@ is verified locally.
   `versionCode` for every upload because Play rejects reuse.
 - CI (`android-gradle.yml`) only builds the debug APK on pull requests, on `ubuntu-latest`.
 
-## Decisions (proposed; confirm before step 1)
+## Decisions (confirmed 18 Nov 2026 by starting the work)
+
+As built, the Gradle properties are `appVersionCode` / `appVersionName` (not `versionCode` / `versionName`, to
+avoid confusion with the `defaultConfig` fields), and the workflow passes both explicitly.
 
 - **Mirror the iOS workflow.** Same triggers (`workflow_dispatch` with optional `version` and `request_id`,
   `android-v*` tags), same `run-name` shape, same "tag the built commit after a dispatched upload" rule, same
@@ -56,16 +60,21 @@ is verified locally.
 
 About 20–30 minutes, all in the browser.
 
-- [ ] **Google Cloud service account.** console.cloud.google.com → pick or create a project → enable the
+- [x] **Google Cloud service account.** console.cloud.google.com → pick or create a project → enable the
       **Google Play Android Developer API** → IAM & Admin → Service Accounts → Create (no roles needed in Cloud) →
       Keys → Add key → JSON. Download the JSON file (only offered once, like Apple's `.p8`).
-- [ ] **Give it Play access.** Play Console → **Users and permissions** → **Invite new users** → the service
+      Done: project `dotwatcher-play` in organisation skelstar-org, account `github-play-upload`. Key creation was
+      blocked by the org's "secure by default" policy `iam.disableServiceAccountKeyCreation`; overridden to Not
+      enforced for this project only (the managed `iam.managed.…` version was already inactive).
+- [x] **Give it Play access.** Play Console → **Users and permissions** → **Invite new users** → the service
       account's email (`…@….iam.gserviceaccount.com`) → App permissions → DotWatcher → **Release to testing tracks**
       (and "View app information"). No account-wide permissions.
-- [ ] **Check Play App Signing is on** (Play Console → DotWatcher → Test and release → App integrity). If it is,
-      the keystore in `local.properties` is only the *upload* key, which Google can reset if it leaks. If it isn't,
-      stop and decide before putting the key in GitHub: that key would then be the only app signing key.
-- [ ] **Repository secrets** (GitHub → Settings → Secrets and variables → Actions):
+- [x] **Check Play App Signing is on** (Play Console → Dot-Watcher → **Protected with Play** → Play Store
+      protection → "Protect app signing key": *Releases signed by Play*). If it is, the keystore in
+      `local.properties` is only the *upload* key, which Google can reset if it leaks. Confirmed on. The app is
+      **not** a draft app (status Internal testing), so uploads use `status: completed`.
+- [ ] **Repository secrets** (`PLAY_SERVICE_ACCOUNT_JSON` can be added any time; the four keystore ones are on the
+      Mac) (GitHub → Settings → Secrets and variables → Actions):
 
       | Secret | Value |
       |---|---|
@@ -78,52 +87,52 @@ About 20–30 minutes, all in the browser.
 
 ## Step 1 — version code from git (`android/app/build.gradle.kts`)
 
-- [ ] `versionCode`: the `versionCode` Gradle property if given, else `git rev-list --count HEAD` (via
-      `providers.exec`, so it works with the configuration cache), else fail with a clear message (no silent
-      fallback to a low number that Play would refuse).
-- [ ] `versionName`: the `versionName` Gradle property if given, else the value in the file (stays `1.4.3` until
-      bumped by hand in a PR, like `MARKETING_VERSION`).
-- [ ] Comment explaining the scheme and pointing at `docs/android-play-internal.html`. Update the "Distribution"
+- [x] `versionCode`: the `appVersionCode` Gradle property if given, else `git rev-list --count HEAD` (via
+      `providers.exec`). If git fails, it logs a warning and uses 1 rather than failing: Play refuses the low number
+      anyway, and the workflow always passes the code explicitly.
+- [x] `versionName`: the `appVersionName` Gradle property if given, else `projectVersionName` (a plain literal the
+      workflow greps; stays `1.4.3` until bumped by hand in a PR, like `MARKETING_VERSION`).
+- [x] Comment explaining the scheme and pointing at `docs/android-play-internal.html`. Updated the "Distribution"
       note in `.ai/plans/android-app.md` (no more hand bumps of `versionCode`).
-- [ ] Check `android-gradle.yml` still builds: its checkout is shallow (the default depth of 1), so the commit count
-      would be 1. Fine for a debug build that's never uploaded, but either give it `fetch-depth: 0` or have the
-      count fall back to 1 only for debug builds. Decide when building; failing a debug PR build over it would be
-      wrong.
+- [x] `android-gradle.yml` left alone: its shallow checkout gives a commit count of 1, which is fine for a debug
+      build that's never uploaded. CI on this branch's PR confirms the Gradle change compiles.
 
 ## Step 2 — the workflow (`.github/workflows/android-play-internal.yml`)
 
-- [ ] Triggers: `workflow_dispatch` (inputs `version`, `request_id`, same validation as iOS) and `push` tags
+- [x] Triggers: `workflow_dispatch` (inputs `version`, `request_id`, same validation as iOS) and `push` tags
       `android-v*`.
-- [ ] `run-name`: `Play internal <version or 'project version'> from <ref> [<request_id>]`.
-- [ ] `concurrency: { group: android-play-upload, cancel-in-progress: false }`.
-- [ ] `runs-on: ubuntu-latest`, `timeout-minutes: 30`, checkout with `fetch-depth: 0` and tags.
-- [ ] Check version (dispatch): `X.Y.Z`; refuse if `android-v<version>` exists on a different commit.
-- [ ] Check tag (tag runs): the tag must match `versionName` in `build.gradle.kts`.
-- [ ] JDK 17 (temurin) and `gradle/actions/setup-gradle`, as in `android-gradle.yml`.
-- [ ] Write secrets: fail if any signing secret is missing; decode the keystore to `$RUNNER_TEMP/upload.jks`;
+- [x] `run-name`: `Play internal <version or 'project version'> from <ref> [<request_id>]`.
+- [x] `concurrency: { group: android-play-upload, cancel-in-progress: false }`.
+- [x] `runs-on: ubuntu-latest`, `timeout-minutes: 30`, checkout with `fetch-depth: 0` and tags.
+- [x] Check version (dispatch): `X.Y.Z`; refuse if `android-v<version>` exists on a different commit.
+- [x] Check tag (tag runs): the tag must match `versionName` in `build.gradle.kts`.
+- [x] JDK 17 (temurin) and `gradle/actions/setup-gradle`, as in `android-gradle.yml`.
+- [x] Write secrets: fail if any signing secret is missing; decode the keystore to `$RUNNER_TEMP/upload.jks`;
       write `android/local.properties` with `LINZ_API_KEY` and the four `RELEASE_*` values (warn, don't fail, if
       `LINZ_API_KEY` is empty, as iOS does).
-- [ ] Build: `./gradlew bundleRelease -PversionName=<version>` (version code from Step 1).
-- [ ] Verify the AAB is signed (`jarsigner -verify`) before uploading.
-- [ ] Upload: `r0adkll/upload-google-play` with `packageName: nz.skelstar.dotwatcher`, `track: internal`,
+- [x] Build: `./gradlew :app:bundleRelease -PappVersionCode=<count> -PappVersionName=<version>`.
+- [x] Verify the AAB is signed (`jarsigner -verify`) before uploading.
+- [x] Upload: `r0adkll/upload-google-play` with `packageName: nz.skelstar.dotwatcher`, `track: internal`,
       `status: completed` (or `draft`, see decisions), `releaseFiles` the AAB. Optionally a short release note from
-      the commit subject.
-- [ ] Tag `android-v<version>` on the built commit after a dispatched upload (`contents: write`), same rules and
+      the commit subject (not done: release name is "1.4.3 (981)", no notes).
+- [x] Tag `android-v<version>` on the built commit after a dispatched upload (`contents: write`), same rules and
       warnings as the iOS step.
-- [ ] Summary: version name, version code, branch, commit, "appears on the internal track in a few minutes".
-- [ ] Always delete the keystore, `local.properties` and the service account file at the end.
+- [x] Summary: version name, version code, branch, commit, "appears on the internal track in a few minutes".
+- [x] Always delete the keystore, `local.properties` and the service account file at the end.
 
 ## Step 3 — docs
 
-- [ ] `docs/android-play-internal.html`, modelled on `docs/ios-testflight.html`: what it does, version name and
+- [x] `docs/android-play-internal.html`, modelled on `docs/ios-testflight.html`: what it does, version name and
       version code, what to do when…, branches and version codes, running it, one-time setup, errors (e.g. "Version
       code N has already been used", "The caller does not have permission", "Only releases with status draft may
       be created on draft app", unsigned bundle).
-- [ ] Link it from `docs/ios-testflight.html` and the Android README.
+- [x] Link it from `docs/ios-testflight.html` and the Android README.
 
 ## Step 4 — prove it
 
-- [ ] First manual run on the branch uploads, and the build installs from the Play Store on a test phone.
+- [ ] Merge `android-play-internal` into `staging`: the **Run workflow** button only appears once the workflow file
+      is on the default branch, so the first run can't happen before the merge. It's harmless until run.
+- [ ] First manual run (on `staging`) uploads, and the build installs from the Play Store on a test phone.
 - [ ] A tag run (`android-v1.4.3`) succeeds after the merge.
 - [ ] Builds made locally in Android Studio after this get the commit-count version code too (check
       `versionCode` in Build → Analyze APK).

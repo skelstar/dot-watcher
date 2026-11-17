@@ -66,6 +66,15 @@ directly over USB, the fastest loop for iterating on device-only behavior like M
 background tracking. Play Console internal testing (Milestone 4) is for distributing signed
 release builds to testers without a cable, not required to just see the app running locally.
 
+## Uploading to Play internal testing
+
+The **Android Play internal** GitHub Actions workflow (`.github/workflows/android-play-internal.yml`)
+builds a signed release bundle and uploads it to the internal testing track. Run it from the
+Actions tab on any branch, or push an `android-v*` tag. The version code is the commit count
+(worked out in `app/build.gradle.kts`), so it's never bumped by hand; the version name is
+`projectVersionName` in the same file. How it works, the one-time setup and what to do when an
+upload is refused: [`docs/android-play-internal.html`](../docs/android-play-internal.html).
+
 ## Structure
 
 ```

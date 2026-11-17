@@ -16,7 +16,8 @@ follow / fit-all, initials markers with a countdown border and badges, ending-so
 battery pause). Detail and per-item status: `.ai/plans/android-map-redesign.md`.
 
 **Distribution:** 0.2.0 (versionCode 3) is on Play **internal testing**. It predates the battery
-pause. Bump `versionCode` in `android/app/build.gradle.kts` for every upload; Play rejects reuse.
+pause. `versionCode` is now the git commit count (no hand bumps), and the **Android Play internal**
+workflow uploads to the internal track; see `docs/android-play-internal.html`.
 
 **Still open in Milestone 4:**
 - **Satellite banner** (redesign item 11) — blocked on whether Android can detect satellite at all
