@@ -254,7 +254,8 @@ struct ContentView: View {
             // nearby can join, or the placeholder while there's no position to look near.
             ForEach(events.joinable) { event in
                 EventSignButton(
-                    eyebrow: event.eyebrow, title: event.title, subtitle: event.subtitle, organiser: event.organiser
+                    eyebrow: event.eyebrow, title: event.title, subtitle: event.subtitle, organiser: event.organiser,
+                    nudging: true
                 ) {
                     nearbyCandidate = event
                 }
@@ -265,7 +266,8 @@ struct ContentView: View {
             if events.isAvailable, location.nearbyLocationState == .needsPermission {
                 EventSignButton(
                     eyebrow: "Nearby", title: "Find runs near you",
-                    subtitle: "Allow location to see who is starting close by"
+                    subtitle: "Allow location to see who is starting close by",
+                    nudging: true
                 ) { location.requestWhenInUseAuthorizationIfNeeded() }
             }
             SignButton(title: "Join", subtitle: "Enter an invite code", icon: .enter) {

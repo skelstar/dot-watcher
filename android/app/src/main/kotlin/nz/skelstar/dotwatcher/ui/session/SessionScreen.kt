@@ -257,6 +257,7 @@ fun SessionScreen(
                     title = event.title,
                     subtitle = event.subtitle,
                     organiser = event.organiser,
+                    nudging = true,
                     onClick = {
                         joinAttempted = false
                         nearbyCandidate = event
