@@ -43,8 +43,11 @@ public enum PaletteDeleteResult { Deleted, NotFound, InUse }
 /// <summary>
 /// Which palette a phone gets. Palettes are saved in the database and do nothing until an admin assigns one to an
 /// app version (phones send it as <c>X-App-Version</c>, e.g. "1.2.2 (20)"), or to "fallback".
-/// A phone gets, in order: the palette for its exact version, the palette for the highest assigned version, the
-/// fallback one (so only while no version is assigned), the <c>Palette</c> config section, then none. A missing section or a bad hex value is rejected when saved, and ignored (with a warning logged) in
+/// A phone gets, in order: the palette for its exact version, the palette for the highest assigned version at or
+/// below its own (never a newer one: a newer palette may rely on start-screen changes an older app doesn't have), the
+/// fallback one (for phones older than every assigned version), the <c>Palette</c> config section, then none. A phone
+/// that sends no version (or one that isn't dot-separated numbers) gets the highest assigned version's palette.
+/// A missing section or a bad hex value is rejected when saved, and ignored (with a warning logged) in
 /// config, so a typo leaves the apps on their built-in colours. Contrast is not checked: the playground shows the
 /// ratio as advice, and choosing readable colours is up to whoever saves the palette.
 /// </summary>
@@ -102,19 +105,26 @@ public sealed partial class PaletteProvider
         var version = AppVersionName(appVersionHeader);
         if (version is not null && assigned.TryGetValue(version, out var forVersion))
             return forVersion;
-        if (Latest(assigned.Keys) is { } latest)
-            return assigned[latest];
+        // A phone inherits from the nearest version at or below its own; one with no readable version gets the newest.
+        var ceiling = version is null ? null : VersionParts(version);
+        if (Latest(assigned.Keys, ceiling) is { } inherited)
+            return assigned[inherited];
         return assigned.TryGetValue(FallbackKey, out var fallback) ? fallback : _configured;
     }
 
-    /// <summary>The highest assigned app version, compared number by number ("1.10.0" beats "1.9.2"); null when none is.</summary>
-    private static string? Latest(IEnumerable<string> versions)
+    /// <summary>
+    /// The highest assigned app version, compared number by number ("1.10.0" beats "1.9.2"), and no higher than
+    /// <paramref name="ceiling"/> when one is given; null when none qualifies.
+    /// </summary>
+    private static string? Latest(IEnumerable<string> versions, int[]? ceiling = null)
     {
         string? best = null;
         int[]? bestParts = null;
         foreach (var version in versions)
         {
             if (VersionParts(version) is not { } parts)
+                continue;
+            if (ceiling is not null && Compare(parts, ceiling) > 0)
                 continue;
             if (bestParts is null || Compare(parts, bestParts) > 0 || (Compare(parts, bestParts) == 0 && string.CompareOrdinal(version, best) > 0))
                 (best, bestParts) = (version, parts);

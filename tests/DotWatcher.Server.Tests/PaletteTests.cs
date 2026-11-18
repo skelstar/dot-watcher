@@ -88,7 +88,7 @@ public class PaletteTests
     }
 
     [Fact]
-    public async Task AnUnassignedVersion_GetsTheHighestAssignedVersionsPalette_NotTheFallback()
+    public async Task AnUnassignedVersion_InheritsTheNearestOlderVersionsPalette_NeverANewerOne()
     {
         using var factory = new DotWatcherApiFactory { Palette = Good() };
         using var client = factory.CreateClient();
@@ -102,13 +102,32 @@ public class PaletteTests
 
         Assert.Equal("#223344", (await GetMeAsync(client, alice.AccessToken, "1.9.2 (20)")).Config?.Palette?.GoBg); // exact match
         Assert.Equal("#334455", (await GetMeAsync(client, alice.AccessToken, "1.10.0 (30)")).Config?.Palette?.GoBg);
-        Assert.Equal("#334455", (await GetMeAsync(client, alice.AccessToken, "1.9.5 (25)")).Config?.Palette?.GoBg); // numeric, not text, order
+        // Between the two: inherits 1.9.2's, not the newer 1.10.0's.
+        Assert.Equal("#223344", (await GetMeAsync(client, alice.AccessToken, "1.9.5 (25)")).Config?.Palette?.GoBg);
+        Assert.Equal("#223344", (await GetMeAsync(client, alice.AccessToken, "1.9.10 (26)")).Config?.Palette?.GoBg); // numeric, not text, order
         Assert.Equal("#334455", (await GetMeAsync(client, alice.AccessToken, "9.9.9 (1)")).Config?.Palette?.GoBg);
+        // Older than every assigned version: the fallback.
+        Assert.Equal("#112233", (await GetMeAsync(client, alice.AccessToken, "1.4.4 (991)")).Config?.Palette?.GoBg);
+        // No version at all: the newest.
         Assert.Equal("#334455", (await GetMeAsync(client, alice.AccessToken)).Config?.Palette?.GoBg);
     }
 
     [Fact]
-    public async Task TheFallbackAssignment_IsUsedOnlyWhileNoVersionIsAssigned_AndUnassignFallsBack()
+    public async Task APhoneOlderThanEveryAssignedVersion_WithNoFallback_GetsTheConfiguredPalette()
+    {
+        using var factory = new DotWatcherApiFactory { Palette = Good() };
+        using var client = factory.CreateClient();
+        var alice = await AuthTestHelpers.RegisterWithResponseAsync(client, "alice", "AL");
+        var newer = await CreateAsync(client, "Newer", goBg: "#334455", goFg: "#ffffff");
+        await SendAdminAsync(client, HttpMethod.Put, "/admin/palettes/assignments/1.4.6", "test-token", new { paletteId = newer.Id });
+
+        // The config section's palette, not 1.4.6's.
+        Assert.Equal("#6f1a07", (await GetMeAsync(client, alice.AccessToken, "1.4.4 (991)")).Config?.Palette?.GoBg);
+        Assert.Equal("#334455", (await GetMeAsync(client, alice.AccessToken, "1.4.6 (12)")).Config?.Palette?.GoBg);
+    }
+
+    [Fact]
+    public async Task TheFallbackAssignment_CoversPhonesNoAssignedVersionCovers_AndUnassignFallsBack()
     {
         using var factory = new DotWatcherApiFactory();
         using var client = factory.CreateClient();
@@ -122,7 +141,8 @@ public class PaletteTests
 
         await SendAdminAsync(client, HttpMethod.Put, "/admin/palettes/assignments/1.2.2", "test-token", new { paletteId = special.Id });
         Assert.Equal("#223344", (await GetMeAsync(client, alice.AccessToken, "1.2.2 (20)")).Config?.Palette?.GoBg);
-        Assert.Equal("#223344", (await GetMeAsync(client, alice.AccessToken, "9.9.9 (1)")).Config?.Palette?.GoBg); // latest version, not fallback
+        Assert.Equal("#223344", (await GetMeAsync(client, alice.AccessToken, "9.9.9 (1)")).Config?.Palette?.GoBg); // inherits 1.2.2's, not fallback
+        Assert.Equal("#112233", (await GetMeAsync(client, alice.AccessToken, "1.0.0 (5)")).Config?.Palette?.GoBg); // older than 1.2.2: fallback
 
         var unassigned = await SendAdminAsync(client, HttpMethod.Delete, "/admin/palettes/assignments/1.2.2", "test-token");
         Assert.Equal(HttpStatusCode.NoContent, unassigned.StatusCode);

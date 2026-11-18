@@ -141,9 +141,11 @@ tweaked freely. PR "Palette library".
   Deleting an assigned palette is refused (`409`).
 - `GET /admin/palettes/assignments`, `PUT` / `DELETE /admin/palettes/assignments/{appVersion}`: which palette each app
   version gets. `appVersion` is the part of `X-App-Version` before the build number (`1.2.2` from `1.2.2 (20)`), or
-  `fallback` for every other version.
-- **A phone gets, in order:** the palette assigned to its exact version, the `fallback` one, the `Palette` config
-  section, then none (built-in colours). Both apps already send `X-App-Version` on every call that returns
+  `fallback` for phones older than every assigned version.
+- **A phone gets, in order:** the palette assigned to its exact version, the one assigned to the highest version at
+  or below its own (never a newer one), the `fallback` one, the `Palette` config section, then none (built-in
+  colours). A phone with no version header gets the highest assigned version's. (Inheritance changed on
+  18 November 2026: before, every unassigned version got the highest assigned version's, even a newer one.) Both apps already send `X-App-Version` on every call that returns
   `config.palette`, so the apps need no change.
 - **Delivery to the phone is unchanged:** `config.palette` on login, register and `GET /me`, applied on launch and on
   return to the front (#275, #276). Assignments and palettes are cached for about five seconds.
