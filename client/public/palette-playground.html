@@ -110,6 +110,14 @@
   .lib-chips { display: flex; height: 16px; border-radius: 3px; overflow: hidden; border: 1px solid rgba(0,0,0,.15); }
   .lib-chips i { flex: 1; }
   .lib-label { color: var(--muted); font-size: 13px; }
+  .lib-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+  .lib-ver { font: 700 20px/1 ui-monospace, Menlo, monospace; min-width: 3.2em; }
+  .lib-ver.none { font-size: 13px; font-weight: 400; color: var(--muted); }
+  .lib-tag { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; padding: 1px 6px; border-radius: 4px; border: 1px solid var(--line); color: var(--muted); }
+  .view-bar { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; padding: 6px 10px; border: 1px solid var(--ink); border-radius: 8px; font-size: 14px; }
+  .view-bar[hidden] { display: none; }
+  .btn[aria-pressed="true"].view { background: var(--ink); color: var(--card); border-color: var(--ink); }
+  .lib-group { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin: 6px 0 -2px; }
   .lib-assigned { display: flex; gap: 6px; flex-wrap: wrap; }
   .lib-pill { font: inherit; font-size: 12px; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--line); background: #d8efd9; color: #17501c; cursor: pointer; }
   @media (prefers-color-scheme: dark) { .lib-pill { background: #1f4a23; color: #cdeccf; } }
@@ -157,10 +165,10 @@
 
       <div class="panel" id="editor">
         <h3>Palette</h3>
-        <label for="palette-name" class="field-label">Title</label>
+        <label for="palette-name" class="field-label">Title (shown on the phones beside the version as the release name)</label>
         <input type="text" class="field" id="palette-name" maxlength="30" placeholder="Navy and orange" autocomplete="off">
-        <label for="palette-label" class="field-label">Label (optional, e.g. an app version like 1.2.2)</label>
-        <input type="text" class="field" id="palette-label" maxlength="32" placeholder="1.2.2" autocomplete="off">
+        <label for="palette-label" class="field-label">Label (optional, e.g. a minor release like 1.4)</label>
+        <input type="text" class="field" id="palette-label" maxlength="32" placeholder="1.4" autocomplete="off">
         <div id="save-row" hidden>
           <p class="hint" id="editing-line"></p>
           <div class="row" style="margin-top:8px">
@@ -170,12 +178,12 @@
           <p class="hint" id="save-hint"></p>
           <p class="hint" id="save-status"></p>
           <div id="assign-row" hidden>
-            <p class="hint">Give <span id="assign-name"></span> (as saved) to phones on an app version:</p>
+            <p class="hint">Give <span id="assign-name"></span> (as saved) to phones on a minor release (every patch of it):</p>
             <div class="row" style="margin-top:4px;align-items:center">
-              <input type="text" class="field" id="assign-version" placeholder="1.2.2 or fallback" autocomplete="off" spellcheck="false" style="flex:1;min-width:140px;margin:0">
+              <input type="text" class="field" id="assign-version" placeholder="1.4 or fallback" autocomplete="off" spellcheck="false" style="flex:1;min-width:140px;margin:0">
               <button class="btn" id="assign-palette">Assign</button>
             </div>
-            <p class="hint">Saving reaches no phone until the palette is assigned. Replacing an assigned palette is live within a few seconds.</p>
+            <p class="hint">Saving reaches no phone until the palette is assigned. Replacing an assigned palette is live within a few seconds. A release with no palette of its own gets the most recent one assigned before it.</p>
           </div>
         </div>
       </div>
@@ -221,8 +229,9 @@
         <symbol id="arrow" viewBox="0 0 24 24"><path d="M4 12h14M12 5l7 7-7 7" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="square"/></symbol>
         <symbol id="i-menu" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="7" cy="12" r="1.3" fill="currentColor"/><circle cx="12" cy="12" r="1.3" fill="currentColor"/><circle cx="17" cy="12" r="1.3" fill="currentColor"/></symbol>
       </svg>
+      <div class="view-bar" id="view-bar" hidden><span id="view-text"></span><button class="btn" id="view-close">Back to editor</button></div>
       <div class="phone">
-        <div class="top"><div class="brand">d<span class="dot">SK</span>t-watchr<small>build 123 · a1b2c3d</small></div><svg viewBox="0 0 24 24" aria-label="Menu"><use href="#i-menu"/></svg></div>
+        <div class="top"><div class="brand">d<span class="dot">SK</span>t-watchr<small>v1.4.6 · Navy and orange</small></div><svg viewBox="0 0 24 24" aria-label="Menu"><use href="#i-menu"/></svg></div>
         <div class="stack">
           <div class="crew"><div class="faces"><i style="background:#34c759">AB</i><i style="background:#ff9500">JT</i><i style="background:#af52de">MR</i></div><span class="more">+2</span><div class="txt"><b>Your crew</b><span>5 people</span></div></div>
           <button class="sign go"><div class="t"><b>Go</b><span>Start tracking your run</span></div><svg class="arrow"><use href="#arrow"/></svg></button>
@@ -330,6 +339,7 @@
   deriveGoBarEl.addEventListener('change', function () { render(); });
 
   function render(skipHexFor) {
+    stopViewing(); // the phone shows the editor's colours again as soon as they change
     var derived = deriveEl.checked && !locked.altBg;
     if (derived) state.altBg = shade50(state.goBg);
     rows.altBg.color.disabled = rows.altBg.hex.disabled = derived;
@@ -518,33 +528,89 @@
     }).catch(function (e) { say('Could not load the library: ' + e.message, true); });
   }
 
+  // "1.4" as [1, 4]; null for anything that isn't a version number ("fallback", "bruno-test").
+  function versionParts(v) { return /^[0-9]+(\.[0-9]+)*$/.test(v) ? v.split('.').map(Number) : null; }
+  function compareVersions(a, b) {
+    for (var i = 0; i < Math.max(a.length, b.length); i++) {
+      var d = (a[i] || 0) - (b[i] || 0);
+      if (d) return d;
+    }
+    return 0;
+  }
+  // An entry's highest assigned version number, as [text, parts], or null when it has none.
+  function topVersion(entry) {
+    var best = null;
+    (entry.assignedTo || []).forEach(function (v) {
+      var parts = versionParts(v);
+      if (parts && (!best || compareVersions(parts, best[1]) > 0)) best = [v, parts];
+    });
+    return best;
+  }
+
+  // Newest release first, then palettes only on "fallback" or a test token, then unassigned ones; by name within each.
+  function sortedLibrary() {
+    var byName = function (a, b) { return (a.palette.name || '').localeCompare(b.palette.name || '', undefined, { sensitivity: 'base' }); };
+    var numbered = [], other = [], unassigned = [];
+    libEntries.forEach(function (e) {
+      var top = topVersion(e);
+      if (top) numbered.push({ entry: e, top: top });
+      else ((e.assignedTo || []).length ? other : unassigned).push(e);
+    });
+    numbered.sort(function (a, b) { return compareVersions(b.top[1], a.top[1]) || byName(a.entry, b.entry); });
+    other.sort(byName); unassigned.sort(byName);
+    return [
+      { title: 'Releases, newest first', items: numbered.map(function (n, i) { return { entry: n.entry, version: n.top[0], latest: i === 0 }; }) },
+      { title: 'Fallback and test', items: other.map(function (e) { return { entry: e }; }) },
+      { title: 'Not assigned', items: unassigned.map(function (e) { return { entry: e }; }) },
+    ].filter(function (g) { return g.items.length; });
+  }
+
   function renderLibrary() {
     libCount.textContent = libEntries.length + ' saved';
     libList.innerHTML = '';
-    libEntries.forEach(function (entry) {
-      var p = entry.palette;
-      var row = node('div', 'lib-row' + (editing && editing.id === entry.id ? ' on' : ''));
-      var chips = node('div', 'lib-chips');
-      ['goBg', 'goFg', 'altBg', 'accent'].forEach(function (k) { var i = node('i'); i.style.background = p[k]; chips.appendChild(i); });
-      var title = node('div', 'lib-title');
-      title.appendChild(node('b', null, p.name || '(unnamed)'));
-      if (p.label) title.appendChild(node('span', 'lib-label', '  ' + p.label));
-      var assigned = node('div', 'lib-assigned');
-      (entry.assignedTo || []).forEach(function (v) {
-        var pill = node('button', 'lib-pill', v + ' ×');
-        pill.title = 'Stop giving this palette to ' + v;
-        pill.addEventListener('click', function () { unassign(v); });
-        assigned.appendChild(pill);
-      });
-      var btns = node('div', 'row');
-      var edit = node('button', 'btn primary', 'Edit');
-      edit.addEventListener('click', function () { editEntry(entry); });
-      var del = node('button', 'btn', 'Delete');
-      del.addEventListener('click', function () { removeEntry(entry); });
-      btns.appendChild(edit); btns.appendChild(del);
-      row.appendChild(chips); row.appendChild(title); row.appendChild(assigned); row.appendChild(btns);
-      libList.appendChild(row);
+    sortedLibrary().forEach(function (group) {
+      libList.appendChild(node('div', 'lib-group', group.title));
+      group.items.forEach(function (item) { renderEntry(item); });
     });
+  }
+
+  function renderEntry(item) {
+    var entry = item.entry;
+    var p = entry.palette;
+    var row = node('div', 'lib-row' + (editing && editing.id === entry.id ? ' on' : ''));
+    var chips = node('div', 'lib-chips');
+    ['goBg', 'goFg', 'altBg', 'accent'].forEach(function (k) { var i = node('i'); i.style.background = p[k]; chips.appendChild(i); });
+    var title = node('div', 'lib-head');
+    var assignedTo = entry.assignedTo || [];
+    title.appendChild(node('span', 'lib-ver' + (item.version ? '' : ' none'),
+      item.version ? item.version : (assignedTo.length ? assignedTo.join(', ') : 'no version')));
+    title.appendChild(node('b', null, p.name || '(unnamed)'));
+    if (item.latest) {
+      var tag = node('span', 'lib-tag', 'latest');
+      tag.title = 'Also what phones on newer releases get, until one has its own palette';
+      title.appendChild(tag);
+    }
+    if (p.label) title.appendChild(node('span', 'lib-label', p.label));
+    var assigned = node('div', 'lib-assigned');
+    (entry.assignedTo || []).forEach(function (v) {
+      var pill = node('button', 'lib-pill', v + ' ×');
+      pill.title = 'Stop giving this palette to ' + v;
+      pill.addEventListener('click', function () { unassign(v); });
+      assigned.appendChild(pill);
+    });
+    var btns = node('div', 'row');
+    var view = node('button', 'btn view', viewing === entry.id ? 'Viewing' : 'View');
+    view.setAttribute('aria-pressed', viewing === entry.id ? 'true' : 'false');
+    view.title = 'Show this palette on the phone without editing it';
+    view.addEventListener('click', function () { viewEntry(entry, item.version); });
+    btns.appendChild(view);
+    var edit = node('button', 'btn primary', 'Edit');
+    edit.addEventListener('click', function () { editEntry(entry); });
+    var del = node('button', 'btn', 'Delete');
+    del.addEventListener('click', function () { removeEntry(entry); });
+    btns.appendChild(edit); btns.appendChild(del);
+    row.appendChild(title); row.appendChild(chips); row.appendChild(assigned); row.appendChild(btns);
+    libList.appendChild(row);
   }
 
   // What Save will do, said before it is pressed, and whether the saved palette can be assigned.
@@ -575,6 +641,42 @@
       ? 'Editing "' + (editing.name || 'unnamed') + '"' + (editing.assignedTo.length ? ' (live for ' + editing.assignedTo.join(', ') + ')' : ' (not assigned to any version)')
       : 'A new palette: not saved yet.';
   }
+
+  // ---- View: shows a saved palette on the phone without loading it into the editor. The colours are set on the
+  // phone element, which overrides the page-wide ones, so the editor, its fields and the URL are left alone.
+  var viewing = null; // id of the palette being viewed
+  var brandDefault = null;
+  function phoneEl() { return document.querySelector('.phone'); }
+  function brandEl() { return phoneEl().querySelector('.brand small'); }
+
+  function viewEntry(entry, version) {
+    if (viewing === entry.id) { stopViewing(); renderLibrary(); return; }
+    var p = entry.palette, phone = phoneEl();
+    if (brandDefault === null) brandDefault = brandEl().textContent;
+    TOKENS.forEach(function (t) {
+      if (valid(p[t[0]] || '')) phone.style.setProperty(t[3], p[t[0]].toLowerCase());
+      else phone.style.removeProperty(t[3]);
+    });
+    brandEl().textContent = 'v' + (version ? version + '.0' : '1.4.6') + ' · ' + (p.name || 'unnamed');
+    viewing = entry.id;
+    var assigned = entry.assignedTo || [];
+    document.getElementById('view-text').textContent = 'Viewing "' + (p.name || 'unnamed') + '"'
+      + (assigned.length ? ' (' + assigned.join(', ') + ')' : ' (not assigned)') + '. The editor is unchanged.';
+    document.getElementById('view-bar').hidden = false;
+    renderLibrary();
+    phone.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+
+  function stopViewing() {
+    if (!viewing) return;
+    viewing = null;
+    var phone = phoneEl();
+    TOKENS.forEach(function (t) { phone.style.removeProperty(t[3]); });
+    if (brandDefault !== null) brandEl().textContent = brandDefault;
+    document.getElementById('view-bar').hidden = true;
+  }
+
+  document.getElementById('view-close').addEventListener('click', function () { stopViewing(); renderLibrary(); });
 
   function editEntry(entry) {
     var p = entry.palette;
@@ -640,8 +742,14 @@
   document.getElementById('assign-palette').addEventListener('click', function () {
     var version = document.getElementById('assign-version').value.trim();
     if (!editing) return;
-    if (!version) { say('Type an app version like 1.2.2, or "fallback" for every other version.', true); return; }
-    if (!window.confirm('Give "' + editing.name + '" (as saved) to phones on ' + version + '? They get it within a few seconds, replacing any palette that version has now.')) return;
+    if (!version) { say('Type a minor release like 1.4, or "fallback" for every other version.', true); return; }
+    // Releases are named per minor version (the palette name is the release name), so no patch versions.
+    if (version !== 'fallback' && !/^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/.test(version)) {
+      var minor = /^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\./.exec(version);
+      say('Assign to a minor release like ' + (minor ? minor[1] + '.' + minor[2] : '1.4') + ', not a patch version, or "fallback".', true);
+      return;
+    }
+    if (!window.confirm('Give "' + editing.name + '" (as saved) to phones on ' + version + (version === 'fallback' ? '' : '.x') + '? They get it within a few seconds, replacing any palette that version has now.')) return;
     call('PUT', '/admin/palettes/assignments/' + encodeURIComponent(version), { paletteId: editing.id }).then(function () {
       return refreshLibrary().then(function () { say('Assigned to ' + version + '.'); });
     }).catch(fail);

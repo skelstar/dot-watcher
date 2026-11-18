@@ -492,14 +492,18 @@ these need the admin bearer token (`401` otherwise).
 
 The body of `POST` and `PUT` is the eight colours plus `version` (camelCase JSON, validated like the `Palette` config
 section: `#rrggbb` colours; contrast is not checked) and a required `name` (up to 30 characters). An
-optional `label` (up to 32, for example `1.2.2`) is informational. Both are trimmed and returned in `config.palette`;
+optional `label` (up to 32, for example `1.4`) is informational. Both are trimmed and returned in `config.palette`;
 neither changes what is served. `version` is the schema version and stays `1`.
 
-**Who gets which palette.** Phones send `X-App-Version` (for example `1.2.2 (20)`). The part before the space is
-matched exactly against the assignment key. A phone gets, in order: the palette assigned to its version, the palette
-assigned to the highest version (compared number by number, so `1.10.0` beats `1.9.2`; a phone with no header gets
-it too), the palette assigned to `fallback` (so only while no version is assigned), the `Palette` config section,
-then none (the built-in colours). Assignments and palettes are
+**Who gets which palette.** Palettes are assigned to a minor release such as `1.4`, or to `fallback`. Patch
+versions such as `1.4.6` are refused (`400`), because the palette's name is shown on the phones as the release name,
+and releases are named per minor version. (A token that is not a version number, like the Bruno run's `bruno-test`,
+is also accepted.) Phones send `X-App-Version` (for example `1.4.6 (20)`); the part before the space is the phone's
+version. A phone gets, in order: the palette assigned to exactly that version (patch-level assignments saved before
+the rule, or a test token), the palette for its minor version (`1.4`), the most recent palette assigned at or below
+its version (compared number by number, so `1.10` beats `1.9`), the palette assigned to the highest version (for
+phones older than every assignment, and phones with no header), the palette assigned to `fallback` (so only while no
+version is assigned), the `Palette` config section, then none (the built-in colours). Assignments and palettes are
 cached for about five seconds. Apps pick the change up on their next launch or return to the front.
 
 Editing a palette that is assigned changes what those phones get straight away. To stage a change, save it as a new
