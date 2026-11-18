@@ -253,7 +253,9 @@ struct ContentView: View {
             // Only when the server has events for this account (the "events" feature): the runs people
             // nearby can join, or the placeholder while there's no position to look near.
             ForEach(events.joinable) { event in
-                EventSignButton(eyebrow: event.eyebrow, title: event.title, subtitle: event.subtitle) {
+                EventSignButton(
+                    eyebrow: event.eyebrow, title: event.title, subtitle: event.subtitle, organiser: event.organiser
+                ) {
                     nearbyCandidate = event
                 }
             }

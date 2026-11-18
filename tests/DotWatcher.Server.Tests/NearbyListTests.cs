@@ -33,7 +33,8 @@ public class NearbyListTests
         Assert.Equal(session.SessionId, item.GetProperty("sessionId").GetString());
         Assert.Equal("Sunday long run", item.GetProperty("title").GetString());
         Assert.Contains("100 m", item.GetProperty("eyebrow").GetString());
-        Assert.Contains("Alice", item.GetProperty("subtitle").GetString());
+        Assert.Equal("Organised by Alice", item.GetProperty("subtitle").GetString()); // text, for older builds
+        Assert.Equal("Alice", item.GetProperty("organiser").GetString());           // drawn as a dot by newer ones
         Assert.DoesNotContain("-36.85", body);
         Assert.DoesNotContain("174.76", body);
     }

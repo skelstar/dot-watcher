@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -45,6 +46,7 @@ import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -52,6 +54,7 @@ import androidx.compose.ui.platform.LocalFontFamilyResolver
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.onLongClick
 import androidx.compose.ui.semantics.semantics
@@ -63,6 +66,8 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import nz.skelstar.dotwatcher.ui.casual.holdToComplete
+import nz.skelstar.dotwatcher.ui.map.initialsFor
+import nz.skelstar.dotwatcher.ui.theme.SignColors
 import nz.skelstar.dotwatcher.ui.theme.SignFontFamily
 import nz.skelstar.dotwatcher.ui.theme.animatedSignColors
 
@@ -156,7 +161,8 @@ fun HoldSignButton(
 /**
  * A public event happening near the runner, shown under Go in orange with ink text and a ink bar so it
  * stands out from both the navy Go and the cream signs. No frame: it would make the sign look inset. [eyebrow] is the small caps line above the title
- * ("Happening near you . 2.3 km").
+ * ("Happening near you . 2.3 km"). With an [organiser] (nearby runs) the line under the title is "Organised by"
+ * and their dot; TalkBack still reads [subtitle], so the name is spoken in full.
  */
 @Composable
 fun EventSignButton(
@@ -165,6 +171,7 @@ fun EventSignButton(
     subtitle: String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    organiser: String? = null,
 ) {
     val colors = animatedSignColors()
     Column(
@@ -182,8 +189,37 @@ fun EventSignButton(
             ink = colors.accentInk,
             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
             eyebrow = eyebrow,
+            organiser = organiser?.let { name -> @Composable { OrganiserDot(name, colors) } },
         )
     }
+}
+
+/**
+ * The organiser of a nearby run, drawn small after "Organised by": a dot in the tile's ink with the initials in the
+ * Join / Create background, like the wordmark dot. Where those two colours are too close (under 4.5:1, the bar for
+ * small text) the initials use the tile's own background instead, which always reads on its ink. The palette editor
+ * previews the same rule (`orgInk` in client/public/palette-playground.html), as does iOS (`OrganiserDot`).
+ */
+@Composable
+private fun OrganiserDot(name: String, colors: SignColors) {
+    val initialsColor = if (contrastRatio(colors.altBg, colors.accentInk) >= 4.5f) colors.altBg else colors.accent
+    Box(
+        modifier = Modifier.size(20.dp).background(colors.accentInk, CircleShape),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = initialsFor(name),
+            color = initialsColor,
+            style = TextStyle(fontSize = 9.sp, fontWeight = FontWeight.SemiBold, lineHeight = 9.sp),
+        )
+    }
+}
+
+/** WCAG contrast ratio between two colours, 1 to 21. */
+internal fun contrastRatio(a: Color, b: Color): Float {
+    val x = a.luminance()
+    val y = b.luminance()
+    return (maxOf(x, y) + 0.05f) / (minOf(x, y) + 0.05f)
 }
 
 /**
@@ -243,6 +279,7 @@ private fun SignContent(
     alignBottom: Boolean = false,
     eyebrow: String? = null,
     nudging: Boolean = false,
+    organiser: (@Composable () -> Unit)? = null,
 ) {
     val base = LocalTextStyle.current
     val eyebrowStyle = base.merge(
@@ -267,12 +304,25 @@ private fun SignContent(
             Column(modifier = Modifier.weight(1f)) {
                 eyebrow?.let { Text(text = it.uppercase(), color = ink, style = eyebrowStyle) }
                 Text(text = title, color = ink, style = titleStyle)
-                Text(
-                    text = subtitle,
-                    color = ink,
-                    style = subtitleStyle,
-                    modifier = Modifier.padding(top = SubtitleGap),
-                )
+                if (organiser != null) {
+                    Row(
+                        modifier = Modifier
+                            .padding(top = SubtitleGap)
+                            .clearAndSetSemantics { contentDescription = subtitle },
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(text = "Organised by", color = ink, style = subtitleStyle)
+                        Spacer(Modifier.width(6.dp))
+                        organiser()
+                    }
+                } else {
+                    Text(
+                        text = subtitle,
+                        color = ink,
+                        style = subtitleStyle,
+                        modifier = Modifier.padding(top = SubtitleGap),
+                    )
+                }
             }
             Spacer(Modifier.width(12.dp))
             val iconModifier = Modifier

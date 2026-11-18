@@ -49,7 +49,8 @@ public class EventsController(UserTokenAuth userAuth, FeatureFlags features, Ses
                 $"Happening near you · {away}",
                 match.Title,
                 $"Organised by {match.OrganiserName}",
-                match.SessionId);
+                match.SessionId,
+                match.OrganiserName);
         }).ToList();
 
         return Ok(events);
