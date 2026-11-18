@@ -1,7 +1,8 @@
 # Phone builds from Kraken — Plan
 
-*DotWatcher + Kraken — plan, November 2026. Status: step 0 nearly done. The workflow uploaded 1.4.3 (974) to TestFlight;
-the tag run and merging `ios-testflight-runner` remain (see the step 0 progress log).*
+*DotWatcher + Kraken — plan, November 2026. Status: **done and in use** (18 November 2026). Kraken has uploaded iOS
+1.4.4, 1.4.5 and 1.4.6 to TestFlight and Android 1.4.4 and 1.4.6 to Play internal testing. See
+[Status](#status-18-november-2026) at the end; the rest of the file is the plan as written, with boxes ticked.*
 
 Goal: in Kraken (kraken.skelstar.io, repo `skelstar/tatooine-deploy`), pick a branch, type a version such as
 `1.4.4`, press **Upload to TestFlight**, and watch it go up. Kraken never builds anything itself (an iOS build needs a
@@ -16,7 +17,7 @@ is verified locally.
 
 ---
 
-## Decisions (proposed; confirm before step 1)
+## Decisions (all kept as built)
 
 - **Kraken, not a new app.** It already has a GitHub token, a SQLite history, server-rendered pages, a confirm
   screen, a `DEPLOYS_ENABLED` switch and a fake mode. Phone builds become a new section beside the deploy dashboard.
@@ -44,10 +45,12 @@ Branch `ios-testflight-workflow` (merged, PR #352).
       `ASC_ISSUER_ID`, `ASC_KEY_P8`, `LINZ_API_KEY`. Not yet proven: no run has reached a step that uses them.
 - [x] First manual run succeeds and the build appears in TestFlight: run #3 uploaded 1.4.3 (974) after a GitHub macOS capacity delay (see
       progress log). Branch `ios-testflight-runner` moves the job to `macos-15`; merge its PR.
-- [ ] A tag run (`ios-v<current version>`) succeeds, which also proves the tag/version check.
+- [ ] A tag run (`ios-v<current version>`) succeeds, which also proves the tag/version check. **Not needed in
+      practice:** every upload so far was dispatched from Kraken, and dispatched runs push their own tag with
+      `GITHUB_TOKEN`, which doesn't start the tag trigger. The tag-push path is kept but has never run.
 
-Nothing below starts until these are ticked. If GitHub's Macs stay unavailable, see "Alternative: Xcode Cloud"
-below, which would replace this step.
+Step 1 went ahead with the tag run still open (see above). The macOS capacity problem didn't come back, so Xcode
+Cloud wasn't needed.
 
 ### Progress log
 
@@ -76,44 +79,47 @@ below, which would replace this step.
 
 ## Step 1 — dot-watcher: the workflow takes a version
 
-File: `.github/workflows/ios-testflight.yml`.
+File: `.github/workflows/ios-testflight.yml`. All of this landed in #356 (checked against the workflow on `staging`,
+18 November 2026).
 
-- [ ] `workflow_dispatch` inputs:
+- [x] `workflow_dispatch` inputs:
   - `version` (optional). Blank means "use the project's version", which is today's behaviour, so the Actions-tab
     button keeps working unchanged.
   - `request_id` (optional). Set by Kraken so it can find the run it started (see Step 2, "Finding the run").
-- [ ] `run-name:` shows the version, branch and request id, e.g. `TestFlight 1.4.4 from staging [k-42]`.
-- [ ] Validate `version` as `X.Y.Z` (digits only) before anything else; fail with a clear message.
-- [ ] Fail early if the tag `ios-v<version>` already exists on a different commit (that version was already uploaded
+- [x] `run-name:` shows the version, branch and request id, e.g. `TestFlight 1.4.4 from staging [k-42]`.
+- [x] Validate `version` as `X.Y.Z` (digits only) before anything else; fail with a clear message.
+- [x] Fail early if the tag `ios-v<version>` already exists on a different commit (that version was already uploaded
       from somewhere else). Same commit is allowed, and the run will then fail at upload only if the build number
       repeats.
-- [ ] Archive with `MARKETING_VERSION=<version>` when given.
-- [ ] Keep the tag-push trigger and its "tag must match the project" check for runs started by a tag.
-- [ ] After a successful upload of a dispatched run, create and push `ios-v<version>` on the built commit
+- [x] Archive with `MARKETING_VERSION=<version>` when given.
+- [x] Keep the tag-push trigger and its "tag must match the project" check for runs started by a tag.
+- [x] After a successful upload of a dispatched run, create and push `ios-v<version>` on the built commit
       (`permissions: contents: write`). Tags pushed with `GITHUB_TOKEN` don't start workflows, so this can't loop
       back into the tag trigger. Check the repository rulesets allow tag creation by Actions.
-- [ ] Summary shows "version 1.4.4 (typed; project says 1.4.3)" when they differ.
-- [ ] Update `docs/ios-testflight.html`: the version input, the automatic tag, and the drift note.
+- [x] Summary shows "version 1.4.4 (typed; project says 1.4.3)" when they differ.
+- [x] Update `docs/ios-testflight.html`: the version input, the automatic tag, and the drift note.
 
 ## Step 2 — Kraken: a Phone builds section
 
-Repo `skelstar/tatooine-deploy`. Work on a branch there; its own README and design doc get updated too.
+Repo `skelstar/tatooine-deploy`. Built in Kraken PR #9, switched on by `PHONE_BUILDS_ENABLED` and the
+`phoneBuilds` entry on Tatooine-Configuration's `kraken-phone-builds` branch, and in use since 17 November 2026.
+The boxes below are ticked from that; they weren't re-checked one by one against the Kraken code from this repo.
 
 ### Config
 
-- [ ] `projects.yaml` gains an optional `phoneBuilds` list per project, e.g. for dot-watcher:
+- [x] `projects.yaml` gains an optional `phoneBuilds` list per project, e.g. for dot-watcher:
       `{ platform: ios, workflow: ios-testflight.yml, tagPrefix: ios-v, label: TestFlight }`. Add it to
       `config/projects.example.yaml` and to the ConfigMap in Tatooine-Configuration
       (`deployments/kraken/k8s/projects.yaml`).
 
 ### GitHub port (`src/ports.ts`, `src/real/github.ts`, `src/fake/`)
 
-- [ ] `listBranches(repo)`: for the branch picker (`staging` first, then most recently updated).
-- [ ] `listTags(repo, prefix)`: latest `ios-v*` for the suggestion and the "lower than last upload" warning.
-- [ ] `projectVersion(repo, ref)`: read `MARKETING_VERSION` from the `.pbxproj` at that ref, shown beside the input.
-- [ ] `dispatchWorkflow(repo, workflow, ref, inputs)`.
-- [ ] `findRun(repo, workflow, requestId)` and `getRun(repo, runId)` including job steps, for progress.
-- [ ] Fake versions of all of the above, with runs that move through their steps on a timer, like fake deploys.
+- [x] `listBranches(repo)`: for the branch picker (`staging` first, then most recently updated).
+- [x] `listTags(repo, prefix)`: latest `ios-v*` for the suggestion and the "lower than last upload" warning.
+- [x] `projectVersion(repo, ref)`: read `MARKETING_VERSION` from the `.pbxproj` at that ref, shown beside the input.
+- [x] `dispatchWorkflow(repo, workflow, ref, inputs)`.
+- [x] `findRun(repo, workflow, requestId)` and `getRun(repo, runId)` including job steps, for progress.
+- [x] Fake versions of all of the above, with runs that move through their steps on a timer, like fake deploys.
 
 ### Finding the run
 
@@ -123,57 +129,58 @@ response now includes the run id, use that and keep the name search as a fallbac
 
 ### Domain (`src/domain/`)
 
-- [ ] `phoneVersion.ts`: parse/compare `X.Y.Z`; suggest the next patch after the latest tag; flag an input that is
+- [x] `phoneVersion.ts`: parse/compare `X.Y.Z`; suggest the next patch after the latest tag; flag an input that is
       lower than or equal to the latest tag ("1.4.3 was already uploaded; TestFlight will refuse it once approved")
       as a warning, not a block.
-- [ ] Map workflow steps to stages: Queued → Checking out → Archiving → Uploading → Done / Failed, with the failing
+- [x] Map workflow steps to stages: Queued → Checking out → Archiving → Uploading → Done / Failed, with the failing
       step's name and a link to the run log.
 
 ### Store (`src/store.ts`)
 
-- [ ] `phone_builds` table: id, project, platform, branch, commit, version, request_id, run_id, status, stage,
+- [x] `phone_builds` table: id, project, platform, branch, commit, version, request_id, run_id, status, stage,
       started_at, finished_at, error. Picked up again on restart (the run carries on in GitHub regardless).
 
 ### Views (`src/views/`)
 
-- [ ] Project page: a **Phone builds** card with the last build per platform (version, build number if known, branch,
+- [x] Project page: a **Phone builds** card with the last build per platform (version, build number if known, branch,
       when, status).
-- [ ] Form: branch picker, version input pre-filled with the suggestion, the project's own version shown beside it,
+- [x] Form: branch picker, version input pre-filled with the suggestion, the project's own version shown beside it,
       any warning, then **Upload to TestFlight** leading to Kraken's usual confirm screen. The confirm screen says it
       uses real data (Release → Production) and that nothing is submitted for review.
-- [ ] Progress page, same pattern as `/deployments/:id/progress`.
-- [ ] Builds appear in `/log` alongside deploys.
+- [x] Progress page, same pattern as `/deployments/:id/progress`.
+- [x] Builds appear in `/log` alongside deploys.
 
 ### Safety and access
 
-- [ ] The button is hidden unless `DEPLOYS_ENABLED=true` (or a separate `PHONE_BUILDS_ENABLED`, decide when
+- [x] The button is hidden unless `DEPLOYS_ENABLED=true` (or a separate `PHONE_BUILDS_ENABLED`, decide when
       building).
-- [ ] Fine-grained token gains **Actions: read and write** on `skelstar/dot-watcher`. Update the token table in the
+- [x] Fine-grained token gains **Actions: read and write** on `skelstar/dot-watcher`. Update the token table in the
       Kraken README.
-- [ ] Refuse to start a second build while one for the same platform is queued or running (the workflow queues them
+- [x] Refuse to start a second build while one for the same platform is queued or running (the workflow queues them
       anyway; Kraken should say so rather than look stuck).
 
 ### Tests
 
-- [ ] Domain tests for version parsing, suggestion and warnings, and for the step-to-stage mapping.
-- [ ] A fake-mode scenario per state: idle, running, failed at upload (build number refused), token without Actions
+- [x] Domain tests for version parsing, suggestion and warnings, and for the step-to-stage mapping.
+- [x] A fake-mode scenario per state: idle, running, failed at upload (build number refused), token without Actions
       permission.
 
-## Alternative: Xcode Cloud (not decided)
+## Alternative: Xcode Cloud (not pursued)
 
-If GitHub's macOS runners keep failing for capacity, Apple's Xcode Cloud could build and upload instead. It's a
-medium change, not a rewrite.
+Not pursued: GitHub's macOS shortage on 17 November was temporary, and every run since has got a Mac straight away.
+Kept for reference in case it comes back. If GitHub's macOS runners keep failing for capacity, Apple's Xcode Cloud
+could build and upload instead. It's a medium change, not a rewrite.
 
 **What it gives:** Apple's own Macs (no GitHub queue), 25 compute hours a month included with the developer
 membership, and signing plus TestFlight upload built in (no `ASC_*` secrets needed for the build itself).
 
 **Setup:**
 
-- [ ] In Xcode on the Mac: Integrate → Create Workflow. Grant Apple access to the GitHub repo; Archive action;
+- [-] In Xcode on the Mac: Integrate → Create Workflow. Grant Apple access to the GitHub repo; Archive action;
       post-action "TestFlight (internal testing only)"; start condition manual (and/or `ios-v*` tags).
-- [ ] `ios/DotWatcher/ci_scripts/ci_post_clone.sh` (next to the `.xcodeproj`): writes `Config/Secrets.xcconfig`
+- [-] `ios/DotWatcher/ci_scripts/ci_post_clone.sh` (next to the `.xcodeproj`): writes `Config/Secrets.xcconfig`
       from an Xcode Cloud secret environment variable `LINZ_API_KEY`, so the map isn't blank.
-- [ ] First build: check the build number. Xcode Cloud numbers builds itself, which replaces the commit-count
+- [-] First build: check the build number. Xcode Cloud numbers builds itself, which replaces the commit-count
       scheme; set its "next build number" above the last uploaded build. How it interacts with the project's
       build-number build phase is unchecked.
 
@@ -192,14 +199,25 @@ recurring.
 
 ## Later, not in this plan
 
-- Android: a `android-play-internal.yml` workflow (Play internal testing, `android-v*` tags) would slot into the same
-  `phoneBuilds` config.
+- ~~Android: a `android-play-internal.yml` workflow (Play internal testing, `android-v*` tags) would slot into the same
+  `phoneBuilds` config.~~ Done: see [`android-play-internal.md`](android-play-internal.md).
 - Submitting for App Store review from Kraken. Deliberately left manual.
-- Bumping `MARKETING_VERSION` in the project automatically through a PR.
+- ~~Bumping `MARKETING_VERSION` in the project automatically through a PR.~~ Done: Kraken's version-bump button opens
+  the PR (for example #359 for iOS 1.4.5), and you merge it.
 
-## Open questions
+## Open questions (answered)
 
-- Kraken has no login mentioned in its README. Is it reachable from outside the home network? If so, the build
-  button needs more than the `DEPLOYS_ENABLED` switch.
-- Should a run with no typed version also create its `ios-v*` tag? (Proposed: yes, when that tag doesn't exist yet,
-  so the latest tag is always the latest upload.)
+- ~~Kraken has no login mentioned in its README. Is it reachable from outside the home network?~~ Kraken sits behind
+  basic auth.
+- ~~Should a run with no typed version also create its `ios-v*` tag?~~ Yes, as built: every dispatched run tags the
+  version read from the built app's `Info.plist`, typed or not, and leaves an existing tag on another commit alone.
+
+## Status, 18 November 2026
+
+- **Uploads so far from Kraken:** TestFlight 1.4.4 (k1), 1.4.5 (k2), 1.4.6 (k4); Play internal 1.4.4 (k3) and 1.4.6.
+  Tags `ios-v1.4.6` and `android-v1.4.6` are both on `d3a02fc`.
+- **Phone versions are kept in step.** Android skipped 1.4.5 so both platforms are on 1.4.6. Remote palettes are
+  assigned by version number regardless of platform, so a shared number means a shared palette (see
+  [`remote-palette.md`](remote-palette.md)).
+- **Kraken's token** needs Actions and Pull requests read/write, with `skelstar/dot-watcher` in its repository list.
+- **Still open:** the tag-push run in step 0, which nothing currently uses.
