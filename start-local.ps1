@@ -149,7 +149,9 @@ function Start-InNewWindow {
 # `*` covers IPv4 and IPv6, so localhost still works for the Simulator and the Vite proxy.
 Start-InNewWindow -Title 'DotWatcher Server' -Command "cd '$serverDir'; `$env:ASPNETCORE_ENVIRONMENT = 'Development'; dotnet run --urls http://*:$serverPort"
 
-Start-InNewWindow -Title 'DotWatcher Client' -Command "cd '$clientDir'; `$env:VITE_SERVER_PORT = '$serverPort'; npm run dev -- --host"
+# `dev:lan` is `vite --host`. Not `npm run dev -- --host`: in PowerShell, npm runs through its npm.ps1 wrapper, which
+# drops the `--`, so npm takes `--host` as its own flag and newer npm versions exit with "Unknown cli flag".
+Start-InNewWindow -Title 'DotWatcher Client' -Command "cd '$clientDir'; `$env:VITE_SERVER_PORT = '$serverPort'; npm run dev:lan"
 
 $lanName = if ($IsMacOS) { "$(scutil --get LocalHostName).local".ToLower() } else { [System.Net.Dns]::GetHostName() }
 Write-Host "Server starting at http://localhost:$serverPort, and http://${lanName}:$serverPort from a phone (see 'DotWatcher Server' window)"
