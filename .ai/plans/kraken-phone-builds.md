@@ -9,8 +9,9 @@ Goal: in Kraken (kraken.skelstar.io, repo `skelstar/tatooine-deploy`), pick a br
 Mac); it starts the `ios-testflight.yml` GitHub Actions workflow and follows the run.
 
 Related: [`docs/ios-testflight.html`](../../docs/ios-testflight.html) (how the workflow, versions and build numbers
-work), `.github/workflows/ios-testflight.yml`, and Kraken's own design doc in Tatooine-Configuration at
-`docs/kraken/how-it-works.html`.
+work), `.github/workflows/ios-testflight.yml`, Kraken's own design doc in Tatooine-Configuration at
+`docs/kraken/how-it-works.html`, and the mock-up of Kraken's Phone builds screens,
+[`kraken-phone-builds-mockup.html`](kraken-phone-builds-mockup.html).
 
 Tick boxes as work lands: `- [ ]` → `- [x]`. Per `AGENTS.md`, build/test verification is left to CI; nothing below
 is verified locally.
