@@ -93,14 +93,24 @@ struct LinzMapRegion: Equatable {
     }
 }
 
-/// Where the screen wants the camera. Each `move(to:)` is one request: the map animates there once, then
-/// leaves the camera alone (so the person can drag it) until the next request.
+/// Where the screen wants the camera. Each `move(to:)` or `center(on:)` is one request: the map animates
+/// there once, then leaves the camera alone (so the person can drag it) until the next request.
 struct LinzMapCamera {
     private(set) var region: LinzMapRegion?
+    /// Set by `center(on:)`: only the centre moves and the zoom stays where it is, as when following a runner.
+    private(set) var keepsZoom = false
     private(set) var revision = 0
 
     mutating func move(to region: LinzMapRegion) {
         self.region = region
+        keepsZoom = false
+        revision += 1
+    }
+
+    /// Moves the centre to `coordinate` and keeps the zoom the person chose.
+    mutating func center(on coordinate: CLLocationCoordinate2D) {
+        region = LinzMapRegion(center: coordinate, span: 0)
+        keepsZoom = true
         revision += 1
     }
 }
@@ -160,7 +170,9 @@ struct LinzMapView: UIViewRepresentable {
     var extraRoutes: [[CLLocationCoordinate2D]] = []
     var joinRange: LinzJoinRange?
     var camera: LinzMapCamera
-    /// Called when the person pans or zooms the map themselves.
+    /// Called when the person drags the map away: after a gesture, when its centre ends up more than 10% of
+    /// the visible width from where the camera was aimed. A zoom alone, or a small nudge, doesn't count, as on
+    /// Android (RELEASE_THRESHOLD in MapScreen.kt).
     var onUserMovedCamera: () -> Void = {}
     /// Called with a marker's id when the person taps on or near it. The markers themselves take no
     /// touches (drags on a pin must still move the map), so the map finds the nearest one to the tap.
@@ -216,6 +228,12 @@ struct LinzMapView: UIViewRepresentable {
         private var appliedRegion: LinzMapRegion?
         /// Set by a pan or zoom, so the next request is applied even if it asks for the same region again.
         private var movedByUser = false
+        /// While a finger is moving the map, camera requests wait, so the per-second re-frame can't pull the map
+        /// out from under it. Cleared when the region settles.
+        private var gestureInProgress = false
+        /// How far the centre must end up from where it was aimed, as a share of the visible width, to count as
+        /// dragging away.
+        private static let releaseThreshold = 0.1
 
         private var entries: [String: MarkerEntry] = [:]
 
@@ -240,6 +258,7 @@ struct LinzMapView: UIViewRepresentable {
         func applyCameraIfNeeded() {
             guard let mapView, let region = requestedCamera.region,
                   requestedCamera.revision != appliedRevision,
+                  !gestureInProgress,
                   mapView.bounds.width > 0, mapView.bounds.height > 0
             else { return }
             appliedRevision = requestedCamera.revision
@@ -248,6 +267,10 @@ struct LinzMapView: UIViewRepresentable {
             let isFirst = appliedRegion == nil
             appliedRegion = region
             movedByUser = false
+            if requestedCamera.keepsZoom, !isFirst {
+                mapView.setCenter(region.center, animated: true)
+                return
+            }
             let camera = mapView.cameraThatFitsCoordinateBounds(region.bounds)
             if isFirst {
                 mapView.setCamera(camera, animated: false)
@@ -421,7 +444,23 @@ struct LinzMapView: UIViewRepresentable {
             ]
             guard !reason.isDisjoint(with: gestures) else { return }
             movedByUser = true
-            onUserMovedCamera()
+            gestureInProgress = true
+        }
+
+        /// The map has settled. After a gesture: if it was dragged far enough from where it was aimed, the
+        /// screen lets go (stops following or fitting); otherwise the waiting request puts it back.
+        fileprivate func regionDidChange() {
+            guard gestureInProgress, let mapView else { return }
+            gestureInProgress = false
+            if let aimed = appliedRegion?.center {
+                let visible = mapView.visibleCoordinateBounds
+                let limit = Self.releaseThreshold * abs(visible.ne.longitude - visible.sw.longitude)
+                let centre = mapView.centerCoordinate
+                if abs(centre.longitude - aimed.longitude) > limit || abs(centre.latitude - aimed.latitude) > limit {
+                    onUserMovedCamera()
+                }
+            }
+            applyCameraIfNeeded()
         }
     }
 }
@@ -441,6 +480,10 @@ extension LinzMapView.Coordinator: @preconcurrency MLNMapViewDelegate {
 
     func mapView(_ mapView: MLNMapView, regionWillChangeWith reason: MLNCameraChangeReason, animated: Bool) {
         regionWillChange(reason: reason)
+    }
+
+    func mapView(_ mapView: MLNMapView, regionDidChangeWith reason: MLNCameraChangeReason, animated: Bool) {
+        regionDidChange()
     }
 }
 
