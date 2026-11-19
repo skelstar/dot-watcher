@@ -73,6 +73,8 @@ import kotlin.math.ceil
 
 private const val RUNNERS_SOURCE_ID = "runners-source"
 private const val RUNNERS_LAYER_ID = "runners-layer"
+/** Degrees across the view when following starts, the same close view as iOS (`TrackingMapScreen`'s 0.01 span). */
+private const val FOLLOW_SPAN = 0.01
 private const val FOLLOW_SOURCE_ID = "follow-source"
 private const val FOLLOW_LAYER_ID = "follow-layer"
 private const val RUNNER_NAME_PROPERTY = "runnerName"
@@ -176,13 +178,29 @@ fun MapScreen(
                 followed != null -> {
                     val target = LatLng(followed.latitude, followed.longitude)
                     camera.aimed = target
-                    map.animateCamera(CameraUpdateFactory.newLatLng(target))
+                    if (camera.zoomedInOn != followed.runnerName) {
+                        // Starting to follow someone zooms in close on them once, as on iOS; after that only the
+                        // centre moves, so a zoom the person chooses stays.
+                        camera.zoomedInOn = followed.runnerName
+                        val half = FOLLOW_SPAN / 2
+                        val close = LatLngBounds.Builder()
+                            .include(LatLng(target.latitude + half, target.longitude + half))
+                            .include(LatLng(target.latitude - half, target.longitude - half))
+                            .build()
+                        runCatching { map.animateCamera(CameraUpdateFactory.newLatLngBounds(close, 0)) }
+                    } else {
+                        map.animateCamera(CameraUpdateFactory.newLatLng(target))
+                    }
                 }
                 fitAll && positions.isNotEmpty() -> {
                     camera.aimed = positions.centre()
+                    camera.zoomedInOn = null
                     fitToPositions(map, positions)
                 }
-                else -> camera.aimed = null
+                else -> {
+                    camera.aimed = null
+                    camera.zoomedInOn = null
+                }
             }
         }
     }
@@ -415,7 +433,13 @@ private fun List<List<RoutePoint>>.toRouteFeatures(): FeatureCollection =
 /** Mutable camera bookkeeping shared between the effect that aims the camera and the listeners that
  *  decide whether the user has since pulled it away. Not Compose state: it is only read from map
  *  callbacks, never during composition. */
-private class CameraAim(var aimed: LatLng? = null, var userGesture: Boolean = false)
+/** [zoomedInOn] is who the camera last zoomed in on when following started; null once nobody is followed, so
+ *  following again zooms in again. */
+private class CameraAim(
+    var aimed: LatLng? = null,
+    var userGesture: Boolean = false,
+    var zoomedInOn: String? = null,
+)
 
 private fun List<NearbyDot>.toNearbyFeatures(): FeatureCollection =
     FeatureCollection.fromFeatures(
