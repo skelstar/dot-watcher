@@ -40,16 +40,19 @@ struct MapActionError: LocalizedError {
 @Observable
 final class TrackingMapController {
     fileprivate(set) var camera = LinzMapCamera()
-    /// While set, the map re-frames everyone as positions move; fit-all sets it, dragging clears it.
+    /// While set, the map re-frames everyone as positions move; fit-all sets it, dragging away clears it.
     fileprivate(set) var fitLocked = true
     /// The pin the map stays centred on; nil frames everyone (or leaves the camera alone).
     private(set) var followedId: String?
     /// Bumped by every request below, so the shell re-frames straight away rather than on the next tick.
     fileprivate private(set) var reframeRequest = 0
+    /// True from `follow` until the first re-frame zooms in on them; after that following keeps the person's zoom.
+    fileprivate var followNeedsZoom = false
 
     func follow(_ id: String) {
         followedId = id
         fitLocked = false
+        followNeedsZoom = true
         reframeRequest += 1
     }
 
@@ -73,8 +76,14 @@ final class TrackingMapController {
     }
 
     fileprivate func stopFollowing() { followedId = nil }
-    fileprivate func userMovedCamera() { fitLocked = false }
+    /// Dragged away: let go of whoever is followed and stop fitting, as on Android. Fit all, or tapping
+    /// someone, starts again.
+    fileprivate func userMovedCamera() {
+        followedId = nil
+        fitLocked = false
+    }
     fileprivate func move(to region: LinzMapRegion) { camera.move(to: region) }
+    fileprivate func center(on coordinate: CLLocationCoordinate2D) { camera.center(on: coordinate) }
 }
 
 /// The full-screen map while sharing, for both Go and a named session: the LINZ map with everyone's dots,
@@ -216,7 +225,12 @@ struct TrackingMapScreen<RailTop: View, RailMiddle: View, BottomLeading: View>: 
                 controller.stopFollowing()  // they left, or have no position any more
                 return
             }
-            controller.move(to: LinzMapRegion(center: pin.coordinate, span: 0.01))
+            if controller.followNeedsZoom {
+                controller.followNeedsZoom = false
+                controller.move(to: LinzMapRegion(center: pin.coordinate, span: 0.01))
+            } else {
+                controller.center(on: pin.coordinate)
+            }
         } else if controller.fitLocked,
                   let region = LinzMapRegion.fitting(pins.map(\.coordinate) + nearby.map(\.coordinate)) {
             controller.move(to: region)
