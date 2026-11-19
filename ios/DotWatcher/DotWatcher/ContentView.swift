@@ -344,10 +344,11 @@ struct ContentView: View {
                     Text("t-watchr")
                         .font(.largeTitle.bold())
                 }
-                let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String
-                let sha = Bundle.main.infoDictionary?["GitCommitSHA"] as? String
-                if build != nil || sha != nil {
-                    Text([build.map { "build \($0)" }, sha].compactMap { $0 }.joined(separator: " · "))
+                // The version and the palette's name, which is the release name for now. No build number or commit.
+                let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String
+                let paletteName = AppliedPalette.shared.colors?.name
+                if version != nil || paletteName != nil {
+                    Text([version.map { "v\($0)" }, paletteName].compactMap { $0 }.joined(separator: " · "))
                         .font(.caption2)
                         .foregroundStyle(location.debugForceUltraConstrained ? Color.orange : Color(.tertiaryLabel))
                         .contentShape(Rectangle())

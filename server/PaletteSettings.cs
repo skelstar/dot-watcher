@@ -42,9 +42,14 @@ public enum PaletteDeleteResult { Deleted, NotFound, InUse }
 
 /// <summary>
 /// Which palette a phone gets. Palettes are saved in the database and do nothing until an admin assigns one to an
-/// app version (phones send it as <c>X-App-Version</c>, e.g. "1.2.2 (20)"), or to "fallback".
-/// A phone gets, in order: the palette for its exact version, the palette for the highest assigned version, the
-/// fallback one (so only while no version is assigned), the <c>Palette</c> config section, then none. A missing section or a bad hex value is rejected when saved, and ignored (with a warning logged) in
+/// minor release such as "1.4" (phones send <c>X-App-Version</c>, e.g. "1.4.6 (20)"), or to "fallback". A palette's
+/// name is the release name the phones show, so releases are named per minor version, never per patch.
+/// A phone gets, in order: the palette for its exact version (older patch-level assignments, or a test token), the
+/// palette for its minor version, the most recent palette assigned at or below its version, the fallback one, the
+/// <c>Palette</c> config section, then none. Never a newer version's palette: it may rely on start-screen changes an
+/// older app doesn't have (Android 1.4.4 once picked up a palette made for 1.4.6), so a phone older than every
+/// assigned version gets the fallback. A phone that sends no version, or one that isn't dot-separated numbers, gets
+/// the highest assigned version's palette. A missing section or a bad hex value is rejected when saved, and ignored (with a warning logged) in
 /// config, so a typo leaves the apps on their built-in colours. Contrast is not checked: the playground shows the
 /// ratio as advice, and choosing readable colours is up to whoever saves the palette.
 /// </summary>
@@ -100,21 +105,37 @@ public sealed partial class PaletteProvider
     {
         var assigned = ReadAssigned();
         var version = AppVersionName(appVersionHeader);
-        if (version is not null && assigned.TryGetValue(version, out var forVersion))
-            return forVersion;
+        if (version is not null)
+        {
+            if (assigned.TryGetValue(version, out var forVersion))
+                return forVersion;
+            if (VersionParts(version) is { } phone)
+            {
+                if (phone.Length >= 2 && assigned.TryGetValue($"{phone[0]}.{phone[1]}", out var forMinor))
+                    return forMinor;
+                if (Latest(assigned.Keys, atMost: phone) is { } earlier)
+                    return assigned[earlier];
+                // Older than every assigned version: never a newer palette.
+                return assigned.TryGetValue(FallbackKey, out var olderFallback) ? olderFallback : _configured;
+            }
+        }
+        // No readable version: the newest.
         if (Latest(assigned.Keys) is { } latest)
             return assigned[latest];
         return assigned.TryGetValue(FallbackKey, out var fallback) ? fallback : _configured;
     }
 
-    /// <summary>The highest assigned app version, compared number by number ("1.10.0" beats "1.9.2"); null when none is.</summary>
-    private static string? Latest(IEnumerable<string> versions)
+    /// <summary>
+    /// The highest assigned app version, compared number by number ("1.10" beats "1.9"), optionally no higher than
+    /// <paramref name="atMost"/>; null when none is.
+    /// </summary>
+    private static string? Latest(IEnumerable<string> versions, int[]? atMost = null)
     {
         string? best = null;
         int[]? bestParts = null;
         foreach (var version in versions)
         {
-            if (VersionParts(version) is not { } parts)
+            if (VersionParts(version) is not { } parts || (atMost is not null && Compare(parts, atMost) > 0))
                 continue;
             if (bestParts is null || Compare(parts, bestParts) > 0 || (Compare(parts, bestParts) == 0 && string.CompareOrdinal(version, best) > 0))
                 (best, bestParts) = (version, parts);
@@ -227,6 +248,16 @@ public sealed partial class PaletteProvider
     /// <summary>An app version, or "fallback", as the API takes it: a short, plain token.</summary>
     public static bool IsValidRoute(string appVersion) => RouteToken().IsMatch(appVersion);
 
+    /// <summary>
+    /// Whether a palette can be assigned to this: "fallback", a minor release such as "1.4", or a token that isn't a
+    /// version number at all (the Bruno run uses "bruno-test"). Patch versions such as "1.4.6" are refused, because the
+    /// palette's name is the release name and releases are named per minor version. Patch-level assignments saved
+    /// before this rule are still served and can still be unassigned.
+    /// </summary>
+    public static bool IsAssignable(string appVersion) =>
+        IsValidRoute(appVersion)
+        && (appVersion == FallbackRoute || MinorVersion().IsMatch(appVersion) || !NumberedVersion().IsMatch(appVersion));
+
     private static string Key(string appVersion) => appVersion == FallbackRoute ? FallbackKey : appVersion;
 
     // A saved palette needs a name so the list is usable, and is trimmed so storage is stable.
@@ -313,4 +344,12 @@ public sealed partial class PaletteProvider
 
     [GeneratedRegex(@"^[0-9A-Za-z][0-9A-Za-z.+_-]{0,31}$")]
     private static partial Regex RouteToken();
+
+    // "1.4": no leading zeros, so it matches the key For() builds from a phone's version.
+    [GeneratedRegex(@"^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$")]
+    private static partial Regex MinorVersion();
+
+    // Anything that starts like a version number ("1", "1.4.6", "1.4-beta"), as opposed to a plain test token.
+    [GeneratedRegex(@"^[0-9]")]
+    private static partial Regex NumberedVersion();
 }

@@ -17,6 +17,9 @@ struct SignColors {
     let accentInk: Color
     /// Nil for the built-in colours, which leave the system background alone.
     let screen: Color?
+    /// The palette's display name from the server, shown beside the version as the release name. Nil for the
+    /// built-in colours, or when the server's palette has none.
+    var name: String? = nil
 
     static let builtIn = SignColors(
         goBg: SignPalette.navy, goFg: SignPalette.sand, goBar: SignPalette.sand,
@@ -43,9 +46,11 @@ struct PaletteWire: Codable {
     private(set) var accent: String?
     private(set) var accentInk: String?
     private(set) var screen: String?
+    /// Optional: a palette without a name is still usable.
+    private(set) var name: String?
 
     private enum CodingKeys: String, CodingKey {
-        case version, goBg, goFg, goBar, altBg, altFg, accent, accentInk, screen
+        case version, goBg, goFg, goBar, altBg, altFg, accent, accentInk, screen, name
     }
 
     init(from decoder: Decoder) throws {
@@ -59,6 +64,7 @@ struct PaletteWire: Codable {
         accent = try? c.decode(String.self, forKey: .accent)
         accentInk = try? c.decode(String.self, forKey: .accentInk)
         screen = try? c.decode(String.self, forKey: .screen)
+        name = try? c.decode(String.self, forKey: .name)
     }
 
     /// The colours if this palette is complete and readable, else nil.
@@ -74,7 +80,8 @@ struct PaletteWire: Codable {
             goBg: goBg.color, goFg: goFg.color, goBar: goBar.color,
             altBg: altBg.color, altFg: altFg.color,
             accent: accent.color, accentInk: accentInk.color,
-            screen: screen.color
+            screen: screen.color,
+            name: name.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.flatMap { $0.isEmpty ? nil : $0 }
         )
     }
 }

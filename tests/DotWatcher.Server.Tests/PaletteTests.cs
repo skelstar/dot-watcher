@@ -78,7 +78,7 @@ public class PaletteTests
         var created = await CreateAsync(client, "Test", "t-1", goBg: "#112233", goFg: "#ffffff");
 
         var before = (await GetMeAsync(client, alice.AccessToken, "1.2.2 (20)")).Config?.Palette;
-        var assigned = await SendAdminAsync(client, HttpMethod.Put, "/admin/palettes/assignments/1.2.2", "test-token", new { paletteId = created.Id });
+        var assigned = await SendAdminAsync(client, HttpMethod.Put, "/admin/palettes/assignments/1.2", "test-token", new { paletteId = created.Id });
         var onVersion = (await GetMeAsync(client, alice.AccessToken, "1.2.2 (20)")).Config?.Palette;
 
         Assert.Equal("#6f1a07", before?.GoBg); // config palette, until assigned
@@ -88,7 +88,7 @@ public class PaletteTests
     }
 
     [Fact]
-    public async Task AnUnassignedVersion_GetsTheHighestAssignedVersionsPalette_NotTheFallback()
+    public async Task APhone_GetsItsMinorVersionsPalette_ElseTheMostRecentAtOrBelowIt_NotTheFallback()
     {
         using var factory = new DotWatcherApiFactory { Palette = Good() };
         using var client = factory.CreateClient();
@@ -97,18 +97,39 @@ public class PaletteTests
         var older = await CreateAsync(client, "Older", goBg: "#223344", goFg: "#ffffff");
         var newest = await CreateAsync(client, "Newest", goBg: "#334455", goFg: "#ffffff");
         await SendAdminAsync(client, HttpMethod.Put, "/admin/palettes/assignments/fallback", "test-token", new { paletteId = fallback.Id });
-        await SendAdminAsync(client, HttpMethod.Put, "/admin/palettes/assignments/1.9.2", "test-token", new { paletteId = older.Id });
-        await SendAdminAsync(client, HttpMethod.Put, "/admin/palettes/assignments/1.10.0", "test-token", new { paletteId = newest.Id });
+        await SendAdminAsync(client, HttpMethod.Put, "/admin/palettes/assignments/1.9", "test-token", new { paletteId = older.Id });
+        await SendAdminAsync(client, HttpMethod.Put, "/admin/palettes/assignments/1.10", "test-token", new { paletteId = newest.Id });
 
-        Assert.Equal("#223344", (await GetMeAsync(client, alice.AccessToken, "1.9.2 (20)")).Config?.Palette?.GoBg); // exact match
+        Assert.Equal("#223344", (await GetMeAsync(client, alice.AccessToken, "1.9.2 (20)")).Config?.Palette?.GoBg); // its minor version
+        Assert.Equal("#223344", (await GetMeAsync(client, alice.AccessToken, "1.9.5 (25)")).Config?.Palette?.GoBg);
         Assert.Equal("#334455", (await GetMeAsync(client, alice.AccessToken, "1.10.0 (30)")).Config?.Palette?.GoBg);
-        Assert.Equal("#334455", (await GetMeAsync(client, alice.AccessToken, "1.9.5 (25)")).Config?.Palette?.GoBg); // numeric, not text, order
+        Assert.Equal("#334455", (await GetMeAsync(client, alice.AccessToken, "1.11.3 (40)")).Config?.Palette?.GoBg); // most recent at or below, numeric order
         Assert.Equal("#334455", (await GetMeAsync(client, alice.AccessToken, "9.9.9 (1)")).Config?.Palette?.GoBg);
+        Assert.Equal("#223344", (await GetMeAsync(client, alice.AccessToken, "1.9.0 (1)")).Config?.Palette?.GoBg);
+        Assert.Equal("#112233", (await GetMeAsync(client, alice.AccessToken, "1.2.0 (1)")).Config?.Palette?.GoBg); // older than all: fallback, never a newer palette
         Assert.Equal("#334455", (await GetMeAsync(client, alice.AccessToken)).Config?.Palette?.GoBg);
     }
 
     [Fact]
-    public async Task TheFallbackAssignment_IsUsedOnlyWhileNoVersionIsAssigned_AndUnassignFallsBack()
+    public async Task PatchVersions_CannotBeAssigned_SoReleasesAreNamedPerMinorVersion()
+    {
+        using var factory = new DotWatcherApiFactory();
+        using var client = factory.CreateClient();
+        var created = await CreateAsync(client, "Ok");
+
+        async Task<HttpStatusCode> Assign(string version) =>
+            (await SendAdminAsync(client, HttpMethod.Put, $"/admin/palettes/assignments/{version}", "test-token", new { paletteId = created.Id })).StatusCode;
+
+        Assert.Equal(HttpStatusCode.BadRequest, await Assign("1.4.6"));
+        Assert.Equal(HttpStatusCode.BadRequest, await Assign("1"));
+        Assert.Equal(HttpStatusCode.BadRequest, await Assign("1.04"));
+        Assert.Equal(HttpStatusCode.OK, await Assign("1.4"));
+        Assert.Equal(HttpStatusCode.OK, await Assign("fallback"));
+        Assert.Equal(HttpStatusCode.OK, await Assign("bruno-test")); // a test token, not a version number
+    }
+
+    [Fact]
+    public async Task TheFallbackAssignment_IsForPhonesWithNoOlderAssignedVersion_AndUnassignFallsBack()
     {
         using var factory = new DotWatcherApiFactory();
         using var client = factory.CreateClient();
@@ -120,14 +141,15 @@ public class PaletteTests
         Assert.Equal("#112233", (await GetMeAsync(client, alice.AccessToken, "9.9.9 (1)")).Config?.Palette?.GoBg);
         Assert.Equal("#112233", (await GetMeAsync(client, alice.AccessToken)).Config?.Palette?.GoBg);
 
-        await SendAdminAsync(client, HttpMethod.Put, "/admin/palettes/assignments/1.2.2", "test-token", new { paletteId = special.Id });
+        await SendAdminAsync(client, HttpMethod.Put, "/admin/palettes/assignments/1.2", "test-token", new { paletteId = special.Id });
         Assert.Equal("#223344", (await GetMeAsync(client, alice.AccessToken, "1.2.2 (20)")).Config?.Palette?.GoBg);
         Assert.Equal("#223344", (await GetMeAsync(client, alice.AccessToken, "9.9.9 (1)")).Config?.Palette?.GoBg); // latest version, not fallback
+        Assert.Equal("#112233", (await GetMeAsync(client, alice.AccessToken, "1.1.0 (1)")).Config?.Palette?.GoBg); // older than 1.2: fallback, not the newer palette
 
-        var unassigned = await SendAdminAsync(client, HttpMethod.Delete, "/admin/palettes/assignments/1.2.2", "test-token");
+        var unassigned = await SendAdminAsync(client, HttpMethod.Delete, "/admin/palettes/assignments/1.2", "test-token");
         Assert.Equal(HttpStatusCode.NoContent, unassigned.StatusCode);
         Assert.Equal("#112233", (await GetMeAsync(client, alice.AccessToken, "1.2.2 (20)")).Config?.Palette?.GoBg);
-        Assert.Equal(HttpStatusCode.NotFound, (await SendAdminAsync(client, HttpMethod.Delete, "/admin/palettes/assignments/1.2.2", "test-token")).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await SendAdminAsync(client, HttpMethod.Delete, "/admin/palettes/assignments/1.2", "test-token")).StatusCode);
     }
 
     [Fact]
@@ -137,18 +159,18 @@ public class PaletteTests
         using var client = factory.CreateClient();
         var alice = await AuthTestHelpers.RegisterWithResponseAsync(client, "alice", "AL");
         var created = await CreateAsync(client, "Navy", "n-1", goBg: "#112233", goFg: "#ffffff");
-        await SendAdminAsync(client, HttpMethod.Put, "/admin/palettes/assignments/1.2.2", "test-token", new { paletteId = created.Id });
+        await SendAdminAsync(client, HttpMethod.Put, "/admin/palettes/assignments/1.2", "test-token", new { paletteId = created.Id });
 
         var list = (await (await SendAdminAsync(client, HttpMethod.Get, "/admin/palettes", "test-token")).Content.ReadFromJsonAsync<List<PaletteEntry>>())!;
         var updated = await SendAdminAsync(client, HttpMethod.Put, $"/admin/palettes/{created.Id}", "test-token", Body("Navy v2", "n-2", goBg: "#001122", goFg: "#ffffff"));
         var served = (await GetMeAsync(client, alice.AccessToken, "1.2.2 (20)")).Config?.Palette;
         var refused = await SendAdminAsync(client, HttpMethod.Delete, $"/admin/palettes/{created.Id}", "test-token");
-        await SendAdminAsync(client, HttpMethod.Delete, "/admin/palettes/assignments/1.2.2", "test-token");
+        await SendAdminAsync(client, HttpMethod.Delete, "/admin/palettes/assignments/1.2", "test-token");
         var deleted = await SendAdminAsync(client, HttpMethod.Delete, $"/admin/palettes/{created.Id}", "test-token");
         var gone = await SendAdminAsync(client, HttpMethod.Get, $"/admin/palettes/{created.Id}", "test-token");
 
         var entry = Assert.Single(list);
-        Assert.Equal(new[] { "1.2.2" }, entry.AssignedTo);
+        Assert.Equal(new[] { "1.2" }, entry.AssignedTo);
         Assert.Equal(HttpStatusCode.OK, updated.StatusCode);
         Assert.Equal("Navy v2", served?.Name); // editing an assigned palette is live
         Assert.Equal(HttpStatusCode.Conflict, refused.StatusCode);
@@ -171,9 +193,9 @@ public class PaletteTests
         Assert.Equal(HttpStatusCode.BadRequest, await Status(HttpMethod.Post, "/admin/palettes", "test-token", Body(new string('x', 31))));  // name too long
         Assert.Equal(HttpStatusCode.BadRequest, await Status(HttpMethod.Post, "/admin/palettes", "test-token", Body("Ok", new string('x', 33))));
         Assert.Equal(HttpStatusCode.NotFound, await Status(HttpMethod.Put, "/admin/palettes/nope", "test-token", Body("Ok")));
-        Assert.Equal(HttpStatusCode.NotFound, await Status(HttpMethod.Put, "/admin/palettes/assignments/1.2.2", "test-token", new { paletteId = "nope" }));
+        Assert.Equal(HttpStatusCode.NotFound, await Status(HttpMethod.Put, "/admin/palettes/assignments/1.2", "test-token", new { paletteId = "nope" }));
         Assert.Equal(HttpStatusCode.BadRequest, await Status(HttpMethod.Put, "/admin/palettes/assignments/*", "test-token", new { paletteId = created.Id }));
-        Assert.Equal(HttpStatusCode.BadRequest, await Status(HttpMethod.Put, "/admin/palettes/assignments/1.2.2", "test-token", new { }));
+        Assert.Equal(HttpStatusCode.BadRequest, await Status(HttpMethod.Put, "/admin/palettes/assignments/1.2", "test-token", new { }));
         Assert.Equal(HttpStatusCode.Unauthorized, await Status(HttpMethod.Get, "/admin/palettes", "wrong"));
         Assert.Equal(HttpStatusCode.Unauthorized, await Status(HttpMethod.Post, "/admin/palettes", "wrong", Body("Ok")));
         Assert.Equal(HttpStatusCode.Unauthorized, await Status(HttpMethod.Delete, $"/admin/palettes/{created.Id}", "wrong"));
