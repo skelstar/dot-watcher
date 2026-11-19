@@ -6,8 +6,10 @@ import {
   dayRange,
   formatDuration,
   layoutFlow,
+  timeForX,
   timeScale,
   timeTicks,
+  xForTime,
   type ActivityEventDto,
   type RegisterEntryDto,
 } from './activityFlow.ts'
@@ -32,7 +34,7 @@ test('a Go run is three stops, with the run going from start to stop', () => {
   ], REGISTER)
 
   assert.deepEqual(flow.stops.map(s => s.label), ['Started a Go run', 'Shared a watch link', 'Stopped the run'])
-  assert.deepEqual(flow.runs, [{ fromIndex: 0, toIndex: 2 }])
+  assert.deepEqual(flow.runs, [{ fromIndex: 0, toIndex: 2, runId: 'run-1' }])
   assert.equal(flow.stops[2].note, '2 min 54 s')
   assert.deepEqual(flow.branches, [])
 })
@@ -95,13 +97,13 @@ test('a branch with nothing to hang off becomes a stop', () => {
 test('a run still going stays open to the end of the line', () => {
   const flow = buildFlow([event('run_started', '18:32:13'), event('watch_link_made', '18:33:45')], REGISTER)
 
-  assert.deepEqual(flow.runs, [{ fromIndex: 0, toIndex: null }])
+  assert.deepEqual(flow.runs, [{ fromIndex: 0, toIndex: null, runId: 'run-1' }])
 })
 
 test('a stop whose start was before the range runs from the start of the line', () => {
   const flow = buildFlow([event('watch_link_made', '00:10:00'), event('run_stopped', '00:20:00')], REGISTER)
 
-  assert.deepEqual(flow.runs, [{ fromIndex: 0, toIndex: 1 }])
+  assert.deepEqual(flow.runs, [{ fromIndex: 0, toIndex: 1, runId: 'run-1' }])
 })
 
 test('an unknown kind is a stop labelled with its kind', () => {
@@ -189,6 +191,23 @@ test('the app being away runs from put away to opened again', () => {
 
   assert.deepEqual(flow.away, [{ fromIndex: 2, toIndex: 3 }, { fromIndex: 4, toIndex: null }])
   assert.equal(layoutFlow(flow, null).away.length, 2)
+})
+
+test('a run knows its id, and stops know they are test', () => {
+  const flow = buildFlow([
+    event('run_started', '09:00:00', { runId: 'r1', isTest: true }),
+    event('run_stopped', '09:10:00', { runId: 'r1', isTest: true }),
+  ], REGISTER)
+
+  assert.equal(flow.runs[0].runId, 'r1')
+  assert.deepEqual(flow.stops.map(s => s.isTest), [true, true])
+})
+
+test('a time at x and the x of a time agree', () => {
+  const scale = { start: Date.parse('2026-11-19T09:00:00Z'), end: Date.parse('2026-11-19T10:00:00Z'), width: 1000 }
+  const at = Date.parse('2026-11-19T09:20:00Z')
+
+  assert.ok(Math.abs(timeForX(scale, xForTime(scale, at)) - at) < 1)
 })
 
 test('durations read naturally', () => {

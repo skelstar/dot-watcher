@@ -335,6 +335,74 @@ public class ActivityTests
             (await SendAsync(client, HttpMethod.Get, $"/admin/activity?from={Q(from.AddDays(-30))}&to={Q(to)}&userIds=x", AdminToken)).StatusCode);
     }
 
+    // ---- Marking testing ------------------------------------------------------------------------
+
+    [Fact]
+    public async Task MarkingARunAsTest_HidesItAndWhatHappenedDuringIt_UntilAskedFor()
+    {
+        using var factory = CasualFactory();
+        using var client = factory.CreateClient();
+        var alice = await RegisterAsync(client, "alice", "AL");
+        await SendAsync(client, HttpMethod.Post, "/me/activity", alice.AccessToken, new { kind = "app_opened" });
+        await StartAndPostAsync(client, alice.AccessToken);
+        await SendAsync(client, HttpMethod.Post, "/me/activity", alice.AccessToken, new { kind = "app_backgrounded" });
+        await SendAsync(client, HttpMethod.Post, "/casual/stop", alice.AccessToken);
+        var all = await WaitForEventsAsync(client, alice.User.UserId, e => e.Any(x => x.Kind == "run_stopped"));
+        var runId = all.Single(e => e.Kind == "run_started").RunId;
+
+        var mark = await SendAsync(client, HttpMethod.Post, "/admin/activity/test", AdminToken,
+            new { userId = alice.User.UserId, runId });
+
+        Assert.Equal(HttpStatusCode.OK, mark.StatusCode);
+        // Start, the app being put away during the run (no run id of its own), and stop.
+        Assert.Equal(3, (await mark.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("changed").GetInt32());
+        Assert.Equal(new[] { "app_opened" }, (await GetEventsAsync(client, alice.User.UserId)).Select(e => e.Kind).ToArray());
+
+        var withTest = await GetEventsAsync(client, alice.User.UserId, includeTest: true);
+        Assert.Equal(4, withTest.Count);
+        Assert.Equal(new[] { false, true, true, true }, withTest.Select(e => e.IsTest).ToArray());
+    }
+
+    [Fact]
+    public async Task MarkingAStretch_AndUnmarkingIt()
+    {
+        using var factory = CasualFactory();
+        using var client = factory.CreateClient();
+        var alice = await RegisterAsync(client, "alice", "AL");
+        await SendAsync(client, HttpMethod.Post, "/me/activity", alice.AccessToken, new { kind = "app_opened" });
+        await WaitForEventsAsync(client, alice.User.UserId, e => e.Count > 0);
+        var (from, to) = Window();
+
+        await SendAsync(client, HttpMethod.Post, "/admin/activity/test", AdminToken, new { userId = alice.User.UserId, from, to });
+        Assert.Empty(await GetEventsAsync(client, alice.User.UserId));
+        Assert.Empty(await GetDotsAsync(client));
+        Assert.Single(await GetDotsAsync(client, includeTest: true));
+
+        await SendAsync(client, HttpMethod.Post, "/admin/activity/test", AdminToken,
+            new { userId = alice.User.UserId, from, to, isTest = false });
+        Assert.Single(await GetEventsAsync(client, alice.User.UserId));
+    }
+
+    [Fact]
+    public async Task MarkingNeedsAnAdmin_AndARunOrARange()
+    {
+        using var factory = CasualFactory();
+        using var client = factory.CreateClient();
+        var alice = await RegisterAsync(client, "alice", "AL");
+        var (from, to) = Window();
+
+        Assert.Equal(HttpStatusCode.Unauthorized, (await SendAsync(client, HttpMethod.Post, "/admin/activity/test", alice.AccessToken,
+            new { userId = alice.User.UserId, from, to })).StatusCode);
+        foreach (var body in new object[]
+                 {
+                     new { from, to },
+                     new { userId = alice.User.UserId },
+                     new { userId = alice.User.UserId, runId = "r", from, to },
+                     new { userId = alice.User.UserId, from = to, to = from },
+                 })
+            Assert.Equal(HttpStatusCode.BadRequest, (await SendAsync(client, HttpMethod.Post, "/admin/activity/test", AdminToken, body)).StatusCode);
+    }
+
     // ---- Keeping it --------------------------------------------------------------------------
 
     [Fact]
@@ -374,12 +442,21 @@ public class ActivityTests
 
     private static string Q(DateTimeOffset value) => Uri.EscapeDataString(value.ToString("O"));
 
-    private static async Task<List<ActivityEventView>> GetEventsAsync(HttpClient client, string userId)
+    private static async Task<List<ActivityEventView>> GetEventsAsync(HttpClient client, string userId, bool includeTest = false)
     {
         var (from, to) = Window();
-        var response = await SendAsync(client, HttpMethod.Get, $"/admin/activity?from={Q(from)}&to={Q(to)}&userIds={userId}", AdminToken);
+        var response = await SendAsync(client, HttpMethod.Get,
+            $"/admin/activity?from={Q(from)}&to={Q(to)}&userIds={userId}&includeTest={includeTest}", AdminToken);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         return (await response.Content.ReadFromJsonAsync<List<ActivityEventView>>())!;
+    }
+
+    private static async Task<List<ActivityDot>> GetDotsAsync(HttpClient client, bool includeTest = false)
+    {
+        var (from, to) = Window();
+        var response = await SendAsync(client, HttpMethod.Get, $"/admin/activity/dots?from={Q(from)}&to={Q(to)}&includeTest={includeTest}", AdminToken);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        return (await response.Content.ReadFromJsonAsync<List<ActivityDot>>())!;
     }
 
     // Events are written as the request finishes, which can be just after the client has its response.
