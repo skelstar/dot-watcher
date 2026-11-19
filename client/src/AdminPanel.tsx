@@ -10,6 +10,35 @@ interface AdminUser {
   createdAt: string
   // Features granted to this account (PUT /admin/users/{id}/features); absent from an older server.
   features?: string[]
+  // Last authenticated request or sign-in; null if not seen since the server started tracking it
+  // (and absent from an older server).
+  lastSeenAt?: string | null
+}
+
+type UserSortKey = 'username' | 'displayName' | 'createdAt' | 'lastSeenAt'
+type SortDir = 'asc' | 'desc'
+const USER_COLUMNS: { key: UserSortKey; label: string }[] = [
+  { key: 'username', label: 'Username' },
+  { key: 'displayName', label: 'Display name' },
+  { key: 'lastSeenAt', label: 'Last seen' },
+  { key: 'createdAt', label: 'Created' },
+]
+
+// Text sorts case-insensitively, dates by time. A missing value sorts last either way.
+function sortUsers(users: AdminUser[], key: UserSortKey, dir: SortDir): AdminUser[] {
+  const sign = dir === 'asc' ? 1 : -1
+  return [...users].sort((a, b) => {
+    const av = a[key] ?? ''
+    const bv = b[key] ?? ''
+    if (!av || !bv) return av ? -1 : bv ? 1 : 0
+    const isDate = key === 'createdAt' || key === 'lastSeenAt'
+    const c = isDate ? Date.parse(av) - Date.parse(bv) : av.localeCompare(bv, undefined, { sensitivity: 'base' })
+    return c * sign
+  })
+}
+
+function formatDate(timestamp: string) {
+  return new Date(timestamp).toLocaleString(undefined, { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
 }
 
 interface AdminSession {
@@ -97,6 +126,7 @@ export default function AdminPanel({ serverUrl }: { serverUrl: string }) {
   const [switchesUnavailable, setSwitchesUnavailable] = useState(false)
   const [switchBusy, setSwitchBusy] = useState<string | null>(null)
   const [tab, setTab] = useState<AdminTab>('users')
+  const [userSort, setUserSort] = useState<{ key: UserSortKey; dir: SortDir }>({ key: 'lastSeenAt', dir: 'desc' })
   // null until loaded; 'unsupported' on a server without GET /admin/casual/runs.
   const [goRuns, setGoRuns] = useState<AdminCasualRun[] | 'unsupported' | null>(null)
   const playgroundRef = useRef<HTMLIFrameElement>(null)
@@ -662,13 +692,28 @@ export default function AdminPanel({ serverUrl }: { serverUrl: string }) {
                   aria-label="Select all users"
                 />
               </th>
-              <th style={th}>Username</th>
-              <th style={th}>Display name</th>
-              <th style={th}>Created</th>
+              {USER_COLUMNS.map(col => {
+                const active = userSort.key === col.key
+                return (
+                  <th key={col.key} style={th} aria-sort={active ? (userSort.dir === 'asc' ? 'ascending' : 'descending') : 'none'}>
+                    <button
+                      style={sortBtn}
+                      onClick={() => setUserSort(prev =>
+                        prev.key === col.key
+                          ? { key: col.key, dir: prev.dir === 'asc' ? 'desc' : 'asc' }
+                          // Dates start newest first, text A to Z.
+                          : { key: col.key, dir: col.key === 'createdAt' || col.key === 'lastSeenAt' ? 'desc' : 'asc' })}
+                    >
+                      {col.label}
+                      <span style={{ opacity: active ? 1 : 0.3 }}>{active && userSort.dir === 'asc' ? ' ▲' : ' ▼'}</span>
+                    </button>
+                  </th>
+                )
+              })}
             </tr>
           </thead>
           <tbody>
-            {users.map(user => (
+            {sortUsers(users, userSort.key, userSort.dir).map(user => (
               <tr key={user.id} style={tr}>
                 <td style={checkboxTd}>
                   {!PROTECTED_USERNAMES.has(user.username) && (
@@ -682,7 +727,10 @@ export default function AdminPanel({ serverUrl }: { serverUrl: string }) {
                 </td>
                 <td style={td}>{user.username}</td>
                 <td style={td}>{user.displayName}</td>
-                <td style={td}>{timeAgo(user.createdAt)}</td>
+                <td style={td} title={user.lastSeenAt ? timeAgo(user.lastSeenAt) : undefined}>
+                  {user.lastSeenAt ? formatDate(user.lastSeenAt) : '—'}
+                </td>
+                <td style={td} title={formatDate(user.createdAt)}>{timeAgo(user.createdAt)}</td>
               </tr>
             ))}
           </tbody>
@@ -1219,6 +1267,16 @@ const th: React.CSSProperties = {
   borderBottom: '2px solid #e2e8f0',
   color: '#64748b',
   fontWeight: 600,
+}
+
+const sortBtn: React.CSSProperties = {
+  background: 'none',
+  border: 'none',
+  padding: 0,
+  font: 'inherit',
+  color: 'inherit',
+  cursor: 'pointer',
+  whiteSpace: 'nowrap',
 }
 
 const tr: React.CSSProperties = {
