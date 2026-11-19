@@ -87,6 +87,22 @@ public class FeatureFlagTests
         Assert.All(users.Where(u => u.Id != alice.User.UserId), u => Assert.Empty(u.Features));
     }
 
+    [Fact]
+    public async Task AdminUserList_ShowsWhenAnAccountWasLastSeen()
+    {
+        using var factory = new DotWatcherApiFactory { EnabledForAll = [] };
+        using var client = factory.CreateClient();
+        var before = DateTimeOffset.UtcNow.AddSeconds(-1);
+        var alice = await AuthTestHelpers.RegisterWithResponseAsync(client, "alice", "AL"); // a sign-in counts
+
+        var response = await GetAsync(client, "/admin/users", "test-token");
+
+        var users = (await response.Content.ReadFromJsonAsync<List<AdminUserSummary>>())!;
+        var lastSeen = users.Single(u => u.Id == alice.User.UserId).LastSeenAt;
+        Assert.NotNull(lastSeen);
+        Assert.True(DateTimeOffset.Parse(lastSeen) >= before);
+    }
+
     private static async Task<HttpResponseMessage> GetAsync(HttpClient client, string path, string token)
     {
         using var request = new HttpRequestMessage(HttpMethod.Get, path);

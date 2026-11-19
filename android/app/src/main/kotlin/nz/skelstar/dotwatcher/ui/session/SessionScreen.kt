@@ -256,6 +256,8 @@ fun SessionScreen(
                     eyebrow = event.eyebrow,
                     title = event.title,
                     subtitle = event.subtitle,
+                    organiser = event.organiser,
+                    nudging = true,
                     onClick = {
                         joinAttempted = false
                         nearbyCandidate = event
@@ -390,11 +392,10 @@ fun SessionScreen(
 private val HeaderIconSize = 34.dp
 private val HeaderButtonSize = 44.dp
 
-/** App wordmark + badge + build info, with account/settings/help icon buttons — matches the iOS header
+/** App wordmark + badge + version line, with account/settings/help icon buttons — matches the iOS header
  *  shown atop every no-session-screen state (media-files/Simulator Screenshot ... 16.19.49.png).
- *  No git-commit short-SHA (iOS's "1105bf8"): that needs a dedicated build-time step this app
- *  doesn't have yet, so this only shows [BuildConfig.VERSION_NAME]/[BuildConfig.VERSION_CODE],
- *  which are already available. */
+ *  The version line is [BuildConfig.VERSION_NAME] and the server palette's name (the release name), as on iOS;
+ *  no build number or commit. */
 @Composable
 private fun AppHeader(onAccountClick: () -> Unit, onSettingsClick: () -> Unit) {
     Row(
@@ -429,7 +430,8 @@ private fun AppHeader(onAccountClick: () -> Unit, onSettingsClick: () -> Unit) {
                 Text(text = "watchr", style = MaterialTheme.typography.headlineLarge)
             }
             Text(
-                text = "v${BuildConfig.VERSION_NAME} · build ${BuildConfig.VERSION_CODE}",
+                // The version and the palette's name, which is the release name for now. No build number.
+                text = listOfNotNull("v${BuildConfig.VERSION_NAME}", AppliedSignColors.palette?.name).joinToString(" · "),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

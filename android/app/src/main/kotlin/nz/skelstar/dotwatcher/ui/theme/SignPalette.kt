@@ -48,6 +48,8 @@ data class SignColors(
     val accent: Color,
     val accentInk: Color,
     val screen: Color? = null,
+    /** The palette's display name from the server, shown beside the version as the release name. Null when built in or unnamed. */
+    val name: String? = null,
 )
 
 val BuiltInSignColors = SignColors(

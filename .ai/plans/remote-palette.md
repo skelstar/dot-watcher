@@ -140,11 +140,14 @@ tweaked freely. PR "Palette library".
   A name (30 chars) is required; `label` (32 chars, e.g. an app version) is optional. Both are informational.
   Deleting an assigned palette is refused (`409`).
 - `GET /admin/palettes/assignments`, `PUT` / `DELETE /admin/palettes/assignments/{appVersion}`: which palette each app
-  version gets. `appVersion` is the part of `X-App-Version` before the build number (`1.2.2` from `1.2.2 (20)`), or
-  `fallback` for every other version.
-- **A phone gets, in order:** the palette assigned to its exact version, the `fallback` one, the `Palette` config
-  section, then none (built-in colours). Both apps already send `X-App-Version` on every call that returns
-  `config.palette`, so the apps need no change.
+  version gets. `appVersion` is a minor release (`1.4`, which phones on `1.4.6 (20)` and every other 1.4 patch get), or
+  `fallback`. Patch versions are refused (19 November 2026): the palette's name is shown on the phones beside the
+  version as the release name, and releases are named per minor version.
+- **A phone gets, in order:** the palette assigned to its exact version (patch-level assignments from before the rule,
+  or a test token), the one for its minor version, the most recent one assigned at or below its version, the
+  `fallback` one, the `Palette` config section, then none (built-in colours). Never a newer version's palette (it may
+  rely on start-screen changes an older app lacks; see PR #370). No version header: the highest assigned one. Both apps already send
+  `X-App-Version` on every call that returns `config.palette`.
 - **Delivery to the phone is unchanged:** `config.palette` on login, register and `GET /me`, applied on launch and on
   return to the front (#275, #276). Assignments and palettes are cached for about five seconds.
 - **Editing an assigned palette is live** for those phones. To stage a change, save a new palette and assign it when
@@ -159,19 +162,20 @@ only requests sending that `X-App-Version` see the test palette. By hand, with `
 `ADMIN` the staging `BearerToken` and a staging account:
 
 ```sh
-me() { curl -s $API/me -H "Authorization: Bearer $TOKEN" -H "X-App-Version: 9.9.9 (1)" | jq '.config.palette'; }
+me() { curl -s $API/me -H "Authorization: Bearer $TOKEN" -H "X-App-Version: bruno-test (1)" | jq '.config.palette'; }
 ```
 
 1. `POST /admin/palettes` with a bad hex colour: `400` naming it. With no `name`: `400`.
 2. `POST /admin/palettes` with a good palette: `201` with an `id`. `GET /admin/palettes` lists it with `assignedTo: []`.
 3. `me`: no test palette yet (it is not assigned).
-4. `PUT /admin/palettes/assignments/9.9.9` with `{ "paletteId": "<id>" }`: `200`. `me` now shows the palette; a request
+4. `PUT /admin/palettes/assignments/bruno-test` with `{ "paletteId": "<id>" }`: `200`. `me` now shows the palette; a request
    with another `X-App-Version` does not.
 5. `DELETE /admin/palettes/<id>`: `409` while assigned.
 6. `PUT /admin/palettes/<id>` with a changed colour: `me` shows the change (live for assigned palettes).
-7. `DELETE /admin/palettes/assignments/9.9.9`: `204`; `me` no longer shows it. Then `DELETE /admin/palettes/<id>`: `204`.
+7. `DELETE /admin/palettes/assignments/bruno-test`: `204`; `me` no longer shows it. Then `DELETE /admin/palettes/<id>`: `204`.
 
-Use a version no real build has (like `9.9.9`) so real phones are untouched, and clean up afterwards: assignments made
+Use a token that is not a version number (like `bruno-test`) so real phones are untouched (a number would count as
+the latest version for every phone without its own), and clean up afterwards: assignments made
 on Staging apply to Production once Production runs this code. `500`s on step 2 point at the `palettes` tables not
 being created; check the server log.
 

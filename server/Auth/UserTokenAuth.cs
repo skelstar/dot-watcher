@@ -38,6 +38,8 @@ public sealed class UserTokenAuth
     public IssuedUserToken CreateToken(UserAccount account)
     {
         var now = DateTimeOffset.UtcNow;
+        // Issuing a token means a sign-in, registration or refresh, which counts as using the app.
+        _store.TouchUserLastSeen(account.Id, now);
         var expiresAt = now.Add(_accessTokenLifetime);
         var tokenId = Guid.NewGuid().ToString("N");
         var header = new Dictionary<string, object>
@@ -146,6 +148,8 @@ public sealed class UserTokenAuth
 
         if (!_store.UserExists(payload.Sub))
             return false;
+
+        _store.TouchUserLastSeen(payload.Sub, now);
 
         user = new AuthenticatedUser(payload.Sub, payload.Username, payload.Name);
         var expiresAt = DateTimeOffset.FromUnixTimeSeconds(payload.Exp);

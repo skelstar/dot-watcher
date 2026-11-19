@@ -253,7 +253,10 @@ struct ContentView: View {
             // Only when the server has events for this account (the "events" feature): the runs people
             // nearby can join, or the placeholder while there's no position to look near.
             ForEach(events.joinable) { event in
-                EventSignButton(eyebrow: event.eyebrow, title: event.title, subtitle: event.subtitle) {
+                EventSignButton(
+                    eyebrow: event.eyebrow, title: event.title, subtitle: event.subtitle, organiser: event.organiser,
+                    nudging: true
+                ) {
                     nearbyCandidate = event
                 }
             }
@@ -263,7 +266,8 @@ struct ContentView: View {
             if events.isAvailable, location.nearbyLocationState == .needsPermission {
                 EventSignButton(
                     eyebrow: "Nearby", title: "Find runs near you",
-                    subtitle: "Allow location to see who is starting close by"
+                    subtitle: "Allow location to see who is starting close by",
+                    nudging: true
                 ) { location.requestWhenInUseAuthorizationIfNeeded() }
             }
             SignButton(title: "Join", subtitle: "Enter an invite code", icon: .enter) {
@@ -344,10 +348,11 @@ struct ContentView: View {
                     Text("t-watchr")
                         .font(.largeTitle.bold())
                 }
-                let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String
-                let sha = Bundle.main.infoDictionary?["GitCommitSHA"] as? String
-                if build != nil || sha != nil {
-                    Text([build.map { "build \($0)" }, sha].compactMap { $0 }.joined(separator: " · "))
+                // The version and the palette's name, which is the release name for now. No build number or commit.
+                let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String
+                let paletteName = AppliedPalette.shared.colors?.name
+                if version != nil || paletteName != nil {
+                    Text([version.map { "v\($0)" }, paletteName].compactMap { $0 }.joined(separator: " · "))
                         .font(.caption2)
                         .foregroundStyle(location.debugForceUltraConstrained ? Color.orange : Color(.tertiaryLabel))
                         .contentShape(Rectangle())

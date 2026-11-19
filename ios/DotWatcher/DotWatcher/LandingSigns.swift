@@ -126,6 +126,8 @@ private struct SignContent: View {
     let ink: Color
     /// Whether the icon nudges to the right now and then (Go only).
     var nudging = false
+    /// When set, the subtitle is "Organised by" and this dot instead of the `subtitle` text (nearby tiles).
+    var organiser: OrganiserDot?
 
     var body: some View {
         let placement = IconPlacement(icon: icon, hasEyebrow: eyebrow != nil, titleSize: titleSize)
@@ -138,9 +140,17 @@ private struct SignContent: View {
                 }
                 Text(title)
                     .font(SignFont.font(size: titleSize))
-                Text(subtitle)
-                    .font(SignFont.font(size: 15))
-                    .fixedSize(horizontal: false, vertical: true)
+                if let organiser {
+                    HStack(spacing: 6) {
+                        Text("Organised by")
+                            .font(SignFont.font(size: 15))
+                        organiser
+                    }
+                } else {
+                    Text(subtitle)
+                        .font(SignFont.font(size: 15))
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             SignGlyph(icon: icon)
@@ -248,12 +258,60 @@ struct HoldSignButton: View {
     }
 }
 
+/// The organiser of a nearby run, drawn small after "Organised by": a dot in the tile's ink with the initials in
+/// the Join / Create background, like the wordmark dot. Where those two colours are too close (under 4.5:1, the bar
+/// for small text) the initials use the tile's own background instead, which always reads on its ink. The palette
+/// editor previews the same rule (`orgInk` in client/public/palette-playground.html).
+struct OrganiserDot: View {
+    let initials: String
+    let fill: Color
+    let ink: Color
+
+    init(name: String, colors: SignColors) {
+        initials = RunnerCircle.initials(for: name)
+        fill = colors.accentInk
+        ink = Color.contrastRatio(colors.altBg, colors.accentInk) >= 4.5 ? colors.altBg : colors.accent
+    }
+
+    var body: some View {
+        Text(initials)
+            .font(.system(size: 9, weight: .semibold))
+            .foregroundStyle(ink)
+            .frame(width: 20, height: 20)
+            .background(Circle().fill(fill))
+    }
+}
+
+extension Color {
+    /// WCAG contrast ratio between two colours, 1 to 21.
+    static func contrastRatio(_ a: Color, _ b: Color) -> Double {
+        let x = a.relativeLuminance, y = b.relativeLuminance
+        return (max(x, y) + 0.05) / (min(x, y) + 0.05)
+    }
+
+    /// WCAG relative luminance from the colour's sRGB components.
+    var relativeLuminance: Double {
+        var red: CGFloat = 0, green: CGFloat = 0, blue: CGFloat = 0, alpha: CGFloat = 0
+        UIColor(self).getRed(&red, green: &green, blue: &blue, alpha: &alpha)
+        func linear(_ c: CGFloat) -> Double {
+            let v = Double(c)
+            return v <= 0.03928 ? v / 12.92 : pow((v + 0.055) / 1.055, 2.4)
+        }
+        return 0.2126 * linear(red) + 0.7152 * linear(green) + 0.0722 * linear(blue)
+    }
+}
+
 /// A public event happening near the runner, shown under Go in orange with ink text and a ink bar.
-/// `eyebrow` is the small caps line above the title.
+/// `eyebrow` is the small caps line above the title. With an `organiser` (nearby runs) the subtitle is
+/// "Organised by" and their dot; `subtitle` stays the spoken label, so VoiceOver reads the name in full.
+/// `nudging` gives the chevrons the Go sign's "this way" nudge, for a tile that leads somewhere (a run to join,
+/// the ask to allow location); the placeholder stays still.
 struct EventSignButton: View {
     let eyebrow: String
     let title: String
     let subtitle: String
+    var organiser: String? = nil
+    var nudging = false
     let action: () -> Void
 
     var body: some View {
@@ -263,7 +321,8 @@ struct EventSignButton: View {
                 colors.accentInk.frame(height: signBarHeight)
                 SignContent(
                     eyebrow: eyebrow, title: title, subtitle: subtitle, titleSize: 28, icon: .chevrons,
-                    ink: colors.accentInk
+                    ink: colors.accentInk, nudging: nudging,
+                    organiser: organiser.map { OrganiserDot(name: $0, colors: colors) }
                 )
                 .padding(.horizontal, 16)
                 .padding(.vertical, 12)

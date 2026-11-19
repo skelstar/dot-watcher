@@ -47,6 +47,8 @@ object RemotePalette {
             accent = toColor(accent),
             accentInk = toColor(accentInk),
             screen = toColor(screen),
+            // Optional: a palette without a name is still usable.
+            name = (obj["name"] as? JsonPrimitive)?.takeIf { it.isString }?.content?.trim()?.takeIf { it.isNotEmpty() },
         )
     }
 

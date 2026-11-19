@@ -1,0 +1,734 @@
+<!doctype html>
+<html lang="en-NZ">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Kraken Phone Builds</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* Kraken. Staging = teal, production = amber, everywhere. Same tokens as the design doc. */
+:root {
+  --bg: #f3f5f7;
+  --surface: #ffffff;
+  --sunken: #e9edf1;
+  --ink: #141a21;
+  --muted: #586371;
+  --line: #d7dde4;
+  --staging: #0b7480;
+  --staging-soft: #e0f1f2;
+  --prod: #a85a06;
+  --prod-soft: #fbeedd;
+  --bad: #b42318;
+  --bad-soft: #fde8e6;
+  --ok: #18794e;
+  --ok-soft: #e3f3ea;
+  --font-body: "IBM Plex Sans", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --font-display: "Archivo", "Helvetica Neue", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "Cascadia Mono", "SF Mono", Consolas, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0e1217; --surface: #151b22; --sunken: #1b232c; --ink: #e4e9ef; --muted: #97a2af; --line: #2a333e;
+    --staging: #4cc0cb; --staging-soft: #12313a; --prod: #f0a347; --prod-soft: #3a2a14;
+    --bad: #ff8a7d; --bad-soft: #3d1c19; --ok: #5fd39a; --ok-soft: #133024;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0e1217; --surface: #151b22; --sunken: #1b232c; --ink: #e4e9ef; --muted: #97a2af; --line: #2a333e;
+  --staging: #4cc0cb; --staging-soft: #12313a; --prod: #f0a347; --prod-soft: #3a2a14;
+  --bad: #ff8a7d; --bad-soft: #3d1c19; --ok: #5fd39a; --ok-soft: #133024;
+  color-scheme: dark;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html { -webkit-text-size-adjust: 100%; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.55 var(--font-body); }
+a { color: var(--staging); }
+h1, h2, h3 { font-family: var(--font-display); margin: 0; line-height: 1.15; text-wrap: balance; }
+h1 { font-size: clamp(1.7rem, 4vw, 2.3rem); letter-spacing: -0.015em; }
+h2 { font-size: 1.25rem; }
+h3 { font-size: 1rem; }
+p { margin: 0; }
+code { font-family: var(--font-mono); font-size: 0.86em; background: var(--sunken); padding: 1px 5px; border-radius: 4px; overflow-wrap: anywhere; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+/* Chrome */
+.devbar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; padding: 8px max(16px, env(safe-area-inset-left)); background: var(--prod-soft); border-bottom: 1px solid var(--line); font-size: 0.85rem; }
+.devbar-tag { font: 500 0.7rem var(--font-mono); letter-spacing: 0.06em; text-transform: uppercase; color: var(--prod); border: 1px solid currentColor; border-radius: 999px; padding: 1px 8px; }
+.devbar label { color: var(--muted); }
+.devbar select { font: inherit; flex: 1 1 220px; min-width: 0; max-width: 560px; text-overflow: ellipsis; padding: 3px 6px; border-radius: 6px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); }
+.topbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 20px; padding: 14px max(16px, env(safe-area-inset-left)); border-bottom: 1px solid var(--line); background: var(--surface); }
+.brand { display: inline-flex; align-items: center; gap: 8px; font: 700 1.1rem var(--font-display); color: var(--ink); text-decoration: none; letter-spacing: -0.01em; }
+.brand img { width: 36px; height: 36px; }
+/* The logo follows the theme actually showing: the system's, unless one was picked with the toggle. */
+.brand .logo-dark { display: none; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .brand .logo-light { display: none; }
+  :root:not([data-theme="light"]) .brand .logo-dark { display: inline; }
+}
+:root[data-theme="dark"] .brand .logo-light { display: none; }
+:root[data-theme="dark"] .brand .logo-dark { display: inline; }
+
+.topbar nav { align-items: center; }
+.theme-toggle { display: inline-grid; place-items: center; width: 34px; height: 34px; padding: 0; border-radius: 8px; border: 1px solid var(--line); background: var(--surface); color: var(--muted); cursor: pointer; }
+.theme-toggle:hover { color: var(--ink); border-color: var(--muted); }
+.theme-toggle:focus-visible { outline: 2px solid var(--staging); outline-offset: 2px; }
+.theme-toggle svg { width: 17px; height: 17px; display: none; }
+.theme-toggle[data-mode="system"] .i-system, .theme-toggle[data-mode="light"] .i-light, .theme-toggle[data-mode="dark"] .i-dark { display: block; }
+.topbar nav { display: flex; gap: 18px; }
+.topbar nav a { color: var(--muted); text-decoration: none; font-weight: 500; }
+.topbar nav a[aria-current="page"] { color: var(--ink); box-shadow: inset 0 -2px 0 var(--staging); }
+.page { max-width: 1040px; margin: 0 auto; padding: 28px max(16px, env(safe-area-inset-left)) 64px; display: grid; gap: 28px; }
+.footer { max-width: 1040px; margin: 0 auto; padding: 16px max(16px, env(safe-area-inset-left)) 40px; border-top: 1px solid var(--line); display: flex; flex-wrap: wrap; gap: 6px 24px; justify-content: space-between; color: var(--muted); font-size: 0.85rem; }
+.token.warn { color: var(--prod); font-weight: 600; }
+.token.bad { color: var(--bad); font-weight: 600; }
+
+.page-head { display: grid; gap: 8px; }
+.lede { color: var(--muted); max-width: 68ch; }
+.crumbs { font-size: 0.9rem; color: var(--muted); }
+.crumbs a { color: var(--muted); }
+.flash { border-radius: 8px; padding: 10px 14px; font-weight: 500; }
+.flash.ok { background: var(--ok-soft); color: var(--ok); }
+.flash.bad { background: var(--bad-soft); color: var(--bad); }
+.empty { color: var(--muted); }
+.stack { display: grid; gap: 14px; }
+
+/* Pieces */
+.ver { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-weight: 500; }
+.ver.big { font-size: 1.1rem; }
+.from { color: var(--muted); text-decoration: line-through; font-weight: 400; }
+.when { font-size: 0.8rem; color: var(--muted); }
+.when.block { display: block; }
+a.when { color: var(--staging); }
+.digest { font: 0.74rem var(--font-mono); color: var(--muted); overflow-wrap: anywhere; }
+.new { color: var(--staging); font-weight: 600; }
+.pill { display: inline-flex; align-items: center; gap: 6px; font-size: 0.78rem; font-weight: 500; padding: 2px 9px; border-radius: 999px; white-space: nowrap; width: fit-content; }
+.pill::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; flex: none; }
+.pill.ok { color: var(--ok); background: var(--ok-soft); }
+.pill.bad { color: var(--bad); background: var(--bad-soft); }
+.pill.warn { color: var(--prod); background: var(--prod-soft); }
+.pill.busy { color: var(--staging); background: var(--staging-soft); }
+.pill.busy::before { animation: pulse 1.2s ease-in-out infinite; }
+.pill.none { color: var(--muted); background: var(--sunken); }
+@keyframes pulse { 50% { opacity: 0.25; } }
+.badge { width: fit-content; font: 500 0.7rem var(--font-mono); letter-spacing: 0.04em; text-transform: uppercase; color: var(--prod); border: 1px solid currentColor; border-radius: 4px; padding: 0 6px; }
+.env-chip { font: 600 0.72rem var(--font-mono); letter-spacing: 0.05em; text-transform: uppercase; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
+.env-chip.staging { color: var(--staging); background: var(--staging-soft); }
+.env-chip.production { color: var(--prod); background: var(--prod-soft); }
+.env { font-weight: 700; }
+.env.staging { color: var(--staging); }
+.env.production { color: var(--prod); }
+
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; font: 600 0.88rem var(--font-body); padding: 8px 14px; min-height: 38px; border-radius: 7px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); text-decoration: none; white-space: nowrap; cursor: pointer; }
+.btn:hover { border-color: var(--muted); }
+.btn.small { font-size: 0.8rem; padding: 4px 10px; min-height: 30px; }
+.btn.staging { background: var(--staging); border-color: var(--staging); color: var(--surface); }
+.btn.prod { background: var(--prod); border-color: var(--prod); color: var(--surface); }
+.btn:disabled { opacity: 0.6; cursor: not-allowed; }
+.btn:focus-visible, .icon-btn:focus-visible, .toggle:focus-visible, a:focus-visible { outline: 2px solid var(--staging); outline-offset: 2px; }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.actions.end { justify-content: flex-end; }
+form.inline { display: inline; }
+.icon-btn { display: inline-grid; place-items: center; width: 30px; height: 30px; border-radius: 7px; border: 1px solid var(--line); color: var(--staging); background: var(--surface); cursor: pointer; padding: 0; }
+.icon-btn svg { width: 15px; height: 15px; }
+.icon-btn.spinning svg { animation: spin 0.8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.toggle { display: inline-grid; place-items: center; width: 24px; height: 24px; background: none; border: 0; padding: 0; color: var(--muted); cursor: pointer; border-radius: 5px; }
+.toggle svg { width: 13px; height: 13px; transition: transform 0.15s; }
+.toggle[aria-expanded="true"] svg { transform: rotate(90deg); }
+
+/* Dashboard board */
+.board { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.board-head, .row, .part-row { display: grid; grid-template-columns: minmax(190px, 1.25fr) minmax(0, 1fr) minmax(0, 1fr) 230px; column-gap: 16px; }
+.board-head { padding: 10px 16px; border-bottom: 1px solid var(--line); font: 500 0.72rem var(--font-mono); letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.row { padding: 14px 16px; border-bottom: 1px solid var(--line); align-items: center; row-gap: 10px; }
+.row:last-child { border-bottom: 0; }
+.row:target { background: var(--staging-soft); }
+.c-proj { display: grid; gap: 2px; min-width: 0; }
+.proj-name { display: flex; align-items: center; gap: 6px; }
+.proj-name.big { gap: 12px; }
+.proj-link { font-weight: 600; color: var(--ink); text-decoration: none; }
+.proj-link:hover { text-decoration: underline; }
+.c-env { min-width: 0; }
+.c-act { display: grid; justify-items: end; gap: 4px; }
+.hint { font-size: 0.78rem; color: var(--muted); }
+.cell { display: grid; gap: 4px; justify-items: start; }
+.board .cell .when { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
+.env-label { font: 600 0.7rem var(--font-mono); letter-spacing: 0.06em; text-transform: uppercase; }
+.env-label.staging { color: var(--staging); }
+.env-label.production { color: var(--prod); }
+.c-env .env-label { display: none; }
+.parts { grid-column: 1 / -1; display: grid; gap: 0; margin: 4px -16px -14px; }
+.part-row { padding: 10px 16px; background: var(--sunken); border-top: 1px solid var(--line); align-items: center; }
+.part-name { padding-left: 30px; }
+.part-name strong, .part-label { font: 500 0.86rem var(--font-mono); }
+
+@media (max-width: 760px) {
+  .board-head { display: none; }
+  .row, .part-row { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start; }
+  .c-proj, .c-act { grid-column: 1 / -1; }
+  .c-act { justify-items: stretch; }
+  .c-act .btn { width: 100%; }
+  .c-env .env-label { display: block; margin-bottom: 2px; }
+  .part-row .c-act { display: none; }
+  .part-name { padding-left: 0; }
+}
+
+/* Project page */
+.env-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; }
+.env-card { background: var(--surface); border: 1px solid var(--line); border-top: 4px solid var(--staging); border-radius: 10px; padding: 16px; display: grid; gap: 12px; align-content: start; }
+.env-card.production { border-top-color: var(--prod); }
+.env-card.staging h2 { color: var(--staging); }
+.env-card.production h2 { color: var(--prod); }
+.env-card.no-env { border-style: dashed; border-top-style: solid; border-top-color: var(--line); background: transparent; }
+.env-card.no-env h2 { color: var(--muted); }
+.env-parts { display: grid; gap: 8px; }
+.env-part { display: grid; grid-template-columns: 70px 1fr; gap: 8px; align-items: start; }
+.waiting { display: flex; flex-wrap: wrap; gap: 14px 24px; align-items: center; justify-content: space-between; background: var(--prod-soft); border: 1px solid color-mix(in srgb, var(--prod) 35%, transparent); border-radius: 10px; padding: 16px; }
+.waiting > div { display: grid; gap: 6px; }
+.notes { margin: 0; padding-left: 1.2em; display: grid; gap: 3px; color: var(--muted); font-size: 0.92rem; }
+.timeline { list-style: none; margin: 0; padding: 0; border-left: 2px solid var(--line); display: grid; }
+.timeline > li { position: relative; padding: 4px 0 20px 22px; display: grid; gap: 6px; }
+.timeline > li::before { content: ""; position: absolute; left: -7px; top: 9px; width: 12px; height: 12px; border-radius: 50%; background: var(--bg); border: 2px solid var(--line); }
+.timeline > li.is-live::before { border-color: var(--staging); background: var(--staging); }
+.tl-head { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; }
+.log { list-style: none; margin: 0; padding: 0; display: grid; gap: 0; border-top: 1px solid var(--line); }
+.log li { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.log li a { display: inline-flex; gap: 8px; align-items: center; color: var(--ink); text-decoration: none; }
+
+/* Confirmation */
+.confirm { max-width: 640px; display: grid; gap: 18px; background: var(--surface); border: 1px solid var(--line); border-top: 4px solid var(--staging); border-radius: 10px; padding: 22px; }
+.confirm.production { border-top-color: var(--prod); }
+.confirm h1 { font-size: clamp(1.35rem, 3.5vw, 1.7rem); }
+.diff { font: 0.88rem/1.8 var(--font-mono); background: var(--sunken); border-radius: 7px; padding: 10px 14px; display: grid; }
+.diff-line { display: flex; flex-wrap: wrap; gap: 0 10px; align-items: baseline; }
+.diff-line .part-label { min-width: 4.5em; }
+.diff .to { color: var(--prod); font-weight: 600; }
+.confirm.staging .diff .to { color: var(--staging); }
+.from-none { color: var(--muted); }
+.warnings { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.warnings li { background: var(--prod-soft); color: var(--ink); border-left: 3px solid var(--prod); border-radius: 0 6px 6px 0; padding: 8px 12px; font-size: 0.93rem; }
+.facts { margin: 0; padding-left: 1.2em; display: grid; gap: 4px; color: var(--muted); font-size: 0.93rem; }
+.shipping summary { cursor: pointer; font-weight: 600; }
+.shipping { display: grid; gap: 8px; }
+.ship-release { margin-top: 8px; display: grid; gap: 4px; }
+.checks { display: grid; gap: 8px; }
+.checks h2 { font-size: 0.8rem; font-family: var(--font-mono); font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.checks ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; font-size: 0.92rem; }
+.checks li { display: grid; grid-template-columns: 20px 1fr; gap: 6px; }
+.checks .mark { font-weight: 700; }
+.checks li.ok .mark { color: var(--ok); }
+.checks li.bad { color: var(--bad); }
+.checks li.warn .mark { color: var(--prod); }
+.checks .detail { display: block; color: var(--muted); font-size: 0.85rem; overflow-wrap: anywhere; }
+.aside { font-size: 0.85rem; color: var(--muted); display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+
+/* Hold-to-confirm (production) */
+.btn.hold { position: relative; overflow: hidden; flex-direction: column; gap: 0; line-height: 1.2; padding-block: 6px; user-select: none; -webkit-user-select: none; touch-action: manipulation; }
+.hold-fill { position: absolute; inset: 0 auto 0 0; width: calc(var(--p, 0) * 100%); background: color-mix(in srgb, #000 22%, transparent); pointer-events: none; }
+.hold-label, .hold-hint { position: relative; }
+.hold-hint { font-size: 0.7rem; font-weight: 500; opacity: 0.85; }
+
+/* Live deploy */
+.progress { display: grid; gap: 18px; max-width: 720px; }
+.progress-head { display: flex; gap: 10px; align-items: center; }
+.stepper { list-style: none; margin: 0; padding: 0; border-left: 2px solid var(--line); display: grid; }
+.step { position: relative; padding: 0 0 22px 26px; display: grid; gap: 4px; }
+.step::before { content: ""; position: absolute; left: -12px; top: 0; width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; font: 700 0.75rem var(--font-mono); background: var(--bg); border: 2px solid var(--line); color: var(--muted); }
+.step.done::before { content: "✓"; border-color: var(--ok); background: var(--ok); color: var(--surface); }
+.step.failed::before { content: "✗"; border-color: var(--bad); background: var(--bad); color: var(--surface); }
+.step.active::before { border-color: var(--staging); border-top-color: transparent; animation: spin 0.9s linear infinite; }
+.step.pending h3 { color: var(--muted); font-weight: 500; }
+.step p { color: var(--muted); font-size: 0.92rem; overflow-wrap: anywhere; }
+.step.failed p { color: var(--bad); }
+.step-title { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
+.clock { font-family: var(--font-mono); color: var(--ink); white-space: nowrap; }
+.meter { height: 6px; border-radius: 3px; background: var(--sunken); overflow: hidden; max-width: 320px; }
+.meter span { display: block; height: 100%; background: var(--staging); transition: width 0.9s linear; }
+pre.events { margin: 4px 0 0; font: 0.8rem/1.5 var(--font-mono); background: var(--bad-soft); color: var(--ink); border-radius: 6px; padding: 8px 10px; overflow-x: auto; white-space: pre-wrap; }
+
+/* Log */
+.scroll { overflow-x: auto; }
+.log-table { border-collapse: collapse; width: 100%; min-width: 720px; font-size: 0.9rem; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; }
+.log-table th { text-align: left; font: 500 0.72rem var(--font-mono); letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); padding: 10px 12px; border-bottom: 1px solid var(--line); }
+.log-table td { padding: 10px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.log-table tr:last-child td { border-bottom: 0; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before { animation: none !important; transition: none !important; }
+}
+
+/* Status dots (attention strip, live note) */
+.dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; flex: none; background: var(--muted); }
+.dot.ok { background: var(--ok); }
+.dot.bad { background: var(--bad); }
+.dot.warn { background: var(--prod); }
+.dot.info { background: var(--staging); }
+.dot.busy { background: var(--staging); animation: pulse 1.2s ease-in-out infinite; }
+
+/* Needs attention */
+.attention { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; display: grid; gap: 10px; margin-bottom: 16px; }
+.attention.calm { display: flex; align-items: center; gap: 10px; color: var(--muted); }
+.attention h2 { font-size: 1rem; display: flex; align-items: center; gap: 8px; }
+.attention .count { font: 600 0.75rem var(--font-mono); background: var(--sunken); color: var(--ink); border-radius: 999px; padding: 1px 8px; }
+.attention ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.attention li { display: flex; align-items: baseline; gap: 10px; padding: 6px 8px; border-radius: 6px; }
+.attention li .dot { transform: translateY(-1px); }
+.attention li.bad { background: var(--bad-soft); }
+.attention li a { color: var(--ink); text-decoration: none; overflow-wrap: anywhere; }
+.attention li a:hover { text-decoration: underline; }
+.attention li strong { font-weight: 600; margin-right: 4px; }
+.live-note { display: flex; align-items: center; gap: 8px; color: var(--staging); font-size: 0.88rem; margin: 0 0 10px; }
+.row.is-running { box-shadow: inset 3px 0 0 var(--staging); }
+
+/* Versions as links */
+a.ver, a.ver-link { color: inherit; text-decoration: underline; text-decoration-color: var(--line); text-underline-offset: 3px; }
+a.ver:hover, a.ver-link:hover { text-decoration-color: currentColor; }
+.ext-link { white-space: nowrap; }
+.ext { width: 12px; height: 12px; vertical-align: -1px; }
+
+/* Release page */
+.release-title { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; }
+.release-title .ver { font-size: 0.9em; }
+.release-nav { display: flex; justify-content: space-between; gap: 12px; font: 500 0.88rem var(--font-mono); }
+.release-nav a { text-decoration: none; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 16px; }
+.where { display: grid; gap: 0; border-top: 1px solid var(--line); }
+.where-row { display: grid; grid-template-columns: 120px minmax(0, 1fr) auto; gap: 6px 16px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.where-row.muted { opacity: 0.7; }
+.where-state { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+.where-compare { font-size: 0.88rem; }
+.notes.big { font-size: 1rem; color: var(--ink); gap: 6px; }
+dl.images { margin: 0; display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 8px 16px; }
+dl.images dt { font: 500 0.86rem var(--font-mono); }
+dl.images dd { margin: 0; }
+dl.images code { overflow-wrap: anywhere; }
+.confirm-links { font-size: 0.9rem; }
+@media (max-width: 620px) {
+  .where-row { grid-template-columns: 1fr; }
+  dl.images { grid-template-columns: 1fr; gap: 2px; }
+  dl.images dd { margin-bottom: 8px; }
+}
+
+/* ---------- Mockup additions (not in Kraken's app.css) ---------- */
+:root { --tf: var(--staging); --tf-soft: var(--staging-soft); }
+.mockbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 8px max(16px, env(safe-area-inset-left)); background: var(--prod-soft); border-bottom: 1px solid var(--line); font-size: 0.85rem; }
+.mock-note { color: var(--muted); }
+.mock-tabs { display: flex; flex-wrap: wrap; gap: 4px; margin-left: auto; }
+.mock-tabs button, .state-switch button { font: 500 0.8rem var(--font-body); padding: 3px 10px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); cursor: pointer; }
+.mock-tabs button[aria-current="true"], .state-switch button[aria-pressed="true"] { background: var(--ink); color: var(--surface); border-color: var(--ink); }
+.mock-callout { font-size: 0.85rem; color: var(--prod); border-left: 3px dashed var(--prod); padding: 2px 10px; }
+.screen { display: grid; gap: 28px; }
+.screen[hidden] { display: none; }
+.section-head { display: flex; align-items: center; gap: 10px; }
+.new-tag { font: 600 0.68rem var(--font-mono); letter-spacing: 0.06em; text-transform: uppercase; color: var(--surface); background: var(--prod); border-radius: 4px; padding: 1px 6px; }
+.new-bit { outline: 2px dashed color-mix(in srgb, var(--prod) 45%, transparent); outline-offset: 10px; border-radius: 6px; }
+
+.phone-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; }
+.phone-card { background: var(--surface); border: 1px solid var(--line); border-top: 4px solid var(--tf); border-radius: 10px; padding: 16px; display: grid; gap: 14px; align-content: start; }
+.phone-card.no-env { border-style: dashed; border-top-style: solid; border-top-color: var(--line); background: transparent; }
+.phone-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.platform { display: inline-flex; align-items: center; gap: 6px; font: 700 1.15rem var(--font-display); }
+.platform svg { width: 18px; height: 18px; color: var(--muted); }
+.no-env .platform { color: var(--muted); }
+.env-chip.none { color: var(--muted); background: var(--sunken); }
+.env-chip.testflight { color: var(--tf); background: var(--tf-soft); }
+.env.testflight { color: var(--tf); }
+.phone-facts { margin: 0; display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 8px 14px; align-items: baseline; }
+.phone-facts dt { font: 500 0.72rem var(--font-mono); letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted); }
+.phone-facts dd { margin: 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; }
+.build { font-family: var(--font-mono); color: var(--muted); font-weight: 400; }
+
+.phone-form { max-width: 640px; }
+.field { display: grid; gap: 6px; }
+.field label { font-weight: 600; }
+.field select, .field input { font: inherit; padding: 8px 10px; border-radius: 7px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); min-width: 0; }
+.field input { font-family: var(--font-mono); font-size: 1.15rem; width: 9ch; }
+.field input[aria-invalid="true"] { border-color: var(--bad); }
+.field select:focus-visible, .field input:focus-visible { outline: 2px solid var(--staging); outline-offset: 1px; }
+.version-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 18px; }
+.version-side { display: grid; gap: 2px; font-size: 0.85rem; color: var(--muted); }
+.warnings li.bad { background: var(--bad-soft); border-left-color: var(--bad); color: var(--bad); }
+.confirm.testflight { border-top-color: var(--tf); }
+.diff .to.plain { color: var(--ink); }
+.state-switch { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 0.8rem; color: var(--prod); padding: 8px 10px; border: 1px dashed var(--prod); border-radius: 8px; width: fit-content; }
+.next-note { color: var(--muted); font-size: 0.92rem; }
+@media (max-width: 620px) { .mock-tabs { margin-left: 0; } .phone-facts { grid-template-columns: 1fr; gap: 2px; } .phone-facts dd { margin-bottom: 8px; } }
+</style>
+</head>
+<body>
+<div class="mockbar">
+  <span class="devbar-tag">Mockup</span>
+  <span class="mock-note">Phone builds in Kraken (plan #354). Not built; example data only.</span>
+  <nav class="mock-tabs" aria-label="Mockup screens">
+    <button type="button" data-go="project" aria-current="true">1 Project page</button>
+    <button type="button" data-go="form">2 New build</button>
+    <button type="button" data-go="confirm">3 Confirm</button>
+    <button type="button" data-go="progress">4 Progress</button>
+    <button type="button" data-go="log">5 Log</button>
+  </nav>
+</div>
+
+<header class="topbar">
+  <a class="brand" href="#" data-go="project">
+    <svg width="30" height="30" viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="13" r="9" fill="var(--staging)"/><path d="M8 18c-2 6-5 7-6 7M12 21c-1 5-2 7-4 8M16 22v8M20 21c1 5 2 7 4 8M24 18c2 6 5 7 6 7" stroke="var(--staging)" stroke-width="2.4" fill="none" stroke-linecap="round"/><circle cx="12.5" cy="12" r="1.6" fill="var(--surface)"/><circle cx="19.5" cy="12" r="1.6" fill="var(--surface)"/></svg>
+    Kraken
+  </a>
+  <nav>
+    <a href="#" data-go="project" data-nav="project" aria-current="page">Projects</a>
+    <a href="#" data-go="log" data-nav="log">Log</a>
+  </nav>
+</header>
+
+<main class="page">
+
+<!-- ============ 1. PROJECT PAGE ============ -->
+<section class="screen" id="s-project">
+  <div class="page-head">
+    <p class="crumbs"><a href="#">Projects</a> /</p>
+    <div class="proj-name big"><h1>dot-watcher</h1></div>
+    <p class="lede"><a href="#">skelstar/dot-watcher</a> · checked 2 minutes ago</p>
+  </div>
+
+  <div class="env-cards">
+    <section class="env-card staging">
+      <h2>Staging</h2>
+      <div class="cell"><span class="ver big">1.9.2</span><span class="pill ok">Healthy</span><span class="when">deployed 16 Nov, 9:12 pm</span></div>
+    </section>
+    <section class="env-card production">
+      <h2>Production</h2>
+      <div class="cell"><span class="ver big">1.9.1</span><span class="pill ok">Healthy</span><span class="when">deployed 12 Nov, 7:40 pm</span></div>
+    </section>
+  </div>
+
+  <section class="stack new-bit">
+    <div class="section-head">
+      <h2>Phone builds</h2>
+      <span class="new-tag">New</span>
+    </div>
+    <div class="phone-cards">
+      <section class="phone-card">
+        <div class="phone-head">
+          <span class="platform"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="2" width="12" height="20" rx="3" fill="none" stroke="currentColor" stroke-width="2"/><path d="M10 18h4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>iOS</span>
+          <span class="env-chip staging">TestFlight</span>
+        </div>
+        <dl class="phone-facts">
+          <dt>Last upload</dt>
+          <dd><a class="ver big" href="#">1.4.3</a> <span class="build">(974)</span> <span class="pill ok">In TestFlight</span>
+            <span class="when block">from <code>ios-testflight-runner</code> · 17 Nov, 8:05 am · took 3m 12s</span></dd>
+          <dt>Project says</dt>
+          <dd><span class="ver">1.4.3</span> <span class="when">in the Xcode project on <code>staging</code></span></dd>
+          <dt>Latest tag</dt>
+          <dd><code>ios-v1.4.3</code></dd>
+        </dl>
+        <div class="actions">
+          <a class="btn staging" href="#" data-go="form">New TestFlight build</a>
+          <a class="btn" href="#" data-go="log">History</a>
+        </div>
+      </section>
+      <section class="phone-card no-env">
+        <div class="phone-head">
+          <span class="platform"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="2" width="12" height="20" rx="3" fill="none" stroke="currentColor" stroke-width="2"/><path d="M10 18h4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>Android</span>
+          <span class="env-chip none">Play internal</span>
+        </div>
+        <p class="when">Not set up yet. Needs an <code>android-play-internal.yml</code> workflow and a <code>phoneBuilds</code> entry in <code>projects.yaml</code>.</p>
+      </section>
+    </div>
+  </section>
+
+  <section class="stack">
+    <h2>Recent deploys</h2>
+    <ul class="log">
+      <li><a href="#" data-go="progress"><span class="env-chip testflight">iOS</span> <span class="ver">1.4.3 → 1.4.4</span></a><span class="pill busy">Archiving</span><span class="when">just now</span></li>
+      <li><a href="#"><span class="env-chip staging">staging</span> <span class="ver">1.9.1 → 1.9.2</span></a><span class="pill ok">Healthy</span><span class="when">16 Nov, 9:12 pm</span></li>
+      <li><a href="#"><span class="env-chip production">production</span> <span class="ver">1.9.0 → 1.9.1</span></a><span class="pill ok">Healthy</span><span class="when">12 Nov, 7:40 pm</span></li>
+    </ul>
+    <p class="mock-callout">Phone builds appear in the same list as deploys, with their own chip.</p>
+  </section>
+</section>
+
+<!-- ============ 2. NEW BUILD FORM ============ -->
+<section class="screen" id="s-form" hidden>
+  <div class="page-head">
+    <p class="crumbs"><a href="#" data-go="project">Projects</a> / <a href="#" data-go="project">dot-watcher</a> / Phone builds /</p>
+    <h1>New TestFlight build</h1>
+    <p class="lede">Kraken starts <code>ios-testflight.yml</code> on GitHub Actions and follows the run. A GitHub Mac does the build; nothing is submitted for App Store review.</p>
+  </div>
+
+  <form class="confirm phone-form" onsubmit="return false">
+    <div class="field">
+      <label for="branch">Branch</label>
+      <select id="branch">
+        <option value="staging|44d13d1|981" selected>staging</option>
+        <option value="map-dot-size|b71e0a2|983">map-dot-size · updated 2 days ago</option>
+        <option value="ios-testflight-runner|9f38627|979">ios-testflight-runner · updated yesterday</option>
+        <option value="one-map-screen|3c9d114|987">one-map-screen · updated 5 days ago</option>
+      </select>
+      <p class="hint" id="branch-hint">Latest commit <code>44d13d1</code> “Merge pull request #355 from skelstar/ios-testflight-runner” · build number will be <strong>981</strong> (the commit count).</p>
+    </div>
+
+    <div class="field">
+      <label for="version">Version</label>
+      <div class="version-row">
+        <input id="version" value="1.4.4" inputmode="decimal" autocomplete="off" spellcheck="false" aria-describedby="version-hint version-warn">
+        <div class="version-side">
+          <span>Project says <span class="ver">1.4.3</span></span>
+          <span>Last upload <a class="ver" href="#">1.4.3</a> <span class="build">(974)</span></span>
+        </div>
+      </div>
+      <p class="hint" id="version-hint">Suggested: next patch after <code>ios-v1.4.3</code>. Type it as <code>1.4.4</code>, not <code>v1.4.4</code>. Used for this build only; nothing is committed.</p>
+      <ul class="warnings" id="version-warn" hidden><li></li></ul>
+    </div>
+
+    <div class="actions end">
+      <a class="btn" href="#" data-go="project">Cancel</a>
+      <button class="btn staging" type="button" id="review-btn" data-go="confirm">Review upload →</button>
+    </div>
+  </form>
+  <p class="mock-callout">Try typing <code>1.4.3</code>, <code>1.4.2</code>, <code>v1.5</code> or another branch to see the warnings.</p>
+</section>
+
+<!-- ============ 3. CONFIRM ============ -->
+<section class="screen" id="s-confirm" hidden>
+  <div class="page-head">
+    <p class="crumbs"><a href="#" data-go="project">Projects</a> / <a href="#" data-go="project">dot-watcher</a> /</p>
+  </div>
+  <form class="confirm testflight" onsubmit="return false">
+    <h1>Upload dot-watcher <span class="ver" data-v>1.4.4</span> to <span class="env testflight">TestFlight</span>?</h1>
+
+    <div class="diff">
+      <div class="diff-line"><span class="part-label">version</span><span class="from">1.4.3</span> → <span class="to" data-v>1.4.4</span><span class="digest">typed; project says 1.4.3</span></div>
+      <div class="diff-line"><span class="part-label">build</span><span class="from">974</span> → <span class="to" data-build>981</span><span class="digest">commit count</span></div>
+      <div class="diff-line"><span class="part-label">branch</span><span class="to plain" data-branch>staging</span><span class="digest" data-sha>@ 44d13d1</span></div>
+    </div>
+
+    <ul class="warnings">
+      <li>The Xcode project still says 1.4.3. Builds archived on a Mac will use 1.4.3 until it's bumped in a normal PR.</li>
+    </ul>
+
+    <ul class="facts">
+      <li>Starts <code>ios-testflight.yml</code> on <code>skelstar/dot-watcher</code>; a GitHub-hosted Mac builds it (usually about 3 minutes, longer if Macs are queued).</li>
+      <li>Uses real data (Release → Production server).</li>
+      <li>Goes to internal TestFlight testers only. Nothing is submitted for App Store review.</li>
+      <li>After a successful upload, tags <code data-tag>ios-v1.4.4</code> on <code data-sha2>44d13d1</code>.</li>
+    </ul>
+
+    <details class="shipping">
+      <summary>What's in it since 1.4.3 (974)</summary>
+      <ul class="notes">
+        <li>Map dot size setting (iOS)</li>
+        <li>TestFlight workflow runs on macos-15</li>
+        <li>…5 more commits</li>
+      </ul>
+    </details>
+
+    <section class="checks" aria-label="Pre-flight checks">
+      <h2>Pre-flight checks</h2>
+      <ul>
+        <li class="ok"><span class="mark">✓</span><span>GitHub token can start workflows<span class="detail">Actions: read and write on skelstar/dot-watcher</span></span></li>
+        <li class="ok"><span class="mark">✓</span><span>No other iOS build queued or running</span></li>
+        <li class="ok"><span class="mark">✓</span><span>Version is higher than the last upload<span class="detail"><span data-v>1.4.4</span> &gt; 1.4.3</span></span></li>
+        <li class="ok"><span class="mark">✓</span><span>Tag <code data-tag>ios-v1.4.4</code> isn't used yet</span></li>
+        <li class="warn"><span class="mark">!</span><span>Build number not checked against App Store Connect<span class="detail">If 981 was already uploaded, Apple refuses it at the upload step.</span></span></li>
+      </ul>
+    </section>
+
+    <div class="actions end">
+      <a class="btn" href="#" data-go="form">Back</a>
+      <button class="btn staging" type="button" data-go="progress" data-start>Upload to TestFlight</button>
+    </div>
+    <p class="aside"><span class="env-chip testflight">iOS</span> Nothing starts until you press the button. This screen is the approval.</p>
+  </form>
+</section>
+
+<!-- ============ 4. PROGRESS ============ -->
+<section class="screen" id="s-progress" hidden>
+  <div class="page-head">
+    <p class="crumbs"><a href="#" data-go="project">Projects</a> / <a href="#" data-go="project">dot-watcher</a> / Phone builds /</p>
+    <h1>iOS <span class="ver" data-v>1.4.4</span> <span class="build">(<span data-build>981</span>)</span> → TestFlight</h1>
+    <p class="lede">From <code data-branch>staging</code> @ <code data-sha2>44d13d1</code> · <a class="ext-link" href="#">Run #45 on GitHub ↗</a> · request <code>k-42</code></p>
+  </div>
+
+  <div class="state-switch" role="group" aria-label="Mockup: show state">
+    <span>Mockup state:</span>
+    <button type="button" data-state="live" aria-pressed="true">Live (plays through)</button>
+    <button type="button" data-state="queued">Stuck in queue</button>
+    <button type="button" data-state="failed">Failed at upload</button>
+    <button type="button" data-state="done">Done</button>
+  </div>
+
+  <div class="progress" id="progress">
+    <div class="progress-head"><span class="pill busy" id="p-pill">Running</span><span class="when" id="p-when">running for 0s</span></div>
+    <ol class="stepper" id="stepper"></ol>
+    <div id="p-next"></div>
+  </div>
+</section>
+
+<!-- ============ 5. LOG ============ -->
+<section class="screen" id="s-log" hidden>
+  <div class="page-head">
+    <h1>Log</h1>
+    <p class="lede">Every deploy and phone build Kraken started.</p>
+  </div>
+  <div class="scroll">
+    <table class="log-table">
+      <thead><tr><th>When</th><th>Project</th><th>Where</th><th>Version</th><th>Status</th><th>Took</th></tr></thead>
+      <tbody>
+        <tr><td>just now</td><td>dot-watcher</td><td><span class="env-chip testflight">iOS · TestFlight</span></td><td><a class="ver" href="#" data-go="progress">1.4.4 (981)</a><span class="when block">staging @ 44d13d1</span></td><td><span class="pill busy">Archiving</span></td><td>—</td></tr>
+        <tr><td>17 Nov, 8:05 am</td><td>dot-watcher</td><td><span class="env-chip testflight">iOS · TestFlight</span></td><td><span class="ver">1.4.3 (974)</span><span class="when block">ios-testflight-runner @ 64c0645</span></td><td><span class="pill ok">In TestFlight</span></td><td>3m 12s</td></tr>
+        <tr><td>17 Nov, 7:48 am</td><td>dot-watcher</td><td><span class="env-chip testflight">iOS · TestFlight</span></td><td><span class="ver">1.4.3 (974)</span><span class="when block">ios-testflight-runner @ 64c0645</span></td><td><span class="pill bad">No Mac</span><span class="when block">GitHub had no macOS runner for 15 min</span></td><td>15m 02s</td></tr>
+        <tr><td>16 Nov, 9:12 pm</td><td>dot-watcher</td><td><span class="env-chip staging">staging</span></td><td><span class="ver">1.9.1 → 1.9.2</span></td><td><span class="pill ok">Healthy</span></td><td>1m 40s</td></tr>
+        <tr><td>12 Nov, 7:40 pm</td><td>dot-watcher</td><td><span class="env-chip production">production</span></td><td><span class="ver">1.9.0 → 1.9.1</span></td><td><span class="pill ok">Healthy</span></td><td>2m 05s</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+</main>
+<footer class="footer"><span class="token">GitHub token expires 3 Feb 2027</span><span>Kraken · kraken.skelstar.io</span></footer>
+<script>
+
+(() => {
+  const $ = (s, r = document) => r.querySelector(s);
+  const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+
+  // ---- Screens ----
+  function go(name) {
+    $$(".screen").forEach((s) => (s.hidden = s.id !== "s-" + name));
+    $$(".mock-tabs button").forEach((b) => b.setAttribute("aria-current", String(b.dataset.go === name)));
+    $$("[data-nav]").forEach((a) => (a.dataset.nav === (name === "log" ? "log" : "project") ? a.setAttribute("aria-current", "page") : a.removeAttribute("aria-current")));
+    if (name === "progress") setState(currentState, true);
+    else stopTimer();
+    window.scrollTo(0, 0);
+  }
+  document.addEventListener("click", (e) => {
+    const t = e.target.closest("[data-go]");
+    if (!t || t.disabled) return;
+    e.preventDefault();
+    if (t.hasAttribute("data-start")) currentState = "live";
+    go(t.dataset.go);
+  });
+
+  // ---- Form: branch + version ----
+  const LAST = [1, 4, 3];
+  const sel = $("#branch"), input = $("#version"), warn = $("#version-warn"), review = $("#review-btn");
+  const subjects = { staging: "Merge pull request #355 from skelstar/ios-testflight-runner", "map-dot-size": "Map dot size: Medium 33", "ios-testflight-runner": "Docs: first TestFlight upload worked (1.4.3 build 974)", "one-map-screen": "One map screen: shared shell" };
+  let model = { branch: "staging", sha: "44d13d1", build: "981", version: "1.4.4" };
+
+  function sync() {
+    $$("[data-v]").forEach((el) => (el.textContent = model.version));
+    $$("[data-build]").forEach((el) => (el.textContent = model.build));
+    $$("[data-branch]").forEach((el) => (el.textContent = model.branch));
+    $$("[data-sha]").forEach((el) => (el.textContent = "@ " + model.sha));
+    $$("[data-sha2]").forEach((el) => (el.textContent = model.sha));
+    $$("[data-tag]").forEach((el) => (el.textContent = "ios-v" + model.version));
+  }
+  sel.addEventListener("change", () => {
+    const [branch, sha, build] = sel.value.split("|");
+    Object.assign(model, { branch, sha, build });
+    $("#branch-hint").innerHTML = `Latest commit <code>${sha}</code> “${subjects[branch]}” · build number will be <strong>${build}</strong> (the commit count).` +
+      (branch !== "staging" ? ` <br>Not <code>staging</code>: build numbers from a branch can clash with later staging builds.` : "");
+    sync();
+  });
+  input.addEventListener("input", () => {
+    const v = input.value.trim();
+    const li = warn.querySelector("li");
+    let msg = "", bad = false;
+    if (!/^\d+\.\d+\.\d+$/.test(v)) {
+      bad = true;
+      msg = /^v/i.test(v) ? "Type the version without the v, like 1.4.4. Kraken adds the ios-v tag prefix itself." : "Use three numbers, like 1.4.4.";
+    } else {
+      const p = v.split(".").map(Number);
+      const cmp = p[0] - LAST[0] || p[1] - LAST[1] || p[2] - LAST[2];
+      if (cmp === 0) msg = "1.4.3 was already uploaded. TestFlight will take it again only with a new build number, and the tag ios-v1.4.3 already exists.";
+      else if (cmp < 0) msg = `${v} is lower than the last upload (1.4.3). TestFlight will refuse it once 1.4.3 is approved.`;
+    }
+    warn.hidden = !msg;
+    li.textContent = msg;
+    li.className = bad ? "bad" : "";
+    input.setAttribute("aria-invalid", String(bad));
+    review.disabled = bad;
+    review.textContent = bad ? "Fix the version to continue" : "Review upload →";
+    if (!bad) { model.version = v; sync(); }
+  });
+
+  // ---- Progress ----
+  const STAGES = [
+    { title: "Queued", wait: "Waiting for a GitHub Mac…", done: "Got a macos-15 runner after 18s" },
+    { title: "Checking out", wait: "Fetching the branch and writing Secrets.xcconfig…", done: () => `${model.branch} @ ${model.sha}, Xcode 26.1 selected` },
+    { title: "Archiving", wait: "xcodebuild archive, Release configuration…", done: () => `DotWatcher ${model.version} (${model.build}) archived` },
+    { title: "Uploading", wait: "Sending to App Store Connect…", done: "Upload accepted by App Store Connect" },
+    { title: "Tagging", wait: () => `Pushing ios-v${model.version}…`, done: () => `Tagged ios-v${model.version} on ${model.sha}` },
+  ];
+  const AT = ["8:41:02 pm", "8:41:20 pm", "8:41:31 pm", "8:43:48 pm", "8:44:10 pm"];
+  const val = (x) => (typeof x === "function" ? x() : x);
+  let currentState = "live", timer = null, tick = 0;
+
+  function stopTimer() { clearInterval(timer); timer = null; }
+
+  function render(states, opts) {
+    $("#stepper").innerHTML = STAGES.map((s, i) => {
+      const st = states[i];
+      let body = "";
+      if (st === "active") body = `<p>${opts.activeText?.(i) ?? val(s.wait)}</p>` + (opts.meter?.(i) ?? "");
+      if (st === "done") body = `<p>${val(s.done)}</p>`;
+      if (st === "failed") body = `<p>${opts.failText}</p><pre class="events">${opts.failDetail}</pre>`;
+      const when = st === "done" || st === "failed" || st === "active" ? `<span class="when">${AT[i]}</span>` : "";
+      return `<li class="step ${st}"><div class="step-title"><h3>${s.title}</h3>${when}</div>${body}</li>`;
+    }).join("");
+    const pill = $("#p-pill");
+    pill.className = "pill " + opts.pill[0];
+    pill.textContent = opts.pill[1];
+    $("#p-when").textContent = opts.when;
+    $("#p-next").innerHTML = opts.next ?? "";
+  }
+
+  const DONE_NEXT = () => `<div class="stack"><p class="next-note">Apple is processing the build. It shows in TestFlight in about 10 minutes, and Apple emails when it's ready.</p>
+    <div class="actions"><a class="btn" href="#" data-go="project">Back to dot-watcher</a><a class="btn" href="#">Open in App Store Connect ↗</a></div></div>`;
+
+  function setState(name, restart) {
+    currentState = name;
+    stopTimer();
+    $$(".state-switch button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.state === name)));
+    if (name === "done") {
+      render(STAGES.map(() => "done"), { pill: ["ok", "In TestFlight"], when: "took 3m 08s", next: DONE_NEXT() });
+    } else if (name === "failed") {
+      render(["done", "done", "done", "failed", "pending"], {
+        pill: ["bad", "Failed"], when: "took 2m 51s",
+        failText: "App Store Connect refused the build: that build number was already uploaded.",
+        failDetail: `ERROR: The bundle version must be higher than the previously\nuploaded version: '${model.build}'. (ITMS-90062)`,
+        next: `<div class="stack"><p class="next-note">Nothing was tagged. A new commit on <code>${model.branch}</code> gives a new build number; then try again.</p>
+          <div class="actions"><a class="btn staging" href="#" data-go="form">Try again</a><a class="btn" href="#">Open the run log ↗</a></div></div>`,
+      });
+    } else if (name === "queued") {
+      render(["active", "pending", "pending", "pending", "pending"], {
+        pill: ["warn", "Waiting for a Mac"], when: "running for 12m 40s",
+        activeText: () => `Waiting for a GitHub Mac… <span class="clock">12m 40s</span><br>GitHub says macOS arm64 runners are short right now. It gives up after about 15 minutes; Kraken then marks the build “No Mac” and you can try again.`,
+        meter: () => `<div class="meter" role="progressbar" aria-label="Queue time used" aria-valuenow="84" aria-valuemin="0" aria-valuemax="100"><span style="width:84%;background:var(--prod)"></span></div>`,
+        next: `<div class="actions"><a class="btn" href="#">Cancel run</a><a class="btn" href="#">GitHub status ↗</a></div>`,
+      });
+    } else {
+      tick = restart ? 0 : tick;
+      const step = () => {
+        const stage = Math.min(Math.floor(tick / 3), STAGES.length);
+        if (stage >= STAGES.length) { stopTimer(); render(STAGES.map(() => "done"), { pill: ["ok", "In TestFlight"], when: "took 3m 08s", next: DONE_NEXT() }); return; }
+        const secs = [0, 18, 29, 166, 188][stage] + (tick % 3) * 4;
+        render(STAGES.map((_, i) => (i < stage ? "done" : i === stage ? "active" : "pending")), {
+          pill: ["busy", STAGES[stage].title], when: `running for ${Math.floor(secs / 60) ? Math.floor(secs / 60) + "m " : ""}${secs % 60}s`,
+        });
+        tick++;
+      };
+      step();
+      timer = setInterval(step, 1000);
+    }
+  }
+  $$(".state-switch button").forEach((b) => b.addEventListener("click", () => setState(b.dataset.state, true)));
+
+  sync();
+})();
+</script>
+</body></html>
