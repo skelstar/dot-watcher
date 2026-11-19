@@ -62,7 +62,8 @@ private fun positionAge(name: String, me: String, positions: List<RunnerPosition
 
 private val NoRecentPosition: Duration = Duration.ofSeconds(60)
 
-/** A runner as a dot in their pin colour (blue for you). A dashed edge means no recent position. */
+/** A runner as a dot in their pin colour (blue for you). A dashed edge means no recent position. The letters
+ *  come from [label] when given (the account's initials on the Go map, as on its pins), else from [name]. */
 @Composable
 internal fun PersonDot(
     name: String,
@@ -72,6 +73,7 @@ internal fun PersonDot(
     modifier: Modifier = Modifier,
     followed: Boolean = false,
     edge: Boolean = false,
+    label: String? = null,
 ) {
     val color = Color(
         RunnerColorPalette.colorAt(
@@ -90,7 +92,7 @@ internal fun PersonDot(
     if (followed) dot = dot.border(BorderStroke(2.5.dp, Color.Black), shape)
     Box(modifier = dot, contentAlignment = Alignment.Center) {
         Text(
-            text = initialsFor(name),
+            text = initialsFor(label ?: name),
             color = if (noRecentPosition) color else Color.White,
             fontSize = (size.value * 0.32f).sp,
             fontWeight = FontWeight.Bold,
@@ -99,21 +101,25 @@ internal fun PersonDot(
 }
 
 /**
- * Everyone in the session as dots, bottom left. Up to four are separate: tap one to centre the map on
- * them, tap again to let go, hold to block. With more than four the dots overlap and the whole chip opens
- * the list.
+ * The dots bottom left on both maps: everyone in the session, or on the Go map you and your crew who are out.
+ * Up to four are separate: tap one to centre the map on them, tap again to let go, and on the session map
+ * hold to block. With more than four the dots overlap and the whole chip opens the list ([MapPeopleSheet]).
+ * [labels] maps a name to what its dot's letters come from, for names that aren't initials (crew nicknames).
+ * [countLabel] is what TalkBack reads for the overlapped chip, e.g. "5 people in this session".
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-internal fun SessionPeopleChip(
+internal fun MapPeopleChip(
     names: List<String>,
     me: String,
     positions: List<RunnerPosition>,
     followed: String?,
+    countLabel: String,
     onFollow: (String) -> Unit,
     onShowAll: () -> Unit,
-    onBlock: (String) -> Unit,
     modifier: Modifier = Modifier,
+    labels: Map<String, String> = emptyMap(),
+    onBlock: ((String) -> Unit)? = null,
 ) {
     val now by rememberSecondClock()
     val overlapped = names.size > SEPARATE_DOT_LIMIT
@@ -126,7 +132,7 @@ internal fun SessionPeopleChip(
         .background(GlassColor)
         .let { if (overlapped) it.clickable(role = Role.Button, onClick = onShowAll) else it }
         .semantics {
-            if (overlapped) contentDescription = "${names.size} people in this session. Opens the list."
+            if (overlapped) contentDescription = "$countLabel. Opens the list."
         }
         .padding(horizontal = 10.dp)
 
@@ -145,6 +151,7 @@ internal fun SessionPeopleChip(
                 noRecentPosition = noPosition,
                 followed = !overlapped && followed == name,
                 edge = overlapped,
+                label = labels[name],
                 modifier = if (overlapped) {
                     Modifier
                 } else {
@@ -153,8 +160,8 @@ internal fun SessionPeopleChip(
                             enabled = true,
                             onClick = { if (age != null) onFollow(name) },
                             // Hold a dot to block that person, as on iOS; never yourself.
-                            onLongClick = if (name != me) ({ onBlock(name) }) else null,
-                            onLongClickLabel = "Block",
+                            onLongClick = if (name != me && onBlock != null) ({ onBlock(name) }) else null,
+                            onLongClickLabel = if (onBlock != null) "Block" else null,
                         )
                         .semantics { contentDescription = if (name == me) "You" else name }
                 },
@@ -172,24 +179,26 @@ internal fun SessionPeopleChip(
     }
 }
 
-/** Everyone in the session, for when there are too many dots to tap one at a time. Tapping someone with a
- *  position closes the list and centres the map on them. */
+/** Everyone in the chip, for when there are too many dots to tap one at a time. Tapping someone with a
+ *  position closes the list and centres the map on them. [title] is "In this session" or "Out now". */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun SessionPeopleSheet(
+internal fun MapPeopleSheet(
+    title: String,
     names: List<String>,
     me: String,
     positions: List<RunnerPosition>,
     followed: String?,
     onSelect: (String) -> Unit,
     onDismiss: () -> Unit,
-    /** Asks to block someone; offered on everyone but you. */
-    onBlock: (String) -> Unit,
+    labels: Map<String, String> = emptyMap(),
+    /** Asks to block someone; offered on everyone but you. Null on the Go map, which has no block. */
+    onBlock: ((String) -> Unit)? = null,
 ) {
     val now by rememberSecondClock()
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Text(
-            text = "In this session · ${names.size}",
+            text = "$title · ${names.size}",
             style = MaterialTheme.typography.titleLarge,
             modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
         )
@@ -204,7 +213,7 @@ internal fun SessionPeopleSheet(
                         .padding(horizontal = 24.dp, vertical = 10.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    PersonDot(name = name, me = me, size = 40.dp, noRecentPosition = noPosition)
+                    PersonDot(name = name, me = me, size = 40.dp, noRecentPosition = noPosition, label = labels[name])
                     Spacer(Modifier.width(14.dp))
                     Column(modifier = Modifier.weight(1f)) {
                         Text(if (name == me) "You" else name, style = MaterialTheme.typography.titleMedium)
@@ -215,7 +224,7 @@ internal fun SessionPeopleSheet(
                         )
                     }
                     if (followed == name) Text("Following", style = MaterialTheme.typography.labelMedium)
-                    if (name != me) {
+                    if (name != me && onBlock != null) {
                         TextButton(onClick = { onBlock(name) }) {
                             Text("Block", color = MaterialTheme.colorScheme.error)
                         }

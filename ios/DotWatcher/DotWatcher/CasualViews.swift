@@ -426,8 +426,9 @@ struct CasualHost: ViewModifier {
 
 /// The map while out casually: `TrackingMapScreen` fed with this person, their crew by name, and (only
 /// when both have chosen to be seen) anonymous dots within 5 km. There is no session behind it, so no
-/// invite; instead the rail has a watch link and an eye that opens "Who can see me", and the bottom-left
-/// chip opens the crew sheet. Stopping is a hold.
+/// invite; instead the rail has a watch link, an eye that opens "Who can see me" and the crew button. The
+/// bottom-left chip is the dots of this person and their crew who are out, as on the session map: tap one to
+/// follow them. Stopping is a hold.
 struct CasualMapScreen: View {
     var casual: CasualStore
     @Bindable var crew: CrewStore
@@ -437,6 +438,7 @@ struct CasualMapScreen: View {
     @State private var map = TrackingMapController()
     @State private var showWhoCanSeeMe = false
     @State private var showShare = false
+    @State private var showPeople = false
 
     private static let pollInterval: Duration = .seconds(10)
 
@@ -492,8 +494,12 @@ struct CasualMapScreen: View {
             },
             railMiddle: {
                 MapRailButton(symbol: "eye", label: "Who can see me") { showWhoCanSeeMe = true }
+                // The crew sheet, where crew can be added mid-run (the chip used to open it).
+                if crew.isAvailable {
+                    MapRailButton(symbol: "person.2", label: "Crew") { crew.isFlowPresented = true }
+                }
             },
-            bottomLeading: { countChip }
+            bottomLeading: { peopleChip }
         )
         .task {
             // Only while the app is visible: the tracking loop keeps sending this device's position
@@ -511,6 +517,23 @@ struct CasualMapScreen: View {
         .sheet(isPresented: $showShare) {
             ShareRunSheet(casual: casual)
                 .presentationDetents([.large])
+        }
+        .sheet(isPresented: $showPeople) {
+            MapPeopleSheet(
+                title: "Out now",
+                people: people,
+                me: location.runnerName,
+                followedId: map.followedId,
+                status: { person in
+                    guard let pin = pins.first(where: { $0.id == person.id }) else { return nil }
+                    return pin.timestamp.map { Date().timeIntervalSince($0) } ?? 0
+                },
+                onSelect: { person in
+                    showPeople = false
+                    map.follow(person.id)
+                }
+            )
+            .presentationDetents([.medium, .large])
         }
         // The crew sheet lives here, not on `ContentView`, because the map is a full-screen cover. A
         // crew link opened during a run lands here too (`CrewStore` sets the same flag).
@@ -544,31 +567,24 @@ struct CasualMapScreen: View {
         return MapActionError(message: message)
     }
 
-    /// "2 crew out". Tapping it opens the crew sheet, so crew can be added mid-run; with no crew yet
-    /// it says so and offers the add.
-    private var countChip: some View {
-        let crewOut = casual.crewOut ?? 0
-        let hasNoCrew = crew.isAvailable && crew.members.isEmpty
-        let text = (hasNoCrew ? "No crew yet" : crewOut == 0 ? "No crew out" : "\(crewOut) crew out")
-        return Button {
-            crew.isFlowPresented = true
-        } label: {
-            HStack(spacing: 6) {
-                Text(text)
-                Image(systemName: hasNoCrew ? "plus" : "chevron.right")
-                    .font(.system(size: 11, weight: .bold))
-                    .accessibilityHidden(true)
-            }
-            .font(.system(size: 15, weight: .semibold))
-            .foregroundStyle(.black)
-            .padding(.horizontal, 16)
-            .frame(height: 48)
-            .background(Color.white.opacity(0.85), in: Capsule())
-            .shadow(color: .black.opacity(0.18), radius: 2, y: 1)
-        }
-        .buttonStyle(.plain)
-        .disabled(!crew.isAvailable)
-        .accessibilityHint("Opens your crew, where you can add someone")
+    /// You first, then your crew who are out: named as on their pins, lettered from their initials. Anonymous nearby dots are
+    /// never in it: they have no name.
+    private var people: [MapPerson] {
+        [MapPerson(id: location.runnerName)] + casual.people
+            .filter { $0.isSelf != true }
+            .map { MapPerson(id: $0.runnerName, dotLabel: $0.displayName) }
+    }
+
+    /// The same dot chip as the session map, without its block.
+    private var peopleChip: some View {
+        MapPeopleChip(
+            people: people,
+            me: location.runnerName,
+            pins: pins,
+            controller: map,
+            countLabel: "You and " + (people.count == 2 ? "1 crew member" : "\(people.count - 1) crew") + " out",
+            onShowAll: { showPeople = true }
+        )
     }
 }
 

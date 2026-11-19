@@ -75,21 +75,22 @@ struct SessionMapScreen: View {
                 .preferredColorScheme(location.appearanceMode.colorScheme)
         }
         .sheet(isPresented: $showParticipants) {
-            ParticipantsSheet(
-                names: sessionNames,
+            MapPeopleSheet(
+                title: "In this session",
+                people: sessionPeople,
                 me: location.runnerName,
-                followedName: map.followedId,
-                status: { name in
-                    guard let pin = pins.first(where: { $0.id == name }) else { return nil }
+                followedId: map.followedId,
+                status: { person in
+                    guard let pin = pins.first(where: { $0.id == person.id }) else { return nil }
                     return pin.timestamp.map { Date().timeIntervalSince($0) } ?? 0
                 },
-                onSelect: { name in
+                onSelect: { person in
                     showParticipants = false
-                    map.follow(name)
+                    map.follow(person.id)
                 },
-                onBlock: { name in
+                onBlock: { person in
                     showParticipants = false
-                    blockCandidate = name
+                    blockCandidate = person.id
                 }
             )
             .presentationDetents([.medium, .large])
@@ -262,139 +263,19 @@ struct SessionMapScreen: View {
         return [me] + others
     }
 
-    /// Up to four people as separate dots, you first, in the pins' colours; a dashed edge means no recent
-    /// position. Tapping a dot centres the map on that runner; tap it again, or the fit-all button, to see
-    /// everyone. With more than four the dots overlap, as in the crew row, and the whole chip opens a list.
+    /// Everyone in the session, you first, as the shared dot chip: tap to follow, hold to block.
+    private var sessionPeople: [MapPerson] { sessionNames.map { MapPerson(id: $0) } }
+
     private var participantsRow: some View {
-        let me = location.runnerName
-        let names = sessionNames
-        let overlapped = names.count > Self.separateDotLimit
-        let shown = names.prefix(overlapped ? Self.overlappedFaces : Self.separateDotLimit)
-        let extra = names.count - shown.count
-        return TimelineView(.periodic(from: .now, by: 1)) { context in
-            let chip = HStack(spacing: overlapped ? -10 : 6) {
-                ForEach(Array(shown), id: \.self) { name in
-                    let pin = pins.first { $0.id == name }
-                    let age = pin?.timestamp.map { context.date.timeIntervalSince($0) }
-                    let dot = RunnerCircle(
-                        name: name,
-                        size: 34,
-                        fontSize: 11,
-                        fillColor: name == me ? RunnerColorPalette.currentUser : RunnerColorPalette.color(for: name),
-                        isDisconnected: pin == nil || (age.map { $0 > MapPinAge.disconnectedAfter } ?? false)
-                    )
-                    .overlay(
-                        Circle()
-                            .stroke(Color.black, lineWidth: 2.5)
-                            .opacity(map.followedId == name ? 1 : 0)
-                            .padding(-3)
-                    )
-                    if overlapped {
-                        // A chip-coloured edge keeps overlapped dots apart.
-                        dot.background(Circle().fill(Color.white)).overlay(Circle().strokeBorder(Color.white, lineWidth: 2))
-                    } else {
-                        dot
-                            .onTapGesture {
-                                guard pin != nil else { return }
-                                map.toggleFollow(name)
-                            }
-                            .onLongPressGesture {
-                                if name != me { blockCandidate = name }
-                            }
-                            .accessibilityElement(children: .ignore)
-                            .accessibilityLabel(name == me ? "You" : name)
-                            .accessibilityAddTraits(.isButton)
-                            .accessibilityHint(pin == nil ? "No recent position" : "Centres the map on them")
-                    }
-                }
-                if extra > 0 {
-                    Text("+\(extra)")
-                        .font(.system(size: 12.5, weight: .bold))
-                        .foregroundStyle(.black.opacity(0.6))
-                        .padding(.leading, overlapped ? 14 : 6)
-                }
-            }
-            .padding(.horizontal, 10)
-            .frame(height: 46)
-            .background(Color.white.opacity(0.85), in: Capsule())
-            .shadow(color: .black.opacity(0.18), radius: 2, y: 1)
-            if overlapped {
-                Button { showParticipants = true } label: { chip }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("\(names.count) people in this session")
-                    .accessibilityHint("Opens the list")
-            } else {
-                chip
-            }
-        }
-    }
-
-    private static let separateDotLimit = 4
-    private static let overlappedFaces = 6
-}
-
-/// Everyone in the session, for when there are too many dots to tap one at a time. Tapping someone with a
-/// position closes the list and centres the map on them.
-private struct ParticipantsSheet: View {
-    let names: [String]
-    let me: String
-    let followedName: String?
-    /// Seconds since the person's last position, or nil if they have none.
-    let status: (String) -> TimeInterval?
-    let onSelect: (String) -> Void
-    let onBlock: (String) -> Void
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("In this session · \(names.count)")
-                .font(.title3.bold())
-                .padding(.horizontal, 20)
-                .padding(.top, 20)
-            ScrollView {
-                VStack(spacing: 0) {
-                    ForEach(names, id: \.self) { name in
-                        let age = status(name)
-                        Button { onSelect(name) } label: {
-                            HStack(spacing: 14) {
-                                RunnerCircle(
-                                    name: name,
-                                    size: 40,
-                                    fontSize: 13,
-                                    fillColor: name == me ? RunnerColorPalette.currentUser : RunnerColorPalette.color(for: name),
-                                    isDisconnected: age == nil || (age ?? 0) > MapPinAge.disconnectedAfter
-                                )
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(name == me ? "You" : name).font(.headline)
-                                    Text(Self.statusText(age)).font(.caption).foregroundStyle(.secondary)
-                                }
-                                Spacer()
-                                if followedName == name {
-                                    Image(systemName: "scope").foregroundStyle(.secondary)
-                                }
-                            }
-                            .padding(.horizontal, 20)
-                            .padding(.vertical, 10)
-                            .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                        .disabled(age == nil)
-                        .contextMenu {
-                            if name != me {
-                                Button(role: .destructive) { onBlock(name) } label: {
-                                    Label("Block \(name)", systemImage: "hand.raised")
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    private static func statusText(_ age: TimeInterval?) -> String {
-        guard let age else { return "No position yet" }
-        if age < 60 { return "Updated just now" }
-        return "Updated \(Int(age / 60)) min ago"
+        MapPeopleChip(
+            people: sessionPeople,
+            me: location.runnerName,
+            pins: pins,
+            controller: map,
+            countLabel: "\(sessionPeople.count) people in this session",
+            onHold: { blockCandidate = $0.id },
+            onShowAll: { showParticipants = true }
+        )
     }
 }
 

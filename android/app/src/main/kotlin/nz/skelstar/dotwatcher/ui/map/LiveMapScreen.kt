@@ -270,7 +270,8 @@ fun LiveMapScreen(
     }
 
     if (showPeople) {
-        SessionPeopleSheet(
+        MapPeopleSheet(
+            title = "In this session",
             names = sessionNames(membership.displayName, positions),
             me = membership.displayName,
             positions = positions,
@@ -408,11 +409,12 @@ fun LiveMapScreen(
         // While paused for battery, the card below carries its own Stop and takes the bottom edge. Nothing
         // to stop until sharing has started: the map is also the backdrop for the "share your location?" sheet.
         if (!pausedForBattery) {
-            SessionPeopleChip(
+            MapPeopleChip(
                 names = sessionNames(membership.displayName, positions),
                 me = membership.displayName,
                 positions = positions,
                 followed = followedRunner,
+                countLabel = "${sessionNames(membership.displayName, positions).size} people in this session",
                 onFollow = follow,
                 onShowAll = { showPeople = true },
                 onBlock = { blockCandidate = it },
