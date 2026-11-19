@@ -303,4 +303,27 @@ MVP written on `activity-flow-mvp`, not yet built or tested (left to CI):
 - Web: `client/src/ActivityTab.tsx` and `activityFlow.ts` (with tests), and the Activity tab in `AdminPanel.tsx`.
 - Tests: `tests/DotWatcher.Server.Tests/ActivityTests.cs`. The test factory sets `Activity:WriteImmediately`.
 
+Since then, on the same branch:
+
+- `app_opened` and a new `app_backgrounded` are recording, through `POST /me/activity`
+  (`Controllers/AppActivityController.cs`). A repeat of the same kind from the same device within 60 s
+  is dropped; away-and-back inside a minute still records both. The simulator sends them (a
+  foreground/background toggle per phone, and "opened" when a phone first gets going); the iOS and
+  Android apps don't yet. The flow draws the line dashed while the app is away.
+- The Activity tab has **In order** / **By time**. By time, every line shares one time scale with
+  gridlines, fits the panel at 1× (zoom up to 16×), drops crowded labels to lower rows, and scrolls all
+  lines together.
+- The simulator has a **Go (no session)** mode with a watch link and pretend viewers, an app
+  foreground/background switch (Join, Go, Share and Stop need the app on screen), no Pause (Start
+  tracking until Stop), and **Delete (other) sim data**.
+- Watch viewings: the watch page polls only while its tab is visible (and now at once when it comes
+  back), so `WatchViewingTracker` treats a run of polls from one browser with no gap over 30 s as one
+  viewing. Each viewing is one `watch_link_opened` event; when it goes quiet (swept every 10 s) its
+  length is merged into the event's detail as `watchedSeconds`. Polls after the run ended don't count.
+  Accurate to about 10 s; a restart mid-viewing loses that one's length. The Activity tab adds the
+  lengths to the branch card and, by time, draws a bar under the line per viewing.
+- Privacy: this records how long an anonymous viewer kept the page open (no identity, a hash of a
+  random browser id). The privacy page's watch-link sentence (`client/src/LegalPage.tsx`) may want a
+  line about it; not changed.
+
 Still to check by hand: the "Done when" run on a phone once deployed.

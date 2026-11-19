@@ -27,6 +27,14 @@ public static class ActivityCapture
             if (info?.Skip == true)
                 return;
 
+            // A route with several kinds (POST /me/activity) records only the one the controller chose.
+            if (info?.Kind is { } chosen)
+            {
+                if (!kinds.Contains(chosen))
+                    return;
+                kinds = [chosen];
+            }
+
             // A controller names the dot when it isn't the caller: an anonymous watch-link viewer's
             // open goes on the run owner's line.
             var userId = info?.UserId ?? signedInUserId;

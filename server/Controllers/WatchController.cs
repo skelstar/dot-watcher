@@ -11,6 +11,7 @@ namespace DotWatcher.Server.Controllers;
 public class WatchController(
     SessionStore store,
     WatchLinkLimiter limiter,
+    WatchViewingTracker viewings,
     TimeProvider timeProvider) : ControllerBase
 {
     /// <summary>Where the runner behind a watch link is now, by initials. 404 for a link that doesn't exist or was revoked.</summary>
@@ -32,12 +33,17 @@ public class WatchController(
 
         if (view is not null)
         {
-            // "Someone watched", on the runner's line: once per browser per run, as the page polls.
-            // Only a hash of the browser id (or, without one, the IP) goes into the key.
+            // "Someone watched", on the runner's line: one event per viewing, a run of polls from one
+            // browser (see WatchViewingTracker). Polls after the run ended aren't watching it. Only a
+            // hash of the browser id (or, without one, the IP) is kept.
             var viewer = Request.Headers.TryGetValue("X-Browser-Id", out var browserId) && !string.IsNullOrWhiteSpace(browserId)
                 ? browserId.ToString()
                 : "ip:" + key;
-            HttpContext.SetActivity(userId: ownerUserId, runId: runId, dedupeKey: $"{runId}:{ActivityContext.ViewerKey(viewer)}");
+            var newViewing = view.Ended ? null : viewings.Poll(runId!, ActivityContext.ViewerKey(viewer), timeProvider.GetUtcNow());
+            if (newViewing is null)
+                HttpContext.SkipActivity();
+            else
+                HttpContext.SetActivity(userId: ownerUserId, runId: runId, dedupeKey: newViewing);
             return Ok(view);
         }
 

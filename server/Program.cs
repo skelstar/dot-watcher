@@ -44,6 +44,8 @@ builder.Services.AddSingleton<PaletteProvider>();
 builder.Services.AddHostedService<CasualMaintenanceService>();
 builder.Services.AddSingleton<ActivityRecorder>();
 builder.Services.AddHostedService<ActivityWriterService>();
+builder.Services.AddSingleton<WatchViewingTracker>();
+builder.Services.AddHostedService<WatchViewingSweepService>();
 builder.Services.AddSingleton(sp =>
 {
     var connectionString = sp.GetRequiredService<IConfiguration>()["ConnectionString"]

@@ -68,6 +68,12 @@ multi-runner scenarios without needing physical devices.
   persistent map on the page; picking a convergence or start point uses a modal instead, to
   avoid a wall of maps as more phones are added. Requires the client's own dev server running
   separately (`cd client && npm run dev`); configure a non-default URL via `VITE_CLIENT_URL`.
+- **Delete sim data** — next to **+ Add phone**: after a confirm naming the server, deletes `sim-`
+  accounts there and with them everything they made: sessions they own, positions, Go runs, watch
+  links and their activity events. While any phone here has an account (or a session is open) it
+  reads **Delete other sim-phone data** and keeps those accounts and the session's organizer, so the
+  test in progress carries on; otherwise it deletes every `sim-` account, as Create session does
+  first. Needs `VITE_BEARER_TOKEN`.
 - **Phones** — shown as a grid of compact tiles. Creating a session seeds three
   (`SK`, `DH`, `CH`), already auto-joined; click **+ Add phone** for more. Each phone
   independently:
@@ -78,8 +84,9 @@ multi-runner scenarios without needing physical devices.
     initials here as it would as a real runner on the client's map
   - Picks its starting point via a **Choose**/**Change** button (same picker modal as the
     convergence point), whenever you're ready — nothing pops up automatically
-  - Starts/pauses sending live `POST /location` updates once it has a start point and the
-    session has a convergence point
+  - **Start tracking** starts sending live `POST /location` updates once it has a start point and the
+    session has a convergence point (or, on Go, just a start point). There's no pause, as in the real
+    app: it tracks until Stop/Leave. **Missing** below is the phone going quiet (no signal, flat battery)
   - Can be switched between **Good** (heads straight for the convergence point, heading set to
     the bearing of travel — and stops reporting heading once "arrived", matching the real
     app's behaviour when stationary), **Bad GPS** (wanders randomly instead of converging, with
@@ -95,6 +102,24 @@ multi-runner scenarios without needing physical devices.
     simulation, just enough to exercise the client's two battery badge thresholds (see
     `.ai/plans/battery-level-reporting.md`) independently of GPS quality/satellite
   - Can leave the session independently at any time
+  - Has an app **Foreground/Background** switch (top right). A new phone's app is closed: switch it on
+    before **Join** or **Go** (phones seeded by Create session open it themselves). Once the phone has
+    an account the switch reports each change (`POST /me/activity`, as the real app is to) for the admin
+    Activity tab, where the line is dashed while the app is away; positions keep going, as they do from
+    a real phone in a pocket. The app goes back to the background 10 s after it was last used unless
+    that box is unticked. In the background the app's own buttons (Share a watch link,
+    Stop/Leave) are disabled until the switch is turned on again; the simulator's controls (start
+    point, GPX, Start tracking, GPS quality, battery, Add a viewer) still work.
+  - Or, instead of joining, can **Go (no session)**: like the app's Go sign, it registers an account,
+    switches Go (`casual`) on for it through the admin endpoints (needs `VITE_BEARER_TOKEN`), starts a
+    casual run and posts its positions there. It needs only a start point: with no route or
+    convergence point it walks in a straight line on a random bearing. Once out it can **Share a watch link**, then **Open
+    watch link** (the real watch page, in a new tab) or **Add a viewer** (a pretend browser with its
+    own id that polls every 10 s, like the watch page with its tab on screen, until **Stop a viewer**
+    closes the longest-watching one; each is one viewing, with its length, on the Activity tab), and
+    **Stop** ends the run (and its viewers). These make the requests the admin **Activity** tab
+    draws (started, shared, someone watched, stopped; see `.ai/plans/activity-flow.md`). Creating a
+    session deletes old `sim-` accounts, and their activity goes with them.
   - Renders on both its own mini map and the shared convergence map using the same visual
     language as the client's runner markers (`Arrow.tsx`): a coloured circle with a heading
     chevron, a dashed-border "missing" look for a data gap, a solid-border "stationary" look on

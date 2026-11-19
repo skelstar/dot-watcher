@@ -31,14 +31,23 @@
       "branchFrom": "watch_link_made",
       "route": "GET /watch/{token}",
       "status": "recording",
-      "notes": "On the run owner's line. Once per browser per run; the watch page polls every 10 s."
+      "notes": "On the run owner's line. One per viewing: a run of polls from one browser (the page polls every 10 s while its tab is on screen) with no gap over 30 s. detail.watchedSeconds once the viewing ends. Not while the run has ended."
     },
     {
       "kind": "app_opened",
       "label": "Opened the app",
       "shows": "line",
-      "status": "wanted",
-      "describe": "When the app comes to the front. Needs POST /me/activity and the iOS and Android apps to send it."
+      "route": "POST /me/activity",
+      "status": "recording",
+      "notes": "Sent by the app when it comes to the front (the simulator sends it today; the iOS and Android apps don't yet). A repeat from the same device within 60 s is dropped."
+    },
+    {
+      "kind": "app_backgrounded",
+      "label": "Put the app away",
+      "shows": "line",
+      "route": "POST /me/activity",
+      "status": "recording",
+      "notes": "Sent by the app when it goes to the background. The line is dashed until the next app_opened. A repeat within 60 s is dropped."
     },
     {
       "kind": "signed_in",

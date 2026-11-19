@@ -32,6 +32,8 @@ public static class ActivityContext
     public sealed class Info
     {
         public string? UserId { get; set; }
+        // Which of the route's kinds this request makes, when the route has several (POST /me/activity).
+        public string? Kind { get; set; }
         public string? RunId { get; set; }
         public string? DedupeKey { get; set; }
         public object? Detail { get; set; }
@@ -40,10 +42,12 @@ public static class ActivityContext
 
     /// <summary>Adds to what the event records. Only the arguments given are changed.</summary>
     public static void SetActivity(
-        this HttpContext context, string? userId = null, string? runId = null, string? dedupeKey = null, object? detail = null)
+        this HttpContext context, string? userId = null, string? runId = null, string? dedupeKey = null, object? detail = null,
+        string? kind = null)
     {
         var info = Get(context) ?? new Info();
         info.UserId = userId ?? info.UserId;
+        info.Kind = kind ?? info.Kind;
         info.RunId = runId ?? info.RunId;
         info.DedupeKey = dedupeKey ?? info.DedupeKey;
         info.Detail = detail ?? info.Detail;

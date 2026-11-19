@@ -92,6 +92,7 @@ export default function ConvergencePage() {
       }
 
       const organizer = await registerParticipant('Simulator')
+      organizerUserIdRef.current = organizer.userId
       const name = sessionName.trim() || randomSessionName()
       const membership = await createSession(organizer, name)
       setSession(membership)
@@ -105,6 +106,37 @@ export default function ConvergencePage() {
       setCreateError(err instanceof Error ? err.message : 'Failed to create session.')
     } finally {
       setCreating(false)
+    }
+  }
+
+  // Deletes sim- accounts on the server, and with them everything they made: sessions they own,
+  // positions, Go runs, watch links and their activity events (the admin Activity tab). While phones
+  // here have accounts, only the others go: those phones and the session's organizer are kept, so the
+  // test in progress carries on.
+  const [deletingSimData, setDeletingSimData] = useState(false)
+  const organizerUserIdRef = useRef<string | null>(null)
+  const inUseUserIds = new Set(
+    [
+      ...phones.map(p => snapshots[p.id]?.userId ?? null),
+      session ? organizerUserIdRef.current : null,
+    ].filter((id): id is string => !!id))
+  const keepsSomething = inUseUserIds.size > 0
+
+  async function handleDeleteSimData() {
+    const question = keepsSomething
+      ? `Delete every sim- account on ${SERVER_URL} except the ${inUseUserIds.size} in use here, with their sessions, Go runs and activity?`
+      : `Delete every sim- account on ${SERVER_URL}, with their sessions, Go runs and activity?`
+    if (!window.confirm(question)) return
+    setDeletingSimData(true)
+    setCreateError(null)
+    try {
+      const removed = await deleteSimAccounts(inUseUserIds)
+      // Nothing on screen is touched: every account in use here was kept.
+      setCleanupNote(`Deleted ${removed} ${keepsSomething ? 'other ' : ''}sim- account${removed === 1 ? '' : 's'} and their data.`)
+    } catch (err) {
+      setCleanupNote(err instanceof Error ? err.message : 'Could not delete sim- accounts.')
+    } finally {
+      setDeletingSimData(false)
     }
   }
 
@@ -326,7 +358,15 @@ export default function ConvergencePage() {
         const phonesHeaderEl = (
           <div style={phonesHeader}>
             <h2 style={panelTitle}>Phones ({activePhones.length})</h2>
-            <button style={addBtn} onClick={addPhone}>+ Add phone</button>
+            <div style={{ display: 'flex', gap: '0.5rem' }}>
+              <button style={deleteSimBtn} onClick={handleDeleteSimData} disabled={deletingSimData}
+                title={keepsSomething
+                  ? `Deletes every sim- account on ${SERVER_URL} except the phones (and session) here, and everything they made`
+                  : `Deletes every sim- account on ${SERVER_URL}, and everything they made`}>
+                {deletingSimData ? 'Deleting…' : keepsSomething ? 'Delete other sim-phone data' : 'Delete sim data'}
+              </button>
+              <button style={addBtn} onClick={addPhone}>+ Add phone</button>
+            </div>
           </div>
         )
         const phoneCards = phones.map((p, i) => (
@@ -441,7 +481,8 @@ const movementRow: React.CSSProperties = { display: 'flex', gap: '1.5rem' }
 const movementLabel: React.CSSProperties = { display: 'flex', flexDirection: 'column', gap: '0.3rem', fontSize: '0.82rem', color: '#475569', fontWeight: 600 }
 const select: React.CSSProperties = { padding: '0.35rem 0.5rem', borderRadius: 6, border: '1px solid #cbd5e1', fontSize: '0.85rem' }
 const phonesHeader: React.CSSProperties = { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.6rem' }
-const addBtn: React.CSSProperties = { padding: '0.4rem 0.9rem', borderRadius: 6, border: 'none', background: '#2563eb', color: '#fff', fontWeight: 700, fontSize: '0.85rem', cursor: 'pointer' }
+const deleteSimBtn: React.CSSProperties = { padding: '0.4rem 0.9rem', borderRadius: 6, border: '1px solid #fca5a5', background: '#fff', color: '#dc2626', fontWeight: 600, fontSize: '0.85rem', cursor: 'pointer' }
+const addBtn: React.CSSProperties ={ padding: '0.4rem 0.9rem', borderRadius: 6, border: 'none', background: '#2563eb', color: '#fff', fontWeight: 700, fontSize: '0.85rem', cursor: 'pointer' }
 const phonesGrid: React.CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(230px, 1fr))', gap: '0.75rem' }
 const liveClientToggle: React.CSSProperties = { display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.85rem', color: '#475569', cursor: 'pointer' }
 const clientFrame: React.CSSProperties = { width: '100%', flex: 1, minHeight: 0, border: '1px solid #e2e8f0', borderRadius: 8 }

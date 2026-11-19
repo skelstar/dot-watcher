@@ -150,7 +150,22 @@ public partial class SessionStore
         return events;
     }
 
-    /// <summary>Deletes activity events older than <paramref name="before"/>. Safe to run from both servers.</summary>
+    /// <summary>Adds fields to the detail of the event with this dedupe key (a watch viewing's length).</summary>
+    public void MergeActivityDetail(string dedupeKey, string detailJson)
+    {
+        using var conn = Connect();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = """
+            UPDATE activity_events
+            SET detail = COALESCE(detail, '{}'::JSONB) || CAST(@detail AS JSONB)
+            WHERE dedupe_key = @dedupeKey
+            """;
+        cmd.Parameters.AddWithValue("@dedupeKey", dedupeKey);
+        AddNullableText(cmd, "detail", detailJson);
+        cmd.ExecuteNonQuery();
+    }
+
+    /// <summary>Deletes activity events older than <paramref name="before"/>.</summary>
     public int PurgeActivityEvents(DateTimeOffset before)
     {
         using var conn = Connect();

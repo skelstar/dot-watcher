@@ -162,6 +162,65 @@ public class ActivityTests
     }
 
     [Fact]
+    public async Task AWatchViewing_GetsItsLength_OnceItGoesQuiet()
+    {
+        using var factory = CasualFactory();
+        using var client = factory.CreateClient();
+        var alice = await RegisterAsync(client, "alice", "AL");
+        await StartAndPostAsync(client, alice.AccessToken);
+        var link = await CreateLinkAsync(client, alice.AccessToken);
+        for (var i = 0; i < 3; i++)
+            await WatchAsync(client, link.Path, "browser-one");
+        await WaitForEventsAsync(client, alice.User.UserId, e => e.Any(x => x.Kind == "watch_link_opened"));
+
+        // As if a minute passed with no poll: the tab was hidden or closed.
+        var tracker = factory.Services.GetRequiredService<WatchViewingTracker>();
+        Assert.Equal(1, tracker.Sweep(DateTimeOffset.UtcNow.AddMinutes(1)));
+
+        var opened = (await GetEventsAsync(client, alice.User.UserId)).Single(e => e.Kind == "watch_link_opened");
+        Assert.True(opened.Detail!.Value.GetProperty("watchedSeconds").GetInt32() >= 0);
+    }
+
+    [Fact]
+    public void AGapInPolls_StartsANewViewing()
+    {
+        using var factory = new DotWatcherApiFactory();
+        _ = factory.CreateClient();
+        var tracker = factory.Services.GetRequiredService<WatchViewingTracker>();
+        var start = DateTimeOffset.UtcNow;
+
+        var first = tracker.Poll("run-1", "viewer", start);
+        Assert.NotNull(first);
+        Assert.Null(tracker.Poll("run-1", "viewer", start.AddSeconds(10)));
+        Assert.Null(tracker.Poll("run-1", "viewer", start.AddSeconds(20)));
+        // Hidden for longer than the gap, then back.
+        var second = tracker.Poll("run-1", "viewer", start.AddSeconds(20) + tracker.Gap + TimeSpan.FromSeconds(1));
+        Assert.NotNull(second);
+        Assert.NotEqual(first, second);
+        // Another viewer, or another run, is a viewing of its own.
+        Assert.NotNull(tracker.Poll("run-1", "someone-else", start.AddSeconds(30)));
+        Assert.NotNull(tracker.Poll("run-2", "viewer", start.AddSeconds(30)));
+    }
+
+    [Fact]
+    public async Task WatchingAfterTheRunEnded_RecordsNothing()
+    {
+        using var factory = CasualFactory();
+        using var client = factory.CreateClient();
+        var alice = await RegisterAsync(client, "alice", "AL");
+        await StartAndPostAsync(client, alice.AccessToken);
+        var link = await CreateLinkAsync(client, alice.AccessToken);
+        await SendAsync(client, HttpMethod.Post, "/casual/stop", alice.AccessToken);
+
+        Assert.Equal(HttpStatusCode.OK, (await WatchAsync(client, link.Path, "browser-late")).StatusCode);
+        await SendAsync(client, HttpMethod.Post, "/casual/start", alice.AccessToken);
+
+        var events = await WaitForEventsAsync(client, alice.User.UserId, e => e.Count(x => x.Kind == "run_started") == 2);
+
+        Assert.DoesNotContain(events, e => e.Kind == "watch_link_opened");
+    }
+
+    [Fact]
     public async Task UnknownWatchLink_RecordsNothing()
     {
         using var factory = CasualFactory();
@@ -175,6 +234,46 @@ public class ActivityTests
         var events = await WaitForEventsAsync(client, alice.User.UserId, e => e.Any(x => x.Kind == "run_stopped"));
 
         Assert.DoesNotContain(events, e => e.Kind == "watch_link_opened");
+    }
+
+    // ---- What the app reports itself -----------------------------------------------------------
+
+    [Fact]
+    public async Task AppReports_OpenedAndBackgrounded_AreRecorded_AndAQuickRepeatIsDropped()
+    {
+        using var factory = CasualFactory();
+        using var client = factory.CreateClient();
+        var alice = await RegisterAsync(client, "alice", "AL");
+
+        foreach (var kind in new[] { "app_opened", "app_opened", "app_backgrounded", "app_opened" })
+            Assert.Equal(HttpStatusCode.NoContent,
+                (await SendAsync(client, HttpMethod.Post, "/me/activity", alice.AccessToken, new { kind })).StatusCode);
+
+        var events = await WaitForEventsAsync(client, alice.User.UserId, e => e.Count >= 3);
+
+        // The second "opened" repeats the one before it within a minute; away and back again both count.
+        Assert.Equal(new[] { "app_opened", "app_backgrounded", "app_opened" }, events.Select(e => e.Kind).ToArray());
+    }
+
+    [Fact]
+    public async Task AppReports_NeedASignIn_AndAKindTheAppMaySend()
+    {
+        using var factory = CasualFactory();
+        using var client = factory.CreateClient();
+        var alice = await RegisterAsync(client, "alice", "AL");
+
+        Assert.Equal(HttpStatusCode.Unauthorized,
+            (await client.PostAsJsonAsync("/me/activity", new { kind = "app_opened" })).StatusCode);
+        foreach (var kind in new[] { "run_started", "made_up", "" })
+            Assert.Equal(HttpStatusCode.BadRequest,
+                (await SendAsync(client, HttpMethod.Post, "/me/activity", alice.AccessToken, new { kind })).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest,
+            (await SendAsync(client, HttpMethod.Post, "/me/activity", alice.AccessToken, new { })).StatusCode);
+
+        await SendAsync(client, HttpMethod.Post, "/me/activity", alice.AccessToken, new { kind = "app_opened" });
+        var events = await WaitForEventsAsync(client, alice.User.UserId, e => e.Count > 0);
+
+        Assert.Equal(new[] { "app_opened" }, events.Select(e => e.Kind).ToArray());
     }
 
     // ---- The admin endpoints -------------------------------------------------------------------
