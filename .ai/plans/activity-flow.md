@@ -56,7 +56,7 @@ together.
 **Builds:**
 
 1. The `activity_events` table (below), with account deletion cascading to it.
-2. The register (`server/activity-events.json`) and its schema, holding these four as `recording` and every
+2. The register (`server/Activity/activity-events.json`) and its schema, holding these four as `recording` and every
    other event in this plan as `wanted`.
 3. The middleware hook, the queue and the background writer (Writing it, below).
 4. `Activity:RunId` set by `POST /casual/start`, `/casual/stop` and `/casual/watch-link`, and by
@@ -104,9 +104,9 @@ account.
 
 ## The register
 
-`server/activity-events.json` is the one list of events: what the server records and how the admin tab
-words and places them. Copied to the build output (`CopyToOutputDirectory` in the csproj) and read once at
-start-up.
+`server/Activity/activity-events.json` is the one list of events: what the server records and how the admin tab
+words and places them. Embedded in the assembly (`EmbeddedResource` in the csproj, so a publish or a test
+run can't lose it) and read once at start-up.
 
 ```json
 {
@@ -148,7 +148,7 @@ Fields:
 **Asking for an event:** add an entry with `"status": "wanted"` and a `describe`. The server ignores it. To
 build it, fill in `route`, do any controller work, and change it to `recording`.
 
-**`server/activity-events.schema.json`** (JSON Schema) gives VS Code dropdowns for `shows` and `status`,
+**`server/Activity/activity-events.schema.json`** (JSON Schema) gives VS Code dropdowns for `shows` and `status`,
 the `kind` pattern `^[a-z][a-z0-9_]*$`, required fields per status (`route` when `recording`, `describe`
 when `wanted`, `branchFrom` when `branch`), and hover text for each field.
 
@@ -291,4 +291,16 @@ Later:
 
 ## Status, 20 November 2026
 
-Plan only. Nothing built. Next: the MVP on `activity-flow-mvp`.
+MVP written on `activity-flow-mvp`, not yet built or tested (left to CI):
+
+- Server: `server/Activity/` (register, schema, `ActivityRegister`, `ActivityRecorder` + `ActivityWriterService`,
+  `ActivityCapture` called from the request-logging middleware), `Stores/SessionStore.Activity.cs`,
+  `Controllers/ActivityController.cs`, the casual and watch controllers, retention in `CasualMaintenanceService`.
+- The admin endpoints take `from` and `to` instants (at most 7 days apart) rather than a day: the admin page
+  works out the day in its own time zone.
+- The watch page now sends `X-Browser-Id` (through `apiHeaders`), so each viewer counts once; the IP is only
+  the fallback.
+- Web: `client/src/ActivityTab.tsx` and `activityFlow.ts` (with tests), and the Activity tab in `AdminPanel.tsx`.
+- Tests: `tests/DotWatcher.Server.Tests/ActivityTests.cs`. The test factory sets `Activity:WriteImmediately`.
+
+Still to check by hand: the "Done when" run on a phone once deployed.

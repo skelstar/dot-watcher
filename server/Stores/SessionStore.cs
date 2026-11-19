@@ -273,6 +273,8 @@ public partial class SessionStore(string connectionString) : IDisposable
             );
             """;
         addCasual.ExecuteNonQuery();
+
+        InitializeActivity(conn);
     }
 
     // Idempotent - safe to call on every startup. Resolves (creating if missing) the permanent

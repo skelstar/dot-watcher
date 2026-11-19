@@ -24,12 +24,19 @@ public partial class SessionStore
     /// fresh link (the secret is only ever shown once); all of a run's links end with the run, and
     /// <see cref="RevokeCasualWatchLinks"/> ends them sooner.
     /// </summary>
-    public string? CreateCasualWatchLink(string userId, DateTimeOffset now)
+    public string? CreateCasualWatchLink(string userId, DateTimeOffset now) =>
+        CreateCasualWatchLink(userId, now, out _);
+
+    /// <inheritdoc cref="CreateCasualWatchLink(string, DateTimeOffset)"/>
+    /// <param name="runId">The run the link belongs to, when one was made.</param>
+    public string? CreateCasualWatchLink(string userId, DateTimeOffset now, out string? runId)
     {
+        runId = null;
         using var conn = Connect();
         var run = FindOpenCasualRun(conn, userId);
         if (run is null)
             return null;
+        runId = run.Id;
 
         var token = Convert.ToBase64String(RandomNumberGenerator.GetBytes(16))
             .TrimEnd('=').Replace('+', '-').Replace('/', '_');
@@ -57,17 +64,24 @@ public partial class SessionStore
     }
 
     /// <summary>What a watch link shows, or null for a link that doesn't exist (or was revoked).</summary>
-    public CasualWatchView? GetCasualWatchView(string token, DateTimeOffset now)
+    public CasualWatchView? GetCasualWatchView(string token, DateTimeOffset now) =>
+        GetCasualWatchView(token, now, out _, out _);
+
+    /// <inheritdoc cref="GetCasualWatchView(string, DateTimeOffset)"/>
+    /// <param name="runId">The run behind the link, when it exists.</param>
+    /// <param name="ownerUserId">Whose run it is, when the link exists. Never part of the view.</param>
+    public CasualWatchView? GetCasualWatchView(string token, DateTimeOffset now, out string? runId, out string? ownerUserId)
     {
+        runId = null;
+        ownerUserId = null;
         using var conn = Connect();
 
-        string runId;
         bool ended;
         string label;
         using (var lookup = conn.CreateCommand())
         {
             lookup.CommandText = """
-                SELECT r.id, r.ended_at, u.display_name
+                SELECT r.id, r.ended_at, u.display_name, r.user_id
                 FROM casual_watch_links w
                 JOIN casual_runs r ON r.id = w.run_id
                 JOIN users u ON u.id = r.user_id
@@ -80,12 +94,13 @@ public partial class SessionStore
             runId = reader.GetString(0);
             ended = !reader.IsDBNull(1);
             label = reader.GetString(2);
+            ownerUserId = reader.GetString(3);
         }
 
         if (ended)
             return new CasualWatchView(label, Ended: true, Live: false, Position: null);
 
-        var hasRoute = CasualRunHasRoute(conn, runId);
+        var hasRoute = CasualRunHasRoute(conn, runId!);
 
         using var latest = conn.CreateCommand();
         latest.CommandText = """

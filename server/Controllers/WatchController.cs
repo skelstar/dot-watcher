@@ -24,12 +24,22 @@ public class WatchController(
         Response.Headers.CacheControl = "no-store";
 
         var key = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+        string? runId = null;
+        string? ownerUserId = null;
         var view = SessionStore.LooksLikeWatchToken(token)
-            ? store.GetCasualWatchView(token, timeProvider.GetUtcNow())
+            ? store.GetCasualWatchView(token, timeProvider.GetUtcNow(), out runId, out ownerUserId)
             : null;
 
         if (view is not null)
+        {
+            // "Someone watched", on the runner's line: once per browser per run, as the page polls.
+            // Only a hash of the browser id (or, without one, the IP) goes into the key.
+            var viewer = Request.Headers.TryGetValue("X-Browser-Id", out var browserId) && !string.IsNullOrWhiteSpace(browserId)
+                ? browserId.ToString()
+                : "ip:" + key;
+            HttpContext.SetActivity(userId: ownerUserId, runId: runId, dedupeKey: $"{runId}:{ActivityContext.ViewerKey(viewer)}");
             return Ok(view);
+        }
 
         if (limiter.IsLimited(key))
             return StatusCode(StatusCodes.Status429TooManyRequests, new { error = "Too many attempts. Try again later." });

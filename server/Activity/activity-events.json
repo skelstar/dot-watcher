@@ -1,0 +1,171 @@
+{
+  "$schema": "./activity-events.schema.json",
+  "events": [
+    {
+      "kind": "run_started",
+      "label": "Started a Go run",
+      "shows": "line",
+      "route": "POST /casual/start",
+      "status": "recording",
+      "notes": "Once per run: the app calls start again to continue a run, and those repeats are dropped."
+    },
+    {
+      "kind": "run_stopped",
+      "label": "Stopped the run",
+      "shows": "line",
+      "route": "POST /casual/stop",
+      "status": "recording",
+      "notes": "Only when a run was open. detail.durationSeconds."
+    },
+    {
+      "kind": "watch_link_made",
+      "label": "Shared a watch link",
+      "shows": "line",
+      "route": "POST /casual/watch-link",
+      "status": "recording"
+    },
+    {
+      "kind": "watch_link_opened",
+      "label": "Someone watched",
+      "shows": "branch",
+      "branchFrom": "watch_link_made",
+      "route": "GET /watch/{token}",
+      "status": "recording",
+      "notes": "On the run owner's line. Once per browser per run; the watch page polls every 10 s."
+    },
+    {
+      "kind": "app_opened",
+      "label": "Opened the app",
+      "shows": "line",
+      "status": "wanted",
+      "describe": "When the app comes to the front. Needs POST /me/activity and the iOS and Android apps to send it."
+    },
+    {
+      "kind": "signed_in",
+      "label": "Signed in",
+      "shows": "line",
+      "status": "wanted",
+      "describe": "POST /auth/login. AuthController must set the user, as there is no token yet."
+    },
+    {
+      "kind": "registered",
+      "label": "Made an account",
+      "shows": "line",
+      "status": "wanted",
+      "describe": "POST /auth/register. AuthController must set the user."
+    },
+    {
+      "kind": "signed_out",
+      "label": "Signed out",
+      "shows": "line",
+      "status": "wanted",
+      "describe": "POST /auth/logout. AuthController must set the user before revoking the token."
+    },
+    {
+      "kind": "watch_link_removed",
+      "label": "Stopped sharing the watch link",
+      "shows": "line",
+      "status": "wanted",
+      "describe": "DELETE /casual/watch-link"
+    },
+    {
+      "kind": "route_added",
+      "label": "Added a route",
+      "shows": "line",
+      "status": "wanted",
+      "describe": "POST /casual/route"
+    },
+    {
+      "kind": "route_removed",
+      "label": "Removed the route",
+      "shows": "line",
+      "status": "wanted",
+      "describe": "DELETE /casual/route"
+    },
+    {
+      "kind": "profile_changed",
+      "label": "Changed their profile",
+      "shows": "line",
+      "status": "wanted",
+      "describe": "PUT /me/profile"
+    },
+    {
+      "kind": "go_settings_changed",
+      "label": "Changed who can see them",
+      "shows": "line",
+      "status": "wanted",
+      "describe": "PUT /me/casual/settings"
+    },
+    {
+      "kind": "crew_code_made",
+      "label": "Made a crew code",
+      "shows": "line",
+      "status": "wanted",
+      "describe": "POST /me/crew/codes"
+    },
+    {
+      "kind": "crew_joined",
+      "label": "Joined a crew",
+      "shows": "line",
+      "status": "wanted",
+      "describe": "POST /me/crew/codes/{code}/redeem. other_user_id = the code's owner."
+    },
+    {
+      "kind": "crew_member_joined",
+      "label": "Someone joined their crew",
+      "shows": "branch",
+      "branchFrom": "crew_code_made",
+      "status": "wanted",
+      "describe": "The same redeem as crew_joined, on the code owner's line. other_user_id = who joined."
+    },
+    {
+      "kind": "crew_member_removed",
+      "label": "Removed someone from their crew",
+      "shows": "line",
+      "status": "wanted",
+      "describe": "DELETE /me/crew/{userId}"
+    },
+    {
+      "kind": "blocked",
+      "label": "Blocked someone",
+      "shows": "line",
+      "status": "wanted",
+      "describe": "POST /me/blocks/{userId}"
+    },
+    {
+      "kind": "unblocked",
+      "label": "Unblocked someone",
+      "shows": "line",
+      "status": "wanted",
+      "describe": "DELETE /me/blocks/{userId}"
+    },
+    {
+      "kind": "session_created",
+      "label": "Created a session",
+      "shows": "line",
+      "status": "wanted",
+      "describe": "POST /sessions"
+    },
+    {
+      "kind": "session_joined",
+      "label": "Joined a session",
+      "shows": "line",
+      "status": "wanted",
+      "describe": "POST /session-invites/{inviteCode}/join and POST /nearby/sessions/{sessionId}/join. detail.via."
+    },
+    {
+      "kind": "session_left",
+      "label": "Left a session",
+      "shows": "line",
+      "status": "wanted",
+      "describe": "DELETE /me/sessions/{sessionId}/membership"
+    },
+    {
+      "kind": "session_ended",
+      "label": "Ended a session",
+      "shows": "line",
+      "status": "wanted",
+      "describe": "POST /sessions/{sessionId}/end"
+    }
+  ]
+}

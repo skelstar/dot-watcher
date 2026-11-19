@@ -13,6 +13,7 @@ import { initialsFor } from './components/InitialsBadge.tsx'
 import { statusLine, watchState, type WatchViewDto } from './watchView.ts'
 import { useRouteLayer } from './useRouteLayer.ts'
 import { parseGpxCoordinates } from './gpx.ts'
+import { apiHeaders } from './apiHeaders.ts'
 
 interface Props {
   serverUrl: string
@@ -64,7 +65,11 @@ export default function WatchPage({ serverUrl, token }: Props) {
     async function poll() {
       if (document.visibilityState === 'hidden') { schedule(); return }
       try {
-        const response = await fetch(`${serverUrl}/watch/${encodeURIComponent(token)}`, { cache: 'no-store' })
+        // No sign-in (null), but the browser id, so the runner's activity counts each viewer once.
+        const response = await fetch(`${serverUrl}/watch/${encodeURIComponent(token)}`, {
+          cache: 'no-store',
+          headers: apiHeaders(null, 'web-watch'),
+        })
         if (cancelled) return
         if (response.status === 404) {
           setLoad({ kind: 'notFound' })
