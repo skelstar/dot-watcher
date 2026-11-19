@@ -144,8 +144,9 @@ tweaked freely. PR "Palette library".
   `fallback`. Patch versions are refused (19 November 2026): the palette's name is shown on the phones beside the
   version as the release name, and releases are named per minor version.
 - **A phone gets, in order:** the palette assigned to its exact version (patch-level assignments from before the rule,
-  or a test token), the one for its minor version, the most recent one assigned at or below its version, the highest
-  assigned one, the `fallback` one, the `Palette` config section, then none (built-in colours). Both apps already send
+  or a test token), the one for its minor version, the most recent one assigned at or below its version, the
+  `fallback` one, the `Palette` config section, then none (built-in colours). Never a newer version's palette (it may
+  rely on start-screen changes an older app lacks; see PR #370). No version header: the highest assigned one. Both apps already send
   `X-App-Version` on every call that returns `config.palette`.
 - **Delivery to the phone is unchanged:** `config.palette` on login, register and `GET /me`, applied on launch and on
   return to the front (#275, #276). Assignments and palettes are cached for about five seconds.

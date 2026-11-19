@@ -136,9 +136,9 @@ public class AdminController(SessionStore store, BearerTokenAuth auth, FeatureFl
     /// Admin/ops: gives a saved palette to phones on one minor release (for example <c>1.4</c>, which phones on 1.4.0,
     /// 1.4.6 and so on get), or to <c>fallback</c>. Patch versions such as <c>1.4.6</c> are refused: the palette's name
     /// is the release name, and releases are named per minor version. Phones on an unassigned version get the most
-    /// recent palette assigned at or below their version (or, if they are older than all of them, the highest);
-    /// <c>fallback</c> is used only while no version is assigned. Takes effect within a few seconds, on each phone's
-    /// next launch or return to the front.
+    /// recent palette assigned at or below their version, never a newer one; phones older than every assigned
+    /// version get <c>fallback</c>. Takes effect within a few seconds, on each phone's next launch or return to the
+    /// front.
     /// </summary>
     [HttpPut("/admin/palettes/assignments/{appVersion}")]
     [ProducesResponseType(typeof(PaletteAssignment), StatusCodes.Status200OK)]
@@ -159,7 +159,7 @@ public class AdminController(SessionStore store, BearerTokenAuth auth, FeatureFl
         return palette.Assign(appVersion, request.PaletteId) ? Ok(new PaletteAssignment(appVersion, request.PaletteId)) : NotFound();
     }
 
-    /// <summary>Admin/ops: stops giving a palette to an app version, so those phones get the highest assigned version's palette (or the fallback one, or the built-in colours).</summary>
+    /// <summary>Admin/ops: stops giving a palette to an app version, so those phones get the nearest older assigned version's palette (or the fallback one, or the built-in colours).</summary>
     [HttpDelete("/admin/palettes/assignments/{appVersion}")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]

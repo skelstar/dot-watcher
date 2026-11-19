@@ -501,9 +501,10 @@ and releases are named per minor version. (A token that is not a version number,
 is also accepted.) Phones send `X-App-Version` (for example `1.4.6 (20)`); the part before the space is the phone's
 version. A phone gets, in order: the palette assigned to exactly that version (patch-level assignments saved before
 the rule, or a test token), the palette for its minor version (`1.4`), the most recent palette assigned at or below
-its version (compared number by number, so `1.10` beats `1.9`), the palette assigned to the highest version (for
-phones older than every assignment, and phones with no header), the palette assigned to `fallback` (so only while no
-version is assigned), the `Palette` config section, then none (the built-in colours). Assignments and palettes are
+its version (compared number by number, so `1.10` beats `1.9`), the palette assigned to `fallback`, the `Palette`
+config section, then none (the built-in colours). Never a newer version's palette, which may rely on start-screen
+changes an older app doesn't have: a phone older than every assigned version gets `fallback`. A phone that sends no
+version header gets the highest assigned version's palette. Assignments and palettes are
 cached for about five seconds. Apps pick the change up on their next launch or return to the front.
 
 Editing a palette that is assigned changes what those phones get straight away. To stage a change, save it as a new

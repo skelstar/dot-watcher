@@ -106,7 +106,7 @@ public class PaletteTests
         Assert.Equal("#334455", (await GetMeAsync(client, alice.AccessToken, "1.11.3 (40)")).Config?.Palette?.GoBg); // most recent at or below, numeric order
         Assert.Equal("#334455", (await GetMeAsync(client, alice.AccessToken, "9.9.9 (1)")).Config?.Palette?.GoBg);
         Assert.Equal("#223344", (await GetMeAsync(client, alice.AccessToken, "1.9.0 (1)")).Config?.Palette?.GoBg);
-        Assert.Equal("#334455", (await GetMeAsync(client, alice.AccessToken, "1.2.0 (1)")).Config?.Palette?.GoBg); // older than all: the highest
+        Assert.Equal("#112233", (await GetMeAsync(client, alice.AccessToken, "1.2.0 (1)")).Config?.Palette?.GoBg); // older than all: fallback, never a newer palette
         Assert.Equal("#334455", (await GetMeAsync(client, alice.AccessToken)).Config?.Palette?.GoBg);
     }
 
@@ -129,7 +129,7 @@ public class PaletteTests
     }
 
     [Fact]
-    public async Task TheFallbackAssignment_IsUsedOnlyWhileNoVersionIsAssigned_AndUnassignFallsBack()
+    public async Task TheFallbackAssignment_IsForPhonesWithNoOlderAssignedVersion_AndUnassignFallsBack()
     {
         using var factory = new DotWatcherApiFactory();
         using var client = factory.CreateClient();
@@ -144,6 +144,7 @@ public class PaletteTests
         await SendAdminAsync(client, HttpMethod.Put, "/admin/palettes/assignments/1.2", "test-token", new { paletteId = special.Id });
         Assert.Equal("#223344", (await GetMeAsync(client, alice.AccessToken, "1.2.2 (20)")).Config?.Palette?.GoBg);
         Assert.Equal("#223344", (await GetMeAsync(client, alice.AccessToken, "9.9.9 (1)")).Config?.Palette?.GoBg); // latest version, not fallback
+        Assert.Equal("#112233", (await GetMeAsync(client, alice.AccessToken, "1.1.0 (1)")).Config?.Palette?.GoBg); // older than 1.2: fallback, not the newer palette
 
         var unassigned = await SendAdminAsync(client, HttpMethod.Delete, "/admin/palettes/assignments/1.2", "test-token");
         Assert.Equal(HttpStatusCode.NoContent, unassigned.StatusCode);
