@@ -162,7 +162,8 @@ fun HoldSignButton(
  * A public event happening near the runner, shown under Go in orange with ink text and a ink bar so it
  * stands out from both the navy Go and the cream signs. No frame: it would make the sign look inset. [eyebrow] is the small caps line above the title
  * ("Happening near you . 2.3 km"). With an [organiser] (nearby runs) the line under the title is "Organised by"
- * and their dot; TalkBack still reads [subtitle], so the name is spoken in full.
+ * and their dot; TalkBack still reads [subtitle], so the name is spoken in full. [nudging] gives the chevrons the Go
+ * sign's "this way" nudge, for a tile that leads somewhere (a run to join); the placeholder stays still.
  */
 @Composable
 fun EventSignButton(
@@ -172,6 +173,7 @@ fun EventSignButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     organiser: String? = null,
+    nudging: Boolean = false,
 ) {
     val colors = animatedSignColors()
     Column(
@@ -189,6 +191,7 @@ fun EventSignButton(
             ink = colors.accentInk,
             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
             eyebrow = eyebrow,
+            nudging = nudging,
             organiser = organiser?.let { name -> @Composable { OrganiserDot(name, colors) } },
         )
     }

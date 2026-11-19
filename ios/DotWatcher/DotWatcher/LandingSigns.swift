@@ -304,11 +304,14 @@ extension Color {
 /// A public event happening near the runner, shown under Go in orange with ink text and a ink bar.
 /// `eyebrow` is the small caps line above the title. With an `organiser` (nearby runs) the subtitle is
 /// "Organised by" and their dot; `subtitle` stays the spoken label, so VoiceOver reads the name in full.
+/// `nudging` gives the chevrons the Go sign's "this way" nudge, for a tile that leads somewhere (a run to join,
+/// the ask to allow location); the placeholder stays still.
 struct EventSignButton: View {
     let eyebrow: String
     let title: String
     let subtitle: String
     var organiser: String? = nil
+    var nudging = false
     let action: () -> Void
 
     var body: some View {
@@ -318,7 +321,7 @@ struct EventSignButton: View {
                 colors.accentInk.frame(height: signBarHeight)
                 SignContent(
                     eyebrow: eyebrow, title: title, subtitle: subtitle, titleSize: 28, icon: .chevrons,
-                    ink: colors.accentInk,
+                    ink: colors.accentInk, nudging: nudging,
                     organiser: organiser.map { OrganiserDot(name: $0, colors: colors) }
                 )
                 .padding(.horizontal, 16)
