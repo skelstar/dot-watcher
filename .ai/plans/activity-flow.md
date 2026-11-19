@@ -326,4 +326,18 @@ Since then, on the same branch:
   random browser id). The privacy page's watch-link sentence (`client/src/LegalPage.tsx`) may want a
   line about it; not changed.
 
+Testing on the live server (branch `activity-flow-test-marking`): an admin marks activity as test
+afterwards, rather than ignoring an account (sometimes it's real use).
+
+- `activity_events.is_test` (default false). `POST /admin/activity/test` with `userId` and either `runId`
+  (the run's events, plus everything that dot did from the run's first event to its last, such as app
+  opens, which carry no run) or `from`/`to`; `isTest: false` marks it back. Nothing is deleted.
+- `GET /admin/activity` and `/dots` leave test events out unless `includeTest=true`; a dot with only test
+  activity drops off the day's list.
+- Activity tab: **Hide test activity** (on by default); a **Test: Go run 09:00–09:03** button per run in
+  each line's header (**Not test: …** to undo); By time, drag across a line to pick a stretch, then
+  **Mark as test** / **Not test**. Shown test stops are faded, dashed and tagged "test".
+- Later, maybe: the app's hidden Developer section gets a "Testing" switch that marks activity as test
+  as it happens (needs app releases).
+
 Still to check by hand: the "Done when" run on a phone once deployed.

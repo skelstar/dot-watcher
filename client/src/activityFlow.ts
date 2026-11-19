@@ -13,6 +13,8 @@ export interface ActivityEventDto {
   runId?: string | null
   sessionId?: string | null
   detail?: Record<string, unknown> | null
+  // Marked as testing by an admin; only sent when test activity is asked for.
+  isTest?: boolean
 }
 
 // One entry of the activity register (server: Activity/activity-events.json, GET /admin/activity/register).
@@ -41,6 +43,7 @@ export interface FlowStop {
   at: string
   // e.g. "2 min 54 s" on a stopped run.
   note: string | null
+  isTest: boolean
 }
 
 export interface FlowBranch {
@@ -61,6 +64,8 @@ export interface FlowRun {
   fromIndex: number
   // null: still going at the end of the line.
   toIndex: number | null
+  // The Go run it is, so it can be marked as test (not set on an away stretch).
+  runId?: string | null
 }
 
 export interface Flow {
@@ -97,11 +102,11 @@ export function buildFlow(events: ActivityEventDto[], register: RegisterEntryDto
     const index = stops.length
     const seconds = event.detail?.durationSeconds
     const note = event.kind === 'run_stopped' && typeof seconds === 'number' ? formatDuration(seconds) : null
-    stops.push({ index, kind: event.kind, label, at: event.at, note })
+    stops.push({ index, kind: event.kind, label, at: event.at, note, isTest: event.isTest === true })
     stopEvents.push(event)
 
     if (event.kind === 'run_started') {
-      const run: FlowRun = { fromIndex: index, toIndex: null }
+      const run: FlowRun = { fromIndex: index, toIndex: null, runId: event.runId ?? null }
       runs.push(run)
       if (event.runId) openRuns.set(event.runId, run)
     } else if (event.kind === 'run_stopped') {
@@ -111,7 +116,7 @@ export function buildFlow(events: ActivityEventDto[], register: RegisterEntryDto
         if (event.runId) openRuns.delete(event.runId)
       } else {
         // The start was before this range: the run goes from the start of the line.
-        runs.push({ fromIndex: 0, toIndex: index })
+        runs.push({ fromIndex: 0, toIndex: index, runId: event.runId ?? null })
       }
     } else if (event.kind === 'app_backgrounded') {
       if (!away.some(a => a.toIndex === null)) away.push({ fromIndex: index, toIndex: null })
@@ -225,6 +230,11 @@ export function timeScale(events: { at: string }[], width: number): TimeScale | 
 
 export function xForTime(scale: TimeScale, at: number): number {
   return LAYOUT.startX + ((at - scale.start) / (scale.end - scale.start)) * scale.width
+}
+
+// The other way: the moment at x px along a line, for picking a stretch by dragging.
+export function timeForX(scale: TimeScale, x: number): number {
+  return scale.start + ((x - LAYOUT.startX) / scale.width) * (scale.end - scale.start)
 }
 
 // The first row whose last item ends before `left`, taking it up to `right`.

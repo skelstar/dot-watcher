@@ -18,7 +18,9 @@ public sealed record ActivityEventView(
     string? AppVersion,
     string? RunId,
     string? SessionId,
-    JsonElement? Detail);
+    JsonElement? Detail,
+    // Marked as testing by an admin (the Activity tab), so it can be left out.
+    bool IsTest = false);
 
 // Activity events: what each dot did, written as it happens, for the admin Activity tab's flow. See
 // .ai/plans/activity-flow.md. Additive and cascading like the rest of the schema.
@@ -46,6 +48,9 @@ public partial class SessionStore
             CREATE INDEX IF NOT EXISTS idx_activity_user_at ON activity_events(user_id, at);
             CREATE INDEX IF NOT EXISTS idx_activity_at ON activity_events(at);
             CREATE UNIQUE INDEX IF NOT EXISTS idx_activity_dedupe ON activity_events(dedupe_key) WHERE dedupe_key IS NOT NULL;
+            -- Testing on the live server: an admin marks a run or a stretch as test afterwards, and the
+            -- Activity tab leaves it out unless asked. Nothing is deleted, so it can be unmarked.
+            ALTER TABLE activity_events ADD COLUMN IF NOT EXISTS is_test BOOLEAN NOT NULL DEFAULT FALSE;
             """;
         cmd.ExecuteNonQuery();
     }
@@ -87,8 +92,8 @@ public partial class SessionStore
         }
     }
 
-    /// <summary>Everyone with activity in [from, to), busiest first.</summary>
-    public IReadOnlyList<ActivityDot> GetActivityDots(DateTimeOffset from, DateTimeOffset to)
+    /// <summary>Everyone with activity in [from, to), busiest first. Test events count only with <paramref name="includeTest"/>.</summary>
+    public IReadOnlyList<ActivityDot> GetActivityDots(DateTimeOffset from, DateTimeOffset to, bool includeTest = false)
     {
         using var conn = Connect();
         using var cmd = conn.CreateCommand();
@@ -96,12 +101,13 @@ public partial class SessionStore
             SELECT a.user_id, u.display_name, u.username, COUNT(*)::INT
             FROM activity_events a
             JOIN users u ON u.id = a.user_id
-            WHERE a.at >= @from AND a.at < @to
+            WHERE a.at >= @from AND a.at < @to AND (@includeTest OR NOT a.is_test)
             GROUP BY a.user_id, u.display_name, u.username
             ORDER BY COUNT(*) DESC, u.display_name
             """;
         cmd.Parameters.AddWithValue("@from", from.UtcDateTime);
         cmd.Parameters.AddWithValue("@to", to.UtcDateTime);
+        cmd.Parameters.AddWithValue("@includeTest", includeTest);
 
         var dots = new List<ActivityDot>();
         using var reader = cmd.ExecuteReader();
@@ -110,9 +116,9 @@ public partial class SessionStore
         return dots;
     }
 
-    /// <summary>The given dots' events in [from, to), oldest first.</summary>
+    /// <summary>The given dots' events in [from, to), oldest first. Test events only with <paramref name="includeTest"/>.</summary>
     public IReadOnlyList<ActivityEventView> GetActivityEvents(
-        DateTimeOffset from, DateTimeOffset to, IReadOnlyCollection<string> userIds)
+        DateTimeOffset from, DateTimeOffset to, IReadOnlyCollection<string> userIds, bool includeTest = false)
     {
         if (userIds.Count == 0)
             return [];
@@ -120,14 +126,15 @@ public partial class SessionStore
         using var conn = Connect();
         using var cmd = conn.CreateCommand();
         cmd.CommandText = """
-            SELECT id, at, user_id, kind, other_user_id, client, app_version, run_id, session_id, detail::TEXT
+            SELECT id, at, user_id, kind, other_user_id, client, app_version, run_id, session_id, detail::TEXT, is_test
             FROM activity_events
-            WHERE at >= @from AND at < @to AND user_id = ANY(@userIds)
+            WHERE at >= @from AND at < @to AND user_id = ANY(@userIds) AND (@includeTest OR NOT is_test)
             ORDER BY at, id
             """;
         cmd.Parameters.AddWithValue("@from", from.UtcDateTime);
         cmd.Parameters.AddWithValue("@to", to.UtcDateTime);
         cmd.Parameters.AddWithValue("@userIds", userIds.ToArray());
+        cmd.Parameters.AddWithValue("@includeTest", includeTest);
 
         var events = new List<ActivityEventView>();
         using var reader = cmd.ExecuteReader();
@@ -145,9 +152,46 @@ public partial class SessionStore
                 Text(6),
                 Text(7),
                 Text(8),
-                detail is null ? null : JsonDocument.Parse(detail).RootElement.Clone()));
+                detail is null ? null : JsonDocument.Parse(detail).RootElement.Clone(),
+                reader.GetBoolean(10)));
         }
         return events;
+    }
+
+    /// <summary>
+    /// Marks one dot's events as test (or not): a whole Go run when <paramref name="runId"/> is given,
+    /// which takes in everything they did from its first event to its last (app opens and the like
+    /// carry no run), else everything in [from, to). Returns how many events it changed.
+    /// </summary>
+    public int MarkActivityTest(string userId, bool isTest, string? runId, DateTimeOffset? from, DateTimeOffset? to)
+    {
+        using var conn = Connect();
+        using var cmd = conn.CreateCommand();
+        if (runId is not null)
+        {
+            cmd.CommandText = """
+                WITH span AS (
+                    SELECT MIN(at) AS first_at, MAX(at) AS last_at
+                    FROM activity_events WHERE user_id = @userId AND run_id = @runId)
+                UPDATE activity_events a SET is_test = @isTest
+                FROM span
+                WHERE a.user_id = @userId AND a.is_test <> @isTest
+                  AND (a.run_id = @runId OR a.at BETWEEN span.first_at AND span.last_at)
+                """;
+            cmd.Parameters.AddWithValue("@runId", runId);
+        }
+        else
+        {
+            cmd.CommandText = """
+                UPDATE activity_events SET is_test = @isTest
+                WHERE user_id = @userId AND is_test <> @isTest AND at >= @from AND at < @to
+                """;
+            cmd.Parameters.AddWithValue("@from", from!.Value.UtcDateTime);
+            cmd.Parameters.AddWithValue("@to", to!.Value.UtcDateTime);
+        }
+        cmd.Parameters.AddWithValue("@userId", userId);
+        cmd.Parameters.AddWithValue("@isTest", isTest);
+        return cmd.ExecuteNonQuery();
     }
 
     /// <summary>Adds fields to the detail of the event with this dedupe key (a watch viewing's length).</summary>
