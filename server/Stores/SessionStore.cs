@@ -196,6 +196,12 @@ public partial class SessionStore(string connectionString) : IDisposable
         addFeatures.CommandText = "ALTER TABLE users ADD COLUMN IF NOT EXISTS features TEXT NOT NULL DEFAULT ''";
         addFeatures.ExecuteNonQuery();
 
+        // When the account last used the app (an authenticated request or a sign-in), for the admin
+        // Users list. Nullable: accounts not seen since this column was added have none.
+        using var addLastSeen = conn.CreateCommand();
+        addLastSeen.CommandText = "ALTER TABLE users ADD COLUMN IF NOT EXISTS last_seen_at TEXT";
+        addLastSeen.ExecuteNonQuery();
+
         // Global kill switches, one row per feature. A feature with no row is on.
         using var addSwitches = conn.CreateCommand();
         addSwitches.CommandText = "CREATE TABLE IF NOT EXISTS feature_switches (feature TEXT PRIMARY KEY, enabled BOOLEAN NOT NULL)";
@@ -397,17 +403,38 @@ public partial class SessionStore(string connectionString) : IDisposable
         using var conn = Connect();
         using var cmd = conn.CreateCommand();
         cmd.CommandText = """
-            SELECT id, username, display_name, created_at, features
+            SELECT id, username, display_name, created_at, features, last_seen_at
             FROM users
-            ORDER BY created_at DESC
+            ORDER BY last_seen_at DESC NULLS LAST, created_at DESC
             """;
         using var reader = cmd.ExecuteReader();
         var users = new List<AdminUserSummary>();
         while (reader.Read())
             users.Add(new AdminUserSummary(
                 reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetString(3),
-                ParseFeatures(reader.GetString(4))));
+                ParseFeatures(reader.GetString(4)),
+                reader.IsDBNull(5) ? null : reader.GetString(5)));
         return users;
+    }
+
+    // Last time each account's last_seen_at was written, so a phone polling every few seconds
+    // writes the row at most once per LastSeenWriteInterval rather than on every request.
+    private readonly ConcurrentDictionary<string, DateTimeOffset> _lastSeenWritten = new();
+    private static readonly TimeSpan LastSeenWriteInterval = TimeSpan.FromMinutes(5);
+
+    /// <summary>Records that the account just used the app. Cheap to call on every request.</summary>
+    public void TouchUserLastSeen(string userId, DateTimeOffset now)
+    {
+        if (_lastSeenWritten.TryGetValue(userId, out var written) && now - written < LastSeenWriteInterval)
+            return;
+        _lastSeenWritten[userId] = now;
+
+        using var conn = Connect();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "UPDATE users SET last_seen_at = @now WHERE id = @userId";
+        cmd.Parameters.AddWithValue("@now", now.ToUniversalTime().ToString("O"));
+        cmd.Parameters.AddWithValue("@userId", userId);
+        cmd.ExecuteNonQuery();
     }
 
     private static IReadOnlyList<string> ParseFeatures(string stored) =>

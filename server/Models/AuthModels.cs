@@ -209,7 +209,9 @@ public record AdminUserSummary(
     string Username,
     string DisplayName,
     string CreatedAt,
-    IReadOnlyList<string> Features
+    IReadOnlyList<string> Features,
+    // Last authenticated request or sign-in (to within a few minutes); null if not seen since this was tracked.
+    string? LastSeenAt = null
 );
 
 public record AdminSessionSummary(
