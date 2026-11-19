@@ -26,7 +26,10 @@ public class CasualController(
         if (Gate(out var user) is { } denied)
             return denied;
 
-        return Ok(store.StartCasualRun(user.UserId, timeProvider.GetUtcNow()));
+        var started = store.StartCasualRun(user.UserId, timeProvider.GetUtcNow());
+        // Start is called again to continue a run; the dedupe key keeps that to one event per run.
+        HttpContext.SetActivity(runId: started.RunId, dedupeKey: started.RunId);
+        return Ok(started);
     }
 
     /// <summary>Ends the caller's casual run. They leave everyone's map at once. Safe to repeat.</summary>
@@ -39,7 +42,14 @@ public class CasualController(
         if (Gate(out var user) is { } denied)
             return denied;
 
-        store.StopCasualRun(user.UserId, timeProvider.GetUtcNow());
+        var now = timeProvider.GetUtcNow();
+        if (store.StopCasualRun(user.UserId, now) is { } stopped)
+            HttpContext.SetActivity(
+                runId: stopped.RunId,
+                dedupeKey: stopped.RunId,
+                detail: new { durationSeconds = (int)Math.Round((now - stopped.StartedAt).TotalSeconds) });
+        else
+            HttpContext.SkipActivity();
         return NoContent();
     }
 
@@ -83,7 +93,8 @@ public class CasualController(
         if (Gate(out var user) is { } denied)
             return denied;
 
-        var token = store.CreateCasualWatchLink(user.UserId, timeProvider.GetUtcNow());
+        var token = store.CreateCasualWatchLink(user.UserId, timeProvider.GetUtcNow(), out var runId);
+        HttpContext.SetActivity(runId: runId);
         return token is null
             ? Conflict(new { error = "Start tracking before sharing a link." })
             : Ok(new CasualWatchLinkResponse(token, $"/watch/{token}"));

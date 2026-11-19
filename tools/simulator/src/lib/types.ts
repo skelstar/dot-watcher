@@ -17,4 +17,6 @@ export type PhoneSnapshot = {
   quality: Quality
   position: LatLon | null
   heading: number | null
+  // The phone's server account once it has joined or gone out, so "Delete other sim-phone data" can keep it.
+  userId: string | null
 }

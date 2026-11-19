@@ -1,4 +1,4 @@
-// Minimal client for the auth + session + location endpoints, used by the Convergence
+// Minimal client for the auth + session + location + Go endpoints, used by the Convergence
 // simulator to act as N independent phone/app users against a real Dot Watcher server.
 
 // VITE_SERVER_PORT comes from the repo root's shared .env (see start-local.ps1 and
@@ -66,7 +66,8 @@ export async function registerParticipant(displayName: string): Promise<AuthedUs
   const data = await res.json()
   return {
     accessToken: data.accessToken,
-    userId: data.user.id,
+    // The server sends `userId` (see ContractTests); `id` is kept as a fallback for an older server.
+    userId: data.user.userId ?? data.user.id,
     username: data.user.username,
     displayName: data.user.displayName,
   }
@@ -134,7 +135,8 @@ export async function leaveSession(user: AuthedUser, sessionId: string): Promise
 // previous test runs don't pile up accounts (and, since deleting a user also deletes any
 // sessions it owns, their sessions too). Best-effort: one account failing to delete doesn't
 // stop the rest. Requires VITE_BEARER_TOKEN; throws if it's not configured.
-export async function deleteSimAccounts(): Promise<number> {
+// `keepUserIds`: accounts still in use (the phones on screen, the session's organizer), left alone.
+export async function deleteSimAccounts(keepUserIds: ReadonlySet<string> = new Set()): Promise<number> {
   if (!ADMIN_BEARER_TOKEN) {
     throw new ApiError('VITE_BEARER_TOKEN is not configured — cannot clean up old sim- accounts.')
   }
@@ -145,7 +147,7 @@ export async function deleteSimAccounts(): Promise<number> {
   if (!res.ok) throw new ApiError(await errorMessage(res, `Listing users failed (${res.status}).`))
 
   const users: { id: string; username: string }[] = await res.json()
-  const stale = users.filter(u => u.username.startsWith('sim-'))
+  const stale = users.filter(u => u.username.startsWith('sim-') && !keepUserIds.has(u.id))
 
   const results = await Promise.allSettled(
     stale.map(u => fetch(`${SERVER_URL}/admin/users/${u.id}`, {
@@ -155,6 +157,80 @@ export async function deleteSimAccounts(): Promise<number> {
   )
 
   return results.filter(r => r.status === 'fulfilled' && r.value.ok).length
+}
+
+// ---- The app coming to the front / going to the background ---------------------------------------
+// What the real app is to send on each foreground/background (POST /me/activity), so the admin Activity
+// tab can show when it was open. A server without the endpoint answers 404, which is ignored.
+
+export type AppState = 'front' | 'back'
+
+export async function reportAppState(user: AuthedUser, state: AppState): Promise<void> {
+  const res = await fetch(`${SERVER_URL}/me/activity`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${user.accessToken}` },
+    body: JSON.stringify({ kind: state === 'front' ? 'app_opened' : 'app_backgrounded' }),
+  })
+  if (!res.ok && res.status !== 404) throw new ApiError(await errorMessage(res, `Reporting the app state failed (${res.status}).`))
+}
+
+// ---- Go (casual) runs ----------------------------------------------------------------------------
+// A phone can go out on its own instead of joining a session, like the app's Go sign. These make the
+// same requests the app does, so the server records the run in its activity events (the admin
+// Activity tab). See .ai/plans/activity-flow.md.
+
+export type GoRun = { sessionId: string; runId: string }
+export type WatchLink = { token: string; path: string }
+
+// Go is a feature an admin switches on per account (or for everyone in config). A sim account is new,
+// so it gets just "casual". Needs VITE_BEARER_TOKEN, like deleteSimAccounts.
+export async function enableGo(user: AuthedUser): Promise<void> {
+  if (!ADMIN_BEARER_TOKEN) {
+    throw new ApiError('VITE_BEARER_TOKEN is not configured — cannot switch Go on for this account.')
+  }
+  const res = await fetch(`${SERVER_URL}/admin/users/${user.userId}/features`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ADMIN_BEARER_TOKEN}` },
+    body: JSON.stringify({ features: ['casual'] }),
+  })
+  if (!res.ok) throw new ApiError(await errorMessage(res, `Switching Go on failed (${res.status}).`))
+}
+
+// Positions for the run are posted to the returned sessionId with postLocation, as for a session.
+export async function startGoRun(user: AuthedUser): Promise<GoRun> {
+  const res = await fetch(`${SERVER_URL}/casual/start`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${user.accessToken}` },
+  })
+  if (res.status === 404) throw new ApiError('Go is switched off on this server (404).')
+  if (!res.ok) throw new ApiError(await errorMessage(res, `Starting the Go run failed (${res.status}).`))
+  return res.json()
+}
+
+export async function stopGoRun(user: AuthedUser): Promise<void> {
+  await fetch(`${SERVER_URL}/casual/stop`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${user.accessToken}` },
+  })
+}
+
+export async function createWatchLink(user: AuthedUser): Promise<WatchLink> {
+  const res = await fetch(`${SERVER_URL}/casual/watch-link`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${user.accessToken}` },
+  })
+  if (!res.ok) throw new ApiError(await errorMessage(res, `Making a watch link failed (${res.status}).`))
+  return res.json()
+}
+
+// One look at a watch link from a pretend browser, the way the watch page polls it. A new browserId
+// counts as a new viewer ("Someone watched ×2"); the same one again doesn't.
+export async function watchOnce(link: WatchLink, browserId: string): Promise<void> {
+  const res = await fetch(`${SERVER_URL}${link.path}`, {
+    headers: { 'X-Browser-Id': browserId, 'X-Client-Id': 'web-watch' },
+    cache: 'no-store',
+  })
+  if (!res.ok) throw new ApiError(await errorMessage(res, `Watching failed (${res.status}).`))
 }
 
 // Session names must be 4-8 letters/digits/dash/underscore and unique server-side; padding

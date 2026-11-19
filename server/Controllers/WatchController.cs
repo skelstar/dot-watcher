@@ -11,6 +11,7 @@ namespace DotWatcher.Server.Controllers;
 public class WatchController(
     SessionStore store,
     WatchLinkLimiter limiter,
+    WatchViewingTracker viewings,
     TimeProvider timeProvider) : ControllerBase
 {
     /// <summary>Where the runner behind a watch link is now, by initials. 404 for a link that doesn't exist or was revoked.</summary>
@@ -24,12 +25,27 @@ public class WatchController(
         Response.Headers.CacheControl = "no-store";
 
         var key = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+        string? runId = null;
+        string? ownerUserId = null;
         var view = SessionStore.LooksLikeWatchToken(token)
-            ? store.GetCasualWatchView(token, timeProvider.GetUtcNow())
+            ? store.GetCasualWatchView(token, timeProvider.GetUtcNow(), out runId, out ownerUserId)
             : null;
 
         if (view is not null)
+        {
+            // "Someone watched", on the runner's line: one event per viewing, a run of polls from one
+            // browser (see WatchViewingTracker). Polls after the run ended aren't watching it. Only a
+            // hash of the browser id (or, without one, the IP) is kept.
+            var viewer = Request.Headers.TryGetValue("X-Browser-Id", out var browserId) && !string.IsNullOrWhiteSpace(browserId)
+                ? browserId.ToString()
+                : "ip:" + key;
+            var newViewing = view.Ended ? null : viewings.Poll(runId!, ActivityContext.ViewerKey(viewer), timeProvider.GetUtcNow());
+            if (newViewing is null)
+                HttpContext.SkipActivity();
+            else
+                HttpContext.SetActivity(userId: ownerUserId, runId: runId, dedupeKey: newViewing);
             return Ok(view);
+        }
 
         if (limiter.IsLimited(key))
             return StatusCode(StatusCodes.Status429TooManyRequests, new { error = "Too many attempts. Try again later." });

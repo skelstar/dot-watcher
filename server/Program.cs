@@ -42,6 +42,10 @@ builder.Services.AddSingleton<CrewFinder>();
 builder.Services.AddSingleton<FeatureFlags>();
 builder.Services.AddSingleton<PaletteProvider>();
 builder.Services.AddHostedService<CasualMaintenanceService>();
+builder.Services.AddSingleton<ActivityRecorder>();
+builder.Services.AddHostedService<ActivityWriterService>();
+builder.Services.AddSingleton<WatchViewingTracker>();
+builder.Services.AddHostedService<WatchViewingSweepService>();
 builder.Services.AddSingleton(sp =>
 {
     var connectionString = sp.GetRequiredService<IConfiguration>()["ConnectionString"]
@@ -200,6 +204,9 @@ app.Use(async (ctx, next) =>
             log = log.ForContext("UserId", user.UserId);
             log = log.ForContext("Username", user.Username);
         }
+
+        // The admin Activity tab's flow (see .ai/plans/activity-flow.md and Activity/activity-events.json).
+        ActivityCapture.Capture(ctx, status, isSignedIn ? user.UserId : null);
 
         foreach (var (key, value) in ctx.Items)
             if (key is string k && k.StartsWith("Log:") && value is not null)

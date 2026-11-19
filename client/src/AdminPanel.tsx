@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type FormEvent, Fragment } from 'react'
 import { apiHeaders } from './apiHeaders'
 import LoadRouteButton from './LoadRouteButton.tsx'
+import ActivityTab from './ActivityTab.tsx'
 import { BEARER_TOKEN_KEY, readAdminToken } from './adminToken.ts'
 
 interface AdminUser {
@@ -84,11 +85,12 @@ const PROTECTED_USERNAMES = new Set(['dw-demo', 'dw-casual'])
 type FeatureSwitch = { feature: string; enabled: boolean }
 const FEATURE_LABELS: Record<string, string> = { crew: 'Crew', casual: 'Casual tracking', events: 'Events' }
 
-type AdminTab = 'users' | 'sessions' | 'go' | 'palette'
+type AdminTab = 'users' | 'sessions' | 'go' | 'activity' | 'palette'
 const TABS: { id: AdminTab; label: string }[] = [
   { id: 'users', label: 'Users' },
   { id: 'sessions', label: 'Sessions' },
   { id: 'go', label: 'Go runs' },
+  { id: 'activity', label: 'Activity' },
   { id: 'palette', label: 'Palette' },
 ]
 
@@ -1020,6 +1022,8 @@ export default function AdminPanel({ serverUrl }: { serverUrl: string }) {
           )}
         </>
       )}
+
+      {tab === 'activity' && token && <ActivityTab serverUrl={serverUrl} token={token} />}
 
       {tab === 'palette' && (
         <>
