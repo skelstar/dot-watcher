@@ -1,8 +1,7 @@
 # Activity flow: what each dot did, as a line
 
-Branches: `activity-flow-server`, then `activity-flow-admin` (the web admin tab), `activity-flow-ios` and
-`activity-flow-android` (only for the "opened the app" event). The server branch is useful alone: it starts
-recording, and the admin tab can follow when there is data to look at.
+Branches: `activity-flow-mvp` first (server and admin tab, see MVP). After it: `activity-flow-server` for the
+rest of the events, and `activity-flow-ios` / `activity-flow-android` for the "opened the app" event.
 
 Mock-up: https://claude.ai/artifact/QZ4YAJsNjJrbu5vvxjR8LJ (the "Flow: AB's evening" board; the
 time-based board beside it is the rejected first idea).
@@ -29,8 +28,8 @@ stays as it is, for debugging.
 
 - Every request is logged once, at the end of the request-logging middleware in `server/Program.cs`, with
   `RequestMethod`, `RequestPath`, `StatusCode`, `UserId`, `DeviceId`, `ClientId`, `AppVersion`.
-- `RequestPath` is the real path (only `/watch/{token}` is rewritten), so a route table needs the endpoint's
-  route pattern (`(ctx.GetEndpoint() as RouteEndpoint)?.RoutePattern.RawText`), not the path.
+- `RequestPath` is the real path (only `/watch/{token}` is rewritten), so matching events to routes needs
+  the endpoint's route pattern (`(ctx.GetEndpoint() as RouteEndpoint)?.RoutePattern.RawText`), not the path.
 - The middleware finds the user by authenticating the request **after** it ran. `POST /auth/logout` has
   revoked the token by then, which is why sign-outs show with no runner in Seq. Login and register have no
   token at all; `AuthController` sets `Log:Runner` for those.
@@ -39,6 +38,41 @@ stays as it is, for debugging.
   `MainActivity.onResume` → `refreshPalette()`), but only to refresh the palette, and `GET /me` is called
   from other places too, so it can't stand in for "opened".
 - The watch page (`client/src/WatchPage.tsx`) polls `GET /watch/{token}` every 10 s.
+
+## MVP
+
+The smallest thing that shows a Go run as a flow. One branch, `activity-flow-mvp`, server and admin tab
+together.
+
+**Records four events**, all from the server, no app changes:
+
+| Kind | Label | Shows | Route |
+|---|---|---|---|
+| `run_started` | Started a Go run | line | `POST /casual/start` |
+| `run_stopped` | Stopped the run | line | `POST /casual/stop` |
+| `watch_link_made` | Shared a watch link | line | `POST /casual/watch-link` |
+| `watch_link_opened` | Someone watched | branch from `watch_link_made` | `GET /watch/{token}` |
+
+**Builds:**
+
+1. The `activity_events` table (below), with account deletion cascading to it.
+2. The register (`server/activity-events.json`) and its schema, holding these four as `recording` and every
+   other event in this plan as `wanted`.
+3. The middleware hook, the queue and the background writer (Writing it, below).
+4. `Activity:RunId` set by `POST /casual/start`, `/casual/stop` and `/casual/watch-link`, and by
+   `GET /watch/{token}` together with `Activity:UserId` = the run's owner.
+5. Watch opens recorded once per browser per run (Not recording the same thing twice).
+6. Deleting rows past retention in `CasualMaintenanceService`.
+7. The admin endpoints and the Activity tab: pick a day, pick dots, one line per dot, evenly spaced stops
+   with times, the line orange from `run_started` to `run_stopped`, and the "Someone watched" branch.
+   Plus the read-only Register list.
+
+**Leaves for later:** every other event in the register; `POST /me/activity` and the app changes; the
+dashed signed-out line and the long-gap breaks (nothing to sign out from yet in the MVP's four events);
+the open questions.
+
+**Done when:** start a Go run on a phone, share the watch link, open it in a browser, stop the run, and the
+admin Activity tab shows one line with three stops and a "Someone watched" branch.
 
 ## The table
 
@@ -65,25 +99,84 @@ Created with the other tables in `SessionStore`; reads and writes in a new `Stor
 like the other partials.
 
 `user_id` is always the dot whose line the event belongs on. An event caused by someone else on that line
-(an anonymous viewer, a new crew member) is a branch: the `kind` says so, and `other_user_id` names them
-when they have an account.
+(an anonymous viewer, a new crew member) is a branch, and `other_user_id` names them when they have an
+account.
 
-## What gets recorded
+## The register
 
-Only successful requests (status below 400). Kinds are past-tense and stable; the admin page owns the
-wording.
+`server/activity-events.json` is the one list of events: what the server records and how the admin tab
+words and places them. Copied to the build output (`CopyToOutputDirectory` in the csproj) and read once at
+start-up.
+
+```json
+{
+  "$schema": "./activity-events.schema.json",
+  "events": [
+    {
+      "kind": "watch_link_opened",
+      "label": "Someone watched",
+      "shows": "branch",
+      "branchFrom": "watch_link_made",
+      "route": "GET /watch/{token}",
+      "status": "recording",
+      "notes": "On the run owner's line. Once per browser per run."
+    },
+    {
+      "kind": "dot_colour_changed",
+      "label": "Changed their dot colour",
+      "shows": "line",
+      "status": "wanted",
+      "describe": "When someone changes their dot colour"
+    }
+  ]
+}
+```
+
+Fields:
+
+| Field | Required | Meaning |
+|---|---|---|
+| `kind` | yes | Stable id, `snake_case`, past tense. What the table stores. |
+| `label` | yes | The words on the flow. |
+| `shows` | yes | `line` (the dot did it) or `branch` (someone else, on this dot's line). |
+| `branchFrom` | for a branch | The `kind` of the stop it hangs off. Without one before it, it hangs off the nearest stop. |
+| `route` | when `recording` | `"METHOD /route/{pattern}"`, matching the endpoint's route pattern. |
+| `status` | yes | `wanted` (asked for, not built) or `recording`. |
+| `describe` | for `wanted` | Plain words, for when the route isn't known yet. |
+| `notes` | no | Anything the builder needs: what the controller must set, dedupe, detail fields. |
+
+**Asking for an event:** add an entry with `"status": "wanted"` and a `describe`. The server ignores it. To
+build it, fill in `route`, do any controller work, and change it to `recording`.
+
+**`server/activity-events.schema.json`** (JSON Schema) gives VS Code dropdowns for `shows` and `status`,
+the `kind` pattern `^[a-z][a-z0-9_]*$`, required fields per status (`route` when `recording`, `describe`
+when `wanted`, `branchFrom` when `branch`), and hover text for each field.
+
+**One route can write more than one event** (redeeming a crew code writes `crew_joined` and
+`crew_member_joined`): the server maps each route to a list of kinds. `POST /me/activity` is the exception
+the other way: one route, and the request body names the kind, which must be a `recording` entry whose
+route is `POST /me/activity`.
+
+**Checked in CI** by a server test: the file matches the schema, every `recording` route is a real endpoint,
+every `branchFrom` names a kind in the file, and every kind the code writes directly is in the file. The test
+output lists the `wanted` entries as still to build.
+
+## Events in the register
+
+The MVP's four are `recording`; the rest start as `wanted`. Once the file exists it is the truth and this
+list is only its starting point. Only successful requests (status below 400) are recorded.
 
 **On the line (the dot did it):**
 
-| Kind | Trigger | Detail |
+| Kind | Route | Notes |
 |---|---|---|
 | `app_opened` | `POST /me/activity` (new, below) | |
 | `signed_in` | `POST /auth/login` | |
 | `registered` | `POST /auth/register` | |
 | `signed_out` | `POST /auth/logout` | |
-| `run_started` | `POST /casual/start` | |
-| `run_stopped` | `POST /casual/stop` | `durationSeconds` |
-| `watch_link_made` | `POST /casual/watch-link` | |
+| `run_started` | `POST /casual/start` | MVP |
+| `run_stopped` | `POST /casual/stop` | MVP. `detail.durationSeconds` |
+| `watch_link_made` | `POST /casual/watch-link` | MVP |
 | `watch_link_removed` | `DELETE /casual/watch-link` | |
 | `route_added` / `route_removed` | `POST` / `DELETE /casual/route` | |
 | `profile_changed` | `PUT /me/profile` | |
@@ -99,10 +192,10 @@ wording.
 
 **Branches (someone else, on this dot's line):**
 
-| Kind | Trigger | Notes |
+| Kind | Route | Notes |
 |---|---|---|
-| `watch_link_opened` | `GET /watch/{token}` | On the run owner's line. Once per browser per run (see below). No account, so no `other_user_id`. |
-| `crew_member_joined` | the same redeem as `crew_joined` | On the code owner's line, `other_user_id` = the person who joined. One request writes both rows. |
+| `watch_link_opened` | `GET /watch/{token}` | MVP. From `watch_link_made`. On the run owner's line, no `other_user_id`. |
+| `crew_member_joined` | `POST /me/crew/codes/{code}/redeem` | From `crew_code_made`. On the code owner's line, `other_user_id` = who joined. |
 
 Left out on purpose: polling and loads (`GET /casual/live`, `GET /locations/...`, `POST /location`, crew and
 nearby reads), everything under `/admin`, the casual clean-up, and account deletion (its rows go with the
@@ -110,31 +203,31 @@ account anyway).
 
 ## Writing it
 
-1. **A route table in one place**, `ActivityRoutes`: `(method, route pattern) → kind`. The middleware looks it
-   up after `next()`; no match or status ≥ 400 means nothing is written.
+1. **The register drives it.** At start-up the server builds `(method, route pattern) → kinds` from the
+   `recording` entries. The middleware looks the request up after `next()`; no match or status ≥ 400 means
+   nothing is written.
 2. **Controllers fill in what the middleware can't see**, through `HttpContext.Items`, like the existing
    `Log:` keys:
-   - `Activity:UserId`: set by `AuthController` on login, register **and logout**. Logout sets it before
-     revoking the token. This also fixes the missing runner on sign-outs in Seq, if `Log:Runner` is set at
-     the same place.
-   - `Activity:RunId`: casual start, stop, watch link, route, and the watch controller (with
-     `Activity:UserId` = the run's owner).
-   - `Activity:OtherUserId`, `Activity:SessionId`, `Activity:Detail` where the tables above say.
+   - `Activity:UserId`: set by `AuthController` on login, register **and logout**, and by the watch
+     controller (the run's owner). Logout sets it before revoking the token. Setting `Log:Runner` at the same
+     place fixes the missing runner on sign-outs in Seq too.
+   - `Activity:RunId`: casual start, stop, watch link, route, and the watch controller.
+   - `Activity:OtherUserId`, `Activity:SessionId`, `Activity:Detail` where the register's notes say.
 3. **Never slow or fail a request.** The middleware puts the event on a `Channel<ActivityEvent>`; a
    `BackgroundService` drains it and inserts in batches. A failed insert is logged to Seq and dropped.
 
 ### Not recording the same thing twice
 
 - `watch_link_opened`: `dedupe_key = "watch:{runId}:{X-Browser-Id}"`, insert with `ON CONFLICT DO NOTHING`.
-  With no browser id the key falls back to the request's IP hash, so a page left open doesn't log 6 a minute.
+  With no browser id the key falls back to a hash of the request's IP, so a page left open doesn't log 6 a
+  minute.
 - `app_opened`: the writer skips it if the same device sent one in the last 60 s. That covers flicking
   between apps and the double foreground some Android dialogs cause.
 
-## The "opened the app" event
+## The "opened the app" event (after the MVP)
 
-`POST /me/activity` with `{ "kind": "app_opened" }`. Signed-in only, and the server accepts only kinds the
-apps are allowed to send (just `app_opened` for now). Returns 204. Fire and forget on the client: no retry,
-no error shown.
+`POST /me/activity` with `{ "kind": "app_opened" }`. Signed-in only; returns 204. Fire and forget on the
+client: no retry, no error shown.
 
 - iOS: in `ContentView`'s `scenePhase` `.active` branch, beside `fetchPalette()`, when signed in.
 - Android: in `MainActivity.onResume`, beside `appViewModel.refreshPalette()`, when signed in.
@@ -148,36 +241,48 @@ on its hourly pass. Not shown on the flow.
 
 ## The admin tab
 
-`GET /admin/activity/dots?day=2026-11-19` returns who has events that day (user id, name, colour, count).
-`GET /admin/activity?day=…&userIds=a,b` returns their events in order. Admin-token only, like the rest of
-`/admin`.
+Endpoints, admin-token only like the rest of `/admin`:
+
+- `GET /admin/activity/dots?day=2026-11-19`: who has events that day (user id, name, colour, count).
+- `GET /admin/activity?day=…&userIds=a,b`: their events in order.
+- `GET /admin/activity/register`: the register, for labels, `shows`, `branchFrom` and the Register list.
 
 In `client/src/AdminPanel.tsx`, a new **Activity** tab:
 
 - Pick a day, then one or more dots. **One line per dot**, stacked, each labelled with the initials dot.
-- Stops are **evenly spaced, in order**, not to time scale. The time is under each stop's name.
-- The line's look shows state: thicker and orange while a run is going (from `run_started` to
-  `run_stopped`), dashed while signed out.
-- Branches go below the line for `watch_link_opened` and `crew_member_joined`, from the stop they belong to
-  (the watch link made, the crew code made).
-- A long gap (over 15 min) between stops shows as a break in the line with the length ("32 min later").
+- Stops are **evenly spaced, in order**, not to time scale. The label from the register, the time under it.
+  A kind the register doesn't know shows as its raw `kind`.
+- The line is thicker and orange while a run is going (from `run_started` to `run_stopped`). After the MVP:
+  dashed while signed out, and a break with its length ("32 min later") for a gap over 15 min.
+- Branches go below the line, from the stop their `branchFrom` names.
+- A read-only **Register** section under the flow: each event's label, kind, route and status, with
+  `wanted` ones marked, so you can see what's recorded beside what it draws.
 
 Drawn in plain React, as SVG or positioned elements; no chart library.
 
 ## Tests (CI runs them)
 
+MVP:
+
+- The register matches its schema, its `recording` routes are real endpoints, its `branchFrom`s exist.
 - A start, a watch link and a stop each write one row with the run id; a 4xx writes nothing.
-- Logout writes `signed_out` against the right user.
-- Ten polls of `/watch/{token}` from one browser write one `watch_link_opened`; a second browser writes another.
-- Redeeming a crew code writes `crew_joined` and `crew_member_joined`.
-- `POST /me/activity` needs a signed-in user, rejects unknown kinds, and merges a repeat within 60 s.
+- Ten polls of `/watch/{token}` from one browser write one `watch_link_opened` on the owner's line; a second
+  browser writes another.
 - Deleting an account deletes its rows; the maintenance pass deletes rows past retention.
 - The admin endpoints refuse a user token.
+
+Later:
+
+- Logout writes `signed_out` against the right user.
+- Redeeming a crew code writes `crew_joined` and `crew_member_joined`.
+- `POST /me/activity` needs a signed-in user, rejects kinds not registered for it, and merges a repeat within
+  60 s.
 
 ## Open questions
 
 1. **Runs that end without Stop** (the app was killed, or the clean-up closed it): should the line show "run
-   ended" at the run's `ended_at`? That would come from the clean-up, which we said not to show.
+   ended" at the run's `ended_at`? That would come from the clean-up, which we said not to show. In the MVP
+   such a run simply stays orange to the end of the line.
 2. **The branches above the line** in the mock-up (the map refreshing during a run): worth a per-run count,
    for example `live_polls` on the `run_stopped` row from an in-memory counter, or drop them?
 3. **Failed sign-ins**: useful as red stops when helping someone who "can't log in", but they have no user
@@ -186,4 +291,4 @@ Drawn in plain React, as SVG or positioned elements; no chart library.
 
 ## Status, 20 November 2026
 
-Plan only. Nothing built.
+Plan only. Nothing built. Next: the MVP on `activity-flow-mvp`.
