@@ -15,6 +15,9 @@ struct NearbyEvent: Decodable, Identifiable, Equatable {
     let subtitle: String
     /// Set when this is a session the person can join from where they are; nil for the placeholder.
     let sessionId: String?
+    /// The organiser's display name, drawn as a small dot after "Organised by". Nil from servers that don't send
+    /// it, and on the placeholder; the sign then shows `subtitle` as text.
+    let organiser: String?
 }
 
 /// Shares `LocationManager`'s network stack (headers, token, the 426 version gate), like `CasualStore`.

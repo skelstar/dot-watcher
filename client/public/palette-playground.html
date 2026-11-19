@@ -83,6 +83,9 @@
   .sign.alt .t b { font-size: 26px; }
   .sign.event { background: var(--accent); color: var(--accent-ink); box-shadow: inset 0 0 0 2px var(--accent-ink); border-top: 12px solid var(--accent-ink); padding: 12px 16px; }
   .sign.event .t b { font-size: 28px; }
+  /* The organiser on a nearby tile: a dot in the tile's ink with the initials in the Join / Create background, like the wordmark dot. */
+  .sign.event .t span.org { display: flex; align-items: center; gap: 6px; }
+  .sign .org-dot { display: inline-grid; place-items: center; flex: none; width: 20px; height: 20px; border-radius: 50%; background: var(--accent-ink); color: var(--org-ink, var(--alt-bg)); font: 600 9px/1 -apple-system, system-ui, sans-serif; letter-spacing: -0.02em; }
   .sign.event .t em { display: block; font-style: normal; font-weight: 800; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; margin-bottom: 2px; }
 
   /* saved snapshots */
@@ -236,6 +239,7 @@
           <div class="crew"><div class="faces"><i style="background:#34c759">AB</i><i style="background:#ff9500">JT</i><i style="background:#af52de">MR</i></div><span class="more">+2</span><div class="txt"><b>Your crew</b><span>5 people</span></div></div>
           <button class="sign go"><div class="t"><b>Go</b><span>Start tracking your run</span></div><svg class="arrow"><use href="#arrow"/></svg></button>
           <button class="sign event"><div class="t"><em>Happening near you · 2.3 km</em><b>Rogaine event</b><span>Sat 9am · Hunua Ranges · 14 joined</span></div><svg class="arrow"><use href="#arrow"/></svg></button>
+          <button class="sign event"><div class="t"><em>Happening near you · 150 m</em><b>Sunday long run</b><span class="org">Organised by <i class="org-dot" aria-label="SK">SK</i></span></div><svg class="arrow"><use href="#arrow"/></svg></button>
           <button class="sign alt"><div class="t"><b>Invite code</b><span>Join a run you've been invited to</span></div><svg class="arrow"><use href="#arrow"/></svg></button>
           <button class="sign alt"><div class="t"><b>Create</b><span>Set up a new run for others</span></div><svg class="arrow"><use href="#arrow"/></svg></button>
         </div>
@@ -362,7 +366,15 @@
         r.title = 'Contrast against ' + t[4];
       } else r.className = 'ratio none';
     });
+    root.style.setProperty('--org-ink', orgInk(state));
     writeHash(); writeOut();
+  }
+
+  // The initials on the organiser dot of a nearby tile. The dot is the tile's ink (accentInk); the initials are the
+  // Join / Create background (altBg) when that reads on it, else the tile's own background (accent), which the
+  // editor already checks against accentInk. The apps use the same rule.
+  function orgInk(p) {
+    return ratio(p.altBg, p.accentInk) >= 4.5 ? p.altBg : p.accent; // 4.5:1, the bar for small text
   }
 
   // ---- URL hash
@@ -657,6 +669,8 @@
       if (valid(p[t[0]] || '')) phone.style.setProperty(t[3], p[t[0]].toLowerCase());
       else phone.style.removeProperty(t[3]);
     });
+    if (valid(p.altBg || '') && valid(p.accentInk || '') && valid(p.accent || '')) phone.style.setProperty('--org-ink', orgInk(p));
+    else phone.style.removeProperty('--org-ink');
     brandEl().textContent = 'v' + (version ? version + '.0' : '1.4.6') + ' · ' + (p.name || 'unnamed');
     viewing = entry.id;
     var assigned = entry.assignedTo || [];
@@ -672,6 +686,7 @@
     viewing = null;
     var phone = phoneEl();
     TOKENS.forEach(function (t) { phone.style.removeProperty(t[3]); });
+    phone.style.removeProperty('--org-ink');
     if (brandDefault !== null) brandEl().textContent = brandDefault;
     document.getElementById('view-bar').hidden = true;
   }

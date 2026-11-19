@@ -200,7 +200,9 @@ data class UpdateCasualSettingsRequest(
 // --- Events near you (server: Controllers/EventsController.cs) --------------------------
 
 /** A public event shown on the start screen. [eyebrow] is the small line above the title. [sessionId] is set
- *  when this is a session the person can join from where they are; null for the placeholder. */
+ *  when this is a session the person can join from where they are; null for the placeholder. [organiser] is the
+ *  organiser's display name, drawn as a small dot after "Organised by"; null from servers that don't send it, and
+ *  on the placeholder, when the sign shows [subtitle] as text. */
 @Serializable
 data class NearbyEvent(
     val id: String,
@@ -208,6 +210,7 @@ data class NearbyEvent(
     val title: String,
     val subtitle: String,
     val sessionId: String? = null,
+    val organiser: String? = null,
 )
 
 // --- Nearby join (server: Controllers/SessionsController.cs) ---------------------------

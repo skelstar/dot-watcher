@@ -256,6 +256,7 @@ fun SessionScreen(
                     eyebrow = event.eyebrow,
                     title = event.title,
                     subtitle = event.subtitle,
+                    organiser = event.organiser,
                     onClick = {
                         joinAttempted = false
                         nearbyCandidate = event
