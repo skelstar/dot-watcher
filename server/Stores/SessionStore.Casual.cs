@@ -156,8 +156,11 @@ public partial class SessionStore
         return new(CasualSessionId, OpenOrReuseCasualRun(userId, now, honourStop: false)!.Id);
     }
 
-    /// <summary>Ends the caller's open run, if any. They leave everyone's map at once. Idempotent.</summary>
-    public void StopCasualRun(string userId, DateTimeOffset now)
+    /// <summary>
+    /// Ends the caller's open run, if any. They leave everyone's map at once. Idempotent. Returns the
+    /// run that was ended, or null when there was none open.
+    /// </summary>
+    public (string RunId, DateTimeOffset StartedAt)? StopCasualRun(string userId, DateTimeOffset now)
     {
         _casualRuns.TryRemove(userId, out _);
         _casualSuppressedUntil[userId] = now + CasualStopSuppression;
@@ -170,12 +173,19 @@ public partial class SessionStore
         cmd.CommandText = """
             UPDATE casual_runs SET ended_at = @endedAt, stopped_by_user = TRUE
             WHERE user_id = @userId AND ended_at IS NULL
+            RETURNING id, started_at
             """;
         cmd.Parameters.AddWithValue("@endedAt", ToIso(now));
         cmd.Parameters.AddWithValue("@userId", userId);
-        cmd.ExecuteNonQuery();
+        (string, DateTimeOffset)? stopped = null;
+        using (var reader = cmd.ExecuteReader())
+        {
+            if (reader.Read())
+                stopped = (reader.GetString(0), DateTimeOffset.Parse(reader.GetString(1)));
+        }
 
         InvalidateCasualSnapshot();
+        return stopped;
     }
 
     // The caller's open run, creating one if there isn't a usable one. With honourStop (a copy from a

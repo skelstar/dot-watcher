@@ -7,7 +7,16 @@ import {
   joinSession,
   postLocation,
   leaveSession,
+  enableGo,
+  startGoRun,
+  stopGoRun,
+  createWatchLink,
+  watchOnce,
+  reportAppState,
+  CLIENT_URL,
+  type AppState,
   type AuthedUser,
+  type WatchLink,
 } from './lib/dotwatcherApi'
 import type { LatLon, Quality, BatteryMode, PhoneStatus, PhoneSnapshot } from './lib/types'
 
@@ -27,6 +36,13 @@ const BATTERY_LEVEL_FOR_MODE: Record<BatteryMode, number | undefined> = {
 // read as clearly different from the shared "Update every" cadence above (max 15s), short enough
 // that a tester isn't stuck waiting 90s per cycle to see the effect.
 const SATELLITE_TICK_MS = 20_000
+
+// A phone goes back to the background this long after the last thing done in the app, like one put
+// back in a pocket.
+const AUTO_BACKGROUND_MS = 10_000
+
+// How often a pretend viewer polls the watch link: the watch page's own POLL_MS (client/src/WatchPage.tsx).
+const VIEWER_POLL_MS = 10_000
 
 type Props = {
   id: number
@@ -62,6 +78,22 @@ export default function PhoneSimulator({
   const [lastSentAt, setLastSentAt] = useState<string | null>(null)
   const [routeFileName, setRouteFileName] = useState<string | null>(null)
   const [routeError, setRouteError] = useState<string | null>(null)
+  // 'go': out on its own, like the app's Go sign, instead of in a session. Positions then go to the
+  // casual session and Leave becomes Stop.
+  const [mode, setMode] = useState<'session' | 'go'>('session')
+  const [watchLink, setWatchLink] = useState<WatchLink | null>(null)
+  const [viewerCount, setViewerCount] = useState(0)
+  // One poll timer per pretend viewer still watching.
+  const viewersRef = useRef<ReturnType<typeof setInterval>[]>([])
+  const [watchBusy, setWatchBusy] = useState(false)
+  // Whether the pretend app is on screen. Only reported to the server (for the Activity tab): like the
+  // real app, a phone in the background keeps sending positions. It starts closed; doing anything in the
+  // app brings it to the front, and (unless switched off) it goes back AUTO_BACKGROUND_MS after that.
+  const [appState, setAppState] = useState<AppState>('back')
+  const appStateRef = useRef<AppState>('back')
+  const [autoBackground, setAutoBackground] = useState(true)
+  const autoBackgroundRef = useRef(autoBackground)
+  const backgroundTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const userRef = useRef<AuthedUser | null>(null)
   const sessionIdRef = useRef<string | null>(null)
@@ -79,6 +111,9 @@ export default function PhoneSimulator({
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const tickMsRef = useRef(tickMs)
   const hasAutoJoinedRef = useRef(false)
+  // A Go phone has no session, so often no convergence point: with no route either it walks in a
+  // straight line on this bearing, picked when it goes out.
+  const goBearingRef = useRef<number | null>(null)
 
   const color = runnerColour(displayName)
 
@@ -95,11 +130,22 @@ export default function PhoneSimulator({
   }, [route])
 
   useEffect(() => {
-    onSnapshot({ id, displayName, status, quality, position, heading })
+    // userRef is set just before status leaves 'joining', so the status change carries the account.
+    onSnapshot({ id, displayName, status, quality, position, heading, userId: userRef.current?.userId ?? null })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, displayName, status, quality, position, heading])
 
-  useEffect(() => () => { if (timeoutRef.current) clearTimeout(timeoutRef.current) }, [])
+  useEffect(() => () => {
+    if (timeoutRef.current) clearTimeout(timeoutRef.current)
+    if (backgroundTimerRef.current) clearTimeout(backgroundTimerRef.current)
+    viewersRef.current.forEach(clearInterval)
+  }, [])
+  useEffect(() => {
+    autoBackgroundRef.current = autoBackground
+    if (autoBackground) armBackgroundTimer()
+    else if (backgroundTimerRef.current) { clearTimeout(backgroundTimerRef.current); backgroundTimerRef.current = null }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoBackground])
 
   async function handleJoin() {
     if (!inviteCode.trim()) return
@@ -107,6 +153,7 @@ export default function PhoneSimulator({
     setError(null)
     try {
       const user = await registerParticipant(displayName)
+      await reportOpened(user)
       const membership = await joinSession(user, inviteCode.trim(), displayName)
       userRef.current = user
       sessionIdRef.current = membership.sessionId
@@ -117,6 +164,111 @@ export default function PhoneSimulator({
     }
   }
 
+  // Goes out on its own (the app's Go sign): a new account with Go switched on, then a casual run.
+  // Start tracking then posts positions to the casual session exactly as it does to a joined session.
+  async function handleGo() {
+    setStatus('joining')
+    setError(null)
+    try {
+      const user = await registerParticipant(displayName)
+      await enableGo(user)
+      await reportOpened(user)
+      const run = await startGoRun(user)
+      userRef.current = user
+      sessionIdRef.current = run.sessionId
+      goBearingRef.current = Math.random() * 360
+      setMode('go')
+      setStatus('ready')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to go out.')
+      setStatus('idle')
+    }
+  }
+
+  // Tells the server the app came to the front or went away, if that's a change. `user` is passed while
+  // the account is still being set up (userRef isn't set yet).
+  async function sendAppState(next: AppState, user: AuthedUser | null = userRef.current) {
+    if (appStateRef.current === next) return
+    appStateRef.current = next
+    setAppState(next)
+    // No account yet: nothing to record against. Its first report comes when the account is made.
+    if (!user) return
+    try {
+      await reportAppState(user, next)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to report the app state.')
+    }
+  }
+
+  // Goes back to the background AUTO_BACKGROUND_MS after the last thing done in the app.
+  function armBackgroundTimer() {
+    if (backgroundTimerRef.current) clearTimeout(backgroundTimerRef.current)
+    backgroundTimerRef.current = null
+    if (!autoBackgroundRef.current || appStateRef.current !== 'front') return
+    backgroundTimerRef.current = setTimeout(() => {
+      backgroundTimerRef.current = null
+      void sendAppState('back')
+    }, AUTO_BACKGROUND_MS)
+  }
+
+  // Joining or going out is done in the app, so it's opened for that: the line starts with "Opened the
+  // app". After that the switch (top right) brings it back.
+  async function reportOpened(user: AuthedUser) {
+    // Sent even though the app is already open on the tile: that was before there was an account.
+    appStateRef.current = 'front'
+    setAppState('front')
+    try { await reportAppState(user, 'front') } catch { /* the Activity tab just won't show it */ }
+    armBackgroundTimer()
+  }
+
+  async function handleAppState(next: AppState) {
+    await sendAppState(next)
+    // Not before there's an account, or the app would close while the invite code is being typed.
+    if (next === 'front' && userRef.current) armBackgroundTimer()
+    else if (backgroundTimerRef.current) { clearTimeout(backgroundTimerRef.current); backgroundTimerRef.current = null }
+  }
+
+  async function handleShareLink() {
+    const user = userRef.current
+    if (!user) return
+    armBackgroundTimer() // used just now: the 10 s start again
+    setWatchBusy(true)
+    setError(null)
+    try {
+      setWatchLink(await createWatchLink(user))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to make a watch link.')
+    } finally {
+      setWatchBusy(false)
+    }
+  }
+
+  // A pretend viewer with a browser id of its own, polling the link every 10 s like the watch page with
+  // its tab on screen, until stopped: one viewing on the runner's Activity tab, as long as it watched.
+  function handleAddViewer() {
+    const link = watchLink
+    if (!link) return
+    setError(null)
+    const browserId = `sim-viewer-${crypto.randomUUID()}`
+    const look = () => watchOnce(link, browserId).catch(err => setError(err instanceof Error ? err.message : 'Failed to watch.'))
+    void look()
+    viewersRef.current.push(setInterval(look, VIEWER_POLL_MS))
+    setViewerCount(viewersRef.current.length)
+  }
+
+  // The longest-watching viewer closes the tab.
+  function handleStopViewer() {
+    const timer = viewersRef.current.shift()
+    if (timer) clearInterval(timer)
+    setViewerCount(viewersRef.current.length)
+  }
+
+  function stopAllViewers() {
+    viewersRef.current.forEach(clearInterval)
+    viewersRef.current = []
+    setViewerCount(0)
+  }
+
   // Auto-joins once on mount for phones seeded by "Create session" — skips the manual
   // invite-code-then-Join step for the default set of phones. Guarded the same way as the
   // start-point request above, otherwise StrictMode's double-invoke would register two
@@ -125,6 +277,9 @@ export default function PhoneSimulator({
     if (hasAutoJoinedRef.current) return
     if (autoJoin && defaultInviteCode.trim()) {
       hasAutoJoinedRef.current = true
+      // Seeded phones open the app to join.
+      appStateRef.current = 'front'
+      setAppState('front')
       handleJoin()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -170,6 +325,9 @@ export default function PhoneSimulator({
         next = destinationPoint(cur.lat, cur.lon, bearing, step)
         nextHeading = bearing
       }
+    } else if (movesNormally && goBearingRef.current !== null) {
+      next = destinationPoint(cur.lat, cur.lon, goBearingRef.current, stepMeters)
+      nextHeading = goBearingRef.current
     } else {
       // 'bad' GPS: erratic movement, ignoring the convergence point, with no heading — mirrors
       // the app's real GPS-signal-loss indicator, which keys off a null heading.
@@ -215,27 +373,32 @@ export default function PhoneSimulator({
     scheduleNextTick()
   }
 
-  function handlePause() {
-    if (timeoutRef.current) { clearTimeout(timeoutRef.current); timeoutRef.current = null }
-    setStatus('ready')
-  }
-
   async function handleLeave() {
     if (timeoutRef.current) { clearTimeout(timeoutRef.current); timeoutRef.current = null }
     const user = userRef.current
     const sessionId = sessionIdRef.current
+    armBackgroundTimer() // used just now: the 10 s start again
     setStatus('left')
+    setWatchLink(null)
+    stopAllViewers() // the run is over: nothing left to watch
     if (user && sessionId) {
-      try { await leaveSession(user, sessionId) } catch { /* best-effort */ }
+      try {
+        if (mode === 'go') await stopGoRun(user)
+        else await leaveSession(user, sessionId)
+      } catch { /* best-effort */ }
     }
   }
 
   function handleRemove() {
     if (timeoutRef.current) clearTimeout(timeoutRef.current)
+    stopAllViewers()
     if (status !== 'left' && status !== 'idle') {
       const user = userRef.current
       const sessionId = sessionIdRef.current
-      if (user && sessionId) leaveSession(user, sessionId).catch(() => {})
+      if (user && sessionId) {
+        if (mode === 'go') stopGoRun(user).catch(() => {})
+        else leaveSession(user, sessionId).catch(() => {})
+      }
     }
     onRemove(id)
   }
@@ -270,8 +433,11 @@ export default function PhoneSimulator({
 
   // A route substitutes for the convergence point — a phone following its own path doesn't need
   // the shared target too.
-  const canStart = status === 'ready' && position !== null && (convergencePoint !== null || (route !== null && route.length > 1))
+  const canStart = status === 'ready' && position !== null
+    && (mode === 'go' || convergencePoint !== null || (route !== null && route.length > 1))
   const canLeave = status === 'ready' || status === 'running'
+  // In the background the app's own buttons can't be pressed; the simulator's controls still work.
+  const away = appState === 'back'
   const canPickPosition = status !== 'left'
 
   // A route's own end point is this phone's target once it has one, in place of the shared
@@ -289,10 +455,24 @@ export default function PhoneSimulator({
           ? <input style={nameInput} value={displayName} onChange={e => setDisplayName(e.target.value)} disabled={status === 'joining'} />
           : <span style={nameLabel}>{displayName}</span>
         }
+        {status !== 'left' && (
+          <button
+            type="button"
+            role="switch"
+            aria-checked={!away}
+            aria-label="App in the foreground"
+            title={away ? 'In the background: tap to open the app' : 'In the foreground: tap to put the app away'}
+            onClick={() => handleAppState(away ? 'front' : 'back')}
+            style={appSwitch}
+          >
+            <span style={switchTrack(!away)}><span style={switchKnob(!away)} /></span>
+            <span style={switchText(!away)}>{away ? 'Background' : 'Foreground'}</span>
+          </button>
+        )}
         <button style={removeBtn} onClick={handleRemove} title="Remove phone">×</button>
       </div>
       <div style={statusPillRow}>
-        <span style={statusPill(status)}>{statusLabel(status)}</span>
+        <span style={statusPill(status)}>{statusLabel(status, mode)}</span>
       </div>
 
       <div style={positionRow}>
@@ -327,7 +507,7 @@ export default function PhoneSimulator({
             placeholder="INVITE CODE"
             disabled={status === 'joining'}
           />
-          <button style={primaryBtn(!inviteCode.trim() || status === 'joining')} disabled={!inviteCode.trim() || status === 'joining'} onClick={handleJoin}>
+          <button style={primaryBtn(!inviteCode.trim() || status === 'joining' || away)} disabled={!inviteCode.trim() || status === 'joining' || away} onClick={handleJoin}>
             {status === 'joining' ? 'Joining…' : 'Join'}
           </button>
           {defaultInviteCode && defaultInviteCode !== inviteCode && (
@@ -336,17 +516,68 @@ export default function PhoneSimulator({
         </div>
       )}
 
+      {status === 'idle' && (
+        <div style={joinRow}>
+          <button style={goBtn(away)} disabled={away} onClick={handleGo} title="Go out on your own, like the app's Go sign, instead of joining a session">
+            Go (no session)
+          </button>
+        </div>
+      )}
+      {status === 'idle' && away && (
+        <p style={hint}>The app is closed: switch it on (top right) to join or go.</p>
+      )}
+
       {error && <div style={errorText}>{error}</div>}
 
       {status !== 'idle' && status !== 'joining' && (
         <>
           <p style={hint}>
             {status === 'ready' && !position && 'Choose a starting point above.'}
-            {status === 'ready' && position && !target && 'Waiting for the convergence point (or upload a route).'}
-            {status === 'ready' && position && target && 'Ready — press Start.'}
+            {status === 'ready' && position && !target && mode === 'session' && 'Waiting for the convergence point (or upload a route).'}
+            {status === 'ready' && position && (target || mode === 'go') && 'Ready — press Start tracking.'}
             {status === 'running' && 'Sending updates…'}
-            {status === 'left' && 'Left the session.'}
+            {status === 'left' && (mode === 'go' ? 'Stopped the Go run.' : 'Left the session.')}
           </p>
+
+          {canLeave && (
+            <div style={qualityRow}>
+              <label style={qualityLabel(autoBackground, false)} title="Like a phone being put away when you're done with it">
+                <input
+                  type="checkbox"
+                  checked={autoBackground}
+                  onChange={e => setAutoBackground(e.target.checked)}
+                  style={{ marginRight: '0.3rem' }}
+                />
+                App goes to the background {AUTO_BACKGROUND_MS / 1000} s after use
+              </label>
+            </div>
+          )}
+          {canLeave && away && (
+            <p style={hint}>The app is in the background: switch it on (top right) to use it.</p>
+          )}
+
+          {mode === 'go' && canLeave && (
+            <div style={watchBox}>
+              {watchLink ? (
+                <>
+                  <a style={watchLinkText} href={`${CLIENT_URL}${watchLink.path}`} target="_blank" rel="noreferrer">Open watch link</a>
+                  <button style={changePointBtn} onClick={handleAddViewer} title="A pretend browser opens the link and keeps it on screen until stopped">
+                    Add a viewer
+                  </button>
+                  {viewerCount > 0 && (
+                    <>
+                      <span style={positionText}>{viewerCount} watching</span>
+                      <button style={changePointBtn} onClick={handleStopViewer} title="The longest-watching viewer closes the tab">
+                        Stop a viewer
+                      </button>
+                    </>
+                  )}
+                </>
+              ) : (
+                <button style={changePointBtn} disabled={watchBusy || away} onClick={handleShareLink}>Share a watch link</button>
+              )}
+            </div>
+          )}
 
           <div style={qualityRow}>
             {(['good', 'bad', 'missing', 'satellite'] as Quality[]).map(q => (
@@ -382,11 +613,11 @@ export default function PhoneSimulator({
           </div>
 
           <div style={actionRow}>
-            {status !== 'running'
-              ? <button style={primaryBtn(!canStart)} disabled={!canStart} onClick={handleStart}>Start</button>
-              : <button style={pauseBtn} onClick={handlePause}>Pause</button>
-            }
-            <button style={leaveBtn(!canLeave)} disabled={!canLeave} onClick={handleLeave}>Leave</button>
+            {/* No pause: a real phone tracks until it's stopped. "Missing" is the phone going quiet. */}
+            <button style={primaryBtn(!canStart)} disabled={!canStart} onClick={handleStart}>
+              {status === 'running' ? 'Tracking' : 'Start tracking'}
+            </button>
+            <button style={leaveBtn(!canLeave || away)} disabled={!canLeave || away} onClick={handleLeave}>{mode === 'go' ? 'Stop' : 'Leave'}</button>
           </div>
 
           <div style={statusLine}>
@@ -401,13 +632,13 @@ export default function PhoneSimulator({
   )
 }
 
-function statusLabel(status: PhoneStatus): string {
+function statusLabel(status: PhoneStatus, mode: 'session' | 'go'): string {
   switch (status) {
     case 'idle': return 'Not joined'
     case 'joining': return 'Joining…'
-    case 'ready': return 'Joined'
-    case 'running': return 'Running'
-    case 'left': return 'Left'
+    case 'ready': return mode === 'go' ? 'Out on Go' : 'Joined'
+    case 'running': return mode === 'go' ? 'Running (Go)' : 'Running'
+    case 'left': return mode === 'go' ? 'Stopped' : 'Left'
   }
 }
 
@@ -485,10 +716,31 @@ const primaryBtn = (disabled: boolean): React.CSSProperties => ({
   flex: 1, padding: '0.35rem 0.6rem', borderRadius: 6, border: 'none', fontWeight: 700, fontSize: '0.8rem',
   background: disabled ? '#e2e8f0' : '#16a34a', color: disabled ? '#94a3b8' : '#fff', cursor: disabled ? 'default' : 'pointer',
 })
-const pauseBtn: React.CSSProperties = { flex: 1, padding: '0.35rem 0.6rem', borderRadius: 6, border: 'none', fontWeight: 700, fontSize: '0.8rem', background: '#f59e0b', color: '#fff', cursor: 'pointer' }
 const leaveBtn = (disabled: boolean): React.CSSProperties => ({
   flex: 1, padding: '0.35rem 0.6rem', borderRadius: 6, border: '1px solid #fca5a5', fontWeight: 600, fontSize: '0.8rem',
   background: '#fff', color: disabled ? '#e2e8f0' : '#dc2626', cursor: disabled ? 'default' : 'pointer', borderColor: disabled ? '#e2e8f0' : '#fca5a5',
 })
-const linkBtn: React.CSSProperties = { border: 'none', background: 'none', color: '#2563eb', fontSize: '0.78rem', cursor: 'pointer', textDecoration: 'underline' }
+const appSwitch: React.CSSProperties = {
+  display: 'inline-flex', alignItems: 'center', gap: '0.3rem', border: 'none', background: 'none',
+  padding: 0, cursor: 'pointer', flexShrink: 0,
+}
+const switchTrack = (on: boolean): React.CSSProperties => ({
+  position: 'relative', width: 30, height: 17, borderRadius: 999, flexShrink: 0,
+  background: on ? '#16a34a' : '#cbd5e1', transition: 'background 0.15s',
+})
+const switchKnob = (on: boolean): React.CSSProperties => ({
+  position: 'absolute', top: 2, left: on ? 15 : 2, width: 13, height: 13, borderRadius: '50%',
+  background: '#fff', boxShadow: '0 1px 2px rgba(0,0,0,0.3)', transition: 'left 0.15s',
+})
+const switchText = (on: boolean): React.CSSProperties => ({
+  fontSize: '0.68rem', fontWeight: 600, color: on ? '#16a34a' : '#64748b', width: '4.6rem', textAlign: 'left',
+})
+const goBtn = (disabled: boolean): React.CSSProperties => ({
+  flex: 1, padding: '0.35rem 0.6rem', borderRadius: 6, fontWeight: 700, fontSize: '0.8rem',
+  border: `1px solid ${disabled ? '#e2e8f0' : '#fdba74'}`, background: disabled ? '#f8fafc' : '#fff7ed',
+  color: disabled ? '#cbd5e1' : '#c2410c', cursor: disabled ? 'default' : 'pointer',
+})
+const watchBox: React.CSSProperties = { display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '0.5rem' }
+const watchLinkText: React.CSSProperties = { fontSize: '0.78rem', color: '#2563eb', fontWeight: 600 }
+const linkBtn: React.CSSProperties ={ border: 'none', background: 'none', color: '#2563eb', fontSize: '0.78rem', cursor: 'pointer', textDecoration: 'underline' }
 const statusLine: React.CSSProperties = { fontSize: '0.74rem', color: '#64748b', fontFamily: 'monospace' }

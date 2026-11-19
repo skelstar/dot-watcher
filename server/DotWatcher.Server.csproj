@@ -14,4 +14,10 @@
     <PackageReference Include="Serilog.Sinks.Seq" Version="8.0.0" />
     <PackageReference Include="Swashbuckle.AspNetCore" Version="6.9.0" />
   </ItemGroup>
+  <ItemGroup>
+    <!-- The activity register is read from the assembly, so it can't go missing from a publish or a test run.
+         The schema is only for editors. -->
+    <Content Remove="Activity/activity-events.json;Activity/activity-events.schema.json" />
+    <EmbeddedResource Include="Activity/activity-events.json" LogicalName="activity-events.json" />
+  </ItemGroup>
 </Project>

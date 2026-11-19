@@ -73,6 +73,8 @@ public sealed class DotWatcherApiFactory : WebApplicationFactory<global::Program
                 // Reads of the casual session are normally reused for a few seconds; tests post and
                 // read straight back, so they must always see the latest.
                 ["Casual:SnapshotSeconds"] = "0",
+                // Activity events are normally queued and written in the background; tests read them back.
+                ["Activity:WriteImmediately"] = "true",
             };
             for (var i = 0; i < EnabledForAll.Length; i++)
                 settings[$"Features:EnabledForAll:{i}"] = EnabledForAll[i];

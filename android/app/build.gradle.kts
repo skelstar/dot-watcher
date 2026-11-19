@@ -56,7 +56,7 @@ val appVersionCode: Int = (findProperty("appVersionCode") as String?)?.trim()?.t
 // MARKETING_VERSION in the Xcode project. `-PappVersionName=1.4.4` overrides it for one build (the
 // workflow's typed version). The Play upload workflow reads the quoted value on this line, so keep
 // it a plain literal.
-val projectVersionName = "1.4.4"
+val projectVersionName = "1.4.7"
 val appVersionName: String = (findProperty("appVersionName") as String?)?.trim()?.ifBlank { null }
     ?: projectVersionName
 

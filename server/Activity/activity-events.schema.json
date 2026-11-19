@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Activity event register",
+  "description": "Every activity event the server records, or that someone has asked for. See .ai/plans/activity-flow.md.",
+  "type": "object",
+  "required": ["events"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": { "type": "string" },
+    "events": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/event" }
+    }
+  },
+  "$defs": {
+    "event": {
+      "type": "object",
+      "required": ["kind", "label", "shows", "status"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*$",
+          "description": "Stable id, snake_case, past tense. What the table stores; never rename one that is recording."
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The words on the flow, e.g. \"Started a Go run\"."
+        },
+        "shows": {
+          "enum": ["line", "branch"],
+          "description": "line: the dot did it. branch: someone else did, shown off this dot's line."
+        },
+        "branchFrom": {
+          "type": "string",
+          "description": "For a branch: the kind of the stop it hangs off."
+        },
+        "route": {
+          "type": "string",
+          "pattern": "^(GET|POST|PUT|DELETE|PATCH) /",
+          "description": "\"METHOD /route/{pattern}\", exactly as the endpoint's route attribute. Required when recording."
+        },
+        "status": {
+          "enum": ["wanted", "recording"],
+          "description": "wanted: asked for, not built; the server ignores it. recording: the server records it."
+        },
+        "describe": {
+          "type": "string",
+          "description": "Plain words for a wanted event, when the route isn't known yet."
+        },
+        "notes": {
+          "type": "string",
+          "description": "Anything the builder needs: what a controller must set, dedupe, detail fields."
+        }
+      },
+      "allOf": [
+        { "if": { "properties": { "status": { "const": "recording" } } }, "then": { "required": ["route"] } },
+        { "if": { "properties": { "status": { "const": "wanted" } } }, "then": { "required": ["describe"] } },
+        { "if": { "properties": { "shows": { "const": "branch" } } }, "then": { "required": ["branchFrom"] } }
+      ]
+    }
+  }
+}

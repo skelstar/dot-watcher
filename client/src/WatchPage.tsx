@@ -13,6 +13,7 @@ import { initialsFor } from './components/InitialsBadge.tsx'
 import { statusLine, watchState, type WatchViewDto } from './watchView.ts'
 import { useRouteLayer } from './useRouteLayer.ts'
 import { parseGpxCoordinates } from './gpx.ts'
+import { apiHeaders } from './apiHeaders.ts'
 
 interface Props {
   serverUrl: string
@@ -56,18 +57,28 @@ export default function WatchPage({ serverUrl, token }: Props) {
     return () => { robots.remove(); referrer.remove() }
   }, [])
 
-  // Poll while the page is visible; a failed poll keeps the last answer on screen.
+  // Poll while the page is visible; a failed poll keeps the last answer on screen. The server only hears
+  // from a viewer while the tab is on screen, which is how the runner's Activity tab knows how long it
+  // was watched (server: WatchViewingTracker).
   useEffect(() => {
     let cancelled = false
+    let stopped = false
+    let inFlight = false
     let timer: number | undefined
 
     async function poll() {
       if (document.visibilityState === 'hidden') { schedule(); return }
+      inFlight = true
       try {
-        const response = await fetch(`${serverUrl}/watch/${encodeURIComponent(token)}`, { cache: 'no-store' })
+        // No sign-in (null), but the browser id, so the runner's activity can tell viewers apart.
+        const response = await fetch(`${serverUrl}/watch/${encodeURIComponent(token)}`, {
+          cache: 'no-store',
+          headers: apiHeaders(null, 'web-watch'),
+        })
         if (cancelled) return
         if (response.status === 404) {
           setLoad({ kind: 'notFound' })
+          stopped = true
           return // a link that doesn't exist won't start to; stop asking
         }
         if (response.ok) {
@@ -78,6 +89,8 @@ export default function WatchPage({ serverUrl, token }: Props) {
         }
       } catch {
         if (!cancelled) setOffline(true)
+      } finally {
+        inFlight = false
       }
       schedule()
     }
@@ -86,8 +99,20 @@ export default function WatchPage({ serverUrl, token }: Props) {
       if (!cancelled) timer = window.setTimeout(poll, POLL_MS)
     }
 
+    // Back on screen: ask now rather than at the next tick, so the map is current at once.
+    function onVisibilityChange() {
+      if (document.visibilityState !== 'visible' || cancelled || stopped || inFlight) return
+      window.clearTimeout(timer)
+      void poll()
+    }
+
+    document.addEventListener('visibilitychange', onVisibilityChange)
     void poll()
-    return () => { cancelled = true; window.clearTimeout(timer) }
+    return () => {
+      cancelled = true
+      window.clearTimeout(timer)
+      document.removeEventListener('visibilitychange', onVisibilityChange)
+    }
   }, [serverUrl, token])
 
   // Once a second, so "updated 12 s ago" keeps counting between polls.

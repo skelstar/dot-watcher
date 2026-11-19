@@ -51,5 +51,18 @@ public sealed class CasualMaintenanceService(
         {
             logger.LogWarning(ex, "Casual maintenance failed");
         }
+
+        // Activity events (the admin Activity tab) are kept on their own schedule, not the runs'.
+        try
+        {
+            var activityRetention = TimeSpan.FromDays(configuration.GetValue<double>("Activity:RetentionDays", 30));
+            var deleted = store.PurgeActivityEvents(timeProvider.GetUtcNow() - activityRetention);
+            if (deleted > 0)
+                logger.LogInformation("Activity maintenance deleted {DeletedActivityEvents} events", deleted);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Activity maintenance failed");
+        }
     }
 }
