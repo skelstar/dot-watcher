@@ -1,0 +1,563 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Join a Group Mock-up</title>
+<style>
+/* Self-contained mock-up: open in a browser. Nothing here talks to a server. See .ai/plans/go-and-groups.md, step 0a.
+   Visual language follows nearby-join.html (Coffee Go palette). Use the buttons on the left to jump to a screen,
+   or tap through on the phone. */
+:root{
+  --bg:#f6f7f6; --fg:#1b2321; --muted:#5a6662; --rule:#d9dedb; --accent:#d9480f;
+  --ink:#2c2119; --maroon:#6b1a08; --tan:#b09263; --cream:#f5f0e0; --err:#b3261e;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#121715;--fg:#e6ebe9;--muted:#9aa7a2;--rule:#2e3835;--accent:#ff8a4c}}
+:root[data-theme="dark"]{--bg:#121715;--fg:#e6ebe9;--muted:#9aa7a2;--rule:#2e3835;--accent:#ff8a4c}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif;padding:32px 16px 64px}
+.page{max-width:920px;margin:0 auto}
+h1{margin:0 0 6px;font-size:clamp(1.7rem,5vw,2.2rem);letter-spacing:-.02em;line-height:1.15}
+p{margin:0 0 10px;max-width:62ch}
+code{font-size:.9em}
+.layout{display:flex;flex-wrap:wrap;gap:36px;align-items:flex-start;margin-top:22px}
+.side{flex:1 1 280px;min-width:0}
+.side h2{font-size:1.05rem;margin:16px 0 8px}
+.side h2:first-child{margin-top:0}
+.nav{display:flex;flex-direction:column;gap:6px;margin:0 0 6px}
+.nav button,.terms button{font:inherit;font-size:.92rem;text-align:left;background:none;color:var(--fg);border:1px solid var(--rule);border-radius:10px;padding:8px 12px;cursor:pointer}
+.nav button[aria-current="true"],.terms button[aria-pressed="true"]{border-color:var(--accent);font-weight:700}
+.terms{display:flex;flex-wrap:wrap;gap:6px}
+.caption{font-size:.85rem;color:var(--muted)}
+.caption li{margin-bottom:4px}
+button:focus-visible,input:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+
+/* ---- phone ---- */
+.phone{flex:0 0 auto;width:340px;max-width:100%;height:700px;background:#fff;color:#000;border:8px solid #1c1c1e;border-radius:40px;position:relative;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif}
+.status{position:absolute;top:10px;left:24px;right:24px;display:flex;justify-content:space-between;font-size:12px;font-weight:600;z-index:5}
+.view{position:absolute;inset:0;padding:40px 16px 0;display:none;flex-direction:column}
+.view.on{display:flex}
+:where(.phone) button{font-family:inherit;color:inherit;cursor:pointer}
+.serif{font-family:"Iowan Old Style","Palatino Linotype",Georgia,serif}
+
+/* main screen */
+.logo{font-size:27px;font-weight:700;display:flex;align-items:center;letter-spacing:-.5px;margin-top:8px}
+.avatar{width:32px;height:32px;border-radius:50%;background:#2e7d32;color:#fff;font-size:11px;font-weight:700;display:inline-grid;place-items:center;margin:0 2px}
+.crew{background:#e5e5ea;border-radius:14px;padding:10px 14px;font-weight:600;display:flex;justify-content:space-between;margin:10px 0 4px}
+.crew span{color:#8e8e93;font-weight:400;font-size:12px}
+.homescroll{flex:1;min-height:0;overflow-y:auto;padding-bottom:16px}
+.tile{display:block;width:100%;text-align:left;border:0;padding:14px 16px;margin-top:10px}
+.phone .out{background:var(--ink);color:var(--cream);height:104px;display:flex;flex-direction:column;justify-content:flex-end;border-top:12px solid #2e9e4f;margin-top:14px}
+.out small{letter-spacing:.1em;font-size:9px;text-transform:uppercase;color:#9fd8b0}
+.out b{font-size:26px;line-height:1.1}
+.out span{font-size:12.5px}
+.phone .near{background:var(--maroon);color:var(--cream);border-top:8px solid var(--tan);padding:11px 16px 12px;margin-top:8px;position:relative}
+.near small{letter-spacing:.1em;font-size:9px;text-transform:uppercase;display:block}
+.near b{display:block;font-size:19px;line-height:1.2;padding-right:62px}
+.near span{font-size:12.5px}
+.badge{position:absolute;right:12px;top:12px;border:1.5px solid var(--cream);border-radius:999px;font:700 10px system-ui,sans-serif;letter-spacing:.05em;text-transform:uppercase;padding:2px 8px}
+.badge.joined{background:var(--cream);color:var(--maroon)}
+.phone .card{background:var(--cream);border:2px solid var(--ink);color:var(--ink)}
+.card b{display:block;font-size:20px}
+.sec{letter-spacing:.1em;font-size:10px;text-transform:uppercase;color:#6c6c70;margin:16px 2px 0}
+.why{font-size:12px;color:#6c6c70;margin:6px 2px 0}
+
+/* organiser card */
+.mine{background:var(--cream);border:2px solid var(--ink);border-top:8px solid var(--maroon);color:var(--ink);padding:11px 16px 14px;margin-top:10px}
+.mine small{letter-spacing:.1em;font-size:9px;text-transform:uppercase;display:block;color:#6c6c70}
+.mine b{display:block;font-size:21px;line-height:1.15}
+.mine span{font-size:12.5px;display:block}
+.codebox{display:flex;align-items:center;justify-content:space-between;border:1.5px dashed var(--ink);padding:6px 10px;margin-top:8px;font-size:12.5px}
+.codebox code{font:700 18px ui-monospace,Menlo,monospace;letter-spacing:.15em}
+.codebox button{background:none;border:0;color:#007aff;font-size:12.5px;padding:2px}
+.mbtns{display:flex;gap:8px;margin-top:10px}
+.mbtns button{flex:1;border:2px solid var(--ink);background:transparent;padding:9px;font:700 14px Georgia,serif;color:var(--ink)}
+.mbtns button.pri{background:var(--maroon);border-color:var(--maroon);color:var(--cream)}
+.endlink{background:none;border:0;color:var(--err);font-size:13px;padding:8px 0 0;text-align:left}
+
+/* forms */
+.top{display:flex;justify-content:space-between;align-items:center;margin-top:8px;height:28px}
+.link{background:none;border:0;padding:4px 0;font-size:14px;color:#007aff}
+.bscroll{flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:14px;padding:6px 4px 14px;margin-inline:-4px}
+.bscroll>*{flex:none}
+.btitle{margin:0;font:700 26px Georgia,serif;color:var(--ink);line-height:1.1}
+.bsec{display:flex;flex-direction:column;gap:10px;padding-top:16px;border-top:1px solid #d1d1d6}
+.bsec h4{margin:0;font:700 19px Georgia,serif;color:var(--ink)}
+.hint{margin:0;font-size:12.5px;color:#6c6c70}
+.note{border-left:3px solid var(--tan);padding-left:8px}
+.field{border:2px solid var(--ink);background:var(--cream);border-radius:0;padding:12px;font:600 18px Georgia,serif;width:100%;color:var(--ink)}
+.field::placeholder{color:#a99f8a;font-weight:400}
+.field.code{font:700 22px ui-monospace,Menlo,monospace;letter-spacing:.3em;text-transform:uppercase;text-align:center}
+.field.bad{border-color:var(--err);background:#fdeceb}
+.err{font-size:12.5px;color:var(--err);margin:-4px 0 0;min-height:1em}
+.lbl{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#6c6c70}
+.sug{display:flex;flex-wrap:wrap;gap:6px}
+.pill{border:1.5px solid var(--ink);background:#fff;border-radius:999px;padding:6px 12px;font-size:12.5px}
+.pill[aria-pressed="true"]{background:var(--ink);color:var(--cream)}
+.row{display:flex;justify-content:space-between;align-items:center;padding:6px 0;font-size:13.5px;gap:10px}
+.sw{width:42px;height:25px;border-radius:13px;background:#d1d1d6;border:0;position:relative;flex:none;transition:background .15s}
+.sw::after{content:"";position:absolute;top:2px;left:2px;width:21px;height:21px;border-radius:50%;background:#fff;transition:transform .15s}
+.sw[aria-checked="true"]{background:#34c759}
+.sw[aria-checked="true"]::after{transform:translateX(17px)}
+.dim{opacity:.4;pointer-events:none;filter:grayscale(1)}
+.foot{padding:12px 0 18px}
+.cta{width:100%;border:0;background:var(--maroon);color:var(--cream);padding:14px;font:700 16px Georgia,serif;letter-spacing:.02em}
+.cta:disabled{background:#cfc6bd;color:#fff}
+.opt{display:flex;align-items:center;gap:10px;border:2px solid var(--ink);background:var(--cream);padding:10px 12px;text-align:left;width:100%;color:var(--ink)}
+.opt .t{flex:1}
+.opt b{display:block;font-size:14px}
+.opt small{font-size:11.5px;color:#5c5144;display:block;line-height:1.35}
+.radio{width:18px;height:18px;border-radius:50%;border:2px solid var(--ink);flex:none}
+.opt[aria-pressed="true"]{background:var(--ink);color:var(--cream)}
+.opt[aria-pressed="true"] small{color:#d8ccb2}
+.opt[aria-pressed="true"] .radio{background:var(--tan);border-color:var(--tan);box-shadow:inset 0 0 0 3px var(--ink)}
+
+/* map */
+.map{position:absolute;inset:0;background:#e6eee3}
+.map svg{width:100%;height:100%}
+.maptop{position:absolute;top:36px;left:12px;right:12px;display:flex;justify-content:space-between;align-items:flex-start;gap:8px;z-index:2}
+.chip{background:rgba(255,255,255,.94);border:0;border-radius:14px;padding:6px 10px;font-size:12px;font-weight:600;box-shadow:0 1px 4px rgba(0,0,0,.2)}
+.chip.home{font-size:13px}
+.chip.timer{color:#1d6b35}
+.gchip{position:absolute;top:74px;left:12px;z-index:2;background:var(--maroon);color:var(--cream);border:0;border-top:4px solid var(--tan);padding:6px 12px 7px;text-align:left;box-shadow:0 1px 5px rgba(0,0,0,.3);display:none}
+.gchip.on{display:block}
+.gchip small{display:block;font-size:9px;letter-spacing:.1em;text-transform:uppercase;opacity:.85}
+.gchip b{font:700 15px Georgia,serif}
+.rail{position:absolute;right:12px;top:120px;display:flex;flex-direction:column;gap:10px;z-index:2}
+.rb{width:46px;height:46px;border-radius:50%;border:0;background:rgba(255,255,255,.95);box-shadow:0 1px 5px rgba(0,0,0,.28);font-size:18px;display:grid;place-items:center}
+.rb.ping{background:#2e9e4f;color:#fff;width:58px;height:58px}
+.rb.ping.done{box-shadow:0 0 0 6px rgba(46,158,79,.35)}
+.banner{position:absolute;left:12px;right:12px;bottom:96px;z-index:3;background:#1c1c1e;color:#fff;border-radius:14px;padding:10px 12px;font-size:12.5px;display:none;gap:10px;align-items:flex-start}
+.banner.on{display:flex}
+.banner b{display:block;font-size:13.5px}
+.banner button{background:none;border:0;color:#9ecbff;font-size:12.5px;padding:0;margin-left:auto;flex:none}
+.hold{position:absolute;left:12px;right:12px;bottom:18px;z-index:2;border:0;background:var(--ink);color:var(--cream);padding:14px;font:700 15px Georgia,serif;border-top:4px solid var(--maroon)}
+.legend{position:absolute;left:12px;bottom:68px;z-index:2;display:flex;gap:6px;flex-wrap:wrap;font-size:10.5px}
+.legend span{background:rgba(255,255,255,.92);border-radius:999px;padding:2px 8px;box-shadow:0 1px 3px rgba(0,0,0,.15)}
+
+/* sheets */
+.scrim{position:absolute;inset:0;background:rgba(0,0,0,.35);z-index:8;display:none}
+.scrim.on{display:block}
+.sheet{position:absolute;left:0;right:0;bottom:0;max-height:88%;overflow-y:auto;background:#fff;border-radius:22px 22px 0 0;padding:14px 18px 22px;z-index:9;display:none;flex-direction:column;gap:12px;box-shadow:0 -4px 20px rgba(0,0,0,.25)}
+.sheet.on{display:flex}
+.sheet>*{flex:none}
+.sheet .grab{width:38px;height:4px;border-radius:2px;background:#d1d1d6;align-self:center}
+.sheet h3{margin:0;font:700 22px Georgia,serif;color:var(--ink);line-height:1.15}
+.sheet .meta{font-size:13px;color:#6c6c70;margin-top:-6px}
+.rulechip{align-self:flex-start;background:var(--ink);color:var(--cream);font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;padding:3px 9px;border-radius:999px;margin-top:-4px}
+.info{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
+.info li{border-left:3px solid var(--tan);padding-left:10px;display:flex;flex-direction:column}
+.info b{font-size:13.5px;color:var(--ink)}
+.info span{font-size:12.5px;color:#6c6c70}
+.dng{border:2px solid var(--err);background:#fff;color:var(--err);padding:11px;font-weight:700;width:100%}
+.ghost{background:none;border:0;color:#007aff;font-size:14px;padding:4px}
+.toast{position:absolute;left:50%;bottom:150px;transform:translateX(-50%);background:#1c1c1e;color:#fff;font-size:12px;padding:7px 12px;border-radius:999px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:20;white-space:nowrap}
+.toast.on{opacity:1}
+</style>
+</head>
+<body>
+<div class="page">
+  <h1>Join a group from the main screen</h1>
+  <p>Mock-up 0a for <code>.ai/plans/go-and-groups.md</code>. Aroha is out running (she pressed <b>Go</b>). Groups don't show on the Go map. She goes back to the main screen, where a group shows as a tile <i>because she is inside its region</i>. A race can ask for an entry code, so someone walking past can't just tap and join. Pick a screen on the left, or tap through on the phone.</p>
+  <div class="layout">
+    <div class="side">
+      <h2>Runner (tracking)</h2>
+      <div class="nav" id="nav-run">
+        <button data-go="map">1. Go map, no group</button>
+        <button data-go="home">2. Main screen: tiles near you</button>
+        <button data-go="joinRun">3. Join sheet: Everyone rule</button>
+        <button data-go="joinRace">4. Join sheet: Race, code needed</button>
+        <button data-go="badCode">5. Wrong code</button>
+        <button data-go="mapJoined">6. Go map, in a group</button>
+        <button data-go="groupSheet">7. Group sheet: time left, Leave</button>
+        <button data-go="ended">8. Group has ended</button>
+      </div>
+      <h2>Organiser</h2>
+      <div class="nav" id="nav-org">
+        <button data-go="create">9. Create a group</button>
+        <button data-go="orgHome">10. Main screen: your group</button>
+        <button data-go="orgMap">11. Map: Ping sets the region</button>
+      </div>
+      <h2>Name for "group members"</h2>
+      <div class="terms" id="terms"></div>
+      <p class="caption" style="margin-top:8px">Changes the word wherever it appears on the phone (join sheets, map key, group sheet).</p>
+      <h2>Notes</h2>
+      <ul class="caption" style="padding-left:18px;margin:0">
+        <li>The race code is <b>K7Q4</b>. Any other code shows the wrong-code state.</li>
+        <li>A tile appears from shortly before the start (here, 30 minutes) until the group ends. Leaving the region after joining changes nothing.</li>
+        <li>Everyone rule: members see each other by name. Race rule: members see their own crew and the organiser by name. Other entrants are grey dots within 5 km, as strangers are today. The organiser sees everyone.</li>
+        <li>Strangers see a group member as a plain grey dot, with no lock.</li>
+        <li>Tracking carries on while you're on the main screen. The green tile at the top takes you back to the map.</li>
+        <li>Out of scope here: joining before pressing Go (mock-up 0b).</li>
+      </ul>
+    </div>
+
+    <div class="phone" id="phone">
+      <div class="status"><span>9:12</span><span>●●● ▮</span></div>
+
+      <!-- Go map (runner) -->
+      <section class="view" id="v-map" style="padding:0">
+        <div class="map">
+          <svg viewBox="0 0 320 680" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+            <rect width="320" height="680" fill="#e6eee3"/>
+            <path d="M-10 540 C 60 480, 110 440, 160 370 S 250 230, 340 170" fill="none" stroke="#c9d6c4" stroke-width="22" stroke-linecap="round"/>
+            <path d="M-10 540 C 60 480, 110 440, 160 370 S 250 230, 340 170" fill="none" stroke="#b9c9b4" stroke-width="3" stroke-dasharray="6 5"/>
+            <path d="M40 510 C 70 480, 100 455, 130 420" fill="none" stroke="#2e7d32" stroke-width="4" stroke-linecap="round"/>
+            <g id="dots"></g>
+          </svg>
+        </div>
+        <div class="maptop">
+          <button class="chip home" data-go="home" aria-label="Back to main screen">‹ Home</button>
+          <span class="chip timer">● Out · 42:10</span>
+        </div>
+        <button class="gchip" id="gchip" data-sheet="group"><small id="gchip-rule">Race · 2 h 48 m left</small><b id="gchip-name">Hunua 50k</b></button>
+        <div class="legend" id="legend"></div>
+        <div class="banner" id="endBanner"><div><b id="endTitle">Hunua 50k has ended</b>You're still out. Only your crew can see you by name now.</div><button data-close-banner>OK</button></div>
+        <button class="hold">Hold to stop</button>
+      </section>
+
+      <!-- Main screen (runner, tracking) -->
+      <section class="view" id="v-home">
+        <div class="logo">d<span class="avatar">AK</span>t-watchr</div>
+        <div class="crew">Your crew <span>2 people ›</span></div>
+        <div class="homescroll">
+          <button class="tile out serif" data-go="mapAuto"><small>You're out · 42:10</small><b>Back to the map</b><span>Tracking carries on while you're here</span></button>
+          <div class="sec">Groups near you</div>
+          <div id="tiles"></div>
+          <p class="why">Shown because you're inside each group's area. Joining only changes who can see you; you keep tracking.</p>
+          <button class="tile card serif"><b>Join with a code</b><span>For a group that isn't near you</span></button>
+        </div>
+      </section>
+
+      <!-- Create (organiser) -->
+      <section class="view" id="v-create">
+        <div class="top"><span></span><button class="link" data-go="orgHomeEmpty">Cancel</button></div>
+        <div class="bscroll">
+          <h2 class="btitle">Create a group</h2>
+          <div class="bsec" style="border-top:0;padding-top:0">
+            <h4>Name</h4>
+            <input class="field" id="c-title" maxlength="30" value="Hunua 50k" autocomplete="off">
+          </div>
+          <div class="bsec">
+            <h4>Who sees whom</h4>
+            <button class="opt" data-rule="everyone"><span class="radio"></span><span class="t"><b>Everyone</b><small>Everyone in the group sees everyone else by name. For a run with mates or a club outing.</small></span></button>
+            <button class="opt" data-rule="race"><span class="radio"></span><span class="t"><b>Race</b><small>Entrants see their own crew and you by name. Other entrants are grey dots. You see everyone.</small></span></button>
+          </div>
+          <div class="bsec">
+            <h4>When</h4>
+            <div class="lbl">Starts</div>
+            <div class="sug" id="c-start"></div>
+            <div class="lbl">Ends after</div>
+            <div class="sug" id="c-len"></div>
+            <p class="hint">Every group ends. After that, members stop seeing each other through it. 24 hours at most.</p>
+          </div>
+          <div class="bsec">
+            <h4>Area</h4>
+            <div class="lbl">Shown to people within</div>
+            <div class="sug" id="c-range"></div>
+            <p class="hint note">People inside this area see the group on their main screen from 30 minutes before the start. The area is centred where you are when you create the group; move it later with <b>Ping</b>.</p>
+          </div>
+          <div class="bsec">
+            <h4>Entry code</h4>
+            <div class="row"><span>Ask for a code to join</span><button class="sw" id="c-codeSw" role="switch" aria-label="Ask for a code to join"></button></div>
+            <div id="c-codeBox">
+              <input class="field code" id="c-code" maxlength="6" value="K7Q4" autocomplete="off" aria-label="Entry code">
+              <p class="hint" style="margin-top:8px">Give this to entrants (entry email, race number sheet). Anyone can see the tile, but only people with the code can join. You can change it later; people already in stay in.</p>
+            </div>
+            <p class="hint" id="c-codeOff">Off: anyone in the area can join with one tap.</p>
+          </div>
+        </div>
+        <div class="foot"><button class="cta" id="c-go">Create group</button></div>
+      </section>
+
+      <!-- Organiser main screen -->
+      <section class="view" id="v-orgHome">
+        <div class="logo">d<span class="avatar" style="background:#007aff">SK</span>t-watchr</div>
+        <div class="crew">Your crew <span>3 people ›</span></div>
+        <div class="homescroll" id="orgScroll"></div>
+      </section>
+
+      <!-- Organiser map -->
+      <section class="view" id="v-orgMap" style="padding:0">
+        <div class="map">
+          <svg viewBox="0 0 320 680" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+            <rect width="320" height="680" fill="#e6eee3"/>
+            <path d="M-10 540 C 60 480, 110 440, 160 370 S 250 230, 340 170" fill="none" stroke="#c9d6c4" stroke-width="22" stroke-linecap="round"/>
+            <circle id="org-ring" cx="120" cy="430" r="70" fill="rgba(107,26,8,.12)" stroke="#6b1a08" stroke-width="1.5" stroke-dasharray="5 4"/>
+            <g transform="translate(120 430)"><path d="M0 8 C -9 -5, -10 -11, -10 -14 a10 10 0 1 1 20 0 c0 3 -1 9 -10 22z" fill="#6b1a08"/><circle cy="-14" r="3.4" fill="#f5f0e0"/></g>
+            <g id="orgDots"></g>
+          </svg>
+        </div>
+        <div class="maptop">
+          <button class="chip home" data-go="orgHome">‹ Home</button>
+          <span class="chip" id="orgCount">14 joined</span>
+        </div>
+        <div class="gchip on" style="top:74px"><small id="orgRuleChip">Race · organiser · you see everyone</small><b id="orgName">Hunua 50k</b></div>
+        <div class="rail">
+          <button class="rb ping" id="org-ping" aria-label="Ping: centre the area here"><svg viewBox="0 0 32 32" width="34" height="34" aria-hidden="true"><circle cx="16" cy="16" r="3.2" fill="#fff"/><circle cx="16" cy="16" r="8" fill="none" stroke="#fff" stroke-width="2"/><circle cx="16" cy="16" r="13.5" fill="none" stroke="#fff" stroke-width="2" opacity=".7"/></svg></button>
+        </div>
+        <div class="legend"><span>Shaded ring: the area where the tile shows</span></div>
+      </section>
+
+      <!-- sheets -->
+      <div class="scrim" id="scrim"></div>
+
+      <div class="sheet" id="sh-join">
+        <div class="grab"></div>
+        <h3 id="j-title">Saturday long run</h3>
+        <div class="meta" id="j-meta">Started by Sean · about 50 m away</div>
+        <span class="rulechip" id="j-rule">Everyone</span>
+        <div class="lbl">Before you join</div>
+        <ul class="info" id="j-info"></ul>
+        <div id="j-codeBox" hidden>
+          <div class="lbl" style="margin-bottom:6px">Entry code</div>
+          <input class="field code" id="j-code" maxlength="6" placeholder="····" autocomplete="off" aria-label="Entry code" aria-describedby="j-err">
+          <p class="err" id="j-err" style="margin-top:6px"></p>
+          <p class="hint">The organiser gave entrants this code. Walking past? You don't need to join to keep running.</p>
+        </div>
+        <button class="cta" id="j-go">Join</button>
+        <button class="ghost" data-close>Not now</button>
+      </div>
+
+      <div class="sheet" id="sh-group">
+        <div class="grab"></div>
+        <h3 id="g-title">Hunua 50k</h3>
+        <div class="meta" id="g-meta">Race · ends 12:00 · 2 h 48 m left</div>
+        <ul class="info" id="g-info"></ul>
+        <button class="dng" id="g-leave">Leave group</button>
+        <button class="ghost" data-close>Done</button>
+      </div>
+
+      <div class="sheet" id="sh-end">
+        <div class="grab"></div>
+        <h3>End this group now?</h3>
+        <p class="hint" style="font-size:14px">Members stop seeing each other through it straight away. Everyone keeps tracking; their runs aren't affected.</p>
+        <button class="dng" id="end-yes">End group</button>
+        <button class="ghost" data-close>Keep it</button>
+      </div>
+
+      <div class="sheet" id="sh-code">
+        <div class="grab"></div>
+        <h3>Change entry code</h3>
+        <input class="field code" id="n-code" maxlength="6" value="K7Q4" autocomplete="off" aria-label="New entry code">
+        <p class="hint">People already in stay in. Anyone joining from now on needs the new code.</p>
+        <button class="cta" id="n-save">Save code</button>
+        <button class="ghost" data-close>Cancel</button>
+      </div>
+
+      <div class="toast" id="toast" role="status"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  var q=function(s){return document.querySelector(s)}, qa=function(s){return Array.prototype.slice.call(document.querySelectorAll(s))};
+  var TERMS=['group members','squad','run-mates','the group'];
+  var GROUPS={
+    run:{title:'Saturday long run',org:'Sean',dist:'about 50 m',rule:'everyone',ends:'11:30',left:'2 h 18 m',count:4,code:null,eyebrow:'About 50 m · on now'},
+    race:{title:'Hunua 50k',org:'Kiri',dist:'about 200 m',rule:'race',ends:'12:00',left:'2 h 48 m',count:14,code:'K7Q4',eyebrow:'About 200 m · starts 9:30'}
+  };
+  var S={term:0,joined:null,ended:false,pick:'run',
+    org:{exists:false,title:'Hunua 50k',rule:'race',start:'9:30',len:'4 hours',range:'250 m',codeOn:true,code:'K7Q4'}};
+  var STARTS=['Now','9:30','10:00'], LENS=['2 hours','4 hours','8 hours','12 hours','24 hours'], RANGES=['100 m','250 m','500 m','1 km'];
+  var term=function(){return TERMS[S.term]}, Term=function(){var t=term();return t.charAt(0).toUpperCase()+t.slice(1)};
+  var toastT;
+  function toast(t){var e=q('#toast');e.textContent=t;e.classList.add('on');clearTimeout(toastT);toastT=setTimeout(function(){e.classList.remove('on')},1900)}
+  function closeSheets(){qa('.sheet').forEach(function(s){s.classList.remove('on')});q('#scrim').classList.remove('on')}
+  function openSheet(id){closeSheets();q('#sh-'+id).classList.add('on');q('#scrim').classList.add('on')}
+  function view(id){qa('.view').forEach(function(v){v.classList.toggle('on',v.id==='v-'+id)})}
+  function nav(id){qa('.nav button').forEach(function(b){b.setAttribute('aria-current',String(b.dataset.go===id))})}
+
+  // ---- map dots ----
+  function dot(x,y,fill,label,opts){
+    opts=opts||{};
+    var s='<g transform="translate('+x+' '+y+')">';
+    if(opts.ring)s+='<circle r="15" fill="none" stroke="'+opts.ring+'" stroke-width="3"'+(opts.dash?' stroke-dasharray="4 3"':'')+'/>';
+    s+='<circle r="11" fill="'+fill+'" stroke="#fff" stroke-width="2"/>';
+    if(label)s+='<text y="3.5" text-anchor="middle" font-size="8" font-weight="700" fill="#fff" font-family="system-ui">'+label+'</text>';
+    if(opts.name)s+='<g transform="translate(0 -26)"><rect x="-'+(opts.name.length*3.2+7)+'" y="-9" width="'+(opts.name.length*6.4+14)+'" height="16" rx="8" fill="#fff" stroke="'+(opts.ring||'#2c2119')+'" stroke-width="1.2"/><text y="3" text-anchor="middle" font-size="9" font-weight="600" fill="#1b2321" font-family="system-ui">'+opts.name+'</text></g>';
+    return s+'</g>';
+  }
+  function grey(x,y){return '<circle cx="'+x+'" cy="'+y+'" r="7" fill="#9aa19d" stroke="#fff" stroke-width="2"/>'}
+  function renderMap(){
+    var g=S.ended?null:S.joined, h='';
+    // crew (always named, dark ring)
+    h+=dot(205,250,'#e8590c','PR',{ring:'#2c2119',name:'Pita'});
+    if(g==='run'){
+      h+=dot(160,350,'#6a4c93','SE',{ring:'#b09263',dash:1,name:'Sean'});
+      h+=dot(95,300,'#1971c2','MJ',{ring:'#b09263',dash:1,name:'Mere'});
+      h+=dot(240,420,'#c2255c','TW',{ring:'#b09263',dash:1,name:'Tama'});
+      h+=grey(60,220)+grey(270,560);
+    }else if(g==='race'){
+      h+=dot(170,340,'#6a4c93','KI',{ring:'#6b1a08',name:'Kiri (organiser)'});
+      h+=grey(150,385)+grey(110,400)+grey(185,300)+grey(225,270)+grey(90,460)+grey(260,330);
+    }else{
+      h+=grey(150,385)+grey(260,330)+grey(60,220);
+    }
+    h+=dot(130,420,'#2e7d32','AK',{});
+    q('#dots').innerHTML=h;
+    var lg='<span>Dark ring: crew</span>';
+    if(g==='run')lg+='<span>Dashed ring: '+term()+'</span>';
+    if(g==='race')lg+='<span>Red ring: organiser</span>';
+    lg+='<span>Grey: others nearby</span>';
+    q('#legend').innerHTML=lg;
+    var gc=q('#gchip');gc.classList.toggle('on',!!g);
+    if(g){var G=GROUPS[g];q('#gchip-name').textContent=G.title;q('#gchip-rule').textContent=(G.rule==='race'?'Race':'Everyone')+' · '+G.left+' left'}
+  }
+
+  // ---- runner main screen tiles ----
+  function renderTiles(){
+    var h='';
+    ['run','race'].forEach(function(k){
+      var G=GROUPS[k], joined=S.joined===k&&!S.ended;
+      if(S.ended&&S.joined===k)return; // ended groups disappear
+      var badge=joined?'<span class="badge joined">Joined</span>':(G.code?'<span class="badge">Code</span>':'');
+      h+='<button class="tile near serif" '+(joined?'data-sheet="group"':'data-join="'+k+'"')+'><small>'+G.eyebrow+'</small><b>'+G.title+'</b>'+badge+'<span>'+(G.rule==='race'?'Race':'Everyone sees everyone')+' · by '+G.org+' · '+G.count+' in</span></button>';
+    });
+    q('#tiles').innerHTML=h||'<p class="why">No groups here right now.</p>';
+  }
+
+  // ---- join sheet ----
+  function infoFor(G){
+    if(G.rule==='race')return [
+      ['Who sees you by name','Your crew and '+G.org+' (organiser). Other entrants see a grey dot when they are within 5 km.'],
+      ['Who you see','Your crew and '+G.org+' by name. Other entrants as grey dots.'],
+      ['Until','The group ends at '+G.ends+'. You can leave at any time.'],
+      ['Your run','Nothing changes: you keep tracking, and your run stays yours.']];
+    return [
+      ['Who sees you by name','All '+G.count+' '+term()+': your name and live location, at any distance.'],
+      ['Who you see','Every one of the '+term()+' by name, as well as your crew.'],
+      ['Until','The group ends at '+G.ends+'. You can leave at any time.'],
+      ['Your run','Nothing changes: you keep tracking, and your run stays yours.']];
+  }
+  function li(a){return a.map(function(x){return '<li><b>'+x[0]+'</b><span>'+x[1]+'</span></li>'}).join('')}
+  function openJoin(k,bad){
+    S.pick=k;var G=GROUPS[k];
+    q('#j-title').textContent=G.title;
+    q('#j-meta').textContent='Organised by '+G.org+' · '+G.dist+' away · '+G.count+' in';
+    q('#j-rule').textContent=G.rule==='race'?'Race':'Everyone';
+    q('#j-info').innerHTML=li(infoFor(G));
+    q('#j-codeBox').hidden=!G.code;
+    var c=q('#j-code');c.value=bad?'K7Q1':'';c.classList.toggle('bad',!!bad);
+    q('#j-err').textContent=bad?'That code doesn’t match. Check with the organiser.':'';
+    q('#j-go').textContent=G.code?'Join with code':'Join';
+    q('#j-go').disabled=!!G.code&&!bad;
+    view('home');renderTiles();openSheet('join');
+  }
+  q('#j-code').oninput=function(){this.classList.remove('bad');q('#j-err').textContent='';q('#j-go').disabled=this.value.trim().length<4};
+  q('#j-go').onclick=function(){
+    var G=GROUPS[S.pick];
+    if(G.code&&q('#j-code').value.trim().toUpperCase()!==G.code){
+      q('#j-code').classList.add('bad');q('#j-err').textContent='That code doesn’t match. Check with the organiser.';nav('badCode');return}
+    S.joined=S.pick;S.ended=false;closeSheets();renderMap();view('map');nav('mapJoined');toast('Joined '+G.title);
+  };
+
+  // ---- group sheet ----
+  function openGroup(){
+    var k=S.joined||'race';if(!S.joined){S.joined='race';S.ended=false;renderMap()}
+    var G=GROUPS[k];
+    q('#g-title').textContent=G.title;
+    q('#g-meta').textContent=(G.rule==='race'?'Race':'Everyone')+' · ends '+G.ends+' · '+G.left+' left';
+    q('#g-info').innerHTML=li(G.rule==='race'?[
+      ['You see','Your crew and '+G.org+' by name; other entrants as grey dots.'],
+      ['You’re seen by','Your crew and '+G.org+' by name.'],
+      ['Organiser',G.org+' sees all '+G.count+' entrants.']]:[
+      ['You see','All '+G.count+' '+term()+' by name.'],
+      ['You’re seen by','All '+G.count+' '+term()+' by name.'],
+      ['Organiser',G.org]]);
+    view('map');openSheet('group');
+  }
+  q('#g-leave').onclick=function(){var t=GROUPS[S.joined].title;S.joined=null;closeSheets();renderMap();nav('map');toast('Left '+t+' · still tracking')};
+
+  // ---- organiser ----
+  function pills(host,items,get,set){
+    host.innerHTML='';
+    items.forEach(function(t){var b=document.createElement('button');b.className='pill';b.textContent=t;b.setAttribute('aria-pressed',String(get()===t));
+      b.onclick=function(){set(t);renderOrg()};host.appendChild(b)});
+  }
+  function renderOrg(){
+    var O=S.org;
+    pills(q('#c-start'),STARTS,function(){return O.start},function(t){O.start=t});
+    pills(q('#c-len'),LENS,function(){return O.len},function(t){O.len=t});
+    pills(q('#c-range'),RANGES,function(){return O.range},function(t){O.range=t});
+    qa('[data-rule]').forEach(function(b){b.setAttribute('aria-pressed',String(b.dataset.rule===O.rule))});
+    q('#c-codeSw').setAttribute('aria-checked',String(O.codeOn));
+    q('#c-codeBox').hidden=!O.codeOn;q('#c-codeOff').hidden=O.codeOn;
+    var endH={'2 hours':2,'4 hours':4,'8 hours':8,'12 hours':12,'24 hours':24}[O.len];
+    var sub=(O.rule==='race'?'Race':'Everyone')+' · starts '+O.start.toLowerCase()+' · ends after '+O.len+' · area '+O.range;
+    var h='';
+    if(O.exists){
+      h+='<div class="mine serif"><small>Your group · tile showing nearby</small><b>'+esc(O.title)+'</b><span>'+sub+'</span><span>14 joined</span>';
+      if(O.codeOn)h+='<div class="codebox"><span>Entry code <code>'+esc(O.code)+'</code></span><button data-sheet="code">Change</button></div>';
+      h+='<div class="mbtns"><button class="pri" id="m-ping">Ping here</button><button data-go="orgMap">Open map</button></div><button class="endlink" data-sheet="end">End group now</button></div>';
+      h+='<button class="tile out serif" style="border-top-color:var(--maroon)"><small>Not tracking</small><b>Go</b><span>Hold to start. Organising doesn’t need you to track.</span></button>';
+    }else{
+      h+='<button class="tile out serif" style="border-top-color:var(--maroon)"><small>Not tracking</small><b>Go</b><span>Hold to start</span></button>';
+      h+='<button class="tile card serif" data-go="create"><b>Create a group</b><span>A run, an outing or a race</span></button>';
+    }
+    q('#orgScroll').innerHTML=h;
+    var mp=q('#m-ping');if(mp)mp.onclick=ping;
+    q('#org-ring').setAttribute('r',{'100 m':40,'250 m':70,'500 m':100,'1 km':130}[O.range]);
+    q('#orgName').textContent=O.title;
+    q('#orgRuleChip').textContent=O.rule==='race'?'Race · organiser · you see everyone':'Everyone · organiser';
+    var d='';
+    var pos=[[150,385],[110,400],[185,300],[225,270],[90,460],[260,330],[140,450]],names=['AK','PR','MJ','TW','HN','LB','RG'];
+    pos.forEach(function(p,i){d+=dot(p[0],p[1],['#2e7d32','#e8590c','#1971c2','#c2255c','#0b7285','#5f3dc4','#a61e4d'][i],names[i],{})});
+    q('#orgDots').innerHTML=d;
+  }
+  function esc(s){return String(s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})}
+  qa('[data-rule]').forEach(function(b){b.onclick=function(){S.org.rule=b.dataset.rule;renderOrg()}});
+  q('#c-codeSw').onclick=function(){S.org.codeOn=!S.org.codeOn;renderOrg()};
+  q('#c-title').oninput=function(){S.org.title=this.value||'Untitled';q('#c-go').disabled=!this.value.trim()};
+  q('#c-code').oninput=function(){this.value=this.value.toUpperCase().replace(/[^A-Z0-9]/g,'');S.org.code=this.value;q('#c-go').disabled=S.org.codeOn&&this.value.length<4};
+  q('#c-go').onclick=function(){S.org.exists=true;renderOrg();view('orgHome');nav('orgHome');toast('Group created · area set here')};
+  q('#n-save').onclick=function(){var v=q('#n-code').value.toUpperCase().replace(/[^A-Z0-9]/g,'');if(v.length<4){toast('At least 4 characters');return}S.org.code=v;closeSheets();renderOrg();toast('Code changed to '+v)};
+  q('#end-yes').onclick=function(){S.org.exists=false;closeSheets();renderOrg();view('orgHome');toast('Group ended')};
+  function ping(){toast('Area centred where you are now');var b=q('#org-ping');b.classList.add('done');setTimeout(function(){b.classList.remove('done')},1400)}
+  q('#org-ping').onclick=ping;
+
+  // ---- term switcher ----
+  function renderTerms(){
+    var h=q('#terms');h.innerHTML='';
+    TERMS.forEach(function(t,i){var b=document.createElement('button');b.textContent=t.charAt(0).toUpperCase()+t.slice(1);b.setAttribute('aria-pressed',String(i===S.term));
+      b.onclick=function(){S.term=i;renderTerms();renderMap();
+        if(q('#sh-join').classList.contains('on'))q('#j-info').innerHTML=li(infoFor(GROUPS[S.pick]));
+        if(q('#sh-group').classList.contains('on'))openGroup();};h.appendChild(b)});
+  }
+
+  // ---- routing ----
+  function go(id){
+    closeSheets();q('#endBanner').classList.remove('on');nav(id);
+    switch(id){
+      case 'map': S.joined=null;S.ended=false;renderMap();view('map');break;
+      case 'mapAuto': renderMap();view('map');nav(S.joined&&!S.ended?'mapJoined':'map');break;
+      case 'home': renderTiles();view('home');break;
+      case 'joinRun': S.joined=null;S.ended=false;openJoin('run');nav(id);break;
+      case 'joinRace': S.joined=null;S.ended=false;openJoin('race');nav(id);break;
+      case 'badCode': S.joined=null;S.ended=false;openJoin('race',true);nav(id);break;
+      case 'mapJoined': if(!S.joined)S.joined='race';S.ended=false;renderMap();view('map');break;
+      case 'groupSheet': S.ended=false;openGroup();nav(id);break;
+      case 'ended': if(!S.joined)S.joined='race';S.ended=true;renderMap();view('map');
+        q('#endTitle').textContent=GROUPS[S.joined].title+' has ended';q('#endBanner').classList.add('on');break;
+      case 'create': renderOrg();view('create');break;
+      case 'orgHome': S.org.exists=true;renderOrg();view('orgHome');break;
+      case 'orgHomeEmpty': S.org.exists=false;renderOrg();view('orgHome');nav('orgHome');break;
+      case 'orgMap': S.org.exists=true;renderOrg();view('orgMap');break;
+    }
+  }
+  document.addEventListener('click',function(e){
+    var t=e.target.closest('[data-go],[data-sheet],[data-close],[data-join],[data-close-banner]');if(!t)return;
+    if(t.dataset.go){go(t.dataset.go);return}
+    if(t.dataset.join){openJoin(t.dataset.join);nav(t.dataset.join==='run'?'joinRun':'joinRace');return}
+    if(t.dataset.sheet==='group'){openGroup();nav('groupSheet');return}
+    if(t.dataset.sheet){if(t.dataset.sheet==='code')q('#n-code').value=S.org.code;openSheet(t.dataset.sheet);return}
+    if(t.hasAttribute('data-close-banner')){q('#endBanner').classList.remove('on');return}
+    if(t.hasAttribute('data-close')){closeSheets();return}
+  });
+  q('#scrim').onclick=closeSheets;
+  renderTerms();renderOrg();go((location.hash||'#map').slice(1));
+})();
+</script>
+</body>
+</html>
