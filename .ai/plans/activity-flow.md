@@ -138,6 +138,7 @@ Fields:
 |---|---|---|
 | `kind` | yes | Stable id, `snake_case`, past tense. What the table stores. |
 | `label` | yes | The words on the flow. |
+| `icon` | no | An emoji drawn instead of the label (and time), which show on hover: 🔗 shared a watch link, 👁️ someone watched (a pill: "👁️ ×3 · 18 s"). |
 | `shows` | yes | `line` (the dot did it) or `branch` (someone else, on this dot's line). |
 | `branchFrom` | for a branch | The `kind` of the stop it hangs off. Without one before it, it hangs off the nearest stop. |
 | `route` | when `recording` | `"METHOD /route/{pattern}"`, matching the endpoint's route pattern. |
@@ -334,10 +335,16 @@ afterwards, rather than ignoring an account (sometimes it's real use).
   opens, which carry no run) or `from`/`to`; `isTest: false` marks it back. Nothing is deleted.
 - `GET /admin/activity` and `/dots` leave test events out unless `includeTest=true`; a dot with only test
   activity drops off the day's list.
-- Activity tab: **Hide test activity** (on by default); a **Test: Go run 09:00–09:03** button per run in
-  each line's header (**Not test: …** to undo); By time, drag across a line to pick a stretch, then
-  **Mark as test** / **Not test**. Shown test stops are faded, dashed and tagged "test".
+- Activity tab: **Hide test activity** (on by default) and a **Test: Go run 09:00–09:03** button per run
+  in each line's header (**Not test: …** to undo). Shown test stops are faded, dashed and tagged "test".
+  Marking a stretch by dragging was tried and taken out (not needed); the API's `from`/`to` stays.
 - Later, maybe: the app's hidden Developer section gets a "Testing" switch that marks activity as test
   as it happens (needs app releases).
+
+Crew on the Activity tab: `GET /admin/activity/dots` returns `crewWith` (the other dots in the list who
+are crew now, from `crew_links`). Lines of crew sit together in a "Crew" box; each dot has its map colour
+(`runnerColour`); By time, each line gets a "with BO" strip in BO's colour where both had a Go run going;
+In order, the header says "out with BO 12:37–12:40". Crew is as it is now, not as it was then; and it
+shows both were out, not that they were together (positions are deleted after 7 days).
 
 Still to check by hand: the "Done when" run on a phone once deployed.

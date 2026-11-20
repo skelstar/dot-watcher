@@ -4,8 +4,11 @@ using NpgsqlTypes;
 
 namespace DotWatcher.Server;
 
-/// <summary>A dot with activity in a time range, for the admin Activity tab's picker.</summary>
-public sealed record ActivityDot(string UserId, string DisplayName, string Username, int EventCount);
+/// <summary>
+/// A dot with activity in a time range, for the admin Activity tab's picker. <c>CrewWith</c>: which of
+/// the other dots in the same list are their crew (crew as it is now, not as it was then).
+/// </summary>
+public sealed record ActivityDot(string UserId, string DisplayName, string Username, int EventCount, IReadOnlyList<string>? CrewWith = null);
 
 /// <summary>One recorded activity event, as the admin Activity tab reads it.</summary>
 public sealed record ActivityEventView(
@@ -110,10 +113,33 @@ public partial class SessionStore
         cmd.Parameters.AddWithValue("@includeTest", includeTest);
 
         var dots = new List<ActivityDot>();
-        using var reader = cmd.ExecuteReader();
-        while (reader.Read())
-            dots.Add(new ActivityDot(reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetInt32(3)));
-        return dots;
+        using (var reader = cmd.ExecuteReader())
+        {
+            while (reader.Read())
+                dots.Add(new ActivityDot(reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetInt32(3)));
+        }
+        if (dots.Count < 2)
+            return dots;
+
+        // Crew pairs among these dots, so the Activity tab can show who was out with their crew.
+        var crew = dots.ToDictionary(d => d.UserId, _ => new List<string>());
+        using (var links = conn.CreateCommand())
+        {
+            links.CommandText = """
+                SELECT user_low_id, user_high_id FROM crew_links
+                WHERE user_low_id = ANY(@ids) AND user_high_id = ANY(@ids)
+                """;
+            links.Parameters.AddWithValue("@ids", crew.Keys.ToArray());
+            using var reader = links.ExecuteReader();
+            while (reader.Read())
+            {
+                var low = reader.GetString(0);
+                var high = reader.GetString(1);
+                crew[low].Add(high);
+                crew[high].Add(low);
+            }
+        }
+        return dots.Select(d => d with { CrewWith = crew[d.UserId] }).ToList();
     }
 
     /// <summary>The given dots' events in [from, to), oldest first. Test events only with <paramref name="includeTest"/>.</summary>

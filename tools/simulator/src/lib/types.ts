@@ -19,4 +19,6 @@ export type PhoneSnapshot = {
   heading: number | null
   // The phone's server account once it has joined or gone out, so "Delete other sim-phone data" can keep it.
   userId: string | null
+  // The same account with its token, so the page can make two phones crew.
+  user: { userId: string; accessToken: string; username: string; displayName: string } | null
 }

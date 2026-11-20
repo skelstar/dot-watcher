@@ -20,6 +20,7 @@
     {
       "kind": "watch_link_made",
       "label": "Shared a watch link",
+      "icon": "🔗",
       "shows": "line",
       "route": "POST /casual/watch-link",
       "status": "recording"
@@ -27,6 +28,7 @@
     {
       "kind": "watch_link_opened",
       "label": "Someone watched",
+      "icon": "👁️",
       "shows": "branch",
       "branchFrom": "watch_link_made",
       "route": "GET /watch/{token}",

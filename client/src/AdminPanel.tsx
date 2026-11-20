@@ -1071,7 +1071,8 @@ const replayLink: React.CSSProperties = {
 }
 
 const page: React.CSSProperties = {
-  maxWidth: 720,
+  // Wide enough for the Activity tab's lines and the tables; the palette playground goes wider still.
+  maxWidth: 1024,
   margin: '2rem auto',
   padding: '0 1rem',
   fontFamily: 'system-ui, sans-serif',

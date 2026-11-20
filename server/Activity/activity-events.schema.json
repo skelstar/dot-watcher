@@ -28,6 +28,11 @@
           "minLength": 1,
           "description": "The words on the flow, e.g. \"Started a Go run\"."
         },
+        "icon": {
+          "type": "string",
+          "maxLength": 8,
+          "description": "Optional: an emoji drawn in place of the label on the Activity tab, to save room. The label and time show on hover."
+        },
         "shows": {
           "enum": ["line", "branch"],
           "description": "line: the dot did it. branch: someone else did, shown off this dot's line."

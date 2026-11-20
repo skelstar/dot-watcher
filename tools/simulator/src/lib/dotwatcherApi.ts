@@ -182,18 +182,50 @@ export async function reportAppState(user: AuthedUser, state: AppState): Promise
 export type GoRun = { sessionId: string; runId: string }
 export type WatchLink = { token: string; path: string }
 
-// Go is a feature an admin switches on per account (or for everyone in config). A sim account is new,
-// so it gets just "casual". Needs VITE_BEARER_TOKEN, like deleteSimAccounts.
+// Go and crew are features an admin switches on per account (or for everyone in config). A sim account
+// is new, so it gets both: then any two phones can be made crew, Go or not. Needs VITE_BEARER_TOKEN,
+// like deleteSimAccounts.
+const SIM_FEATURES = ['casual', 'crew']
+
 export async function enableGo(user: AuthedUser): Promise<void> {
   if (!ADMIN_BEARER_TOKEN) {
-    throw new ApiError('VITE_BEARER_TOKEN is not configured — cannot switch Go on for this account.')
+    throw new ApiError('VITE_BEARER_TOKEN is not configured — cannot switch Go and crew on for this account.')
   }
   const res = await fetch(`${SERVER_URL}/admin/users/${user.userId}/features`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ADMIN_BEARER_TOKEN}` },
-    body: JSON.stringify({ features: ['casual'] }),
+    body: JSON.stringify({ features: SIM_FEATURES }),
   })
-  if (!res.ok) throw new ApiError(await errorMessage(res, `Switching Go on failed (${res.status}).`))
+  if (!res.ok) throw new ApiError(await errorMessage(res, `Switching Go and crew on failed (${res.status}).`))
+}
+
+// ---- Crew ------------------------------------------------------------------------------------------
+// The app's way: one makes a single-use crew code, the other redeems it, and they're crew both ways.
+
+export async function makeCrew(a: AuthedUser, b: AuthedUser): Promise<void> {
+  // A phone that joined a session never had the features switched on.
+  await Promise.all([enableGo(a), enableGo(b)])
+  const codeRes = await fetch(`${SERVER_URL}/me/crew/codes`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${a.accessToken}` },
+  })
+  if (!codeRes.ok) throw new ApiError(await errorMessage(codeRes, `Making a crew code failed (${codeRes.status}).`))
+  const { code } = await codeRes.json() as { code: string }
+
+  const redeemRes = await fetch(`${SERVER_URL}/me/crew/codes/${encodeURIComponent(code)}/redeem`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${b.accessToken}` },
+  })
+  if (!redeemRes.ok) throw new ApiError(await errorMessage(redeemRes, `Joining the crew failed (${redeemRes.status}).`))
+}
+
+// Removes them from each other's crew (the server does both sides).
+export async function removeCrew(a: AuthedUser, b: AuthedUser): Promise<void> {
+  const res = await fetch(`${SERVER_URL}/me/crew/${b.userId}`, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${a.accessToken}` },
+  })
+  if (!res.ok && res.status !== 404) throw new ApiError(await errorMessage(res, `Removing crew failed (${res.status}).`))
 }
 
 // Positions for the run are posted to the returned sessionId with postLocation, as for a session.

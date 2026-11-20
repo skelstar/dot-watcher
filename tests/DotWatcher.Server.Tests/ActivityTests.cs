@@ -301,6 +301,28 @@ public class ActivityTests
     }
 
     [Fact]
+    public async Task Dots_SayWhichOfThemAreCrew()
+    {
+        using var factory = CasualFactory();
+        using var client = factory.CreateClient();
+        var alice = await RegisterAsync(client, "alice", "AL");
+        var bob = await RegisterAsync(client, "bob", "BO");
+        var carol = await RegisterAsync(client, "carol", "CA");
+        var code = (await (await SendAsync(client, HttpMethod.Post, "/me/crew/codes", alice.AccessToken))
+            .Content.ReadFromJsonAsync<JsonElement>()).GetProperty("code").GetString();
+        Assert.Equal(HttpStatusCode.OK, (await SendAsync(client, HttpMethod.Post, $"/me/crew/codes/{code}/redeem", bob.AccessToken)).StatusCode);
+        foreach (var user in new[] { alice, bob, carol })
+            await SendAsync(client, HttpMethod.Post, "/me/activity", user.AccessToken, new { kind = "app_opened" });
+        await WaitForEventsAsync(client, carol.User.UserId, e => e.Count > 0);
+
+        var dots = await GetDotsAsync(client);
+
+        Assert.Equal(new[] { bob.User.UserId }, dots.Single(d => d.UserId == alice.User.UserId).CrewWith);
+        Assert.Equal(new[] { alice.User.UserId }, dots.Single(d => d.UserId == bob.User.UserId).CrewWith);
+        Assert.Empty(dots.Single(d => d.UserId == carol.User.UserId).CrewWith!);
+    }
+
+    [Fact]
     public async Task AdminEndpoints_RefuseAUserToken()
     {
         using var factory = CasualFactory();
