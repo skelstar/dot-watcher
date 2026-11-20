@@ -123,7 +123,7 @@ Turning it around, with casual as the base and groups as visibility on top:
 
 ### Step 0 — Mock-ups
 
-- [ ] **0a. Join a group from a main-screen tile.** In `.ai/mockups/`. Show: someone tracking on the Go map goes back
+- [x] **0a. Join a group from a main-screen tile.** Done: [`go-and-groups-join.html`](../mockups/go-and-groups-join.html). Show: someone tracking on the Go map goes back
       to the main screen; a tile is there because they are in a group's capture region; tapping it gives the consent
       sheet (group name, rule in plain words, end time), with the **entry code** field when the group asks for one, and
       the wrong-code state; back on the Go map after joining (group chip, time left, Leave); the group ending. Also
