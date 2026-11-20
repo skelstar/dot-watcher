@@ -334,9 +334,9 @@ afterwards, rather than ignoring an account (sometimes it's real use).
   opens, which carry no run) or `from`/`to`; `isTest: false` marks it back. Nothing is deleted.
 - `GET /admin/activity` and `/dots` leave test events out unless `includeTest=true`; a dot with only test
   activity drops off the day's list.
-- Activity tab: **Hide test activity** (on by default); a **Test: Go run 09:00–09:03** button per run in
-  each line's header (**Not test: …** to undo); By time, drag across a line to pick a stretch, then
-  **Mark as test** / **Not test**. Shown test stops are faded, dashed and tagged "test".
+- Activity tab: **Hide test activity** (on by default) and a **Test: Go run 09:00–09:03** button per run
+  in each line's header (**Not test: …** to undo). Shown test stops are faded, dashed and tagged "test".
+  Marking a stretch by dragging was tried and taken out (not needed); the API's `from`/`to` stays.
 - Later, maybe: the app's hidden Developer section gets a "Testing" switch that marks activity as test
   as it happens (needs app releases).
 

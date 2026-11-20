@@ -6,9 +6,12 @@ import {
   buildFlow,
   dayRange,
   formatDuration,
+  MAX_TIME_WIDTH,
   layoutFlow,
-  timeForX,
+  readableWidth,
+  timeBreaks,
   timeScale,
+  timeScaleOfWidth,
   timeTicks,
   todayString,
   type ActivityDotDto,
@@ -37,7 +40,9 @@ export default function ActivityTab({ serverUrl, token }: { serverUrl: string; t
   const [events, setEvents] = useState<Load<ActivityEventDto[]>>({ kind: 'idle' })
   const [refreshTick, setRefreshTick] = useState(0)
   const [view, setView] = useState<'order' | 'time'>('order')
-  const [zoom, setZoom] = useState(1)
+  const [zoom, setZoom] = useState<'fit' | number>(1)
+  // By time: long stretches where no line has anything shrink to a narrow break.
+  const [collapseQuiet, setCollapseQuiet] = useState(true)
   // Testing on the live server: activity an admin marked as test is left out unless this is off.
   const [hideTest, setHideTest] = useState(true)
   const [markError, setMarkError] = useState<string | null>(null)
@@ -122,12 +127,10 @@ export default function ActivityTab({ serverUrl, token }: { serverUrl: string; t
     return () => { cancelled = true }
   }, [serverUrl, token, day, selected, hideTest])
 
-  // Marks a Go run, or a stretch of time, on one dot's line as test (or back to real), then reloads.
-  async function markTest(userId: string, target: { runId: string } | { from: number; to: number }, isTest: boolean) {
+  // Marks a Go run on one dot's line, and what happened during it, as test (or back to real), then reloads.
+  async function markTest(userId: string, runId: string, isTest: boolean) {
     setMarkError(null)
-    const body = 'runId' in target
-      ? { userId, runId: target.runId, isTest }
-      : { userId, from: new Date(target.from).toISOString(), to: new Date(target.to).toISOString(), isTest }
+    const body = { userId, runId, isTest }
     try {
       const response = await fetch(`${serverUrl}/admin/activity/test`, {
         method: 'POST',
@@ -147,10 +150,17 @@ export default function ActivityTab({ serverUrl, token }: { serverUrl: string; t
 
   const dotList = dots.kind === 'ok' ? dots.value : []
   const shownEvents = events.kind === 'ok' ? events.value.filter(e => selected.includes(e.userId)) : []
-  // By time, every line shares one scale, so the same moment is at the same place on each.
-  // At 1× the scale fills the panel, leaving room for the last stop's label.
+  // By time, every line shares one scale, so the same moment is at the same place on each. Fit puts the
+  // whole day in the panel; 1× spaces stops about as In order does, and the lines scroll together.
   const fitWidth = Math.max(300, panelWidth - LINE_CARD_INSET - LAYOUT.startX - LAYOUT.labelWidth - 28)
-  const scale = view === 'time' ? timeScale(shownEvents, fitWidth * zoom) : null
+  // With collapsing, quiet stretches shrink to breaks, so the cap applies to the width that's drawn.
+  const scale = view !== 'time' ? null : (() => {
+    if (zoom === 'fit') return timeScaleOfWidth(shownEvents, fitWidth, collapseQuiet)
+    const straight = (readableWidth(shownEvents, collapseQuiet ? Infinity : MAX_TIME_WIDTH) ?? fitWidth) * zoom
+    const drawn = timeScale(shownEvents, straight, collapseQuiet)
+    if (!drawn || drawn.width < fitWidth) return timeScaleOfWidth(shownEvents, fitWidth, collapseQuiet)
+    return drawn.width > MAX_TIME_WIDTH ? timeScaleOfWidth(shownEvents, MAX_TIME_WIDTH, collapseQuiet) : drawn
+  })()
   const laidOut = dotList
     .filter(dot => selected.includes(dot.userId))
     .map(dot => {
@@ -195,9 +205,18 @@ export default function ActivityTab({ serverUrl, token }: { serverUrl: string; t
         {view === 'time' && (
           <label style={fieldLabel}>
             Zoom
-            <select value={zoom} onChange={e => setZoom(Number(e.target.value))} style={dateInput}>
+            <select value={String(zoom)} onChange={e => setZoom(e.target.value === 'fit' ? 'fit' : Number(e.target.value))} style={dateInput}
+              title="Fit: the whole day in the panel. 1×: stops spaced about as In order, scrolling.">
+              <option value="fit">Fit</option>
               {ZOOMS.map(z => <option key={z} value={z}>{z}×</option>)}
             </select>
+          </label>
+        )}
+        {view === 'time' && (
+          <label style={{ ...fieldLabel, flexDirection: 'row', alignItems: 'center', alignSelf: 'center', color: '#0f172a' }}
+            title="Long stretches where no line has anything are shrunk to a break marked with how long they were">
+            <input type="checkbox" checked={collapseQuiet} onChange={e => setCollapseQuiet(e.target.checked)} style={{ margin: 0 }} />
+            Collapse quiet stretches
           </label>
         )}
         <label style={{ ...fieldLabel, flexDirection: 'row', alignItems: 'center', alignSelf: 'center', color: '#0f172a' }}
@@ -208,7 +227,7 @@ export default function ActivityTab({ serverUrl, token }: { serverUrl: string; t
         <button style={refreshBtn} onClick={() => setRefreshTick(t => t + 1)}>Refresh</button>
       </div>
       <p style={note}>
-        Testing? Mark a Go run as test with its button on the line{view === 'time' ? ', or drag across a line to pick a stretch' : ' (or, By time, drag across a line to pick a stretch)'}.
+        Testing? Mark a Go run as test with its button on the line.
         Nothing is deleted; untick Hide test activity to see it and mark it back.
       </p>
       {markError && <p style={errorText}>{markError}</p>}
@@ -241,7 +260,7 @@ export default function ActivityTab({ serverUrl, token }: { serverUrl: string; t
             width={sharedWidth ?? layout.width}
             scrollerRef={registerScroller}
             onScroll={syncScroll}
-            onMark={(target, isTest) => markTest(dot.userId, target, isTest)}
+            onMark={(runId, isTest) => markTest(dot.userId, runId, isTest)}
           />
         ))}
       </div>
@@ -253,7 +272,8 @@ export default function ActivityTab({ serverUrl, token }: { serverUrl: string; t
 
 // ---- One dot's line ----------------------------------------------------------------------------
 
-const ZOOMS = [1, 2, 4, 8, 16]
+// Times the readable spacing (1×); "Fit" is separate.
+const ZOOMS = [1, 2, 4]
 // A line card's horizontal padding and border, both sides.
 const LINE_CARD_INSET = 34
 const LABEL_ROW = 42
@@ -265,8 +285,6 @@ function formatTime(at: string | number, withSeconds = true) {
   return new Date(at).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', ...(withSeconds ? { second: '2-digit' } : {}) })
 }
 
-type MarkTarget = { runId: string } | { from: number; to: number }
-
 function DotLine({ dot, flow, layout, scale, width, scrollerRef, onScroll, onMark }: {
   dot: ActivityDotDto
   flow: Flow
@@ -275,14 +293,8 @@ function DotLine({ dot, flow, layout, scale, width, scrollerRef, onScroll, onMar
   width: number
   scrollerRef: (el: HTMLDivElement | null) => (() => void) | undefined
   onScroll: (el: HTMLDivElement) => void
-  onMark: (target: MarkTarget, isTest: boolean) => void
+  onMark: (runId: string, isTest: boolean) => void
 }) {
-  // By time: a stretch picked by dragging across the line, in px along it, to mark as test.
-  const [drag, setDrag] = useState<{ from: number; to: number; done: boolean } | null>(null)
-  const pickX = (e: React.PointerEvent<HTMLDivElement>) => e.clientX - e.currentTarget.getBoundingClientRect().left
-  const picked = drag && scale && drag.done
-    ? { from: timeForX(scale, Math.min(drag.from, drag.to)), to: timeForX(scale, Math.max(drag.from, drag.to)) }
-    : null
   // The Go runs on this line, for their mark buttons. A run is test when its start (or stop) is.
   const runs = flow.runs
     .filter(run => run.runId)
@@ -300,6 +312,7 @@ function DotLine({ dot, flow, layout, scale, width, scrollerRef, onScroll, onMar
   const branchTop = (row: number) => labelsBottom + 16 + row * (BRANCH_HEIGHT + BRANCH_GAP)
   const height = layout.branchRows > 0 ? branchTop(layout.branchRows - 1) + BRANCH_HEIGHT + 8 : labelsBottom + 4
   const ticks = scale ? timeTicks(scale) : []
+  const breaks = scale ? timeBreaks(scale) : []
   const rail: React.CSSProperties = { position: 'absolute', top: lineY - 2, height: 4, borderRadius: 4 }
 
   return (
@@ -310,44 +323,17 @@ function DotLine({ dot, flow, layout, scale, width, scrollerRef, onScroll, onMar
         <span style={{ color: '#64748b', fontSize: '0.8rem' }}>{dot.username}</span>
         <span style={{ flex: 1 }} />
         {runs.map(run => (
-          <button key={run.runId} style={markBtn(run.isTest)} onClick={() => onMark({ runId: run.runId }, !run.isTest)}
+          <button key={run.runId} style={markBtn(run.isTest)} onClick={() => onMark(run.runId, !run.isTest)}
             title={run.isTest ? 'Count this Go run as real again' : 'Mark this Go run, and what happened during it, as test'}>
             {run.isTest ? 'Not test: ' : 'Test: '}Go run {formatTime(run.first.at, false)}{run.last ? `–${formatTime(run.last.at, false)}` : ''}
           </button>
         ))}
       </div>
-      {picked && (
-        <div style={pickBar}>
-          <span>{formatTime(picked.from)}–{formatTime(picked.to)}</span>
-          <button style={markBtn(false)} onClick={() => { onMark(picked, true); setDrag(null) }}>Mark as test</button>
-          <button style={markBtn(true)} onClick={() => { onMark(picked, false); setDrag(null) }}>Not test</button>
-          <button style={markBtn(false)} onClick={() => setDrag(null)}>Cancel</button>
-        </div>
-      )}
       {flow.stops.length === 0 ? (
         <p style={{ ...note, margin: '0.5rem 0 0' }}>Nothing recorded.</p>
       ) : (
         <div style={{ overflowX: 'auto' }} ref={scrollerRef} onScroll={e => onScroll(e.currentTarget)}>
-          <div
-            style={{ position: 'relative', width, height, cursor: scale ? 'crosshair' : undefined, touchAction: scale ? 'pan-y' : undefined }}
-            onPointerDown={scale ? e => {
-              if (e.button !== 0 || (e.target as HTMLElement).closest('button')) return
-              e.currentTarget.setPointerCapture(e.pointerId)
-              const x = pickX(e)
-              setDrag({ from: x, to: x, done: false })
-            } : undefined}
-            onPointerMove={scale ? e => { if (drag && !drag.done) setDrag({ ...drag, to: pickX(e) }) } : undefined}
-            onPointerUp={scale ? () => {
-              // A click, not a drag, picks nothing.
-              if (drag && !drag.done) setDrag(Math.abs(drag.to - drag.from) < 4 ? null : { ...drag, done: true })
-            } : undefined}
-          >
-            {drag && scale && (
-              <div style={{
-                position: 'absolute', top: 0, bottom: 0, left: Math.min(drag.from, drag.to), width: Math.abs(drag.to - drag.from),
-                background: 'rgba(31,111,235,0.12)', borderLeft: '1px solid #1f6feb', borderRight: '1px solid #1f6feb', pointerEvents: 'none',
-              }} />
-            )}
+          <div style={{ position: 'relative', width, height }}>
             {/* By time: gridlines first, so everything else draws over them. */}
             {ticks.map(tick => (
               <div key={tick.at}>
@@ -367,6 +353,20 @@ function DotLine({ dot, flow, layout, scale, width, scrollerRef, onScroll, onMar
                 position: 'absolute', top: lineY - 5, height: 10, left: span.left + 10, width: Math.max(span.right - span.left - 20, 0),
                 background: 'repeating-linear-gradient(to right, transparent 0 10px, #fff 10px 16px)',
               }} />
+            ))}
+
+            {/* By time, collapsed: a quiet stretch (nothing on any line) shrunk to a break between two dashed
+                lines, cutting the line, with how long it was. */}
+            {breaks.map(gap => (
+              <div key={`break-${gap.left}`}>
+                <div title={`Nothing happened for ${formatDuration(Math.round(gap.quietMs / 60_000) * 60)}`} style={{
+                  position: 'absolute', top: 18, bottom: 0, left: gap.left, width: gap.right - gap.left, boxSizing: 'border-box',
+                  background: '#fff', borderLeft: '2px dashed #94a3b8', borderRight: '2px dashed #94a3b8',
+                }} />
+                <div style={{ ...tickLabel, left: (gap.left + gap.right) / 2, fontWeight: 600 }}>
+                  {formatDuration(Math.round(gap.quietMs / 60_000) * 60)}
+                </div>
+              </div>
             ))}
 
             {/* By time: when each viewing was on screen, under the line. */}
@@ -494,10 +494,6 @@ const markBtn = (undo: boolean): React.CSSProperties => ({
   font: 'inherit', fontSize: '0.75rem', padding: '0.2rem 0.55rem', borderRadius: 999, cursor: 'pointer',
   border: `1px solid ${undo ? '#86efac' : '#fcd34d'}`, background: undo ? '#f0fdf4' : '#fffbeb', color: undo ? '#166534' : '#92400e',
 })
-const pickBar: React.CSSProperties = {
-  display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', fontSize: '0.8rem', margin: '0.25rem 0 0.4rem',
-  padding: '0.35rem 0.6rem', background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 8,
-}
 const testTag: React.CSSProperties = {
   marginLeft: 6, padding: '0 0.35rem', borderRadius: 4, fontSize: '0.65rem', fontWeight: 700,
   background: '#fef3c7', color: '#92400e', verticalAlign: 'middle',

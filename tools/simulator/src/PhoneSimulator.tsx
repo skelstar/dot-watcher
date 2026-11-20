@@ -60,11 +60,15 @@ type Props = {
   onRequestStartPoint: (id: number, displayName: string) => void
   onRouteChange: (id: number, route: LatLon[] | null) => void
   onRemove: (id: number) => void
+  // The other phones with accounts, and whether each is this phone's crew (kept by the page, as crew is
+  // both ways). Ticking or unticking one changes it for both phones.
+  crewOptions?: { phoneId: number; displayName: string; isCrew: boolean; pending: boolean; busy: boolean }[]
+  onToggleCrew?: (otherPhoneId: number) => void
 }
 
 export default function PhoneSimulator({
   id, index, initialDisplayName, autoJoin, defaultInviteCode, position, convergencePoint, route, speedMps, tickMs,
-  onSnapshot, onPositionChange, onRequestStartPoint, onRouteChange, onRemove,
+  onSnapshot, onPositionChange, onRequestStartPoint, onRouteChange, onRemove, crewOptions = [], onToggleCrew,
 }: Props) {
   // Short by default — this is the actual displayName registered with the server, so it's
   // what the real client (and its own marker labels) will show too, not just a local label.
@@ -94,6 +98,16 @@ export default function PhoneSimulator({
   const [autoBackground, setAutoBackground] = useState(true)
   const autoBackgroundRef = useRef(autoBackground)
   const backgroundTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // Made the first time the app is opened (see ensureAccount).
+  const [hasAccount, setHasAccount] = useState(false)
+  // The 10 s auto-background waits until the phone is out or joined, so the app doesn't close while an
+  // invite code is being typed.
+  const statusRef = useRef(status)
+  useEffect(() => {
+    statusRef.current = status
+    if (status === 'ready' || status === 'running') armBackgroundTimer()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status])
 
   const userRef = useRef<AuthedUser | null>(null)
   const sessionIdRef = useRef<string | null>(null)
@@ -131,9 +145,12 @@ export default function PhoneSimulator({
 
   useEffect(() => {
     // userRef is set just before status leaves 'joining', so the status change carries the account.
-    onSnapshot({ id, displayName, status, quality, position, heading, userId: userRef.current?.userId ?? null })
+    onSnapshot({
+      id, displayName, status, quality, position, heading,
+      userId: userRef.current?.userId ?? null, user: userRef.current,
+    })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id, displayName, status, quality, position, heading])
+  }, [id, displayName, status, quality, position, heading, hasAccount])
 
   useEffect(() => () => {
     if (timeoutRef.current) clearTimeout(timeoutRef.current)
@@ -147,15 +164,29 @@ export default function PhoneSimulator({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoBackground])
 
+  // The phone's account: made the first time the app is opened, as a real user is signed in before they
+  // open the app, so "Opened the app" is recorded when it happens rather than when they press Go or
+  // Join. One promise, so a quick double tap doesn't make two.
+  const accountRef = useRef<Promise<AuthedUser> | null>(null)
+  function ensureAccount(): Promise<AuthedUser> {
+    if (userRef.current) return Promise.resolve(userRef.current)
+    accountRef.current ??= (async () => {
+      const user = await registerParticipant(displayName)
+      userRef.current = user
+      setHasAccount(true)
+      await reportOpened(user)
+      return user
+    })().catch(err => { accountRef.current = null; throw err })
+    return accountRef.current
+  }
+
   async function handleJoin() {
     if (!inviteCode.trim()) return
     setStatus('joining')
     setError(null)
     try {
-      const user = await registerParticipant(displayName)
-      await reportOpened(user)
+      const user = await ensureAccount()
       const membership = await joinSession(user, inviteCode.trim(), displayName)
-      userRef.current = user
       sessionIdRef.current = membership.sessionId
       setStatus('ready')
     } catch (err) {
@@ -170,11 +201,9 @@ export default function PhoneSimulator({
     setStatus('joining')
     setError(null)
     try {
-      const user = await registerParticipant(displayName)
+      const user = await ensureAccount()
       await enableGo(user)
-      await reportOpened(user)
       const run = await startGoRun(user)
-      userRef.current = user
       sessionIdRef.current = run.sessionId
       goBearingRef.current = Math.random() * 360
       setMode('go')
@@ -205,6 +234,7 @@ export default function PhoneSimulator({
     if (backgroundTimerRef.current) clearTimeout(backgroundTimerRef.current)
     backgroundTimerRef.current = null
     if (!autoBackgroundRef.current || appStateRef.current !== 'front') return
+    if (statusRef.current !== 'ready' && statusRef.current !== 'running') return
     backgroundTimerRef.current = setTimeout(() => {
       backgroundTimerRef.current = null
       void sendAppState('back')
@@ -222,9 +252,21 @@ export default function PhoneSimulator({
   }
 
   async function handleAppState(next: AppState) {
+    if (next === 'front' && !userRef.current) {
+      // First time open: the account is made now, and records "Opened the app" itself.
+      setAppState('front')
+      appStateRef.current = 'front'
+      try {
+        await ensureAccount()
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to make an account for this phone.')
+        appStateRef.current = 'back'
+        setAppState('back')
+      }
+      return
+    }
     await sendAppState(next)
-    // Not before there's an account, or the app would close while the invite code is being typed.
-    if (next === 'front' && userRef.current) armBackgroundTimer()
+    if (next === 'front') armBackgroundTimer()
     else if (backgroundTimerRef.current) { clearTimeout(backgroundTimerRef.current); backgroundTimerRef.current = null }
   }
 
@@ -373,6 +415,13 @@ export default function PhoneSimulator({
     scheduleNextTick()
   }
 
+  // Go starts tracking straight away, as the app does after "Before you go" (CasualStore.start): as soon
+  // as the phone is out and has a place to start from, whichever comes second.
+  useEffect(() => {
+    if (mode === 'go' && status === 'ready' && position) handleStart()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode, status, position])
+
   async function handleLeave() {
     if (timeoutRef.current) { clearTimeout(timeoutRef.current); timeoutRef.current = null }
     const user = userRef.current
@@ -451,7 +500,8 @@ export default function PhoneSimulator({
     <div style={card(color)}>
       <div style={headerRow}>
         <span style={initialsBadge(color)}>{initialsFor(displayName)}</span>
-        {status === 'idle' || status === 'joining'
+        {/* The name is the account's display name, so it's fixed once the account is made. */}
+        {(status === 'idle' || status === 'joining') && !hasAccount
           ? <input style={nameInput} value={displayName} onChange={e => setDisplayName(e.target.value)} disabled={status === 'joining'} />
           : <span style={nameLabel}>{displayName}</span>
         }
@@ -498,6 +548,25 @@ export default function PhoneSimulator({
       </div>
       {routeError && <div style={errorText}>{routeError}</div>}
 
+      {status !== 'left' && crewOptions.length > 0 && (
+        <div style={qualityRow} title="Crew is both ways: ticking here ticks this phone on the other one too">
+          <span style={{ color: '#64748b' }}>Crew:</span>
+          {crewOptions.map(option => (
+            <label key={option.phoneId} style={qualityLabel(option.isCrew, option.busy)}>
+              <input
+                type="checkbox"
+                checked={option.isCrew}
+                disabled={option.busy}
+                onChange={() => onToggleCrew?.(option.phoneId)}
+                style={{ marginRight: '0.3rem' }}
+              />
+              {option.displayName}
+              {option.pending && <span style={{ color: '#94a3b8', marginLeft: '0.25rem' }}>(once both apps are open)</span>}
+            </label>
+          ))}
+        </div>
+      )}
+
       {(status === 'idle' || status === 'joining') && (
         <div style={joinRow}>
           <input
@@ -534,7 +603,8 @@ export default function PhoneSimulator({
           <p style={hint}>
             {status === 'ready' && !position && 'Choose a starting point above.'}
             {status === 'ready' && position && !target && mode === 'session' && 'Waiting for the convergence point (or upload a route).'}
-            {status === 'ready' && position && (target || mode === 'go') && 'Ready — press Start tracking.'}
+            {status === 'ready' && position && target && mode === 'session' && 'Ready — press Start tracking.'}
+            {status === 'ready' && !position && mode === 'go' && ' Tracking starts once it has one, as Go does in the app.'}
             {status === 'running' && 'Sending updates…'}
             {status === 'left' && (mode === 'go' ? 'Stopped the Go run.' : 'Left the session.')}
           </p>
@@ -555,6 +625,7 @@ export default function PhoneSimulator({
           {canLeave && away && (
             <p style={hint}>The app is in the background: switch it on (top right) to use it.</p>
           )}
+
 
           {mode === 'go' && canLeave && (
             <div style={watchBox}>

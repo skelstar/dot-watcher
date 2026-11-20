@@ -184,12 +184,29 @@ export const LAYOUT = {
   rowGap: 8,
 } as const
 
-// A shared time scale: `start`..`end` (ms) is drawn `width` px wide.
+// A shared time scale: `start`..`end` (ms) is drawn `width` px wide. With `pieces`, long quiet stretches
+// (no event on any line) are collapsed into narrow breaks; without, it's one straight scale.
 export interface TimeScale {
   start: number
   end: number
   width: number
+  pieces?: ScalePiece[]
 }
+
+// One stretch of a collapsed scale: `start`..`end` (ms) drawn from x0 to x1 (px from the scale's left).
+export interface ScalePiece {
+  start: number
+  end: number
+  x0: number
+  x1: number
+  collapsed: boolean
+  // For a break: how long nothing happened, from the event before it to the event after.
+  quietMs?: number
+}
+
+// When a quiet stretch is collapsed: at least this long, and this wide on screen. `keepPx` of ordinary
+// scale is kept either side, so labels around it have room; the break itself is `breakPx` wide.
+export const COLLAPSE = { minGapMs: 120_000, minGapPx: 360, keepPx: 80, breakPx: 44 } as const
 
 export interface PlacedBranch {
   branch: FlowBranch
@@ -214,29 +231,103 @@ export interface FlowLayout {
 }
 
 // Covers every event given, padded a little at each end so the first and last stops aren't on the edge.
-export function timeScale(events: { at: string }[], width: number): TimeScale | null {
+// `width` is how wide the whole range would be drawn straight; with `collapse`, quiet stretches then
+// shrink to breaks and the scale comes out narrower (its `width` says how wide).
+export function timeScale(events: { at: string }[], width: number, collapse = false): TimeScale | null {
   if (events.length === 0) return null
-  const times = events.map(e => Date.parse(e.at))
-  let start = Math.min(...times)
-  let end = Math.max(...times)
+  const times = [...new Set(events.map(e => Date.parse(e.at)))].sort((a, b) => a - b)
+  let start = times[0]
+  let end = times[times.length - 1]
   if (end - start < 60_000) {
     const middle = (start + end) / 2
     start = middle - 30_000
     end = middle + 30_000
   }
   const pad = (end - start) * 0.03
-  return { start: start - pad, end: end + pad, width }
+  start -= pad
+  end += pad
+  if (!collapse) return { start, end, width }
+
+  const pxPerMs = width / (end - start)
+  const keepMs = COLLAPSE.keepPx / pxPerMs
+  const pieces: ScalePiece[] = []
+  let cursor = start
+  let x = 0
+  for (let i = 1; i < times.length; i++) {
+    const gap = times[i] - times[i - 1]
+    const cutFrom = times[i - 1] + keepMs
+    const cutTo = times[i] - keepMs
+    if (gap < COLLAPSE.minGapMs || gap * pxPerMs < COLLAPSE.minGapPx || cutTo <= cutFrom) continue
+    const plain = (cutFrom - cursor) * pxPerMs
+    pieces.push({ start: cursor, end: cutFrom, x0: x, x1: x + plain, collapsed: false })
+    x += plain
+    pieces.push({ start: cutFrom, end: cutTo, x0: x, x1: x + COLLAPSE.breakPx, collapsed: true, quietMs: gap })
+    x += COLLAPSE.breakPx
+    cursor = cutTo
+  }
+  if (pieces.length === 0) return { start, end, width }
+  const last = (end - cursor) * pxPerMs
+  pieces.push({ start: cursor, end, x0: x, x1: x + last, collapsed: false })
+  return { start, end, width: x + last, pieces }
+}
+
+// A scale `target` px wide overall: with collapsing, the straight width that comes out at about that
+// once the quiet stretches have shrunk (breaks are a fixed width, so a few rounds settle it).
+export function timeScaleOfWidth(events: { at: string }[], target: number, collapse: boolean): TimeScale | null {
+  let scale = timeScale(events, target, collapse)
+  // With a given set of breaks the drawn width is straight × (1 − quiet/range) + n × (break + 2 × keep),
+  // so the straight width is solved for directly; a round or two settles which gaps are breaks.
+  for (let round = 0; round < 4 && scale?.pieces && Math.abs(scale.width - target) > 1; round++) {
+    const breaks = scale.pieces.filter(p => p.collapsed)
+    const quietMs = breaks.reduce((sum, p) => sum + (p.quietMs ?? 0), 0)
+    const fixedPx = breaks.length * (COLLAPSE.breakPx + 2 * COLLAPSE.keepPx)
+    const plainShare = 1 - quietMs / (scale.end - scale.start)
+    if (plainShare <= 0 || target <= fixedPx) break
+    scale = timeScale(events, (target - fixedPx) / plainShare, collapse)
+  }
+  return scale
+}
+
+// How wide to draw a time scale so stops sit about as far apart as In order: the typical (median) gap
+// between one dot's consecutive events becomes one In order step. A median, so one burst of events a
+// second apart doesn't stretch the whole day. Null when there's no gap to go by (fewer than two events).
+// Capped, so a day of hours with a few close events stays scrollable (with collapsing, the cap applies
+// to the collapsed width instead, so pass Infinity).
+export const MAX_TIME_WIDTH = 60_000
+
+export function readableWidth(events: { at: string; userId: string }[], cap: number = MAX_TIME_WIDTH): number | null {
+  const byUser = new Map<string, number[]>()
+  for (const e of events) {
+    const times = byUser.get(e.userId) ?? []
+    times.push(Date.parse(e.at))
+    byUser.set(e.userId, times)
+  }
+  const gaps: number[] = []
+  for (const times of byUser.values()) {
+    times.sort((a, b) => a - b)
+    for (let i = 1; i < times.length; i++)
+      if (times[i] > times[i - 1]) gaps.push(times[i] - times[i - 1])
+  }
+  if (gaps.length === 0) return null
+  gaps.sort((a, b) => a - b)
+  const median = gaps[Math.floor(gaps.length / 2)]
+  const all = events.map(e => Date.parse(e.at))
+  const range = Math.max(...all) - Math.min(...all)
+  return Math.min(cap, (range / median) * LAYOUT.spacing)
 }
 
 export function xForTime(scale: TimeScale, at: number): number {
-  return LAYOUT.startX + ((at - scale.start) / (scale.end - scale.start)) * scale.width
+  if (!scale.pieces) return LAYOUT.startX + ((at - scale.start) / (scale.end - scale.start)) * scale.width
+  const piece = scale.pieces.find(p => at <= p.end) ?? scale.pieces[scale.pieces.length - 1]
+  return LAYOUT.startX + piece.x0 + ((at - piece.start) / (piece.end - piece.start)) * (piece.x1 - piece.x0)
 }
 
-// The other way: the moment at x px along a line, for picking a stretch by dragging.
-export function timeForX(scale: TimeScale, x: number): number {
-  return scale.start + ((x - LAYOUT.startX) / scale.width) * (scale.end - scale.start)
+// Where a collapsed scale's breaks are, in px along a line, with how long nothing happened.
+export function timeBreaks(scale: TimeScale): { left: number; right: number; quietMs: number }[] {
+  return (scale.pieces ?? [])
+    .filter(p => p.collapsed)
+    .map(p => ({ left: LAYOUT.startX + p.x0, right: LAYOUT.startX + p.x1, quietMs: p.quietMs ?? p.end - p.start }))
 }
-
 // The first row whose last item ends before `left`, taking it up to `right`.
 function takeRow(rowEnds: number[], left: number, right: number): number {
   let row = rowEnds.findIndex(end => end + LAYOUT.rowGap <= left)
@@ -319,11 +410,15 @@ export function layoutFlow(flow: Flow, scale: TimeScale | null): FlowLayout {
 const TICK_STEPS = [10, 30, 60, 120, 300, 600, 900, 1_800, 3_600, 7_200, 10_800, 21_600].map(s => s * 1000)
 
 export function timeTicks(scale: TimeScale, minGapPx = 90): { at: number; x: number; withSeconds: boolean }[] {
-  const msPerPx = (scale.end - scale.start) / scale.width
+  // Collapsed: the ordinary stretches share one rate, and breaks get no gridlines.
+  const plain = scale.pieces?.filter(p => !p.collapsed && p.x1 > p.x0) ?? [{ start: scale.start, end: scale.end, x0: 0, x1: scale.width }]
+  if (plain.length === 0) return []
+  const msPerPx = (plain[0].end - plain[0].start) / (plain[0].x1 - plain[0].x0)
   const step = TICK_STEPS.find(s => s / msPerPx >= minGapPx) ?? TICK_STEPS[TICK_STEPS.length - 1]
   const ticks = []
-  for (let at = Math.ceil(scale.start / step) * step; at <= scale.end; at += step)
-    ticks.push({ at, x: xForTime(scale, at), withSeconds: step < 60_000 })
+  for (const piece of plain)
+    for (let at = Math.ceil(piece.start / step) * step; at <= piece.end; at += step)
+      ticks.push({ at, x: xForTime(scale, at), withSeconds: step < 60_000 })
   return ticks
 }
 
