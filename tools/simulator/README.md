@@ -85,7 +85,8 @@ multi-runner scenarios without needing physical devices.
   - Picks its starting point via a **Choose**/**Change** button (same picker modal as the
     convergence point), whenever you're ready — nothing pops up automatically
   - **Start tracking** starts sending live `POST /location` updates once it has a start point and the
-    session has a convergence point (or, on Go, just a start point). There's no pause, as in the real
+    session has a convergence point. On Go there's nothing to press: tracking starts by itself as soon
+    as the phone is out and has a start point, as Go does in the app. There's no pause, as in the real
     app: it tracks until Stop/Leave. **Missing** below is the phone going quiet (no signal, flat battery)
   - Can be switched between **Good** (heads straight for the convergence point, heading set to
     the bearing of travel — and stops reporting heading once "arrived", matching the real
@@ -101,18 +102,27 @@ multi-runner scenarios without needing physical devices.
     **Battery: critical** (sends `batteryLevel: 5`) — a fixed value per mode, not a drain
     simulation, just enough to exercise the client's two battery badge thresholds (see
     `.ai/plans/battery-level-reporting.md`) independently of GPS quality/satellite
+  - Can be made **crew** with other phones: each phone shows a **Crew:** row with a tick box per other
+    phone, from the start. A tick set before both have accounts shows "(once both apps are open)" and
+    is made real as soon as both have. Ticking makes them crew the app's way (one
+    makes a crew code, the other redeems it), switching Go and crew on for both accounts first; crew is
+    both ways, so the other phone shows the tick too. Unticking removes them from each other's crew.
+    Needs `VITE_BEARER_TOKEN`.
   - Can leave the session independently at any time
   - Has an app **Foreground/Background** switch (top right). A new phone's app is closed: switch it on
-    before **Join** or **Go** (phones seeded by Create session open it themselves). Once the phone has
-    an account the switch reports each change (`POST /me/activity`, as the real app is to) for the admin
-    Activity tab, where the line is dashed while the app is away; positions keep going, as they do from
-    a real phone in a pocket. The app goes back to the background 10 s after it was last used unless
-    that box is unticked. In the background the app's own buttons (Share a watch link,
+    before **Join** or **Go** (phones seeded by Create session open it themselves). Opening it the first
+    time makes the phone's account, as a real user is already signed in when they open the app, so
+    "Opened the app" is recorded then, not when Go or Join is pressed; the name is fixed from then on.
+    Each change is reported (`POST /me/activity`, as the real app is to) for the admin Activity tab,
+    where the line is dashed while the app is away; positions keep going, as they do from a real phone
+    in a pocket. Once the phone is out or joined, the app goes back to the background 10 s after it was
+    last used unless that box is unticked. In the background the app's own buttons (Share a watch link,
     Stop/Leave) are disabled until the switch is turned on again; the simulator's controls (start
     point, GPX, Start tracking, GPS quality, battery, Add a viewer) still work.
   - Or, instead of joining, can **Go (no session)**: like the app's Go sign, it registers an account,
     switches Go (`casual`) on for it through the admin endpoints (needs `VITE_BEARER_TOKEN`), starts a
-    casual run and posts its positions there. It needs only a start point: with no route or
+    casual run and starts tracking straight away, posting its positions there. It needs only a start
+    point (pick one before or after pressing Go): with no route or
     convergence point it walks in a straight line on a random bearing. Once out it can **Share a watch link**, then **Open
     watch link** (the real watch page, in a new tab) or **Add a viewer** (a pretend browser with its
     own id that polls every 10 s, like the watch page with its tab on screen, until **Stop a viewer**

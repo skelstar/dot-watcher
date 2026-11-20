@@ -1,20 +1,30 @@
 import { useEffect, useRef, useState } from 'react'
 import { apiHeaders } from './apiHeaders'
 import { initialsFor } from './components/InitialsBadge.tsx'
+// The colour each runner has on the map, so a dot looks the same here.
+import { runnerColour } from './useRunnerMarkers.ts'
 import {
   LAYOUT,
   buildFlow,
+  crewGroups,
   dayRange,
+  overlaps,
+  runIntervals,
+  xForTime,
   formatDuration,
+  MAX_TIME_WIDTH,
   layoutFlow,
-  timeForX,
+  readableWidth,
+  timeBreaks,
   timeScale,
+  timeScaleOfWidth,
   timeTicks,
   todayString,
   type ActivityDotDto,
   type ActivityEventDto,
   type Flow,
   type FlowLayout,
+  type PlacedBranch,
   type RegisterEntryDto,
   type TimeScale,
 } from './activityFlow.ts'
@@ -37,7 +47,9 @@ export default function ActivityTab({ serverUrl, token }: { serverUrl: string; t
   const [events, setEvents] = useState<Load<ActivityEventDto[]>>({ kind: 'idle' })
   const [refreshTick, setRefreshTick] = useState(0)
   const [view, setView] = useState<'order' | 'time'>('order')
-  const [zoom, setZoom] = useState(1)
+  const [zoom, setZoom] = useState<'fit' | number>(1)
+  // By time: long stretches where no line has anything shrink to a narrow break.
+  const [collapseQuiet, setCollapseQuiet] = useState(true)
   // Testing on the live server: activity an admin marked as test is left out unless this is off.
   const [hideTest, setHideTest] = useState(true)
   const [markError, setMarkError] = useState<string | null>(null)
@@ -122,12 +134,10 @@ export default function ActivityTab({ serverUrl, token }: { serverUrl: string; t
     return () => { cancelled = true }
   }, [serverUrl, token, day, selected, hideTest])
 
-  // Marks a Go run, or a stretch of time, on one dot's line as test (or back to real), then reloads.
-  async function markTest(userId: string, target: { runId: string } | { from: number; to: number }, isTest: boolean) {
+  // Marks a Go run on one dot's line, and what happened during it, as test (or back to real), then reloads.
+  async function markTest(userId: string, runId: string, isTest: boolean) {
     setMarkError(null)
-    const body = 'runId' in target
-      ? { userId, runId: target.runId, isTest }
-      : { userId, from: new Date(target.from).toISOString(), to: new Date(target.to).toISOString(), isTest }
+    const body = { userId, runId, isTest }
     try {
       const response = await fetch(`${serverUrl}/admin/activity/test`, {
         method: 'POST',
@@ -147,10 +157,17 @@ export default function ActivityTab({ serverUrl, token }: { serverUrl: string; t
 
   const dotList = dots.kind === 'ok' ? dots.value : []
   const shownEvents = events.kind === 'ok' ? events.value.filter(e => selected.includes(e.userId)) : []
-  // By time, every line shares one scale, so the same moment is at the same place on each.
-  // At 1× the scale fills the panel, leaving room for the last stop's label.
+  // By time, every line shares one scale, so the same moment is at the same place on each. Fit puts the
+  // whole day in the panel; 1× spaces stops about as In order does, and the lines scroll together.
   const fitWidth = Math.max(300, panelWidth - LINE_CARD_INSET - LAYOUT.startX - LAYOUT.labelWidth - 28)
-  const scale = view === 'time' ? timeScale(shownEvents, fitWidth * zoom) : null
+  // With collapsing, quiet stretches shrink to breaks, so the cap applies to the width that's drawn.
+  const scale = view !== 'time' ? null : (() => {
+    if (zoom === 'fit') return timeScaleOfWidth(shownEvents, fitWidth, collapseQuiet)
+    const straight = (readableWidth(shownEvents, collapseQuiet ? Infinity : MAX_TIME_WIDTH) ?? fitWidth) * zoom
+    const drawn = timeScale(shownEvents, straight, collapseQuiet)
+    if (!drawn || drawn.width < fitWidth) return timeScaleOfWidth(shownEvents, fitWidth, collapseQuiet)
+    return drawn.width > MAX_TIME_WIDTH ? timeScaleOfWidth(shownEvents, MAX_TIME_WIDTH, collapseQuiet) : drawn
+  })()
   const laidOut = dotList
     .filter(dot => selected.includes(dot.userId))
     .map(dot => {
@@ -159,6 +176,35 @@ export default function ActivityTab({ serverUrl, token }: { serverUrl: string; t
     })
   // By time, every line is as wide as the widest, so they scroll as one.
   const sharedWidth = scale ? Math.max(0, ...laidOut.map(l => l.layout.width)) : null
+
+  // Crew: lines of dots who are crew sit together in one box, and each line shows when its crew were out
+  // with it (both with a Go run going).
+  const lineById = new Map(laidOut.map(line => [line.dot.userId, line]))
+  const endOfLine = scale?.end ?? Math.max(0, ...shownEvents.map(e => Date.parse(e.at)))
+  const togetherFor = (dot: ActivityDotDto, flow: Flow) => (dot.crewWith ?? [])
+    .map(id => lineById.get(id))
+    .filter((mate): mate is NonNullable<typeof mate> => !!mate)
+    .map(mate => ({
+      mate: mate.dot,
+      spans: overlaps(runIntervals(flow, endOfLine), runIntervals(mate.flow, endOfLine)),
+    }))
+    .filter(t => t.spans.length > 0)
+  const groups = crewGroups(laidOut.map(line => line.dot))
+
+  const renderLine = ({ dot, flow, layout }: (typeof laidOut)[number]) => (
+    <DotLine
+      key={dot.userId}
+      dot={dot}
+      flow={flow}
+      layout={layout}
+      scale={scale}
+      width={sharedWidth ?? layout.width}
+      together={togetherFor(dot, flow)}
+      scrollerRef={registerScroller}
+      onScroll={syncScroll}
+      onMark={(runId, isTest) => markTest(dot.userId, runId, isTest)}
+    />
+  )
 
   if (registerUnavailable) {
     return (
@@ -175,8 +221,10 @@ export default function ActivityTab({ serverUrl, token }: { serverUrl: string; t
       <p style={note}>
         What each dot did. In order: stops evenly spaced, as a story. By time: every line on one clock, so you
         can see what happened when, relative to the others; the lines scroll together. Orange: a Go run. Dashed:
-        the app was in the background. Below the line: someone else, such as a person watching a Go run, with
-        how long they had it on screen (by time, a bar under the line for each viewing).
+        the app was in the background. 🔗 on the line: a watch link was shared. Someone else shows below the
+        line: by time, a 👁️ strip for each viewing, as long as they had it on screen. Crew are boxed
+        together, and each line shows when its crew were out at the same time (by time, a strip in their
+        colour, starting with their dot).
         Events are kept for 30 days.
       </p>
 
@@ -195,9 +243,18 @@ export default function ActivityTab({ serverUrl, token }: { serverUrl: string; t
         {view === 'time' && (
           <label style={fieldLabel}>
             Zoom
-            <select value={zoom} onChange={e => setZoom(Number(e.target.value))} style={dateInput}>
+            <select value={String(zoom)} onChange={e => setZoom(e.target.value === 'fit' ? 'fit' : Number(e.target.value))} style={dateInput}
+              title="Fit: the whole day in the panel. 1×: stops spaced about as In order, scrolling.">
+              <option value="fit">Fit</option>
               {ZOOMS.map(z => <option key={z} value={z}>{z}×</option>)}
             </select>
+          </label>
+        )}
+        {view === 'time' && (
+          <label style={{ ...fieldLabel, flexDirection: 'row', alignItems: 'center', alignSelf: 'center', color: '#0f172a' }}
+            title="Long stretches where no line has anything are shrunk to a break marked with how long they were">
+            <input type="checkbox" checked={collapseQuiet} onChange={e => setCollapseQuiet(e.target.checked)} style={{ margin: 0 }} />
+            Collapse quiet stretches
           </label>
         )}
         <label style={{ ...fieldLabel, flexDirection: 'row', alignItems: 'center', alignSelf: 'center', color: '#0f172a' }}
@@ -208,7 +265,7 @@ export default function ActivityTab({ serverUrl, token }: { serverUrl: string; t
         <button style={refreshBtn} onClick={() => setRefreshTick(t => t + 1)}>Refresh</button>
       </div>
       <p style={note}>
-        Testing? Mark a Go run as test with its button on the line{view === 'time' ? ', or drag across a line to pick a stretch' : ' (or, By time, drag across a line to pick a stretch)'}.
+        Testing? Mark a Go run as test with its button on the line.
         Nothing is deleted; untick Hide test activity to see it and mark it back.
       </p>
       {markError && <p style={errorText}>{markError}</p>}
@@ -222,7 +279,7 @@ export default function ActivityTab({ serverUrl, token }: { serverUrl: string; t
           {dotList.map(dot => (
             <label key={dot.userId} style={dotChip(selected.includes(dot.userId))}>
               <input type="checkbox" checked={selected.includes(dot.userId)} onChange={() => toggle(dot.userId)} style={{ margin: 0 }} />
-              <span style={chipBadge}>{initialsFor(dot.displayName)}</span>
+              <span style={{ ...chipBadge, background: runnerColour(dot.displayName) }}>{initialsFor(dot.displayName)}</span>
               {dot.displayName} <span style={{ color: '#64748b' }}>({dot.eventCount})</span>
             </label>
           ))}
@@ -231,19 +288,17 @@ export default function ActivityTab({ serverUrl, token }: { serverUrl: string; t
 
       {events.kind === 'error' && <p style={errorText}>{events.message}</p>}
       <div ref={panelRef}>
-        {laidOut.map(({ dot, flow, layout }) => (
-          <DotLine
-            key={dot.userId}
-            dot={dot}
-            flow={flow}
-            layout={layout}
-            scale={scale}
-            width={sharedWidth ?? layout.width}
-            scrollerRef={registerScroller}
-            onScroll={syncScroll}
-            onMark={(target, isTest) => markTest(dot.userId, target, isTest)}
-          />
-        ))}
+        {groups.map(group => group.length === 1
+          ? renderLine(lineById.get(group[0].userId)!)
+          : (
+            <section key={group.map(d => d.userId).join('|')} style={crewBox} aria-label="Crew">
+              <div style={crewBoxHeader}>
+                Crew
+                {group.map(d => <span key={d.userId} style={{ ...chipBadge, background: runnerColour(d.displayName) }}>{initialsFor(d.displayName)}</span>)}
+              </div>
+              {group.map(d => renderLine(lineById.get(d.userId)!))}
+            </section>
+          ))}
       </div>
 
       <RegisterList register={register} />
@@ -253,11 +308,22 @@ export default function ActivityTab({ serverUrl, token }: { serverUrl: string; t
 
 // ---- One dot's line ----------------------------------------------------------------------------
 
-const ZOOMS = [1, 2, 4, 8, 16]
+// Times the readable spacing (1×); "Fit" is separate.
+const ZOOMS = [1, 2, 4]
 // A line card's horizontal padding and border, both sides.
 const LINE_CARD_INSET = 34
 const LABEL_ROW = 42
+// One strip per crew mate (and one for watching), By time, with their dot (or 👁️) at its start.
+const CREW_ROW = 23
+// The marker at a strip's start: a crew mate's dot, or the watching icon at a matching size (an emoji
+// has space around it, so it's set a touch bigger to look the same).
+const STRIP_MARKER = CREW_ROW - 3
+// How far down a label its first line's middle is, where the leader's tick meets it.
+const LEADER_TICK_Y = 9
 const BRANCH_HEIGHT = 52
+const ICON_BRANCH_HEIGHT = 26
+// A stop with an icon is drawn on the line as a dot this big, with the icon in it.
+const ICON_DOT = 24
 const BRANCH_GAP = 12
 const COLOURS = { line: '#334155', run: '#ea580c', branch: '#0e7490', grid: '#e2e8f0' }
 
@@ -265,24 +331,26 @@ function formatTime(at: string | number, withSeconds = true) {
   return new Date(at).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', ...(withSeconds ? { second: '2-digit' } : {}) })
 }
 
-type MarkTarget = { runId: string } | { from: number; to: number }
+type Together = { mate: ActivityDotDto; spans: { start: number; end: number }[] }
 
-function DotLine({ dot, flow, layout, scale, width, scrollerRef, onScroll, onMark }: {
+function DotLine({ dot, flow, layout, scale, width, together, scrollerRef, onScroll, onMark }: {
   dot: ActivityDotDto
   flow: Flow
   layout: FlowLayout
   scale: TimeScale | null
   width: number
+  // Crew who were out at the same time as this dot, and when.
+  together: Together[]
   scrollerRef: (el: HTMLDivElement | null) => (() => void) | undefined
   onScroll: (el: HTMLDivElement) => void
-  onMark: (target: MarkTarget, isTest: boolean) => void
+  onMark: (runId: string, isTest: boolean) => void
 }) {
-  // By time: a stretch picked by dragging across the line, in px along it, to mark as test.
-  const [drag, setDrag] = useState<{ from: number; to: number; done: boolean } | null>(null)
-  const pickX = (e: React.PointerEvent<HTMLDivElement>) => e.clientX - e.currentTarget.getBoundingClientRect().left
-  const picked = drag && scale && drag.done
-    ? { from: timeForX(scale, Math.min(drag.from, drag.to)), to: timeForX(scale, Math.max(drag.from, drag.to)) }
-    : null
+  // By time, strips just under the line: first one for watching (each viewing along it, 👁️ at its start),
+  // then one per crew mate in their colour, for when both were out.
+  const watchRows = scale && layout.branches.some(b => b.placement === 'strip') ? 1 : 0
+  const crewRows = scale ? together.length : 0
+  const stripY = (row: number) => lineY + 14 + row * CREW_ROW
+  const crewY = (row: number) => stripY(watchRows + row)
   // The Go runs on this line, for their mark buttons. A run is test when its start (or stop) is.
   const runs = flow.runs
     .filter(run => run.runId)
@@ -293,61 +361,47 @@ function DotLine({ dot, flow, layout, scale, width, scrollerRef, onScroll, onMar
     })
   // By time, gridline labels sit above the line.
   const lineY = scale ? 52 : 40
-  // By time, a strip just under the line holds the viewing bars, so labels start a little lower.
+  // A branch without an icon, by time, still gets a thin bar per span just under the line.
   const spanY = lineY + 13
-  const labelTop = (row: number) => lineY + (scale ? 22 : 12) + row * LABEL_ROW
+  // Labels start below the strips.
+  const labelTop = (row: number) => lineY + (scale ? 22 + (watchRows + crewRows) * CREW_ROW : 12) + row * LABEL_ROW
   const labelsBottom = labelTop(layout.labelRows)
+  // Cards go in rows below the labels; a pill (in order) sits in a label row, so the line's box is only
+  // as deep as its labels unless there are cards.
   const branchTop = (row: number) => labelsBottom + 16 + row * (BRANCH_HEIGHT + BRANCH_GAP)
+  const placedTop = (b: PlacedBranch) => (b.placement === 'labels' ? labelTop(b.row) : branchTop(b.row))
   const height = layout.branchRows > 0 ? branchTop(layout.branchRows - 1) + BRANCH_HEIGHT + 8 : labelsBottom + 4
   const ticks = scale ? timeTicks(scale) : []
+  const breaks = scale ? timeBreaks(scale) : []
   const rail: React.CSSProperties = { position: 'absolute', top: lineY - 2, height: 4, borderRadius: 4 }
 
   return (
     <section style={lineCard} aria-label={`${dot.displayName}'s activity`}>
       <div style={lineHeader}>
-        <span style={lineBadge}>{initialsFor(dot.displayName)}</span>
+        <span style={{ ...lineBadge, background: runnerColour(dot.displayName) }}>{initialsFor(dot.displayName)}</span>
         <span style={{ fontWeight: 600 }}>{dot.displayName}</span>
         <span style={{ color: '#64748b', fontSize: '0.8rem' }}>{dot.username}</span>
+        {/* In order there's no clock to line strips up against, so it says so in words. */}
+        {!scale && together.map(t => (
+          <span key={t.mate.userId} style={{ ...togetherChip, borderColor: runnerColour(t.mate.displayName) }}>
+            <span style={{ ...togetherDot, background: runnerColour(t.mate.displayName) }} />
+            out with {t.mate.displayName}{' '}
+            {t.spans.map(s => `${formatTime(s.start, false)}–${formatTime(s.end, false)}`).join(', ')}
+          </span>
+        ))}
         <span style={{ flex: 1 }} />
         {runs.map(run => (
-          <button key={run.runId} style={markBtn(run.isTest)} onClick={() => onMark({ runId: run.runId }, !run.isTest)}
+          <button key={run.runId} style={markBtn(run.isTest)} onClick={() => onMark(run.runId, !run.isTest)}
             title={run.isTest ? 'Count this Go run as real again' : 'Mark this Go run, and what happened during it, as test'}>
             {run.isTest ? 'Not test: ' : 'Test: '}Go run {formatTime(run.first.at, false)}{run.last ? `–${formatTime(run.last.at, false)}` : ''}
           </button>
         ))}
       </div>
-      {picked && (
-        <div style={pickBar}>
-          <span>{formatTime(picked.from)}–{formatTime(picked.to)}</span>
-          <button style={markBtn(false)} onClick={() => { onMark(picked, true); setDrag(null) }}>Mark as test</button>
-          <button style={markBtn(true)} onClick={() => { onMark(picked, false); setDrag(null) }}>Not test</button>
-          <button style={markBtn(false)} onClick={() => setDrag(null)}>Cancel</button>
-        </div>
-      )}
       {flow.stops.length === 0 ? (
         <p style={{ ...note, margin: '0.5rem 0 0' }}>Nothing recorded.</p>
       ) : (
         <div style={{ overflowX: 'auto' }} ref={scrollerRef} onScroll={e => onScroll(e.currentTarget)}>
-          <div
-            style={{ position: 'relative', width, height, cursor: scale ? 'crosshair' : undefined, touchAction: scale ? 'pan-y' : undefined }}
-            onPointerDown={scale ? e => {
-              if (e.button !== 0 || (e.target as HTMLElement).closest('button')) return
-              e.currentTarget.setPointerCapture(e.pointerId)
-              const x = pickX(e)
-              setDrag({ from: x, to: x, done: false })
-            } : undefined}
-            onPointerMove={scale ? e => { if (drag && !drag.done) setDrag({ ...drag, to: pickX(e) }) } : undefined}
-            onPointerUp={scale ? () => {
-              // A click, not a drag, picks nothing.
-              if (drag && !drag.done) setDrag(Math.abs(drag.to - drag.from) < 4 ? null : { ...drag, done: true })
-            } : undefined}
-          >
-            {drag && scale && (
-              <div style={{
-                position: 'absolute', top: 0, bottom: 0, left: Math.min(drag.from, drag.to), width: Math.abs(drag.to - drag.from),
-                background: 'rgba(31,111,235,0.12)', borderLeft: '1px solid #1f6feb', borderRight: '1px solid #1f6feb', pointerEvents: 'none',
-              }} />
-            )}
+          <div style={{ position: 'relative', width, height }}>
             {/* By time: gridlines first, so everything else draws over them. */}
             {ticks.map(tick => (
               <div key={tick.at}>
@@ -369,19 +423,69 @@ function DotLine({ dot, flow, layout, scale, width, scrollerRef, onScroll, onMar
               }} />
             ))}
 
-            {/* By time: when each viewing was on screen, under the line. */}
-            {layout.branches.flatMap(({ branch, spans }) => spans.map((span, i) => (
+            {/* By time, collapsed: a quiet stretch (nothing on any line) shrunk to a break between two dashed
+                lines, cutting the line, with how long it was. */}
+            {breaks.map(gap => (
+              <div key={`break-${gap.left}`}>
+                <div title={`Nothing happened for ${formatDuration(Math.round(gap.quietMs / 60_000) * 60)}`} style={{
+                  position: 'absolute', top: 18, bottom: 0, left: gap.left, width: gap.right - gap.left, boxSizing: 'border-box',
+                  background: '#fff', borderLeft: '2px dashed #94a3b8', borderRight: '2px dashed #94a3b8',
+                }} />
+                <div style={{ ...tickLabel, left: (gap.left + gap.right) / 2, fontWeight: 600 }}>
+                  {formatDuration(Math.round(gap.quietMs / 60_000) * 60)}
+                </div>
+              </div>
+            ))}
+
+            {/* By time: when each crew mate was out too, a strip per mate in their colour. */}
+            {scale && together.flatMap((t, row) => t.spans.map((span, i) => {
+              const left = xForTime(scale, span.start)
+              const colour = runnerColour(t.mate.displayName)
+              return (
+                <div key={`crew-${t.mate.userId}-${i}`}
+                  title={`${t.mate.displayName} was out too, ${formatTime(span.start, false)}–${formatTime(span.end, false)}`}
+                  style={{
+                    position: 'absolute', top: crewY(row), height: CREW_ROW - 3, left, width: Math.max(xForTime(scale, span.end) - left, CREW_ROW),
+                    borderRadius: 999, background: `${colour}33`, boxSizing: 'border-box', display: 'flex', alignItems: 'center',
+                  }}>
+                  {/* Their dot, as in the picker: the strip says who without words. */}
+                  <span aria-label={`with ${t.mate.displayName}`} style={{ ...crewMateDot, background: colour }}>
+                    {initialsFor(t.mate.displayName)}
+                  </span>
+                </div>
+              )
+            }))}
+
+            {/* By time, the watching strip: each viewing from when it started to when it ended, its icon
+                at the start, the length (or that it's still going) on hover. */}
+            {layout.branches.filter(b => b.placement === 'strip').flatMap(({ branch, spans }) => spans.map((span, i) => {
+              const seconds = branch.spans[i].end === null ? null : Math.round((branch.spans[i].end! - branch.spans[i].start) / 1000)
+              return (
+                <div key={`watch-${branch.fromIndex}-${branch.kind}-${i}`}
+                  title={`${branch.label} · ${formatTime(branch.spans[i].start)} · ${seconds === null ? 'still watching, or length not known yet' : formatDuration(seconds)}`}
+                  style={{
+                    position: 'absolute', top: stripY(0), height: CREW_ROW - 3, left: span.left,
+                    width: Math.max(span.right - span.left, CREW_ROW), borderRadius: 999, boxSizing: 'border-box',
+                    display: 'flex', alignItems: 'center',
+                    background: span.ongoing ? `linear-gradient(to right, ${COLOURS.branch}33, transparent)` : `${COLOURS.branch}33`,
+                  }}>
+                  <span role="img" aria-label={branch.label} style={stripIcon}>{branch.icon}</span>
+                </div>
+              )
+            }))}
+
+            {/* A card's spans (a branch without an icon), by time: a thin bar under the line. */}
+            {layout.branches.filter(b => b.placement === 'cards').flatMap(({ branch, spans }) => spans.map((span, i) => (
               <div key={`span-${branch.fromIndex}-${branch.kind}-${i}`}
-                title={span.ongoing ? 'Watching (length not known yet)' : 'Watching'}
                 style={{
                   position: 'absolute', top: spanY, height: 4, borderRadius: 2, left: span.left, width: span.right - span.left,
                   background: span.ongoing ? `linear-gradient(to right, ${COLOURS.branch}, transparent)` : COLOURS.branch,
                 }} />
             )))}
 
-            {layout.branches.map(({ branch, x, row }) => (
-              <div key={`stem-${branch.fromIndex}-${branch.kind}`}
-                style={{ position: 'absolute', left: x - 1, top: lineY, width: 2, height: branchTop(row) - lineY, background: COLOURS.branch }} />
+            {layout.branches.filter(b => b.placement !== 'strip').map(placed => (
+              <div key={`stem-${placed.branch.fromIndex}-${placed.branch.kind}`}
+                style={{ position: 'absolute', left: placed.x - 1, top: lineY, width: 2, height: placedTop(placed) - lineY, background: COLOURS.branch }} />
             ))}
 
             {flow.stops.map(stop => {
@@ -390,28 +494,61 @@ function DotLine({ dot, flow, layout, scale, width, scrollerRef, onScroll, onMar
               return (
                 // Test activity (shown only with Hide test activity off) is faded, with a tag.
                 <div key={stop.index} style={stop.isTest ? { opacity: 0.45 } : undefined}>
-                  <div style={{ ...stopDot, top: lineY - 9, left: x - 9, borderColor: inRun ? COLOURS.run : COLOURS.line, borderStyle: stop.isTest ? 'dashed' : 'solid' }} />
-                  <div style={{ ...stopLabel, top: labelTop(layout.stopRow[stop.index]), left: x + 12 }}>
-                    <div style={{ fontWeight: 600 }}>
-                      {stop.label}{stop.isTest && <span style={testTag}>test</span>}
+                  {stop.icon ? (
+                    // An event with an icon sits on the line: its dot holds the icon, and there's no label
+                    // (the label and time on hover).
+                    <div title={`${stop.label} · ${formatTime(stop.at)}${stop.note ? ` · ${stop.note}` : ''}${stop.isTest ? ' · test' : ''}`}
+                      style={{
+                        ...stopDot, ...iconDot, top: lineY - ICON_DOT / 2, left: x - ICON_DOT / 2,
+                        borderColor: inRun ? COLOURS.run : COLOURS.line, borderStyle: stop.isTest ? 'dashed' : 'solid',
+                      }}>
+                      <span role="img" aria-label={stop.label}>{stop.icon}</span>
                     </div>
-                    <div style={{ color: '#64748b', fontSize: '0.75rem' }}>
-                      {formatTime(stop.at)}{stop.note ? ` · ${stop.note}` : ''}
+                  ) : (
+                    <>
+                      {/* A thin leader from the dot down to its label, and a tick into the label's first line,
+                          so a label on a lower row is easy to match to its dot. */}
+                      <div style={{ ...leader, left: x - 0.5, top: lineY + 9, height: labelTop(layout.stopRow[stop.index]) + LEADER_TICK_Y - lineY - 9 }} />
+                      <div style={{ ...leader, left: x, top: labelTop(layout.stopRow[stop.index]) + LEADER_TICK_Y, width: 9, height: 1 }} />
+                      <div style={{ ...stopDot, top: lineY - 9, left: x - 9, borderColor: inRun ? COLOURS.run : COLOURS.line, borderStyle: stop.isTest ? 'dashed' : 'solid' }} />
+                    </>
+                  )}
+                  {stop.icon ? null : (
+                    <div style={{ ...stopLabel, top: labelTop(layout.stopRow[stop.index]), left: x + 12 }}>
+                      <div style={{ fontWeight: 600 }}>
+                        {stop.label}{stop.isTest && <span style={testTag}>test</span>}
+                      </div>
+                      <div style={{ color: '#64748b', fontSize: '0.75rem' }}>
+                        {formatTime(stop.at)}{stop.note ? ` · ${stop.note}` : ''}
+                      </div>
                     </div>
-                  </div>
+                  )}
                 </div>
               )
             })}
 
-            {layout.branches.map(({ branch, x, row }) => (
-              <div key={`card-${branch.fromIndex}-${branch.kind}`} style={{ ...branchCard, left: x - LAYOUT.branchOffset, top: branchTop(row) }}>
-                <div style={{ fontWeight: 600 }}>{branch.label}{branch.count > 1 ? ` ×${branch.count}` : ''}</div>
-                <div style={{ color: '#475569', fontSize: '0.75rem' }}>
-                  {branch.count > 1 ? 'first ' : ''}{formatTime(branch.firstAt)}
-                  {branch.totalSeconds > 0 ? ` · ${formatDuration(branch.totalSeconds)}` : ''}
+            {layout.branches.filter(b => b.placement !== 'strip').map(placed => {
+              const { branch, x } = placed
+              const top = placedTop(placed)
+              const length = branch.totalSeconds > 0 ? formatDuration(branch.totalSeconds) : null
+              const details = `${branch.label}${branch.count > 1 ? ` ×${branch.count}` : ''} · ` +
+                `${branch.count > 1 ? 'first ' : ''}${formatTime(branch.firstAt)}${length ? ` · ${length}` : ''}`
+              return branch.icon ? (
+                // A branch with an icon: a small pill, "👁️ ×3 · 18 s"; the rest on hover.
+                <div key={`card-${branch.fromIndex}-${branch.kind}`} title={details}
+                  style={{ ...branchCard, ...iconBranch, left: x - LAYOUT.branchOffset, top, zIndex: 1 }}>
+                  <span role="img" aria-label={branch.label}>{branch.icon}</span>
+                  {branch.count > 1 ? ` ×${branch.count}` : ''}{length ? ` · ${length}` : ''}
                 </div>
-              </div>
-            ))}
+              ) : (
+                <div key={`card-${branch.fromIndex}-${branch.kind}`} style={{ ...branchCard, left: x - LAYOUT.branchOffset, top }}>
+                  <div style={{ fontWeight: 600 }}>{branch.label}{branch.count > 1 ? ` ×${branch.count}` : ''}</div>
+                  <div style={{ color: '#475569', fontSize: '0.75rem' }}>
+                    {branch.count > 1 ? 'first ' : ''}{formatTime(branch.firstAt)}{length ? ` · ${length}` : ''}
+                  </div>
+                </div>
+              )
+            })}
           </div>
         </div>
       )}
@@ -444,7 +581,7 @@ function RegisterList({ register }: { register: RegisterEntryDto[] }) {
           <tbody>
             {sorted.map(entry => (
               <tr key={entry.kind} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                <td style={registerTd}>{entry.label}</td>
+                <td style={registerTd}>{entry.icon ? `${entry.icon} ` : ''}{entry.label}</td>
                 <td style={{ ...registerTd, fontFamily: 'monospace' }}>{entry.kind}</td>
                 <td style={registerTd}>{entry.shows === 'branch' ? `branch from ${entry.branchFrom ?? '?'}` : 'line'}</td>
                 <td style={{ ...registerTd, fontFamily: 'monospace' }}>{entry.route ?? entry.describe ?? ''}</td>
@@ -479,25 +616,58 @@ const chipBadge: React.CSSProperties = {
   background: '#1f6feb', color: '#fff', fontSize: '0.65rem', fontWeight: 700,
 }
 const lineCard: React.CSSProperties = { background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, padding: '0.75rem 1rem', marginBottom: '0.75rem' }
-const lineHeader: React.CSSProperties = { display: 'flex', alignItems: 'center', gap: 8, marginBottom: '0.25rem' }
+const lineHeader: React.CSSProperties = { display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, marginBottom: '0.25rem' }
 const lineBadge: React.CSSProperties = { ...chipBadge, width: 28, height: 28, fontSize: '0.75rem' }
 const stopDot: React.CSSProperties = {
   position: 'absolute', width: 18, height: 18, boxSizing: 'border-box', borderRadius: '50%',
   background: '#fff', border: '4px solid', zIndex: 1,
 }
-const stopLabel: React.CSSProperties = { position: 'absolute', width: LAYOUT.labelWidth, fontSize: '0.85rem', lineHeight: 1.3 }
+const stopLabel: React.CSSProperties = {
+  position: 'absolute', width: LAYOUT.labelWidth, fontSize: '0.85rem', lineHeight: 1.3,
+  // Over other stops' leaders, so a leader passing a label on a row above doesn't strike through it.
+  background: 'rgba(255,255,255,0.88)', zIndex: 1,
+}
 const branchCard: React.CSSProperties = {
   position: 'absolute', width: LAYOUT.branchWidth, height: BRANCH_HEIGHT, boxSizing: 'border-box', padding: '0.4rem 0.6rem',
   background: '#ecfeff', border: `1.5px solid ${COLOURS.branch}`, borderRadius: 8, fontSize: '0.8rem', lineHeight: 1.3,
 }
+// A stop with an icon: a bigger white dot on the line with the icon in it.
+const iconDot: React.CSSProperties = {
+  width: ICON_DOT, height: ICON_DOT, borderWidth: 3, display: 'flex', alignItems: 'center', justifyContent: 'center',
+  fontSize: '0.72rem', lineHeight: 1, cursor: 'default', zIndex: 2,
+}
+// The icon at the start of a watching strip: just the icon, as big as a crew mate's dot.
+const stripIcon: React.CSSProperties = {
+  width: STRIP_MARKER, height: STRIP_MARKER, flexShrink: 0,
+  display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+  fontSize: `${STRIP_MARKER - 1}px`, lineHeight: 1,
+}
+const iconBranch: React.CSSProperties = {
+  width: 'auto', minWidth: 0, maxWidth: LAYOUT.iconBranchWidth, height: ICON_BRANCH_HEIGHT, padding: '0 0.5rem',
+  display: 'flex', alignItems: 'center', gap: 2, whiteSpace: 'nowrap', fontWeight: 600, cursor: 'default', borderRadius: 999,
+}
+const leader: React.CSSProperties = { position: 'absolute', width: 1, background: '#475569', opacity: 0.6, pointerEvents: 'none' }
+const crewMateDot: React.CSSProperties = {
+  width: STRIP_MARKER, height: STRIP_MARKER, borderRadius: '50%', flexShrink: 0, color: '#fff',
+  display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.6rem', fontWeight: 700,
+}
+const crewBox: React.CSSProperties = {
+  border: '1px solid #ddd6fe', borderLeft: '4px solid #7c3aed', borderRadius: 12, padding: '0.5rem 0.6rem 0.1rem',
+  marginBottom: '0.75rem', background: '#faf5ff',
+}
+const crewBoxHeader: React.CSSProperties = {
+  display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.75rem', fontWeight: 700, color: '#6d28d9',
+  textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '0.4rem',
+}
+const togetherChip: React.CSSProperties = {
+  display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: '0.72rem', color: '#334155',
+  border: '1px solid', borderRadius: 999, padding: '0.1rem 0.5rem', background: '#fff',
+}
+const togetherDot: React.CSSProperties = { width: 8, height: 8, borderRadius: '50%', display: 'inline-block' }
 const markBtn = (undo: boolean): React.CSSProperties => ({
   font: 'inherit', fontSize: '0.75rem', padding: '0.2rem 0.55rem', borderRadius: 999, cursor: 'pointer',
   border: `1px solid ${undo ? '#86efac' : '#fcd34d'}`, background: undo ? '#f0fdf4' : '#fffbeb', color: undo ? '#166534' : '#92400e',
 })
-const pickBar: React.CSSProperties = {
-  display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', fontSize: '0.8rem', margin: '0.25rem 0 0.4rem',
-  padding: '0.35rem 0.6rem', background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 8,
-}
 const testTag: React.CSSProperties = {
   marginLeft: 6, padding: '0 0.35rem', borderRadius: 4, fontSize: '0.65rem', fontWeight: 700,
   background: '#fef3c7', color: '#92400e', verticalAlign: 'middle',

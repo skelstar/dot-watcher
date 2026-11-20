@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { convergenceIcon, phoneMarkerIcon, runnerColour } from './lib/icons'
-import { createSession, deleteSimAccounts, randomSessionName, registerParticipant, SERVER_URL, CLIENT_URL, type SessionMembership } from './lib/dotwatcherApi'
+import { createSession, deleteSimAccounts, makeCrew, randomSessionName, registerParticipant, removeCrew, SERVER_URL, CLIENT_URL, type SessionMembership } from './lib/dotwatcherApi'
 import PhoneSimulator from './PhoneSimulator'
 import MapPickerModal from './MapPickerModal'
 import SimulatorMap from './SimulatorMap'
@@ -101,12 +101,84 @@ export default function ConvergencePage() {
       setSnapshots({})
       setPositions({})
       setRoutes({})
+      setCrewPairs(new Set())
+      setAppliedCrew(new Set())
       setPhones(DEFAULT_PHONE_NAMES.map(initialName => ({ id: nextIdRef.current++, initialName, autoJoin: true })))
     } catch (err) {
       setCreateError(err instanceof Error ? err.message : 'Failed to create session.')
     } finally {
       setCreating(false)
     }
+  }
+
+  // Which phones should be crew, as "lowerId|higherId" of phone tile ids: crew is both ways, so one entry
+  // per pair, ticked on both tiles. A tick can be set before the phones have accounts; it's made real on
+  // the server (`appliedCrew`) as soon as both do. `busyCrew` is a pair whose change is on its way.
+  const [crewPairs, setCrewPairs] = useState<Set<string>>(new Set())
+  const [appliedCrew, setAppliedCrew] = useState<Set<string>>(new Set())
+  const [busyCrew, setBusyCrew] = useState<Set<string>>(new Set())
+  const crewInFlight = useRef(new Set<string>())
+  const pairKey = (a: number, b: number) => (a < b ? `${a}|${b}` : `${b}|${a}`)
+  const pairIds = (key: string) => key.split('|').map(Number) as [number, number]
+  const withKey = (set: Set<string>, key: string, on: boolean) => {
+    const next = new Set(set)
+    if (on) next.add(key)
+    else next.delete(key)
+    return next
+  }
+
+  // Makes the server match a pair's tick, when both phones have accounts.
+  async function applyCrew(key: string, wantCrew: boolean) {
+    const [aId, bId] = pairIds(key)
+    const a = snapshots[aId]?.user
+    const b = snapshots[bId]?.user
+    // A ref, not busyCrew: snapshots change every tick, and state wouldn't be updated yet.
+    if (!a || !b || crewInFlight.current.has(key)) return
+    crewInFlight.current.add(key)
+    setBusyCrew(prev => withKey(prev, key, true))
+    setCreateError(null)
+    try {
+      if (wantCrew) await makeCrew(a, b)
+      else await removeCrew(a, b)
+      setAppliedCrew(prev => withKey(prev, key, wantCrew))
+    } catch (err) {
+      setCreateError(err instanceof Error ? err.message : 'Changing crew failed.')
+      setCrewPairs(prev => withKey(prev, key, !wantCrew)) // the tick goes back to how it is on the server
+    } finally {
+      crewInFlight.current.delete(key)
+      setBusyCrew(prev => withKey(prev, key, false))
+    }
+  }
+
+  function toggleCrew(phoneId: number, otherId: number) {
+    const key = pairKey(phoneId, otherId)
+    const wantCrew = !crewPairs.has(key)
+    setCrewPairs(prev => withKey(prev, key, wantCrew))
+    if (wantCrew || appliedCrew.has(key)) void applyCrew(key, wantCrew)
+  }
+
+  // A tick set early is made real once both phones have accounts.
+  useEffect(() => {
+    for (const key of crewPairs)
+      if (!appliedCrew.has(key)) void applyCrew(key, true)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [snapshots, crewPairs])
+
+  // Every other phone still on screen and not done; `pending` while a tick waits for accounts.
+  function crewOptionsFor(phoneId: number) {
+    if (snapshots[phoneId]?.status === 'left') return []
+    return phones
+      .filter(p => p.id !== phoneId && snapshots[p.id]?.status !== 'left')
+      .map(p => {
+        const key = pairKey(phoneId, p.id)
+        return {
+          phoneId: p.id,
+          displayName: snapshots[p.id]?.displayName ?? p.initialName ?? `Phone ${p.id}`,
+          isCrew: crewPairs.has(key),
+          pending: crewPairs.has(key) && !appliedCrew.has(key),
+          busy: busyCrew.has(key),
+        }
+      })
   }
 
   // Deletes sim- accounts on the server, and with them everything they made: sessions they own,
@@ -387,6 +459,8 @@ export default function ConvergencePage() {
             onRequestStartPoint={handleRequestStartPoint}
             onRouteChange={handleRouteChange}
             onRemove={removePhone}
+            crewOptions={crewOptionsFor(p.id)}
+            onToggleCrew={otherId => void toggleCrew(p.id, otherId)}
           />
         ))
 
