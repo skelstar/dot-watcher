@@ -27,6 +27,8 @@ export interface RegisterEntryDto {
   route?: string | null
   describe?: string | null
   notes?: string | null
+  // Drawn in place of the label, to save room; the label and time show on hover.
+  icon?: string | null
 }
 
 export interface ActivityDotDto {
@@ -34,6 +36,56 @@ export interface ActivityDotDto {
   displayName: string
   username: string
   eventCount: number
+  // The other dots in the same list who are their crew (as crew is now). Absent from an older server.
+  crewWith?: string[] | null
+}
+
+// ---- Crew --------------------------------------------------------------------------------------------
+// Dots who are crew are shown together, and By time each line shows when its crew were out at the same
+// time as it (both with a Go run going).
+
+// The shown dots in crew groups: each group is everyone linked by crew, in the order the dots came.
+// A dot with no crew among them is a group of one.
+export function crewGroups(dots: ActivityDotDto[]): ActivityDotDto[][] {
+  const byId = new Map(dots.map(d => [d.userId, d]))
+  const placed = new Set<string>()
+  const groups: ActivityDotDto[][] = []
+  for (const dot of dots) {
+    if (placed.has(dot.userId)) continue
+    const group: ActivityDotDto[] = []
+    const queue = [dot]
+    placed.add(dot.userId)
+    while (queue.length > 0) {
+      const next = queue.shift()!
+      group.push(next)
+      for (const id of next.crewWith ?? []) {
+        const mate = byId.get(id)
+        if (mate && !placed.has(id)) { placed.add(id); queue.push(mate) }
+      }
+    }
+    groups.push(group.sort((a, b) => dots.indexOf(a) - dots.indexOf(b)))
+  }
+  return groups
+}
+
+// When a line had a Go run going, in ms. A run still going at the end runs to `endOfLine`.
+export function runIntervals(flow: Flow, endOfLine: number): { start: number; end: number }[] {
+  return flow.runs.map(run => ({
+    start: Date.parse(flow.stops[run.fromIndex].at),
+    end: run.toIndex === null ? endOfLine : Date.parse(flow.stops[run.toIndex].at),
+  }))
+}
+
+// Where two sets of intervals overlap.
+export function overlaps(a: { start: number; end: number }[], b: { start: number; end: number }[]): { start: number; end: number }[] {
+  const out: { start: number; end: number }[] = []
+  for (const x of a)
+    for (const y of b) {
+      const start = Math.max(x.start, y.start)
+      const end = Math.min(x.end, y.end)
+      if (end > start) out.push({ start, end })
+    }
+  return out.sort((p, q) => p.start - q.start)
 }
 
 export interface FlowStop {
@@ -44,6 +96,8 @@ export interface FlowStop {
   // e.g. "2 min 54 s" on a stopped run.
   note: string | null
   isTest: boolean
+  // From the register: drawn instead of the label and time, which show on hover.
+  icon: string | null
 }
 
 export interface FlowBranch {
@@ -58,6 +112,8 @@ export interface FlowBranch {
   spans: { start: number; end: number | null }[]
   // The known lengths added up (detail.watchedSeconds on a watch viewing).
   totalSeconds: number
+  // From the register: a small pill with the icon instead of a card.
+  icon: string | null
 }
 
 export interface FlowRun {
@@ -98,11 +154,11 @@ export function buildFlow(events: ActivityEventDto[], register: RegisterEntryDto
   const openRuns = new Map<string, FlowRun>()
   const away: FlowRun[] = []
 
-  function addStop(event: ActivityEventDto, label: string) {
+  function addStop(event: ActivityEventDto, label: string, icon: string | null) {
     const index = stops.length
     const seconds = event.detail?.durationSeconds
     const note = event.kind === 'run_stopped' && typeof seconds === 'number' ? formatDuration(seconds) : null
-    stops.push({ index, kind: event.kind, label, at: event.at, note, isTest: event.isTest === true })
+    stops.push({ index, kind: event.kind, label, at: event.at, note, isTest: event.isTest === true, icon })
     stopEvents.push(event)
 
     if (event.kind === 'run_started') {
@@ -130,14 +186,14 @@ export function buildFlow(events: ActivityEventDto[], register: RegisterEntryDto
     const entry = byKind.get(event.kind)
     const label = entry?.label ?? event.kind
     if (entry?.shows !== 'branch') {
-      addStop(event, label)
+      addStop(event, label, entry?.icon ?? null)
       continue
     }
 
     const fromIndex = branchStop(stopEvents, event, entry.branchFrom ?? null)
     if (fromIndex === null) {
       // Nothing on the line yet to hang it off (the link was shared before this range): a stop of its own.
-      addStop(event, label)
+      addStop(event, label, entry?.icon ?? null)
       continue
     }
     const watched = event.detail?.watchedSeconds
@@ -150,7 +206,10 @@ export function buildFlow(events: ActivityEventDto[], register: RegisterEntryDto
       same.spans.push(span)
       same.totalSeconds += seconds ?? 0
     } else {
-      branches.push({ fromIndex, kind: event.kind, label, count: 1, firstAt: event.at, spans: [span], totalSeconds: seconds ?? 0 })
+      branches.push({
+        fromIndex, kind: event.kind, label, count: 1, firstAt: event.at, spans: [span], totalSeconds: seconds ?? 0,
+        icon: entry.icon ?? null,
+      })
     }
   }
 
@@ -179,6 +238,9 @@ export const LAYOUT = {
   spacing: 170,
   labelWidth: 146,
   branchWidth: 150,
+  // An event with an icon (the register's `icon`) is drawn as just the icon, or a small pill for a branch.
+  iconLabelWidth: 26,
+  iconBranchWidth: 96,
   // A branch card starts this far left of its stem.
   branchOffset: 20,
   rowGap: 8,
@@ -211,7 +273,11 @@ export const COLLAPSE = { minGapMs: 120_000, minGapPx: 360, keepPx: 80, breakPx:
 export interface PlacedBranch {
   branch: FlowBranch
   x: number
+  // Its row within its placement (unused on a strip).
   row: number
+  // Where it's drawn. A branch with an icon is, by time, a strip just under the line (each span along it,
+  // the icon at its start), and in order a pill in the label rows; one without an icon is a card below.
+  placement: 'strip' | 'labels' | 'cards'
   // By time: where each of its spans (a viewing) runs along the line. Empty in order.
   spans: { left: number; right: number; ongoing: boolean }[]
 }
@@ -226,6 +292,7 @@ export interface FlowLayout {
   lineLeft: number
   lineRight: number
   width: number
+  // Label rows (stop labels and pills), and rows of cards below them.
   labelRows: number
   branchRows: number
 }
@@ -336,21 +403,33 @@ function takeRow(rowEnds: number[], left: number, right: number): number {
   return row
 }
 
+// How wide a stop's label, or a branch's card, is drawn.
+export const labelWidthOf = (stop: FlowStop) => (stop.icon ? LAYOUT.iconLabelWidth : LAYOUT.labelWidth)
+export const branchWidthOf = (branch: FlowBranch) => (branch.icon ? LAYOUT.iconBranchWidth : LAYOUT.branchWidth)
+
 export function layoutFlow(flow: Flow, scale: TimeScale | null): FlowLayout {
-  const { startX, spacing, labelWidth, branchWidth, branchOffset } = LAYOUT
+  const { startX, spacing, branchOffset } = LAYOUT
+
+  const rowsIn = (branches: PlacedBranch[], placement: PlacedBranch['placement']) =>
+    Math.max(0, ...branches.filter(b => b.placement === placement).map(b => b.row + 1))
+  // A stop with an icon is drawn on the line itself, so it takes no label row.
+  const onLine = (stop: FlowStop) => stop.icon !== null
 
   if (scale === null) {
     const stopX = flow.stops.map(stop => startX + stop.index * spacing)
     const last = stopX.length > 0 ? stopX[stopX.length - 1] : startX
-    const perStop = new Map<number, number>()
-    const branches = flow.branches.map(branch => {
-      const row = perStop.get(branch.fromIndex) ?? 0
-      perStop.set(branch.fromIndex, row + 1)
-      return { branch, x: stopX[branch.fromIndex], row, spans: [] }
+    // Per stop: pills go in the label rows under its label (row 1 on), cards below the labels.
+    const perStop = new Map<string, number>()
+    const branches: PlacedBranch[] = flow.branches.map(branch => {
+      const placement = branch.icon !== null ? 'labels' : 'cards'
+      const key = `${branch.fromIndex}|${placement}`
+      const nth = perStop.get(key) ?? 0
+      perStop.set(key, nth + 1)
+      return { branch, x: stopX[branch.fromIndex], row: placement === 'labels' ? 1 + nth : nth, placement, spans: [] }
     })
     return {
       stopX,
-      stopRow: stopX.map(() => 0),
+      stopRow: flow.stops.map(stop => (onLine(stop) ? -1 : 0)),
       branches,
       runs: flow.runs.map(run => ({
         left: stopX[run.fromIndex],
@@ -363,24 +442,37 @@ export function layoutFlow(flow: Flow, scale: TimeScale | null): FlowLayout {
       lineLeft: startX,
       lineRight: last,
       width: last + spacing,
-      labelRows: 1,
-      branchRows: Math.max(0, ...branches.map(b => b.row + 1)),
+      labelRows: Math.max(1, ...branches.filter(b => b.placement === 'labels').map(b => b.row + 1)),
+      branchRows: rowsIn(branches, 'cards'),
     }
   }
 
   const stopX = flow.stops.map(stop => xForTime(scale, Date.parse(stop.at)))
-  const labelEnds: number[] = []
-  const stopRow = stopX.map(x => takeRow(labelEnds, x, x + 12 + labelWidth))
-  const branchEnds: number[] = []
-  const branches = flow.branches.map(branch => {
-    const x = xForTime(scale, Date.parse(branch.firstAt))
+  const branchX = flow.branches.map(branch => xForTime(scale, Date.parse(branch.firstAt)))
+
+  // Label rows, in time order; a row keeps what it holds, so a later label can fit a gap.
+  const labelRowsTaken: { left: number; right: number }[][] = []
+  const placeInRows = (left: number, right: number) => {
+    let row = labelRowsTaken.findIndex(taken =>
+      taken.every(t => right + LAYOUT.rowGap <= t.left || t.right + LAYOUT.rowGap <= left))
+    if (row === -1) row = labelRowsTaken.push([]) - 1
+    labelRowsTaken[row].push({ left, right })
+    return row
+  }
+  const stopRow = stopX.map((x, i) => (onLine(flow.stops[i]) ? -1 : placeInRows(x, x + 12 + labelWidthOf(flow.stops[i]))))
+
+  // A branch with an icon goes on the strip under the line; cards get rows of their own below the labels.
+  const cardEnds: number[] = []
+  const branches: PlacedBranch[] = flow.branches.map((branch, i) => {
+    const x = branchX[i]
     const spans = branch.spans.map(span => {
       const left = xForTime(scale, span.start)
       // A length not known yet is drawn as a stub, with a fade to show it may go on.
       const right = span.end === null ? left + 24 : Math.max(xForTime(scale, span.end), left + 3)
       return { left, right, ongoing: span.end === null }
     })
-    return { branch, x, row: takeRow(branchEnds, x - branchOffset, x - branchOffset + branchWidth), spans }
+    if (branch.icon !== null) return { branch, x, row: 0, placement: 'strip', spans }
+    return { branch, x, row: takeRow(cardEnds, x - branchOffset, x - branchOffset + branchWidthOf(branch)), placement: 'cards', spans }
   })
   const scaleRight = startX + scale.width
   const lineLeft = stopX.length > 0 ? stopX[0] : startX
@@ -400,9 +492,14 @@ export function layoutFlow(flow: Flow, scale: TimeScale | null): FlowLayout {
     })),
     lineLeft,
     lineRight,
-    width: Math.max(scaleRight, ...stopX.map(x => x + 12 + labelWidth), ...branches.map(b => b.x - branchOffset + branchWidth)) + 16,
+    width: Math.max(
+      scaleRight,
+      ...stopX.map((x, i) => x + 12 + labelWidthOf(flow.stops[i])),
+      ...branches.filter(b => b.placement === 'cards').map(b => b.x - branchOffset + branchWidthOf(b.branch)),
+      ...branches.flatMap(b => b.spans.map(s => s.right)),
+    ) + 16,
     labelRows: Math.max(1, ...stopRow.map(r => r + 1)),
-    branchRows: Math.max(0, ...branches.map(b => b.row + 1)),
+    branchRows: rowsIn(branches, 'cards'),
   }
 }
 

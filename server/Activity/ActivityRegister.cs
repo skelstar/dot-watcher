@@ -12,7 +12,9 @@ public sealed record ActivityEventDefinition(
     string? BranchFrom = null,
     string? Route = null,
     string? Describe = null,
-    string? Notes = null)
+    string? Notes = null,
+    // Drawn in place of the label on the Activity tab (the label and time on hover), to save room.
+    string? Icon = null)
 {
     [JsonIgnore]
     public bool IsRecording => Status == "recording";

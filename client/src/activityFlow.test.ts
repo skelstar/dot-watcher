@@ -3,7 +3,10 @@ import test from 'node:test'
 import {
   LAYOUT,
   buildFlow,
+  crewGroups,
   dayRange,
+  overlaps,
+  runIntervals,
   formatDuration,
   MAX_TIME_WIDTH,
   layoutFlow,
@@ -258,6 +261,56 @@ test('a collapsed scale can be made to fit a width', () => {
   const scale = timeScaleOfWidth(events, 900, true)!
 
   assert.ok(Math.abs(scale.width - 900) < 5)
+})
+
+test('crew are grouped together, linked through each other, in the order they came', () => {
+  const dot = (userId: string, crewWith: string[] = []) => ({ userId, displayName: userId, username: userId, eventCount: 1, crewWith })
+
+  const groups = crewGroups([dot('a', ['c']), dot('b'), dot('c', ['a', 'd']), dot('d', ['c'])])
+
+  assert.deepEqual(groups.map(g => g.map(d => d.userId)), [['a', 'c', 'd'], ['b']])
+})
+
+test('two runs out at the same time overlap where both were going', () => {
+  const a = buildFlow([event('run_started', '09:00:00', { runId: 'a' }), event('run_stopped', '09:20:00', { runId: 'a' })], REGISTER)
+  const b = buildFlow([event('run_started', '09:10:00', { runId: 'b' })], REGISTER)
+  const end = Date.parse('2026-11-19T09:30:00Z')
+
+  const both = overlaps(runIntervals(a, end), runIntervals(b, end))
+
+  assert.deepEqual(both, [{ start: Date.parse('2026-11-19T09:10:00Z'), end: Date.parse('2026-11-19T09:20:00Z') }])
+  assert.deepEqual(overlaps(runIntervals(a, end), []), [])
+})
+
+test('icons: 🔗 sits on the line, and 👁️ is a strip by time or a pill in the label rows in order', () => {
+  const withIcons = REGISTER.map(e =>
+    e.kind === 'watch_link_made' ? { ...e, icon: '🔗' } : e.kind === 'watch_link_opened' ? { ...e, icon: '👁️' } : e)
+  const events = [
+    event('watch_link_made', '09:00:00'), event('watch_link_opened', '09:00:05'),
+    event('run_stopped', '09:02:00'), event('run_started', '09:30:00'),
+  ]
+  const scale = timeScale([{ at: '2026-11-19T09:00:00Z' }, { at: '2026-11-19T09:30:00Z' }], 1000)!
+
+  // Without icons: 2 min (about 63 px here) is too close for a full label, and the branch is a card.
+  const plain = layoutFlow(buildFlow(events, REGISTER), scale)
+  assert.deepEqual(plain.stopRow, [0, 1, 0])
+  assert.equal(plain.branches[0].placement, 'cards')
+  assert.equal(plain.branchRows, 1)
+
+  // With icons, by time: 🔗 is on the line (no label row), 👁️ on the strip under it, nothing below.
+  const flow = buildFlow(events, withIcons)
+  assert.equal(flow.stops[0].icon, '🔗')
+  const layout = layoutFlow(flow, scale)
+  assert.deepEqual(layout.stopRow, [-1, 0, 0])
+  assert.equal(layout.branches[0].placement, 'strip')
+  assert.equal(layout.labelRows, 1)
+  assert.equal(layout.branchRows, 0)
+
+  // In order there's no clock for a strip, so 👁️ is a pill in the label rows under its stop.
+  const inOrder = layoutFlow(flow, null)
+  assert.equal(inOrder.stopRow[0], -1)
+  assert.equal(inOrder.branches[0].placement, 'labels')
+  assert.equal(inOrder.labelRows, 2)
 })
 
 test('durations read naturally', () => {
