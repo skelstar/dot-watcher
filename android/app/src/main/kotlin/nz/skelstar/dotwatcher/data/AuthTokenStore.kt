@@ -46,6 +46,12 @@ class AuthTokenStore(context: Context) {
         get() = read(KEY_USERNAME)
         set(value) = write(KEY_USERNAME, value)
 
+    /** What the account can use (e.g. "groups"), as the server last said at sign-in or GET /me. Empty for a
+     *  sign-in made before this was stored; refreshed whenever the app comes to the front. */
+    var features: List<String>
+        get() = read(KEY_FEATURES)?.split(',')?.filter { it.isNotBlank() }.orEmpty()
+        set(value) = write(KEY_FEATURES, value.joinToString(","))
+
     val isSignedIn: Boolean
         get() = accessToken != null
 
@@ -133,5 +139,6 @@ class AuthTokenStore(context: Context) {
         const val KEY_USER_ID = "user_id"
         const val KEY_DISPLAY_NAME = "display_name"
         const val KEY_USERNAME = "username"
+        const val KEY_FEATURES = "features"
     }
 }

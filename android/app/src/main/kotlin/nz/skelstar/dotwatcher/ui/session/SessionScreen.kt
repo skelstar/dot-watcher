@@ -84,6 +84,8 @@ import nz.skelstar.dotwatcher.network.NearbyEvent
 import nz.skelstar.dotwatcher.ui.nearby.ActiveSessionDialog
 import nz.skelstar.dotwatcher.ui.nearby.NearbyCreateSection
 import nz.skelstar.dotwatcher.ui.nearby.NearbyJoinSheet
+import nz.skelstar.dotwatcher.ui.groups.GroupInCard
+import nz.skelstar.dotwatcher.groups.GroupsModel
 
 /** How often the nearby list refreshes by itself while the start screen is showing, matching iOS. Pulling the
  *  screen down refreshes at once; this only stops a screen left open from going stale, and each refresh takes a
@@ -127,8 +129,9 @@ fun SessionScreen(
     crew: CrewModel,
     casual: CasualModel,
     events: EventsModel,
+    groups: GroupsModel,
     onStartCasual: (Duration) -> Unit,
-    onJoinNearby: (sessionId: String) -> Unit,
+    onJoinNearby: (sessionId: String, entryCode: String?) -> Unit,
     activeSessionConflict: ActiveSessionConflict?,
     onEndActiveSessionAndCreate: () -> Unit,
     onDismissActiveSessionConflict: () -> Unit,
@@ -144,6 +147,7 @@ fun SessionScreen(
     var showBeforeYouGo by remember { mutableStateOf(false) }
     val casualState by casual.state.collectAsState()
     val eventsState by events.state.collectAsState()
+    val groupsState by groups.state.collectAsState()
     var showCreateDialog by remember { mutableStateOf(false) }
     var showAccount by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
@@ -156,6 +160,7 @@ fun SessionScreen(
         crew.refresh()
         casual.refresh()
         events.refresh()
+        groups.refresh()
         onPauseOrDispose { }
     }
 
@@ -189,6 +194,7 @@ fun SessionScreen(
                     refreshing = true
                     crew.refresh()
                     casual.refresh()
+                    groups.refresh()
                     events.refreshNow()
                     refreshing = false
                 }
@@ -219,6 +225,17 @@ fun SessionScreen(
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
+                }
+
+                // Groups joined ahead of Go (only with the "groups" feature). The start screen only shows
+                // while the person isn't out, so each card says nobody can see them yet.
+                groupsState.joined.forEach { group ->
+                    Spacer(modifier = Modifier.height(12.dp))
+                    GroupInCard(group = group, isOut = false, onLeave = { groups.leave(group.sessionId) })
+                }
+                groupsState.error?.let {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(text = it, color = MaterialTheme.colorScheme.error)
                 }
 
                 when (state) {
@@ -253,7 +270,7 @@ fun SessionScreen(
             // nearby can join, or the placeholder while there's no position to look near.
             eventsState.joinable.forEach { event ->
                 EventSignButton(
-                    eyebrow = event.eyebrow,
+                    eyebrow = if (event.needsCode == true) "${event.eyebrow} · Code needed" else event.eyebrow,
                     title = event.title,
                     subtitle = event.subtitle,
                     organiser = event.organiser,
@@ -347,14 +364,19 @@ fun SessionScreen(
         NearbyJoinSheet(
             event = event,
             state = if (joinAttempted) state else SessionUiState.Idle,
-            onJoin = {
+            onJoin = { entryCode ->
                 event.sessionId?.let {
                     joinAttempted = true
-                    onJoinNearby(it)
+                    onJoinNearby(it, entryCode)
                 }
             },
             onDismiss = { nearbyCandidate = null },
+            asGroup = groupsState.isAvailable,
         )
+        // A group join stays on this screen, so close the sheet once the group shows as joined.
+        LaunchedEffect(groupsState.joined, event.sessionId) {
+            if (groupsState.joined.any { it.sessionId == event.sessionId }) nearbyCandidate = null
+        }
     }
 
     if (activeSessionConflict != null) {

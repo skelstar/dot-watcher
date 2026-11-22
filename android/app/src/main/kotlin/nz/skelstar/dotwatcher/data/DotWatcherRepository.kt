@@ -65,6 +65,7 @@ class DotWatcherRepository(
             tokenStore.userId = auth.user.userId
             tokenStore.displayName = auth.user.displayName
             tokenStore.username = auth.user.username
+            auth.user.features?.let { tokenStore.features = it }
             paletteStore?.save(auth.user.config)
         }
         return stripBody(response)
@@ -77,16 +78,24 @@ class DotWatcherRepository(
             tokenStore.userId = auth.user.userId
             tokenStore.displayName = auth.user.displayName
             tokenStore.username = auth.user.username
+            auth.user.features?.let { tokenStore.features = it }
             paletteStore?.save(auth.user.config)
         }
         return stripBody(response)
     }
 
-    /** Fetches the account and saves its palette for the next launch. A failed request changes nothing. */
+    /** Fetches the account and saves its palette (for the next launch) and its features. A failed request
+     *  changes nothing. */
     suspend fun refreshPalette() {
         val response = api.getMe(bearer(requireToken()))
-        response.body()?.let { paletteStore?.save(it.config) }
+        response.body()?.let { user ->
+            paletteStore?.save(user.config)
+            user.features?.let { tokenStore.features = it }
+        }
     }
+
+    /** Whether the account has [feature] (e.g. "groups"), as the server last said. */
+    fun hasFeature(feature: String): Boolean = feature in tokenStore.features
 
     suspend fun logout() {
         val token = tokenStore.accessToken
@@ -245,11 +254,16 @@ class DotWatcherRepository(
     suspend fun getNearbyEvents(fix: Fix? = null): Response<List<NearbyEvent>> =
         api.getNearbyEvents(bearer(requireToken()), fix?.latitude, fix?.longitude, fix?.accuracyMetres)
 
-    suspend fun joinNearbySession(sessionId: String, fix: Fix, displayName: String?): Response<SessionMembership> =
+    suspend fun joinNearbySession(
+        sessionId: String,
+        fix: Fix,
+        displayName: String?,
+        entryCode: String? = null,
+    ): Response<SessionMembership> =
         api.joinNearbySession(
             sessionId,
             bearer(requireToken()),
-            JoinNearbyRequest(fix.latitude, fix.longitude, fix.accuracyMetres, displayName),
+            JoinNearbyRequest(fix.latitude, fix.longitude, fix.accuracyMetres, displayName, entryCode),
         )
 
     suspend fun updateNearby(

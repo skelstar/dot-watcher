@@ -111,6 +111,7 @@ fun DotWatcherApp(hasBackgroundLocationPermission: Boolean) {
                     crew = viewModel.crew,
                     casual = viewModel.casual,
                     events = viewModel.events,
+                    groups = viewModel.groups,
                     onJoinNearby = viewModel::joinNearby,
                     activeSessionConflict = activeSessionConflict,
                     onEndActiveSessionAndCreate = viewModel::endActiveSessionAndCreate,
