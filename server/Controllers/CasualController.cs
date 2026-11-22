@@ -75,7 +75,8 @@ public class CasualController(
             account.VisibleToCrew,
             features.IsOn(Features.Crew),
             self: null,
-            timeProvider.GetUtcNow()));
+            timeProvider.GetUtcNow(),
+            includeGroups: features.IsOnFor(user.UserId, Features.Groups)));
     }
 
     /// <summary>
@@ -168,7 +169,8 @@ public class CasualController(
             return denied;
 
         var gpx = store.GetCasualRouteForViewer(
-            user.UserId, runId, store.GetCasualAccount(user.UserId), features.IsOn(Features.Crew), timeProvider.GetUtcNow());
+            user.UserId, runId, store.GetCasualAccount(user.UserId), features.IsOn(Features.Crew), timeProvider.GetUtcNow(),
+            includeGroups: features.IsOnFor(user.UserId, Features.Groups));
         return gpx is null ? NotFound() : Content(gpx, "application/gpx+xml");
     }
 

@@ -3,11 +3,15 @@ namespace DotWatcher.Server;
 /// <summary>Names of the features that can be switched on per account. See .ai/plans/crew-feature-flag.md.</summary>
 public static class Features
 {
-    public static readonly IReadOnlyList<string> All = [Crew, Casual, Events];
+    public static readonly IReadOnlyList<string> All = [Crew, Casual, Events, Groups];
 
     public const string Crew = "crew";
     public const string Casual = "casual";
     public const string Events = "events";
+
+    // People in the same active named session see each other by name in casual (see
+    // .ai/plans/go-and-groups.md, step 1). Per account: off for everyone until granted.
+    public const string Groups = "groups";
 }
 
 /// <summary>
@@ -66,6 +70,12 @@ public sealed class FeatureFlags
 
     public bool IsEnabled(string userId, string feature) =>
         _enabledForAll.Contains(feature) || _store.GetUserFeatures(userId).Contains(feature);
+
+    /// <summary>
+    /// Granted to this account and not switched off globally. Checks the switch first, so a feature
+    /// that is off costs no account read.
+    /// </summary>
+    public bool IsOnFor(string userId, string feature) => IsOn(feature) && IsEnabled(userId, feature);
 
     /// <summary>Trims, lower-cases, drops blanks and duplicates, and sorts, so storage is stable.</summary>
     public static IReadOnlyList<string> Normalize(IEnumerable<string>? features) =>
