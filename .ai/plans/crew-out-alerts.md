@@ -48,20 +48,22 @@ receive. The only work is to diff it.
 
 ## iOS
 
-- [ ] Decode the casual post reply as its own type (participants, positions with `isSelf`/`inSession`, nearby),
-      chosen by `targetSessionId == casualSessionId`. The session path keeps `LocationPostResponse`.
-- [ ] `CrewOutAlerts` (new file, next to `SatelliteAlerts`): holds `lastOut: Set<String>?` (nil = no baseline
-      yet) and `lastAlertedAt: [String: Date]`. `update(out:)` returns the names to announce.
-  - [ ] Reset on `startCasual` and `stop()`, so every run starts with a silent baseline.
-- [ ] Post with `UNUserNotificationCenter` (identifier `crew-out-<name>`, so repeats replace rather than
-      stack). Reuse the `SatelliteAlerts` delegate for foreground banners, or move the delegate to a shared
-      place.
-  - [ ] Tap opens the Go map: check `response.notification.request.identifier` prefix and present the casual map.
-- [ ] Settings: "Crew alerts" switch (`@AppStorage("crewAlertsEnabled")`, default true). Ask for permission in
-      `startCasual` when it's on.
-- [ ] Developer section: "Test crew alert in 5 s", so it can be heard with the phone locked.
+- [x] Read `isSelf`/`inSession` from the Go post reply. Built as two optional fields on `RunnerPositionResponse`
+      (nil in a session reply) rather than a second reply type, so the post path stays one.
+- [x] `CrewOutAlerts.swift`: `CrewOutTracker` (the diff: `lastOut` nil until the baseline, `lastAlertedAt`,
+      30 min cooldown) and `CrewOutAlerts` (feeds it from `LocationManager.post` on a successful Go post).
+  - [x] Reset in `beginTracking` and `stop()`, so every run starts with a silent baseline.
+- [x] Post with `UNUserNotificationCenter` (identifier `crew-out-<names>`, so repeats replace rather than stack).
+      The `SatelliteAlerts` delegate already shows foreground banners.
+  - [x] Tap opens the Go map: the delegate's `didReceive` checks the `crew-out` prefix and posts
+        `.crewOutAlertTapped`; `CasualHost` presents the Go map if a Go run is still tracking.
+- [x] Settings: "Crew alerts" switch (`LocationManager.crewOutAlertsEnabled`, `UserDefaults` key
+      `crewOutAlertsEnabled`, default true). Permission is asked in `beginTracking` for a Go run when it's on.
+- [x] Developer section: "Send test crew alert in 5s".
 - [ ] Unit test the diff (baseline, new name, name leaves and returns inside and after 30 min, self and
-      in-session ignored).
+      in-session ignored). The iOS project has no test target yet, so this waits for one; `CrewOutTracker`
+      is pure so it can be tested as is.
+- [ ] Build and check on a device (CI builds; the two-phone test is below).
 
 ## Android
 
