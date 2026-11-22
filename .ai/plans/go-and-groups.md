@@ -1,7 +1,46 @@
 # Go and groups — Plan
 
-*DotWatcher — plan, November 2026. Status: idea agreed in principle, nothing built. Two mock-ups come first (step 0).
-Decisions marked **Open** below need an answer before the step that depends on them.*
+*DotWatcher — plan, November 2026. Status (22 November 2026): mock-ups done; step 1 and the server half of step 2 built
+and green in CI but **not merged**; the Android half of step 2 started; iOS not started. **Start with
+[Picking this up again](#picking-this-up-again) below.** Decisions marked **Open** need an answer before the step that
+depends on them.*
+
+## Picking this up again
+
+Everything is in a stack of open PRs, each based on the one before (merge from the bottom; GitHub retargets the next
+one when its base branch is deleted, otherwise retarget it to `staging` by hand):
+
+| PR | Branch | What | State |
+| --- | --- | --- | --- |
+| #379 | `go-and-groups-plan` | This plan and both mock-ups | Docs only |
+| #386 | `groups-casual-visibility` | Step 1: people in the same active session see each other by name in casual (`groups` flag) | CI green, not merged |
+| #387 | `groups-entry-code` | Step 2 server: entry codes on nearby sessions | CI green, not merged |
+| #388 | `android-groups-join` | Step 2 Android, part 1: join a nearby group without starting tracking | Compiles, 91 unit tests pass locally; not tried on a device |
+
+To try it end to end: deploy the server stack, then grant `groups` to a test account (`PUT /api/admin/users/{id}/features`,
+body `{ "features": ["groups"] }`, admin token). Without the flag, nothing changes for anyone.
+
+**Next, in order:**
+
+1. **Server: send each group's end time** (additive `endsAt` on `GET /me/sessions` and the nearby list, from
+   `created_at + max_length_hours`). Needed by the "You're in" card's time and the map chip.
+2. **Android, part 2:** "‹ Home" on the Go map and a "You're out · Back to the map" tile on the start screen, so you
+   can join while out (the start screen is replaced by the map while tracking today); the group chip on the Go map
+   (name, time left, Leave); "Join and Go now" on the join sheet; organisers can set and change the entry code
+   (create dialog, and on their session's card).
+3. **iOS:** the same as Android parts 1 and 2 (`NearbyJoinViews.swift`, `EventsStore.swift`, `ContentView.swift`,
+   `CasualViews.swift`, `LocationManager.swift`). iOS doesn't read the account's `features` yet either.
+4. **Invite links** for groups (join from anywhere, e.g. the entry email); decide whether they ask for the entry code.
+5. Step 3 onwards.
+
+**Things to know:**
+
+- Only the **nearby-tile join** follows the groups flow so far. Joining by invite code, and an organiser's own session,
+  still go to consent and track in the session, on both phones.
+- Android used to leave every session on relaunch; for groups accounts it now keeps them (`decideRestore`
+  `keepMemberships`), so a group joined ahead of Go survives.
+- The `groups` flag is checked for the **viewer** only (#386): if you have it and a fellow member doesn't, you see them
+  by name and they see you as before. Members of a session already see each other by name in the session itself.
 
 Goal: every time someone goes out, they press **Go** and are tracking. That is the only way to track. Races, events
 and groups stop being things you track *in*; they become **groups** that only control who can see whom. Each group is
@@ -107,7 +146,11 @@ Turning it around, with casual as the base and groups as visibility on top:
   decides whether a group allows watchers. Option A (join only once tracking) was rejected because it blocks race
   sign-up in advance.
 - **One entry code per group, changeable by the organiser.** Not one per entrant, for now. Changing it doesn't remove
-  anyone who already joined.
+  anyone who already joined. 4-8 letters or digits, any case. **Stored as typed, not hashed** (built that way in #387):
+  the organiser's card shows it again, and it's a shared code printed on a race sheet, not a password. Only ever
+  returned to the organiser; guessing is capped by the nearby join limit (20 an hour) and having to be in the area.
+- **The invite code skips the entry code** for now: someone given a session's invite code joins without it. Group
+  invite links (step 2) must decide whether to ask for it.
 - **Strangers see someone in a group as a plain grey dot, with no lock.** Being in a group is no longer special, so
   the `inSession` lock goes (normal stranger rules: both toggles on, within 5 km, start area hidden).
 - **The tile shows from shortly before the group's start until its end.** Leaving the region after joining does
@@ -145,15 +188,19 @@ Turning it around, with casual as the base and groups as visibility on top:
 Smallest change that proves the idea. Uses existing named sessions as groups; no new tables yet. Existing sessions
 have no rule, so they all use **Everyone**; the session owner is the organiser.
 
-- [ ] In `SessionStore.Casual.cs`, where the live view builds `crewLabels` from `GetCrewOverview`, also add the
+Built in **#386** (CI green, not merged). New `SessionStore.Groups.cs`.
+
+- [x] In `SessionStore.Casual.cs`, where the live view builds `crewLabels` from `GetCrewOverview`, also add the
       viewer's **group members** under each active group's rule: other members of active named sessions
       (`session_members`, both `left_at IS NULL`, session not archived, within its event length). Label: the member's
-      `display_name` in that session.
-- [ ] Respect blocks (already applied by `ForViewer` via `GetBlockedPartyIds`) and `VisibleToCrew`.
-- [ ] Gate behind a feature flag (new `groups` flag in `FeatureFlags.cs`, per-account like `crew`) so installed builds
-      and accounts without it see no change.
-- [ ] Unit tests: a group member is named at any distance; a blocked member is hidden; a member who left is no longer
-      named; an archived or expired session no longer counts.
+      `display_name` in that session. Crew keep their crew label. Casual and demo sessions never count.
+- [x] Respect blocks (already applied by `ForViewer` via `GetBlockedPartyIds`) and `VisibleToCrew`.
+- [x] Gate behind a feature flag (new `groups` flag in `FeatureFlags.cs`, per-account like `crew`; checked with
+      `FeatureFlags.IsOnFor`) so installed builds and accounts without it see no change. Wired into `GET /casual/live`,
+      casual `POST /location` and the casual route download.
+- [x] Tests (`GroupsCasualTests`, 11): a group member is named at any distance; a blocked member is hidden; a member
+      who left is no longer named; an ended session no longer counts; expiry via `IsGroupActive` (no fake clock in the
+      API tests).
 
 Result: someone in casual sees their group by name, and the group sees them, without anyone switching what they track
 against.
@@ -162,20 +209,40 @@ against.
 
 Built from mock-up 0a.
 
-- [ ] Server: capture region on a group (reuse nearby-join's meeting point, radius and accuracy allowance); the
-      nearby lookup returns groups whose region contains the caller's position; optional entry code on the group,
-      checked on join (hashed, rate-limited like `CrewCodeLimiter`), and the tile says whether a code is needed.
-- [ ] iOS and Android: group tiles on the main screen while in a region; join with the consent sheet (plus the code
-      when asked), without switching the tracking target, and back to the Go map if tracking. Invite code join as a
-      fallback.
-- [ ] Join before Go (mock-up 0b, option B): the tile joins when not tracking too; the main screen shows a "You're
-      in, not out yet" card (start time, Leave, Go); the join sheet has "Join and Go now".
+**Server**
+
+- [x] Capture region: already there from nearby join (meeting point, radius, accuracy allowance, Ping, the nearby
+      list and tile join). Nothing new needed.
+- [x] Entry code (**#387**, CI green, not merged): `entryCode` on `POST /sessions` (nearby only, `groups` accounts
+      only); owner-only `GET`/`PUT /sessions/{id}/entry-code` (null clears); nearby list sends `needsCode` to `groups`
+      accounts and hides coded sessions from everyone else; nearby join takes `entryCode`, and a missing or wrong code
+      is `403 { reason: "entry_code" }` only once every other check passes (otherwise the usual 404). New nullable
+      `app_sessions.entry_code`. `EntryCodeTests` (18).
+- [ ] Each group's end time (`endsAt`) on `GET /me/sessions` and the nearby list, for the card's time and the map chip.
 - [ ] Invite links for groups that work outside the region (e.g. `dotwatchr.app/g/<slug>`), opening the join sheet
       with the code field; joined from home shows the card on the main screen on the day.
-- [ ] Group chip on the map showing the active group(s), time left, and Leave.
+
+**Android** (part 1 is **#388**, not merged, not tried on a device)
+
+- [x] Read the account's `features` (sign-in, register, `GET /me`); `repository.hasFeature("groups")`.
+- [x] Join from a tile without switching the tracking target (no consent screen, no tracking in the session).
+- [x] Entry code: "· Code needed" on the tile, code field on the join sheet, wrong-code message.
+- [x] Group wording on the join sheet ("Join group").
+- [x] Join before Go: "You're in" card on the start screen with Leave (no time yet: needs `endsAt`).
+- [x] Keep group memberships on relaunch (`decideRestore` `keepMemberships`).
+- [ ] Join while out: "‹ Home" on the Go map, "You're out · Back to the map" tile on the start screen, back to the map
+      after joining.
+- [ ] Group chip on the Go map: name, time left, Leave.
+- [ ] "Join and Go now" on the join sheet.
+- [ ] Organiser: set the entry code in the create dialog, and see or change it on their session's card.
+- [ ] Invite-code join and the organiser's own session follow the groups flow too.
 - [ ] Start screen: Go and "Who can see me" replace the four cards (Private / Crew / Group / Race). Coordinate with
       the `android-start-screen-design` branch.
-- [ ] Android: `./gradlew :app:compileDebugKotlin` before pushing.
+- [ ] Before pushing: `cd android && ./gradlew :app:compileDebugKotlin :app:testDebugUnitTest`.
+
+**iOS** (not started)
+
+- [ ] Everything in the Android list above. iOS doesn't read `features` yet either.
 
 ### Step 3 — Groups as their own thing; rules; events as run slices
 
