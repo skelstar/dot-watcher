@@ -157,6 +157,13 @@ public partial class SessionStore(string connectionString) : IDisposable
             """;
         addNearbyColumns.ExecuteNonQuery();
 
+        // Groups entry code (see .ai/plans/go-and-groups.md, step 2). Nullable and additive like the
+        // nearby columns; an older build never reads it, and never lists coded sessions (it can't send
+        // a code). Only ever returned to the session's owner.
+        using var addEntryCode = conn.CreateCommand();
+        addEntryCode.CommandText = "ALTER TABLE app_sessions ADD COLUMN IF NOT EXISTS entry_code TEXT;";
+        addEntryCode.ExecuteNonQuery();
+
         // Crew (see .ai/plans/crew-management.md). Every foreign key cascades on purpose: Staging
         // and Production share this database, and a Production build that predates crew still does
         // a plain DELETE FROM users when someone deletes their account. With a non-cascading FK that
@@ -626,7 +633,7 @@ public partial class SessionStore(string connectionString) : IDisposable
 
     public SessionMembership CreateSessionForUser(
         string userId, string displayName, string? requestedName = null, int? maxLengthHours = null,
-        NearbySettings? nearby = null)
+        NearbySettings? nearby = null, string? entryCode = null)
     {
         // A nearby session's title is public text and keeps its case; the legacy name is upper-cased.
         // Neither is the invite code, which is always generated below.
@@ -642,10 +649,11 @@ public partial class SessionStore(string connectionString) : IDisposable
         using var sessionCmd = conn.CreateCommand();
         sessionCmd.CommandText = """
             INSERT INTO app_sessions (id, session_name, invite_code, owner_user_id, created_at, max_length_hours,
-                                      nearby, nearby_radius_m, anchor_lat, anchor_lon, anchor_accuracy_m)
+                                      nearby, nearby_radius_m, anchor_lat, anchor_lon, anchor_accuracy_m, entry_code)
             VALUES (@sessionId, @sessionName, @inviteCode, @ownerUserId, @createdAt, @maxLengthHours,
-                    @nearby, @radius, @anchorLat, @anchorLon, @anchorAccuracy)
+                    @nearby, @radius, @anchorLat, @anchorLon, @anchorAccuracy, @entryCode)
             """;
+        sessionCmd.Parameters.AddWithValue("@entryCode", NpgsqlTypes.NpgsqlDbType.Text, (object?)entryCode ?? DBNull.Value);
         sessionCmd.Parameters.AddWithValue("@nearby", nearby is not null);
         sessionCmd.Parameters.AddWithValue("@radius", nearby is null ? DBNull.Value : (short)nearby.RadiusMeters);
         sessionCmd.Parameters.AddWithValue("@anchorLat", nearby is null ? DBNull.Value : nearby.Latitude);
@@ -808,8 +816,10 @@ public partial class SessionStore(string connectionString) : IDisposable
     /// or blocked with its organiser, and the caller is inside its radius (see
     /// <see cref="NearbyJoin.IsWithinRadius"/>). The exact distance stays server-side.
     /// </summary>
+    /// <para><paramref name="includeCoded"/> is whether the caller can enter an entry code (the "groups"
+    /// feature); without it, sessions that ask for one are left out, since the caller couldn't join.</para>
     public IReadOnlyList<NearbySessionMatch> FindNearbySessions(
-        string userId, double latitude, double longitude, double? accuracy, DateTimeOffset now)
+        string userId, double latitude, double longitude, double? accuracy, DateTimeOffset now, bool includeCoded = false)
     {
         // A cheap latitude band so we don't measure every nearby session on earth: the largest radius
         // (500 m) plus the forgiven accuracy (2 x 50 m) is about 0.0054 degrees of latitude.
@@ -819,11 +829,13 @@ public partial class SessionStore(string connectionString) : IDisposable
         using var cmd = conn.CreateCommand();
         cmd.CommandText = """
             SELECT s.id, s.session_name, owner.display_name, s.nearby_radius_m,
-                   s.anchor_lat, s.anchor_lon, s.anchor_accuracy_m, s.created_at, s.max_length_hours
+                   s.anchor_lat, s.anchor_lon, s.anchor_accuracy_m, s.created_at, s.max_length_hours,
+                   s.entry_code IS NOT NULL
             FROM app_sessions s
             JOIN session_members owner ON owner.session_id = s.id AND owner.user_id = s.owner_user_id
             WHERE s.nearby
               AND s.archived_at IS NULL
+              AND (@includeCoded OR s.entry_code IS NULL)
               AND s.anchor_lat BETWEEN @minLat AND @maxLat
               AND NOT EXISTS (
                   SELECT 1 FROM session_members me
@@ -836,6 +848,7 @@ public partial class SessionStore(string connectionString) : IDisposable
               )
             """;
         cmd.Parameters.AddWithValue("@userId", userId);
+        cmd.Parameters.AddWithValue("@includeCoded", includeCoded);
         cmd.Parameters.AddWithValue("@minLat", latitude - LatitudeBand);
         cmd.Parameters.AddWithValue("@maxLat", latitude + LatitudeBand);
 
@@ -853,7 +866,7 @@ public partial class SessionStore(string connectionString) : IDisposable
             if (!NearbyJoin.IsWithinRadius(distance, radius, accuracy, anchorAccuracy))
                 continue;
 
-            matches.Add(new NearbySessionMatch(reader.GetString(0), reader.GetString(1), reader.GetString(2), distance));
+            matches.Add(new NearbySessionMatch(reader.GetString(0), reader.GetString(1), reader.GetString(2), distance, reader.GetBoolean(9)));
         }
 
         return matches.OrderBy(m => m.DistanceMeters).Take(NearbyJoin.MaxListed).ToList();
@@ -863,46 +876,106 @@ public partial class SessionStore(string connectionString) : IDisposable
     /// Joins a nearby session as a runner. The server decides: the caller must be inside the session's
     /// radius right now (same rule as the list). Returns null for every refusal - unknown, not nearby,
     /// switched off, ended, blocked, too far - so a caller can't tell which and can't probe ids.
+    /// The one exception is the entry code: when every other check passes and the code is missing or
+    /// wrong, the result says <c>WrongCode</c>, so the app can ask for it. That tells the caller nothing
+    /// the tile in front of them didn't already.
     /// </summary>
-    public SessionMembership? JoinNearbySession(
+    public NearbyJoinResult JoinNearbySession(
         string sessionId, string userId, string displayName,
-        double latitude, double longitude, double? accuracy, DateTimeOffset now)
+        double latitude, double longitude, double? accuracy, DateTimeOffset now, string? entryCode = null)
     {
         using var conn = Connect();
         using var lookup = conn.CreateCommand();
         lookup.CommandText = """
             SELECT invite_code, owner_user_id, nearby_radius_m, anchor_lat, anchor_lon, anchor_accuracy_m,
-                   created_at, max_length_hours
+                   created_at, max_length_hours, entry_code
             FROM app_sessions
             WHERE id = @sessionId AND nearby AND archived_at IS NULL AND anchor_lat IS NOT NULL
             """;
         lookup.Parameters.AddWithValue("@sessionId", sessionId);
 
+        var refused = new NearbyJoinResult(null);
         string inviteCode, ownerUserId;
+        string? storedCode;
         using (var reader = lookup.ExecuteReader())
         {
             if (!reader.Read())
-                return null;
+                return refused;
 
             var maxLengthHours = reader.IsDBNull(7) ? DefaultMaxLengthHours : reader.GetInt16(7);
             if (DateTimeOffset.Parse(reader.GetString(6)).AddHours(maxLengthHours) <= now)
-                return null;
+                return refused;
 
             var radius = reader.IsDBNull(2) ? NearbyJoin.DefaultRadiusMeters : reader.GetInt16(2);
             double? anchorAccuracy = reader.IsDBNull(5) ? null : reader.GetFloat(5);
             var distance = GeoMath.DistanceMeters(latitude, longitude, reader.GetDouble(3), reader.GetDouble(4));
             if (!NearbyJoin.IsWithinRadius(distance, radius, accuracy, anchorAccuracy))
-                return null;
+                return refused;
 
             inviteCode = reader.GetString(0);
             ownerUserId = reader.GetString(1);
+            storedCode = reader.IsDBNull(8) ? null : reader.GetString(8);
         }
 
         if (AreBlocked(conn, ownerUserId, userId))
-            return null;
+            return refused;
+
+        // Last, so a wrong code is only ever reported to someone who could otherwise join.
+        if (!EntryCode.Matches(storedCode, entryCode))
+            return new NearbyJoinResult(null, WrongCode: true);
 
         UpsertMembership(conn, sessionId, userId, "runner", displayName, now.ToString("O"));
-        return GetMembership(conn, sessionId, userId, inviteCode);
+        return new NearbyJoinResult(GetMembership(conn, sessionId, userId, inviteCode));
+    }
+
+    /// <summary>
+    /// The owner reads their group's entry code. Anyone else, an unknown id or the casual session all
+    /// report NotOwner, so ids can't be probed. An ended session still answers (the code is history).
+    /// </summary>
+    public (EntryCodeOutcome Outcome, string? Code) GetEntryCode(string sessionId, string userId)
+    {
+        if (IsCasualSession(sessionId))
+            return (EntryCodeOutcome.NotOwner, null);
+
+        using var conn = Connect();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT owner_user_id, entry_code FROM app_sessions WHERE id = @sessionId";
+        cmd.Parameters.AddWithValue("@sessionId", sessionId);
+        using var reader = cmd.ExecuteReader();
+        if (!reader.Read() || reader.GetString(0) != userId)
+            return (EntryCodeOutcome.NotOwner, null);
+
+        return (EntryCodeOutcome.Ok, reader.IsDBNull(1) ? null : reader.GetString(1));
+    }
+
+    /// <summary>
+    /// The owner sets, changes or (with null) clears their group's entry code. People already in stay
+    /// in; only joins from now on need the new code. Same NotOwner rule as <see cref="GetEntryCode"/>;
+    /// an ended session can't be changed.
+    /// </summary>
+    public EntryCodeOutcome SetEntryCode(string sessionId, string userId, string? code)
+    {
+        if (IsCasualSession(sessionId))
+            return EntryCodeOutcome.NotOwner;
+
+        using var conn = Connect();
+        using (var read = conn.CreateCommand())
+        {
+            read.CommandText = "SELECT owner_user_id, archived_at FROM app_sessions WHERE id = @sessionId";
+            read.Parameters.AddWithValue("@sessionId", sessionId);
+            using var reader = read.ExecuteReader();
+            if (!reader.Read() || reader.GetString(0) != userId)
+                return EntryCodeOutcome.NotOwner;
+            if (!reader.IsDBNull(1))
+                return EntryCodeOutcome.Archived;
+        }
+
+        using var update = conn.CreateCommand();
+        update.CommandText = "UPDATE app_sessions SET entry_code = @code WHERE id = @sessionId";
+        update.Parameters.AddWithValue("@code", NpgsqlTypes.NpgsqlDbType.Text, (object?)code ?? DBNull.Value);
+        update.Parameters.AddWithValue("@sessionId", sessionId);
+        update.ExecuteNonQuery();
+        return EntryCodeOutcome.Ok;
     }
 
     public (SessionMembership? Membership, bool Archived, bool Blocked) JoinSessionByInvite(string inviteCode, string userId, string displayName, string role = "viewer")

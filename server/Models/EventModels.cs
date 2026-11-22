@@ -8,7 +8,9 @@ namespace DotWatcher.Server;
 /// is set when the entry is a session people nearby can join (see .ai/plans/nearby-join.md); it is
 /// absent on the placeholder, which can't be joined. <c>Organiser</c> is the organiser's display name (their
 /// initials, by design), which newer apps draw as a small dot after "Organised by"; <c>Subtitle</c> still
-/// carries "Organised by …" as text for builds that don't know the field.
+/// carries "Organised by …" as text for builds that don't know the field. <c>NeedsCode</c> is true when
+/// joining needs the organiser's entry code (see .ai/plans/go-and-groups.md); it is only ever sent to
+/// accounts with the "groups" feature, and left out (null) otherwise.
 /// </summary>
 public record NearbyEvent(
     string Id,
@@ -16,9 +18,11 @@ public record NearbyEvent(
     string Title,
     string Subtitle,
     string? SessionId = null,
-    string? Organiser = null
+    string? Organiser = null,
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    bool? NeedsCode = null
 );
 
 /// <summary>A joinable nearby session as found by the store. Distance is the real figure; the
 /// controller rounds it before it reaches a client.</summary>
-public record NearbySessionMatch(string SessionId, string Title, string OrganiserName, double DistanceMeters);
+public record NearbySessionMatch(string SessionId, string Title, string OrganiserName, double DistanceMeters, bool NeedsCode = false);

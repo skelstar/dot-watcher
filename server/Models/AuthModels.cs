@@ -63,7 +63,10 @@ public record CreateSessionRequest(
     int? NearbyRadiusMeters = null,
     double? Latitude = null,
     double? Longitude = null,
-    double? Accuracy = null
+    double? Accuracy = null,
+    // Groups (see .ai/plans/go-and-groups.md): 4-8 letters or digits; nearby sessions only, and only
+    // for accounts with the "groups" feature.
+    string? EntryCode = null
 );
 
 /// <summary>The organiser's Ping: a fresh fix sets the meeting point; Enabled/RadiusMeters change the nearby setting.</summary>
@@ -80,7 +83,9 @@ public record JoinNearbyRequest(
     double? Latitude = null,
     double? Longitude = null,
     double? Accuracy = null,
-    string? DisplayName = null
+    string? DisplayName = null,
+    // The organiser's entry code, when the tile said one is needed. Case and spaces don't matter.
+    string? EntryCode = null
 );
 
 /// <summary>Admin/ops: creates a session owned by an existing account, for callers (e.g. the admin

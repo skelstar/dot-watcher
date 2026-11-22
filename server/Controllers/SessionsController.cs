@@ -99,13 +99,83 @@ public class SessionsController(
         if (request.MaxLengthHours is int maxLengthHours && (maxLengthHours < 1 || maxLengthHours > 240))
             return BadRequest(new { error = "Max length must be between 1 and 240 hours." });
 
+        string? entryCode = null;
+        if (request.EntryCode is not null)
+        {
+            if (!features.IsOnFor(user.UserId, Features.Groups))
+                return BadRequest(new { error = "Entry codes aren't available right now." });
+
+            if (nearby is null)
+                return BadRequest(new { error = "An entry code needs a session people nearby can join." });
+
+            entryCode = EntryCode.Normalize(request.EntryCode);
+            if (entryCode is null)
+                return BadRequest(new { error = $"Entry code must be {EntryCode.MinLength}-{EntryCode.MaxLength} letters or numbers." });
+        }
+
         // One active session per organiser. Best-effort: Staging and Production share a database and
         // an older Production build can still create a second session.
         if (store.FindActiveOwnedSessionId(user.UserId, timeProvider.GetUtcNow()) is { } activeSessionId)
             return Conflict(new { error = "You already have an active session. End it to create another.", sessionId = activeSessionId });
 
-        var membership = store.CreateSessionForUser(user.UserId, displayName, request.SessionName, request.MaxLengthHours, nearby);
+        var membership = store.CreateSessionForUser(user.UserId, displayName, request.SessionName, request.MaxLengthHours, nearby, entryCode);
         return Ok(membership);
+    }
+
+    /// <summary>
+    /// Owner only. The group's entry code (see .ai/plans/go-and-groups.md), or null when it has none.
+    /// 404 without the "groups" feature, so the endpoint looks absent.
+    /// </summary>
+    [HttpGet("/sessions/{sessionId}/entry-code")]
+    [ProducesResponseType(typeof(EntryCodeStatus), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public IActionResult GetEntryCode(string sessionId)
+    {
+        if (!userAuth.TryAuthenticate(Request, out var user))
+            return Unauthorized();
+
+        if (!features.IsOnFor(user.UserId, Features.Groups))
+            return NotFound();
+
+        var (outcome, code) = store.GetEntryCode(sessionId, user.UserId);
+        return outcome == EntryCodeOutcome.Ok ? Ok(new EntryCodeStatus(code)) : StatusCode(StatusCodes.Status403Forbidden);
+    }
+
+    /// <summary>
+    /// Owner only. Sets, changes or (with a null code) clears the group's entry code. People already
+    /// in stay in; only joins from now on need the new code.
+    /// </summary>
+    [HttpPut("/sessions/{sessionId}/entry-code")]
+    [ProducesResponseType(typeof(EntryCodeStatus), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status410Gone)]
+    public IActionResult SetEntryCode(string sessionId, [FromBody] EntryCodeRequest? request)
+    {
+        if (!userAuth.TryAuthenticate(Request, out var user))
+            return Unauthorized();
+
+        if (!features.IsOnFor(user.UserId, Features.Groups))
+            return NotFound();
+
+        string? code = null;
+        if (request?.EntryCode is not null)
+        {
+            code = EntryCode.Normalize(request.EntryCode);
+            if (code is null)
+                return BadRequest(new { error = $"Entry code must be {EntryCode.MinLength}-{EntryCode.MaxLength} letters or numbers." });
+        }
+
+        return store.SetEntryCode(sessionId, user.UserId, code) switch
+        {
+            EntryCodeOutcome.NotOwner => StatusCode(StatusCodes.Status403Forbidden),
+            EntryCodeOutcome.Archived => StatusCode(StatusCodes.Status410Gone, new { error = "This session has ended." }),
+            _ => Ok(new EntryCodeStatus(code)),
+        };
     }
 
     /// <summary>
@@ -268,10 +338,14 @@ public class SessionsController(
         if (displayName.Length is < 1 or > 80)
             return BadRequest(new { error = "Display name must be 1-80 characters." });
 
-        var membership = store.JoinNearbySession(
-            sessionId, user.UserId, displayName, latitude, longitude, request.Accuracy, timeProvider.GetUtcNow());
+        var result = store.JoinNearbySession(
+            sessionId, user.UserId, displayName, latitude, longitude, request.Accuracy, timeProvider.GetUtcNow(), request.EntryCode);
 
-        if (membership is null)
+        // Only reported once everything else would have let the caller in (see JoinNearbySession).
+        if (result.WrongCode)
+            return StatusCode(StatusCodes.Status403Forbidden, new { error = "That code doesn't match. Check with the organiser.", reason = "entry_code" });
+
+        if (result.Membership is not { } membership)
             return NotFound(new { error = "This session isn't available." });
 
         var participants = store.GetSessionRunners(membership.SessionId, user.UserId);
