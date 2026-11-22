@@ -70,12 +70,13 @@ final class CrewOutAlerts {
         UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: id, content: content, trigger: trigger))
     }
 
-    /// "Mia is out", "Mia and Sam are out", "Jo, Mia and Sam are out".
+    /// "DW: Mia has joined", "DW: Mia and Sam have joined", "DW: Jo, Mia and Sam have joined". The "DW:"
+    /// says whose alert it is on a watch, which shows the text but not DotWatcher's icon.
     static func title(for names: [String]) -> String {
         switch names.count {
         case 0: return ""
-        case 1: return "\(names[0]) is out"
-        default: return "\(names.dropLast().joined(separator: ", ")) and \(names[names.count - 1]) are out"
+        case 1: return "DW: \(names[0]) has joined"
+        default: return "DW: \(names.dropLast().joined(separator: ", ")) and \(names[names.count - 1]) have joined"
         }
     }
 }

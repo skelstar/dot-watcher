@@ -1,4 +1,4 @@
-# Crew-out alerts: "Mia is out" while you're on a Go run
+# Crew-out alerts: "DW: Mia has joined" while you're on a Go run
 
 Branches: `crew-out-alerts-ios`, then `crew-out-alerts-android`. Client only: no server change.
 
@@ -37,9 +37,9 @@ receive. The only work is to diff it.
 - **"Newly out":** in this reply, but not in the previous successful one.
 - **Re-alerts:** once per person per 30 minutes. This stops a dot that drops out for a bad-signal stretch and
   comes back from alerting twice.
-- **Shape:** a local notification. Title "Mia is out", body "Started a Go run", default sound. Tapping it opens
+- **Shape:** a local notification. Title "DW: Mia has joined" (the "DW:" names the app on a watch, which shows text but not our icon), body "Started a Go run", default sound. Tapping it opens
   the app on the Go map.
-  - Several crew in one reply give one notification: "Mia and Sam are out".
+  - Several crew in one reply give one notification: "DW: Mia and Sam have joined".
 - **App on screen:** still show it as a banner. The iOS delegate already returns `.banner` for satellite
   alerts, so the same `willPresent` path applies.
 - **Switch:** "Crew alerts" in Settings, on by default. It asks for notification permission the first time you
@@ -80,7 +80,7 @@ receive. The only work is to diff it.
 
 ## Testing
 
-- [ ] Two phones, A and B, crew with each other. A starts Go and locks the phone. B starts Go: A gets "B is out"
+- [ ] Two phones, A and B, crew with each other. A starts Go and locks the phone. B starts Go: A gets "DW: B has joined"
       within one interval.
 - [ ] B stops and restarts within 30 min: no second alert. After 30 min: alert.
 - [ ] B turns off "visible to crew": no alert.
