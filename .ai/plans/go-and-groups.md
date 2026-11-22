@@ -52,8 +52,8 @@ Turning it around, with casual as the base and groups as visibility on top:
    group has a time window. An event's recording is each member's run **cut to that window**, not positions owned by
    the session. See step 3.
 2. **Joining before tracking.** People may want to sign up for a race in advance, and spectators never track.
-   *Answer:* the main-screen tile works with or without tracking, so this is mostly a policy question; mock it up
-   first (step 0b).
+   *Answer:* allowed (option B from mock-up 0b): join from the tile or an invite link at any time, and the group
+   waits for you to press Go. Watch-only spectators come later.
 3. **Passers-by joining a race.** Anyone in the region sees the tile. *Answer:* the organiser can require an entry
    code that only entrants have.
 4. **Privacy.** Group members see you by name at any distance, so the group's rules matter. *Answer:* the rules are
@@ -96,8 +96,16 @@ Turning it around, with casual as the base and groups as visibility on top:
   confirmation, a race number sheet, a club message). That stops someone passing by from tapping the tile and joining
   a race. Without the option, the tile joins with one tap and the consent sheet (fine for an informal group run).
 - **The region check uses the phone's current position, tracking or not.** The main screen already asks for a
-  position to find nearby sessions, so the tile can show before pressing Go. This bears on the joining-before-tracking
-  decision below.
+  position to find nearby sessions, so the tile can show before pressing Go.
+- **You can join before you press Go; the group waits** (option B in mock-up 0b). Join from the tile, or from an
+  invite link anywhere (the entry email the night before), with the entry code if the group asks for one. You are a
+  member straight away but have no dot until you press Go, so nobody in the group sees you until then. The main screen
+  shows "You're in · starts in 25 min" with Leave and Go. The join sheet also offers "Join and Go now". Joining early
+  and never pressing Go is fine: you simply never appear, and membership ends with the group.
+- **Watch-only spectators come later** (option C in mock-up 0b), not in the first version. When they come: no code
+  needed, the spectator sees what an entrant would see under the group's rule, nobody sees them, and the organiser
+  decides whether a group allows watchers. Option A (join only once tracking) was rejected because it blocks race
+  sign-up in advance.
 - **One entry code per group, changeable by the organiser.** Not one per entrant, for now. Changing it doesn't remove
   anyone who already joined.
 - **Strangers see someone in a group as a plain grey dot, with no lock.** Being in a group is no longer special, so
@@ -113,9 +121,6 @@ Turning it around, with casual as the base and groups as visibility on top:
 
 - **Open — name.** "Group members" is the working name for the people a group lets you see. Alternatives to try in the
   mock-ups. It needs to sit next to "crew" without being confused with it.
-- **Open — joining before tracking.** Since the tile is on the main screen and doesn't need tracking, joining before
-  Go comes almost for free. Open: is that allowed, and can you join from an invite link without being in the region
-  (race sign-up the night before, spectators)? Mock it up (step 0b) before deciding.
 
 ---
 
@@ -129,9 +134,10 @@ Turning it around, with casual as the base and groups as visibility on top:
       the wrong-code state; back on the Go map after joining (group chip, time left, Leave); the group ending. Also
       the organiser side: creating a group with a rule, a time limit and "Ask for a code to join", and setting the
       region with Ping.
-- [ ] **0b. Joining before tracking.** Alternatives side by side: (1) not allowed, the tile only joins once you are
-      tracking; (2) join from the tile or an invite link, and the group waits for you to press Go; (3) spectator join
-      (watch the group without tracking). Use it to settle the Open decision.
+- [x] **0b. Joining before tracking.** Done: [`go-and-groups-before-go.html`](../mockups/go-and-groups-before-go.html).
+      Alternatives side by side: (A) not allowed, the tile only joins once you are tracking; (B) join from the tile or
+      an invite link, and the group waits for you to press Go; (C) spectator join (watch the group without tracking).
+      Decided: B now, C later.
 - [ ] Try alternative names for "group members" in both mock-ups.
 
 ### Step 1 — Server: group members count in casual, by the group's rule
@@ -162,6 +168,10 @@ Built from mock-up 0a.
 - [ ] iOS and Android: group tiles on the main screen while in a region; join with the consent sheet (plus the code
       when asked), without switching the tracking target, and back to the Go map if tracking. Invite code join as a
       fallback.
+- [ ] Join before Go (mock-up 0b, option B): the tile joins when not tracking too; the main screen shows a "You're
+      in, not out yet" card (start time, Leave, Go); the join sheet has "Join and Go now".
+- [ ] Invite links for groups that work outside the region (e.g. `dotwatchr.app/g/<slug>`), opening the join sheet
+      with the code field; joined from home shows the card on the main screen on the day.
 - [ ] Group chip on the map showing the active group(s), time left, and Leave.
 - [ ] Start screen: Go and "Who can see me" replace the four cards (Private / Crew / Group / Race). Coordinate with
       the `android-start-screen-design` branch.
@@ -172,8 +182,8 @@ Built from mock-up 0a.
 - [ ] New `groups` table (or extend `app_sessions`): name, owner, invite code, `starts_at`, `ends_at` (required),
       visibility rule (`everyone` / `race`), capture region, entry code hash (nullable), settings (update interval,
       satellite alerts).
-- [ ] `group_members`: group id, user id, display name, role (member / organiser), joined/left. Add spectator if 0b
-      says so.
+- [ ] `group_members`: group id, user id, display name, role (member / organiser), joined/left. Leave room
+      for a later `spectator` role (0b option C) and a per-group "allow watchers" setting.
 - [ ] `CasualVisibility.ForViewer` takes the viewer's groups with their rules and roles, and decides who is named;
       unit tests per rule (Everyone; Race member sees crew and the organiser; Race organiser sees everyone).
 - [ ] Event recording and replay: for each member, positions from their `casual_runs` that fall inside the group

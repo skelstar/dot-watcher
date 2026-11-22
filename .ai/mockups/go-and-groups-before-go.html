@@ -1,0 +1,498 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Join Before Go Mock-up</title>
+<style>
+/* Self-contained mock-up: open in a browser. Nothing here talks to a server. See .ai/plans/go-and-groups.md, step 0b.
+   Styles copied from go-and-groups-join.html (0a) (Coffee Go palette). Use the buttons on the left to jump to a screen,
+   or tap through on the phone. */
+:root{
+  --bg:#f6f7f6; --fg:#1b2321; --muted:#5a6662; --rule:#d9dedb; --accent:#d9480f;
+  --ink:#2c2119; --maroon:#6b1a08; --tan:#b09263; --cream:#f5f0e0; --err:#b3261e;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#121715;--fg:#e6ebe9;--muted:#9aa7a2;--rule:#2e3835;--accent:#ff8a4c}}
+:root[data-theme="dark"]{--bg:#121715;--fg:#e6ebe9;--muted:#9aa7a2;--rule:#2e3835;--accent:#ff8a4c}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif;padding:32px 16px 64px}
+.page{max-width:920px;margin:0 auto}
+h1{margin:0 0 6px;font-size:clamp(1.7rem,5vw,2.2rem);letter-spacing:-.02em;line-height:1.15}
+p{margin:0 0 10px;max-width:62ch}
+code{font-size:.9em}
+.layout{display:flex;flex-wrap:wrap;gap:36px;align-items:flex-start;margin-top:22px}
+.side{flex:1 1 280px;min-width:0}
+.side h2{font-size:1.05rem;margin:16px 0 8px}
+.side h2:first-child{margin-top:0}
+.nav{display:flex;flex-direction:column;gap:6px;margin:0 0 6px}
+.nav button,.terms button{font:inherit;font-size:.92rem;text-align:left;background:none;color:var(--fg);border:1px solid var(--rule);border-radius:10px;padding:8px 12px;cursor:pointer}
+.nav button[aria-current="true"],.terms button[aria-pressed="true"]{border-color:var(--accent);font-weight:700}
+.terms{display:flex;flex-wrap:wrap;gap:6px}
+.caption{font-size:.85rem;color:var(--muted)}
+.caption li{margin-bottom:4px}
+button:focus-visible,input:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+
+/* ---- phone ---- */
+.phone{flex:0 0 auto;width:340px;max-width:100%;height:700px;background:#fff;color:#000;border:8px solid #1c1c1e;border-radius:40px;position:relative;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif}
+.status{position:absolute;top:10px;left:24px;right:24px;display:flex;justify-content:space-between;font-size:12px;font-weight:600;z-index:5}
+.view{position:absolute;inset:0;padding:40px 16px 0;display:none;flex-direction:column}
+.view.on{display:flex}
+:where(.phone) button{font-family:inherit;color:inherit;cursor:pointer}
+.serif{font-family:"Iowan Old Style","Palatino Linotype",Georgia,serif}
+
+/* main screen */
+.logo{font-size:27px;font-weight:700;display:flex;align-items:center;letter-spacing:-.5px;margin-top:8px}
+.avatar{width:32px;height:32px;border-radius:50%;background:#2e7d32;color:#fff;font-size:11px;font-weight:700;display:inline-grid;place-items:center;margin:0 2px}
+.crew{background:#e5e5ea;border-radius:14px;padding:10px 14px;font-weight:600;display:flex;justify-content:space-between;margin:10px 0 4px}
+.crew span{color:#8e8e93;font-weight:400;font-size:12px}
+.homescroll{flex:1;min-height:0;overflow-y:auto;padding-bottom:16px}
+.tile{display:block;width:100%;text-align:left;border:0;padding:14px 16px;margin-top:10px}
+.phone .out{background:var(--ink);color:var(--cream);height:104px;display:flex;flex-direction:column;justify-content:flex-end;border-top:12px solid #2e9e4f;margin-top:14px}
+.out small{letter-spacing:.1em;font-size:9px;text-transform:uppercase;color:#9fd8b0}
+.out b{font-size:26px;line-height:1.1}
+.out span{font-size:12.5px}
+.phone .near{background:var(--maroon);color:var(--cream);border-top:8px solid var(--tan);padding:11px 16px 12px;margin-top:8px;position:relative}
+.near small{letter-spacing:.1em;font-size:9px;text-transform:uppercase;display:block}
+.near b{display:block;font-size:19px;line-height:1.2;padding-right:62px}
+.near span{font-size:12.5px}
+.badge{position:absolute;right:12px;top:12px;border:1.5px solid var(--cream);border-radius:999px;font:700 10px system-ui,sans-serif;letter-spacing:.05em;text-transform:uppercase;padding:2px 8px}
+.badge.joined{background:var(--cream);color:var(--maroon)}
+.phone .card{background:var(--cream);border:2px solid var(--ink);color:var(--ink)}
+.card b{display:block;font-size:20px}
+.sec{letter-spacing:.1em;font-size:10px;text-transform:uppercase;color:#6c6c70;margin:16px 2px 0}
+.why{font-size:12px;color:#6c6c70;margin:6px 2px 0}
+
+/* organiser card */
+.mine{background:var(--cream);border:2px solid var(--ink);border-top:8px solid var(--maroon);color:var(--ink);padding:11px 16px 14px;margin-top:10px}
+.mine small{letter-spacing:.1em;font-size:9px;text-transform:uppercase;display:block;color:#6c6c70}
+.mine b{display:block;font-size:21px;line-height:1.15}
+.mine span{font-size:12.5px;display:block}
+.codebox{display:flex;align-items:center;justify-content:space-between;border:1.5px dashed var(--ink);padding:6px 10px;margin-top:8px;font-size:12.5px}
+.codebox code{font:700 18px ui-monospace,Menlo,monospace;letter-spacing:.15em}
+.codebox button{background:none;border:0;color:#007aff;font-size:12.5px;padding:2px}
+.mbtns{display:flex;gap:8px;margin-top:10px}
+.mbtns button{flex:1;border:2px solid var(--ink);background:transparent;padding:9px;font:700 14px Georgia,serif;color:var(--ink)}
+.mbtns button.pri{background:var(--maroon);border-color:var(--maroon);color:var(--cream)}
+.endlink{background:none;border:0;color:var(--err);font-size:13px;padding:8px 0 0;text-align:left}
+
+/* forms */
+.top{display:flex;justify-content:space-between;align-items:center;margin-top:8px;height:28px}
+.link{background:none;border:0;padding:4px 0;font-size:14px;color:#007aff}
+.bscroll{flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:14px;padding:6px 4px 14px;margin-inline:-4px}
+.bscroll>*{flex:none}
+.btitle{margin:0;font:700 26px Georgia,serif;color:var(--ink);line-height:1.1}
+.bsec{display:flex;flex-direction:column;gap:10px;padding-top:16px;border-top:1px solid #d1d1d6}
+.bsec h4{margin:0;font:700 19px Georgia,serif;color:var(--ink)}
+.hint{margin:0;font-size:12.5px;color:#6c6c70}
+.note{border-left:3px solid var(--tan);padding-left:8px}
+.field{border:2px solid var(--ink);background:var(--cream);border-radius:0;padding:12px;font:600 18px Georgia,serif;width:100%;color:var(--ink)}
+.field::placeholder{color:#a99f8a;font-weight:400}
+.field.code{font:700 22px ui-monospace,Menlo,monospace;letter-spacing:.3em;text-transform:uppercase;text-align:center}
+.field.bad{border-color:var(--err);background:#fdeceb}
+.err{font-size:12.5px;color:var(--err);margin:-4px 0 0;min-height:1em}
+.lbl{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#6c6c70}
+.sug{display:flex;flex-wrap:wrap;gap:6px}
+.pill{border:1.5px solid var(--ink);background:#fff;border-radius:999px;padding:6px 12px;font-size:12.5px}
+.pill[aria-pressed="true"]{background:var(--ink);color:var(--cream)}
+.row{display:flex;justify-content:space-between;align-items:center;padding:6px 0;font-size:13.5px;gap:10px}
+.sw{width:42px;height:25px;border-radius:13px;background:#d1d1d6;border:0;position:relative;flex:none;transition:background .15s}
+.sw::after{content:"";position:absolute;top:2px;left:2px;width:21px;height:21px;border-radius:50%;background:#fff;transition:transform .15s}
+.sw[aria-checked="true"]{background:#34c759}
+.sw[aria-checked="true"]::after{transform:translateX(17px)}
+.dim{opacity:.4;pointer-events:none;filter:grayscale(1)}
+.foot{padding:12px 0 18px}
+.cta{width:100%;border:0;background:var(--maroon);color:var(--cream);padding:14px;font:700 16px Georgia,serif;letter-spacing:.02em}
+.cta:disabled{background:#cfc6bd;color:#fff}
+.opt{display:flex;align-items:center;gap:10px;border:2px solid var(--ink);background:var(--cream);padding:10px 12px;text-align:left;width:100%;color:var(--ink)}
+.opt .t{flex:1}
+.opt b{display:block;font-size:14px}
+.opt small{font-size:11.5px;color:#5c5144;display:block;line-height:1.35}
+.radio{width:18px;height:18px;border-radius:50%;border:2px solid var(--ink);flex:none}
+.opt[aria-pressed="true"]{background:var(--ink);color:var(--cream)}
+.opt[aria-pressed="true"] small{color:#d8ccb2}
+.opt[aria-pressed="true"] .radio{background:var(--tan);border-color:var(--tan);box-shadow:inset 0 0 0 3px var(--ink)}
+
+/* map */
+.map{position:absolute;inset:0;background:#e6eee3}
+.map svg{width:100%;height:100%}
+.maptop{position:absolute;top:36px;left:12px;right:12px;display:flex;justify-content:space-between;align-items:flex-start;gap:8px;z-index:2}
+.chip{background:rgba(255,255,255,.94);border:0;border-radius:14px;padding:6px 10px;font-size:12px;font-weight:600;box-shadow:0 1px 4px rgba(0,0,0,.2)}
+.chip.home{font-size:13px}
+.chip.timer{color:#1d6b35}
+.gchip{position:absolute;top:74px;left:12px;z-index:2;background:var(--maroon);color:var(--cream);border:0;border-top:4px solid var(--tan);padding:6px 12px 7px;text-align:left;box-shadow:0 1px 5px rgba(0,0,0,.3);display:none}
+.gchip.on{display:block}
+.gchip small{display:block;font-size:9px;letter-spacing:.1em;text-transform:uppercase;opacity:.85}
+.gchip b{font:700 15px Georgia,serif}
+.rail{position:absolute;right:12px;top:120px;display:flex;flex-direction:column;gap:10px;z-index:2}
+.rb{width:46px;height:46px;border-radius:50%;border:0;background:rgba(255,255,255,.95);box-shadow:0 1px 5px rgba(0,0,0,.28);font-size:18px;display:grid;place-items:center}
+.rb.ping{background:#2e9e4f;color:#fff;width:58px;height:58px}
+.rb.ping.done{box-shadow:0 0 0 6px rgba(46,158,79,.35)}
+.banner{position:absolute;left:12px;right:12px;bottom:96px;z-index:3;background:#1c1c1e;color:#fff;border-radius:14px;padding:10px 12px;font-size:12.5px;display:none;gap:10px;align-items:flex-start}
+.banner.on{display:flex}
+.banner b{display:block;font-size:13.5px}
+.banner button{background:none;border:0;color:#9ecbff;font-size:12.5px;padding:0;margin-left:auto;flex:none}
+.hold{position:absolute;left:12px;right:12px;bottom:18px;z-index:2;border:0;background:var(--ink);color:var(--cream);padding:14px;font:700 15px Georgia,serif;border-top:4px solid var(--maroon)}
+.legend{position:absolute;left:12px;bottom:68px;z-index:2;display:flex;gap:6px;flex-wrap:wrap;font-size:10.5px}
+.legend span{background:rgba(255,255,255,.92);border-radius:999px;padding:2px 8px;box-shadow:0 1px 3px rgba(0,0,0,.15)}
+
+/* sheets */
+.scrim{position:absolute;inset:0;background:rgba(0,0,0,.35);z-index:8;display:none}
+.scrim.on{display:block}
+.sheet{position:absolute;left:0;right:0;bottom:0;max-height:88%;overflow-y:auto;background:#fff;border-radius:22px 22px 0 0;padding:14px 18px 22px;z-index:9;display:none;flex-direction:column;gap:12px;box-shadow:0 -4px 20px rgba(0,0,0,.25)}
+.sheet.on{display:flex}
+.sheet>*{flex:none}
+.sheet .grab{width:38px;height:4px;border-radius:2px;background:#d1d1d6;align-self:center}
+.sheet h3{margin:0;font:700 22px Georgia,serif;color:var(--ink);line-height:1.15}
+.sheet .meta{font-size:13px;color:#6c6c70;margin-top:-6px}
+.rulechip{align-self:flex-start;background:var(--ink);color:var(--cream);font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;padding:3px 9px;border-radius:999px;margin-top:-4px}
+.info{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
+.info li{border-left:3px solid var(--tan);padding-left:10px;display:flex;flex-direction:column}
+.info b{font-size:13.5px;color:var(--ink)}
+.info span{font-size:12.5px;color:#6c6c70}
+.dng{border:2px solid var(--err);background:#fff;color:var(--err);padding:11px;font-weight:700;width:100%}
+.ghost{background:none;border:0;color:#007aff;font-size:14px;padding:4px}
+.toast{position:absolute;left:50%;bottom:150px;transform:translateX(-50%);background:#1c1c1e;color:#fff;font-size:12px;padding:7px 12px;border-radius:999px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:20;white-space:nowrap}
+.toast.on{opacity:1}
+/* ---- 0b additions ---- */
+.opts{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 4px}
+.opts button{font:inherit;font-size:.9rem;background:none;color:var(--fg);border:1px solid var(--rule);border-radius:999px;padding:6px 12px;cursor:pointer}
+.opts button[aria-pressed="true"]{border-color:var(--accent);background:var(--accent);color:#fff;font-weight:700}
+.optdesc{font-size:.92rem;margin:8px 0 4px}
+.cmp{width:100%;border-collapse:collapse;font-size:.85rem;margin-top:8px}
+.cmp th,.cmp td{border-top:1px solid var(--rule);padding:6px 6px 6px 0;text-align:left;vertical-align:top}
+.cmp th{font-weight:700}
+.cmp td.y{color:#2b8a3e}.cmp td.n{color:var(--err)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .cmp td.y{color:#69db7c}:root:not([data-theme="light"]) .cmp td.n{color:#ff8787}}
+.rec{border-left:4px solid var(--accent);padding:6px 0 6px 12px;margin:14px 0 0;font-size:.92rem}
+.phone .go{background:var(--ink);color:var(--cream);height:104px;display:flex;flex-direction:column;justify-content:flex-end;border-top:12px solid var(--maroon);margin-top:14px}
+.go small{letter-spacing:.1em;font-size:9px;text-transform:uppercase;color:#d8ccb2}
+.go b{font-size:30px;line-height:1.05}
+.go span{font-size:12.5px}
+.inn{background:var(--cream);border:2px solid var(--ink);border-top:8px solid var(--tan);color:var(--ink);padding:11px 16px 14px;margin-top:10px}
+.inn small{letter-spacing:.1em;font-size:9px;text-transform:uppercase;display:block;color:#6c6c70}
+.inn b{display:block;font-size:21px;line-height:1.15}
+.inn span{font-size:12.5px;display:block}
+.inn .waiting{margin-top:8px;font-size:12.5px;border-left:3px solid var(--maroon);padding-left:8px}
+.blocked{background:#fff6e5;border:1.5px solid #e0a43a;padding:9px 11px;font-size:12.5px;color:#5c4210}
+.blocked b{display:block;font-size:13.5px;color:#3d2c0a}
+.two{display:flex;flex-direction:column;gap:8px}
+.alt{width:100%;border:2px solid var(--ink);background:var(--cream);color:var(--ink);padding:12px;font:700 15px Georgia,serif}
+.alt:disabled{opacity:.4}
+.linkbar{background:#f2f2f7;border-radius:10px;padding:8px 10px;font-size:11.5px;color:#3a3a3c;margin-top:4px;display:flex;gap:6px;align-items:center}
+.linkbar code{font-size:11px}
+.done{display:flex;flex-direction:column;align-items:center;text-align:center;gap:10px;padding-top:70px}
+.done .tick{width:64px;height:64px;border-radius:50%;background:#2e9e4f;color:#fff;display:grid;place-items:center;font-size:32px}
+.done h3{font:700 24px Georgia,serif;margin:0;color:var(--ink)}
+.done p{font-size:13.5px;color:#4a4a4f;margin:0;max-width:30ch}
+.watchbar{position:absolute;left:12px;right:12px;bottom:18px;z-index:2;display:flex;gap:8px}
+.watchbar button{flex:1;border:2px solid var(--ink);background:#fff;color:var(--ink);padding:12px;font:700 14px Georgia,serif}
+.watchbar button.pri{background:var(--ink);color:var(--cream)}
+</style>
+</head>
+<body>
+<div class="page">
+  <h1>Joining before you press Go</h1>
+  <p>Mock-up 0b for <code>.ai/plans/go-and-groups.md</code>. The group tile shows on the main screen whether or not you're tracking (mock-up 0a), so the question is what tapping it does when you're <i>not</i> out yet, and whether an invite link can join you from somewhere else. Three options; pick one, then step through its screens.</p>
+  <div class="layout">
+    <div class="side">
+      <h2>Option</h2>
+      <div class="opts" id="opts">
+        <button data-opt="a">A. Go first</button>
+        <button data-opt="b">B. Join early</button>
+        <button data-opt="c">C. Watch only</button>
+      </div>
+      <p class="optdesc" id="optdesc"></p>
+      <h2>Screens</h2>
+      <div class="nav" id="nav"></div>
+
+      <h2>Compared</h2>
+      <table class="cmp">
+        <tr><th></th><th>A</th><th>B</th><th>C</th></tr>
+        <tr><td>Sign up for a race the night before</td><td class="n">No</td><td class="y">Yes, by link</td><td>n/a</td></tr>
+        <tr><td>Pass by, tap the tile, join by mistake</td><td class="y">Can't: you must be out</td><td>Code stops races; open groups need one tap</td><td class="y">Watching shares nothing</td></tr>
+        <tr><td>Spectators (supporters at the finish)</td><td class="n">No</td><td class="n">No (they'd have to track)</td><td class="y">Yes</td></tr>
+        <tr><td>New states to explain</td><td class="y">None</td><td>"In, not out yet"</td><td>"Watching"</td></tr>
+        <tr><td>Who sees a joined person who isn't tracking</td><td>n/a</td><td>Nobody (no dot until Go)</td><td>Nobody (watchers never appear)</td></tr>
+        <tr><td>Server work beyond 0a</td><td class="y">None</td><td>Invite links outside the region</td><td>Spectator role, read-only view</td></tr>
+      </table>
+      <p class="rec"><b>Recommendation: B now, C later.</b> B is what races need (sign up the night before, arrive, press Go) and costs one extra state on the main screen. A is simplest but blocks race sign-up. C is the same join flow with a second button, and can be added once groups exist; it's a separate decision for the organiser (allow watchers or not).</p>
+      <p class="caption">The race code is <b>K7Q4</b> throughout, as in 0a. Hold buttons are single taps here.</p>
+    </div>
+
+    <div class="phone" id="phone">
+      <div class="status"><span id="clock">9:02</span><span>●●● ▮</span></div>
+
+      <!-- shared: main screen, not tracking, tiles near you -->
+      <section class="view" id="v-home">
+        <div class="logo">d<span class="avatar">AK</span>t-watchr</div>
+        <div class="crew">Your crew <span>2 people ›</span></div>
+        <div class="homescroll">
+          <button class="tile go serif" data-act="go"><small>Not tracking</small><b>Go</b><span>Hold to start</span></button>
+          <div class="sec">Groups near you</div>
+          <button class="tile near serif" data-act="tile"><small>About 200 m · starts 9:30</small><b>Hunua 50k</b><span class="badge">Code</span><span>Race · by Kiri · 14 in</span></button>
+          <p class="why">Shown because you're inside the group's area.</p>
+        </div>
+      </section>
+
+      <!-- B: main screen after joining early -->
+      <section class="view" id="v-homeIn">
+        <div class="logo">d<span class="avatar">AK</span>t-watchr</div>
+        <div class="crew">Your crew <span>2 people ›</span></div>
+        <div class="homescroll">
+          <div class="inn serif">
+            <small id="inEyebrow">You're in · starts 9:30</small>
+            <b>Hunua 50k</b>
+            <span>Race · by Kiri · ends 12:00</span>
+            <p class="waiting" id="inWaiting">Not out yet. Nobody in the group can see you until you press Go.</p>
+            <button class="endlink" data-act="leave">Leave group</button>
+          </div>
+          <button class="tile go serif" data-act="goJoined"><small>Not tracking</small><b>Go</b><span>Hold to start · you'll appear in Hunua 50k</span></button>
+        </div>
+      </section>
+
+      <!-- B: opened from an invite link the night before, outside the region -->
+      <section class="view" id="v-link">
+        <div class="top"><span></span><button class="link" data-act="home">Close</button></div>
+        <div class="bscroll">
+          <div class="linkbar">🔗 <code>dotwatchr.app/g/hunua50k</code> · from the entry email</div>
+          <h2 class="btitle">Hunua 50k</h2>
+          <span class="rulechip">Race</span>
+          <p class="hint" style="font-size:13.5px">Organised by Kiri · Sat 9:30 to 12:00 · Hunua Falls car park</p>
+          <ul class="info">
+            <li><b>You're not there yet</b><span>That's fine. Join now and the group waits for you. You'll show up when you press Go on the day.</span></li>
+            <li><b>Who sees you by name</b><span>Your crew and Kiri (organiser), once you're out.</span></li>
+            <li><b>Until</b><span>The group ends Saturday 12:00.</span></li>
+          </ul>
+          <div>
+            <div class="lbl" style="margin-bottom:6px">Entry code</div>
+            <input class="field code" id="l-code" maxlength="6" placeholder="····" autocomplete="off" aria-label="Entry code" aria-describedby="l-err">
+            <p class="err" id="l-err" style="margin-top:6px"></p>
+          </div>
+        </div>
+        <div class="foot"><button class="cta" id="l-go" disabled>Join with code</button></div>
+      </section>
+
+      <section class="view" id="v-linkDone">
+        <div class="done">
+          <div class="tick">✓</div>
+          <h3>You're in Hunua 50k</h3>
+          <p>It'll be on your main screen. On Saturday, press Go at the start and Kiri and your crew will see you.</p>
+          <button class="cta" style="margin-top:20px" data-act="toMorning">See the main screen on Saturday</button>
+        </div>
+      </section>
+
+      <!-- shared: Go map after joining (runner) -->
+      <section class="view" id="v-map" style="padding:0">
+        <div class="map">
+          <svg viewBox="0 0 320 680" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+            <rect width="320" height="680" fill="#e6eee3"/>
+            <path d="M-10 540 C 60 480, 110 440, 160 370 S 250 230, 340 170" fill="none" stroke="#c9d6c4" stroke-width="22" stroke-linecap="round"/>
+            <circle cx="150" cy="385" r="7" fill="#9aa19d" stroke="#fff" stroke-width="2"/><circle cx="110" cy="400" r="7" fill="#9aa19d" stroke="#fff" stroke-width="2"/><circle cx="185" cy="300" r="7" fill="#9aa19d" stroke="#fff" stroke-width="2"/><circle cx="90" cy="460" r="7" fill="#9aa19d" stroke="#fff" stroke-width="2"/>
+            <g transform="translate(205 250)"><circle r="15" fill="none" stroke="#2c2119" stroke-width="3"/><circle r="11" fill="#e8590c" stroke="#fff" stroke-width="2"/><text y="3.5" text-anchor="middle" font-size="8" font-weight="700" fill="#fff" font-family="system-ui">PR</text></g>
+            <g transform="translate(170 340)"><circle r="15" fill="none" stroke="#6b1a08" stroke-width="3"/><circle r="11" fill="#6a4c93" stroke="#fff" stroke-width="2"/><text y="3.5" text-anchor="middle" font-size="8" font-weight="700" fill="#fff" font-family="system-ui">KI</text></g>
+            <g id="selfDot" transform="translate(130 425)"><circle r="11" fill="#2e7d32" stroke="#fff" stroke-width="2"/><text y="3.5" text-anchor="middle" font-size="8" font-weight="700" fill="#fff" font-family="system-ui">AK</text></g>
+          </svg>
+        </div>
+        <div class="maptop">
+          <button class="chip home" data-act="home">‹ Home</button>
+          <span class="chip timer">● Out · 0:01</span>
+        </div>
+        <div class="gchip on"><small>Race · 2 h 58 m left</small><b>Hunua 50k</b></div>
+        <div class="legend"><span>Dark ring: crew</span><span>Red ring: organiser</span><span>Grey: others nearby</span></div>
+        <button class="hold">Hold to stop</button>
+      </section>
+
+      <!-- C: watching map -->
+      <section class="view" id="v-watch" style="padding:0">
+        <div class="map">
+          <svg viewBox="0 0 320 680" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+            <rect width="320" height="680" fill="#e6eee3"/>
+            <path d="M-10 540 C 60 480, 110 440, 160 370 S 250 230, 340 170" fill="none" stroke="#c9d6c4" stroke-width="22" stroke-linecap="round"/>
+            <circle cx="150" cy="385" r="7" fill="#9aa19d" stroke="#fff" stroke-width="2"/><circle cx="110" cy="400" r="7" fill="#9aa19d" stroke="#fff" stroke-width="2"/><circle cx="90" cy="460" r="7" fill="#9aa19d" stroke="#fff" stroke-width="2"/>
+            <g transform="translate(205 250)"><circle r="15" fill="none" stroke="#2c2119" stroke-width="3"/><circle r="11" fill="#e8590c" stroke="#fff" stroke-width="2"/><text y="3.5" text-anchor="middle" font-size="8" font-weight="700" fill="#fff" font-family="system-ui">PR</text></g>
+            <g transform="translate(205 224)"><rect x="-17" y="-9" width="34" height="16" rx="8" fill="#fff" stroke="#2c2119" stroke-width="1.2"/><text y="3" text-anchor="middle" font-size="9" font-weight="600" fill="#1b2321" font-family="system-ui">Pita</text></g>
+            <g transform="translate(170 340)"><circle r="15" fill="none" stroke="#6b1a08" stroke-width="3"/><circle r="11" fill="#6a4c93" stroke="#fff" stroke-width="2"/><text y="3.5" text-anchor="middle" font-size="8" font-weight="700" fill="#fff" font-family="system-ui">KI</text></g>
+            <g transform="translate(255 480)"><path d="M0 8 C -9 -5, -10 -11, -10 -14 a10 10 0 1 1 20 0 c0 3 -1 9 -10 22z" fill="#2c2119"/><circle cy="-14" r="3.4" fill="#f5f0e0"/></g>
+            <g transform="translate(255 458)"><rect x="-24" y="-9" width="48" height="16" rx="8" fill="#fff"/><text y="3" text-anchor="middle" font-size="9" font-weight="600" fill="#1b2321" font-family="system-ui">You (not out)</text></g>
+          </svg>
+        </div>
+        <div class="maptop">
+          <button class="chip home" data-act="home">‹ Home</button>
+          <span class="chip">👁 Watching</span>
+        </div>
+        <div class="gchip on"><small>Race · watching · nobody sees you</small><b>Hunua 50k</b></div>
+        <div class="legend"><span>Dark ring: your crew</span><span>Red ring: organiser</span><span>Grey: other entrants</span></div>
+        <div class="watchbar"><button data-act="stopWatch">Stop watching</button><button class="pri" data-act="watchToGo">I'm running too</button></div>
+      </section>
+
+      <!-- sheets -->
+      <div class="scrim" id="scrim"></div>
+
+      <!-- A: tap tile while not tracking -->
+      <div class="sheet" id="sh-a">
+        <div class="grab"></div>
+        <h3>Hunua 50k</h3>
+        <div class="meta">Organised by Kiri · about 200 m away · 14 in</div>
+        <span class="rulechip">Race</span>
+        <div class="blocked"><b>Press Go to join</b>Groups are for people who are out. Enter the code, then hold Go: you start tracking and join in one step.</div>
+        <ul class="info">
+          <li><b>Who sees you by name</b><span>Your crew and Kiri (organiser).</span></li>
+          <li><b>Until</b><span>The group ends at 12:00.</span></li>
+        </ul>
+        <div>
+          <div class="lbl" style="margin-bottom:6px">Entry code</div>
+          <input class="field code" data-code maxlength="6" placeholder="····" autocomplete="off" aria-label="Entry code">
+          <p class="err" style="margin-top:6px"></p>
+        </div>
+        <button class="cta" data-submit="goJoin" disabled>Hold to Go and join</button>
+        <button class="ghost" data-close>Not now</button>
+      </div>
+
+      <!-- A: invite link, not near -->
+      <div class="sheet" id="sh-aLink">
+        <div class="grab"></div>
+        <div class="linkbar">🔗 <code>dotwatchr.app/g/hunua50k</code> · from the entry email</div>
+        <h3>Hunua 50k</h3>
+        <div class="meta">Organised by Kiri · Sat 9:30 to 12:00</div>
+        <div class="blocked"><b>You can join at the start</b>Open the app at Hunua Falls car park on Saturday and press Go. The group will be on your main screen.</div>
+        <button class="alt" data-act="remind">Remind me on Saturday</button>
+        <button class="ghost" data-close>OK</button>
+      </div>
+
+      <!-- B: tap tile while not tracking -->
+      <div class="sheet" id="sh-b">
+        <div class="grab"></div>
+        <h3>Hunua 50k</h3>
+        <div class="meta">Organised by Kiri · about 200 m away · 14 in</div>
+        <span class="rulechip">Race</span>
+        <div class="lbl">Before you join</div>
+        <ul class="info">
+          <li><b>You're not out yet</b><span>Join now and the group waits. Nobody sees you until you press Go.</span></li>
+          <li><b>Who sees you by name</b><span>Your crew and Kiri (organiser), once you're out.</span></li>
+          <li><b>Until</b><span>The group ends at 12:00. Leave at any time.</span></li>
+        </ul>
+        <div>
+          <div class="lbl" style="margin-bottom:6px">Entry code</div>
+          <input class="field code" data-code maxlength="6" placeholder="····" autocomplete="off" aria-label="Entry code">
+          <p class="err" style="margin-top:6px"></p>
+        </div>
+        <div class="two">
+          <button class="cta" data-submit="joinWait" disabled>Join</button>
+          <button class="alt" data-submit="goJoin" disabled>Join and Go now</button>
+        </div>
+        <button class="ghost" data-close>Not now</button>
+      </div>
+
+      <!-- C: tap tile while not tracking -->
+      <div class="sheet" id="sh-c">
+        <div class="grab"></div>
+        <h3>Hunua 50k</h3>
+        <div class="meta">Organised by Kiri · about 200 m away · 14 in · watchers allowed</div>
+        <span class="rulechip">Race</span>
+        <ul class="info">
+          <li><b>Running?</b><span>Enter the code and join. You'll be seen by your crew and Kiri once you press Go.</span></li>
+          <li><b>Supporting?</b><span>Watch instead. You see what an entrant sees: your crew and Kiri by name, other entrants as grey dots. Nobody sees you, and you don't need a code.</span></li>
+        </ul>
+        <div>
+          <div class="lbl" style="margin-bottom:6px">Entry code (to run)</div>
+          <input class="field code" data-code maxlength="6" placeholder="····" autocomplete="off" aria-label="Entry code">
+          <p class="err" style="margin-top:6px"></p>
+        </div>
+        <div class="two">
+          <button class="cta" data-submit="joinWait" disabled>Join to run</button>
+          <button class="alt" data-act="watch">Just watch</button>
+        </div>
+        <button class="ghost" data-close>Not now</button>
+      </div>
+
+      <div class="toast" id="toast" role="status"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  var q=function(s,r){return (r||document).querySelector(s)}, qa=function(s,r){return Array.prototype.slice.call((r||document).querySelectorAll(s))};
+  var CODE='K7Q4';
+  var OPTS={
+    a:{desc:'<b>Go first.</b> You can only join while you’re out. Tapping the tile before Go offers “Go and join” in one step. An invite link can’t join you from home.',
+       screens:[['home','1. Main screen, not out'],['a-sheet','2. Tap tile: Go and join'],['map','3. Out and in the group'],['a-link','4. Invite link at home: not yet']]},
+    b:{desc:'<b>Join early, the group waits.</b> Join from the tile or an invite link whenever you like. You’re a member straight away but have no dot until you press Go.',
+       screens:[['home','1. Main screen, not out'],['b-sheet','2. Tap tile: join now'],['b-in','3. Main screen: in, not out yet'],['b-link','4. Invite link the night before'],['b-linkDone','5. Joined from home'],['b-morning','6. Saturday: in, starts soon'],['map','7. Press Go: you appear']]},
+    c:{desc:'<b>Watch only.</b> Adds a second way in for people who won’t track: they see the group as an entrant would, and nobody sees them. Combines with A or B for runners; shown here with B.',
+       screens:[['home','1. Main screen, not out'],['c-sheet','2. Tap tile: run or watch'],['c-watch','3. Watching the race'],['map','4. Changed mind: running too']]}
+  };
+  var S={opt:'b',screen:'home'};
+  var toastT;
+  function toast(t){var e=q('#toast');e.textContent=t;e.classList.add('on');clearTimeout(toastT);toastT=setTimeout(function(){e.classList.remove('on')},1900)}
+  function closeSheets(){qa('.sheet').forEach(function(s){s.classList.remove('on')});q('#scrim').classList.remove('on')}
+  function openSheet(id){closeSheets();var s=q('#sh-'+id);qa('[data-code]',s).forEach(function(i){i.value='';i.classList.remove('bad')});qa('.err',s).forEach(function(e){e.textContent=''});qa('[data-submit]',s).forEach(function(b){b.disabled=true});s.classList.add('on');q('#scrim').classList.add('on')}
+  function view(id){qa('.view').forEach(function(v){v.classList.toggle('on',v.id==='v-'+id)})}
+  function renderSide(){
+    qa('#opts button').forEach(function(b){b.setAttribute('aria-pressed',String(b.dataset.opt===S.opt))});
+    q('#optdesc').innerHTML=OPTS[S.opt].desc;
+    var n=q('#nav');n.innerHTML='';
+    OPTS[S.opt].screens.forEach(function(s){var b=document.createElement('button');b.textContent=s[1];b.dataset.screen=s[0];b.setAttribute('aria-current',String(s[0]===S.screen));b.onclick=function(){show(s[0])};n.appendChild(b)});
+  }
+  function show(id){
+    S.screen=id;closeSheets();q('#clock').textContent='9:02';
+    switch(id){
+      case 'home': view('home');break;
+      case 'a-sheet': view('home');openSheet('a');break;
+      case 'a-link': q('#clock').textContent='20:14';view('home');openSheet('aLink');break;
+      case 'b-sheet': view('home');openSheet('b');break;
+      case 'c-sheet': view('home');openSheet('c');break;
+      case 'b-in': q('#inEyebrow').textContent='You’re in · starts 9:30';q('#inWaiting').textContent='Not out yet. Nobody in the group can see you until you press Go.';view('homeIn');break;
+      case 'b-link': q('#clock').textContent='20:14';q('#l-code').value='';q('#l-err').textContent='';q('#l-go').disabled=true;view('link');break;
+      case 'b-linkDone': q('#clock').textContent='20:15';view('linkDone');break;
+      case 'b-morning': q('#clock').textContent='9:05';q('#inEyebrow').textContent='You’re in · starts in 25 min';q('#inWaiting').textContent='Not out yet. Press Go at the start and Kiri and your crew will see you.';view('homeIn');break;
+      case 'c-watch': view('watch');break;
+      case 'map': view('map');break;
+    }
+    renderSide();
+  }
+  function check(input){
+    var ok=input.value.trim().toUpperCase()===CODE;
+    input.classList.toggle('bad',!ok);
+    var e=input.parentNode.querySelector('.err');if(e)e.textContent=ok?'':'That code doesn’t match. Check with the organiser.';
+    return ok;
+  }
+  // code inputs enable their sheet's submit buttons
+  document.addEventListener('input',function(e){
+    var i=e.target;if(!i.matches('[data-code],#l-code'))return;
+    i.value=i.value.toUpperCase().replace(/[^A-Z0-9]/g,'');i.classList.remove('bad');
+    var host=i.closest('.sheet,.view');var er=host.querySelector('.err');if(er)er.textContent='';
+    qa('[data-submit],#l-go',host).forEach(function(b){b.disabled=i.value.length<4});
+  });
+  document.addEventListener('click',function(e){
+    var t=e.target.closest('[data-act],[data-submit],[data-close],[data-opt]');if(!t)return;
+    if(t.dataset.opt){S.opt=t.dataset.opt;show('home');return}
+    if(t.hasAttribute('data-close')){closeSheets();return}
+    if(t.dataset.submit){
+      var inp=t.closest('.sheet').querySelector('[data-code]');if(!check(inp))return;
+      if(t.dataset.submit==='goJoin'){show('map');toast('Out and in Hunua 50k')}
+      else{show('b-in');toast('Joined Hunua 50k · not out yet')}
+      return;
+    }
+    switch(t.dataset.act){
+      case 'tile': show(S.opt+'-sheet');break;
+      case 'go': show('map');toast(S.opt==='a'?'Out · tap Home to see groups near you':'Out');break;
+      case 'goJoined': show('map');toast('Out · you’re showing in Hunua 50k');break;
+      case 'leave': show('home');toast('Left Hunua 50k');break;
+      case 'home': show('home');break;
+      case 'remind': closeSheets();toast('We’ll remind you Saturday 9:00');break;
+      case 'toMorning': show('b-morning');break;
+      case 'watch': show('c-watch');toast('Watching Hunua 50k');break;
+      case 'stopWatch': show('home');toast('Stopped watching');break;
+      case 'watchToGo': closeSheets();view('home');openSheet('b');S.screen='b-sheet';renderSide();toast('Enter the code to run');break;
+    }
+  });
+  q('#l-go').onclick=function(){if(!check(q('#l-code')))return;show('b-linkDone')};
+  q('#scrim').onclick=closeSheets;
+  var h=(location.hash||'').slice(1).split('/');
+  if(OPTS[h[0]])S.opt=h[0];
+  show(h[1]||'home');
+})();
+</script>
+</body>
+</html>
