@@ -419,6 +419,10 @@ struct CasualHost: ViewModifier {
             .onChange(of: location.isTracking) { _, isTracking in
                 if !isTracking { casual.isMapPresented = false }
             }
+            // A tap on a crew-out alert ("DW: Mia has joined") opens the Go map, if the Go run is still going.
+            .onReceive(NotificationCenter.default.publisher(for: .crewOutAlertTapped)) { _ in
+                if location.isCasualTracking { casual.isMapPresented = true }
+            }
     }
 }
 

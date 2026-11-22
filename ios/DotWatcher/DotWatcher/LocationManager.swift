@@ -286,6 +286,15 @@ final class LocationManager {
         didSet { UserDefaults.standard.set(satelliteAlertSound, forKey: "satelliteAlertSound") }
     }
 
+    /// Local notification when someone in your crew starts a Go run while you're on one (on by default).
+    /// See `CrewOutAlerts`.
+    var crewOutAlertsEnabled: Bool = UserDefaults.standard.object(forKey: "crewOutAlertsEnabled") as? Bool ?? true {
+        didSet {
+            UserDefaults.standard.set(crewOutAlertsEnabled, forKey: "crewOutAlertsEnabled")
+            if crewOutAlertsEnabled { SatelliteAlerts.shared.requestAuthorizationIfNeeded() }
+        }
+    }
+
     /// Normal post cadence. While `isUltraConstrained` (on satellite), a much longer cadence is
     /// used instead — satellite acquisition/registration is slower than a normal handshake, and
     /// Direct-to-Cell is designed for infrequent, small-payload bursts rather than a steady
@@ -830,7 +839,11 @@ final class LocationManager {
     }
 
     private func beginTracking(duration: TimeInterval?) {
-        if satelliteAlertsEnabled { SatelliteAlerts.shared.requestAuthorizationIfNeeded() }
+        if satelliteAlertsEnabled || (casualSessionId != nil && crewOutAlertsEnabled) {
+            SatelliteAlerts.shared.requestAuthorizationIfNeeded()
+        }
+        // Every run starts with a silent baseline: crew already out when you start don't alert.
+        CrewOutAlerts.shared.reset()
 
         clManager.requestAlwaysAuthorization()
         clManager.startUpdatingLocation()
@@ -879,6 +892,7 @@ final class LocationManager {
                 Task { try? await sendEmpty(path: "/casual/stop", method: "POST", token: token) }
             }
         }
+        CrewOutAlerts.shared.reset()
         trackingTask?.cancel()
         trackingTask = nil
         cancelRetries()
@@ -1232,6 +1246,10 @@ final class LocationManager {
                 mergedPositions[position.runnerName] = position
             }
             runnerPositions = Array(mergedPositions.values)
+            // A Go post's reply lists you and your crew who are out: alert on anyone newly out.
+            if targetSessionId == casualSessionId {
+                CrewOutAlerts.shared.handle(positions: posted, enabled: crewOutAlertsEnabled)
+            }
             return .success
         } catch {
             guard postTargetId == targetSessionId, !Task.isCancelled else { return .superseded }
@@ -1594,6 +1612,10 @@ struct RunnerPositionResponse: Codable {
     let longitude: Double
     let heading: Double?
     let timestamp: String
+    /// Only in a Go post's reply (a `CasualLiveResponse`): in a named session rather than on a Go run,
+    /// and this account's own position. Nil in a session reply.
+    let inSession: Bool?
+    let isSelf: Bool?
 
     var parsedTimestamp: Date? {
         positionTimestampParser.date(from: timestamp)
