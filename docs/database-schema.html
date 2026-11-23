@@ -444,6 +444,12 @@
             <td class="col-constraints"></td>
             <td class="col-notes">Accuracy of the meeting-point fix; used to forgive GPS error when judging the radius</td>
           </tr>
+          <tr>
+            <td class="col-name">entry_code</td>
+            <td class="col-type">TEXT</td>
+            <td class="col-constraints"></td>
+            <td class="col-notes">Groups (see <code>.ai/plans/go-and-groups.md</code>). Optional code people nearby must type to join: 4&ndash;8 letters or digits, stored upper-cased as typed, not hashed, because it's a shared code the organiser gives entrants, not a password. Only ever returned to the owner. Null means anyone nearby can join</td>
+          </tr>
         </tbody>
       </table>
       <div class="indexes">
