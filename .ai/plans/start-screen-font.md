@@ -1,4 +1,4 @@
-# Start screen font: Space Mono signs, Red Hat Text for the rest
+# Start screen font: Space Mono signs, Red Hat Text for the rest of the app
 
 Branches: `start-screen-font-ios`, then `start-screen-font-android`. Client only.
 
@@ -26,8 +26,10 @@ Chosen on the font canvas (Design artifact "Main screen font comparison"):
 - **Only a title that won't fit shrinks.** The other tiles never change. A title that overflows its line steps down 2 pt
   at a time, with the last step 2% tighter (letter spacing −0.02em). The smallest size is **24 pt**. If it still
   doesn't fit at 24, it is cut with "…" on one line.
-- **Red Hat Text replaces the system font** (SF Pro / Roboto) for the start screen's other text: the wordmark, the
-  crew row and the "Mia is out running now" line. See open question 1 for the rest of the app.
+- **Red Hat Text replaces the system font** (SF Pro / Roboto) across the whole app (decided 2026-11-24): the start
+  screen's wordmark and crew row, maps, sheets, Settings, everything except the signs. Code-style text (invite code
+  boxes, the crew code, the watch link) stays in the system monospaced font for now. System alerts and dialogs
+  can't be restyled and stay in the system font.
 - **Macrons:** Space Mono has them (checked on the canvas with "ōtaki"), so no fallback font is needed.
 - **Layout is separate.** The current list and Tiles B both use the same sign views, so this work doesn't wait for the
   layout decision. The fitting measures the real space, not a fixed character count, so it holds in either layout.
@@ -55,22 +57,28 @@ is only cut.
 
 ## iOS
 
-- [ ] Fonts:
-  - Add `SpaceMono-Regular.ttf` (static) and `RedHatText.ttf` (variable, `wght` axis) to the app target.
-  - Add the OFL licences to `ios/third_party`.
-  - Remove `EBGaramond.ttf` and its licence once nothing uses them.
-- [ ] `SignFont` (LandingSigns.swift): register Space Mono and return it at Regular. No `wght` variation (static
-      font). Keep the `UIFontMetrics` scaling and the system fallback (`.monospaced` design).
-- [ ] `UiFont`: a small helper for Red Hat Text (weights 400–700 through `wght`). Use it for the wordmark, the crew
-      row and the crew-out line on the start screen.
-- [ ] `SignContent`: subtitle 13 pt Regular (and "Organised by"). Titles `lowercased()` on screen. Check that
-      `IconPlacement` still lines the icon up from the new font's metrics; it reads them, so it should.
-- [ ] `FittedSignTitle`: a small view or helper that picks the step.
-  - Measure with `NSString.size(withAttributes:)` on the scaled `UIFont`.
-  - Learn the available width with a `GeometryReader` or `onGeometryChange` on the title's row.
-  - At the last step: `.lineLimit(1)`, `.truncationMode(.tail)` and `.tracking(-0.02 × size)`.
-- [ ] Check without tests (there's no iOS test target): a debug preview with the five canvas names (15, 17, 19, 21 and 22
-      characters) and the largest Dynamic Type size.
+- [x] Fonts:
+  - Add `SpaceMono-Regular.ttf` and four static Red Hat Text weights (`RedHatText-Regular`, `-Medium`, `-SemiBold`,
+    `-Bold`, from RedHatOfficial/RedHatFont) to the app target, listed under `UIAppFonts` in Info.plist.
+  - Add the OFL licences to `ios/third_party`. Remove `EBGaramond.ttf` and its licence.
+- [x] `SignFont` (LandingSigns.swift): Space Mono Regular, still scaled with `UIFontMetrics`; falls back to the system
+      monospaced font.
+- [x] `AppFont.swift`:
+  - `Font.app(_ style, weight:)` (Red Hat Text at a text style's size, scaled with Dynamic Type) and
+    `Font.app(size:weight:)` (fixed size, like `.system(size:)`). Each weight is asked for by PostScript name, so
+    the right face is certain.
+  - Every `.font(.headline)`, `.font(.system(size:weight:))` and `.fontWeight(...)` in the app moved to these.
+  - `.font(.app(.body))` on the root view, so unstyled text (buttons, toggles, form rows, sheets) is Red Hat Text.
+  - Navigation bar titles and bar buttons through `UINavigationBar` / `UIBarButtonItem` appearance (fonts only).
+- [x] `SignContent`: subtitle and "Organised by" 13 pt; titles shown lowercase.
+- [x] `FittedSignTitle`: `ViewThatFits` over the title at each step (its size down to 24 by 2, the 24 step at −0.02em,
+      one line), and a last candidate at 24 that is cut with "…". It measures at the current text size and tile
+      width, so no counting.
+- [ ] Check on a device or simulator:
+  - The icons still line up. `IconPlacement` reads the new font's metrics, but uses the title's base size even when
+    the title has shrunk.
+  - Bold and semibold text shows the right faces.
+  - The five canvas names at default and largest Dynamic Type.
 
 ## Android
 
@@ -90,7 +98,8 @@ is only cut.
   - Measure with `rememberTextMeasurer()` inside `BoxWithConstraints`.
   - Pick the step by the same rule.
   - At the last step: `maxLines = 1`, `overflow = TextOverflow.Ellipsis` and `letterSpacing = (-0.02).em`.
-- [ ] Start screen's wordmark, crew row and crew-out line to `UiFontFamily`.
+- [ ] Red Hat Text across the app: set `UiFontFamily` as the default in the app's `Typography` (every Material text
+      style) so all screens pick it up, plus any hard-coded `FontFamily.Default` / `TextStyle(fontSize = ...)` uses.
 - [ ] Unit test the step choice with a fake measurer: the five canvas names; a text-size scale of 1.3 pushes
       "rogaine - hutt park" to the cut.
 
@@ -110,6 +119,5 @@ is only cut.
 
 ## Open questions
 
-1. Red Hat Text beyond the start screen (maps, sheets, Settings)? Proposed: start screen only now, the rest as its
-   own change, so this one stays small and easy to review.
+1. ~~Red Hat Text beyond the start screen?~~ Yes, the whole app (2026-11-24).
 2. Does the help page or web client need the new font for consistency? Proposed: no, not now.

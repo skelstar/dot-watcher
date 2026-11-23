@@ -314,7 +314,7 @@ struct TrackingMapScreen<RailTop: View, RailMiddle: View, BottomLeading: View>: 
             }
         } label: {
             Image(systemName: "point.topleft.down.to.point.bottomright.curvepath")
-                .font(.system(size: 18, weight: .semibold))
+                .font(.app(size: 18, weight: .semibold))
                 .foregroundStyle(.black)
                 .frame(width: 44, height: 44)
                 .background(Color.white.opacity(0.85), in: Circle())
@@ -438,7 +438,7 @@ private struct NearbyDotView: View {
             .frame(width: size, height: size)
             .overlay {
                 Text("?")
-                    .font(.system(size: size * 0.4, weight: .bold))
+                    .font(.app(size: size * 0.4, weight: .bold))
                     .foregroundStyle(.white)
             }
             .overlay(alignment: .bottomTrailing) {
@@ -452,7 +452,7 @@ private struct NearbyDotView: View {
 private struct LockBadge: View {
     var body: some View {
         Image(systemName: "lock.fill")
-            .font(.system(size: 8, weight: .bold))
+            .font(.app(size: 8, weight: .bold))
             .foregroundStyle(.white)
             .frame(width: 16, height: 16)
             .background(Circle().fill(Color(red: 0x14 / 255, green: 0x18 / 255, blue: 0x1F / 255)))

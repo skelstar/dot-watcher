@@ -83,7 +83,7 @@ private struct SheetCloseButton: ViewModifier {
         content.overlay(alignment: .topTrailing) {
             Button { dismiss() } label: {
                 Image(systemName: "xmark.circle.fill")
-                    .font(.system(size: 28))
+                    .font(.app(size: 28))
                     .symbolRenderingMode(.hierarchical)
                     .foregroundStyle(.secondary)
             }
@@ -126,7 +126,7 @@ struct BeforeYouGoSheet: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 Text("Before you go")
-                    .font(.largeTitle.bold())
+                    .font(.app(.largeTitle, weight: .bold))
 
                 VStack(alignment: .leading, spacing: 14) {
                     sectionHeader("WHO CAN SEE ME")
@@ -142,7 +142,7 @@ struct BeforeYouGoSheet: View {
                     }
                     .pickerStyle(.segmented)
                     Text("Sharing always stops on its own. This picks how soon. Hold the red Stop to end it sooner.")
-                        .font(.caption)
+                        .font(.app(.caption))
                         .foregroundStyle(.secondary)
                 }
 
@@ -150,7 +150,7 @@ struct BeforeYouGoSheet: View {
                     onGo(duration)
                 } label: {
                     Text("Go")
-                        .font(.headline)
+                        .font(.app(.headline))
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.borderedProminent)
@@ -164,7 +164,7 @@ struct BeforeYouGoSheet: View {
 
     private func sectionHeader(_ text: String) -> some View {
         Text(text)
-            .font(.caption.weight(.semibold))
+            .font(.app(.caption, weight: .semibold))
             .foregroundStyle(.secondary)
     }
 }
@@ -185,7 +185,7 @@ struct WhoCanSeeMeSheet: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 Text("Who can see me")
-                    .font(.largeTitle.bold())
+                    .font(.app(.largeTitle, weight: .bold))
                 WhoCanSeeMeControls(casual: casual, me: me, crew: crew)
             }
             .padding(24)
@@ -228,31 +228,31 @@ struct WhoCanSeeMeControls: View {
                 get: { casual.visibleToCrew },
                 set: { visible in Task { await casual.setVisibleToCrew(visible) } }
             )) {
-                Text("My crew").font(.headline)
+                Text("My crew").font(.app(.headline))
             }
             Toggle(isOn: Binding(
                 get: { casual.visibleToNonCrew },
                 set: { visible in Task { await casual.setVisibleToNonCrew(visible) } }
             )) {
-                Text("Show me to people nearby").font(.headline)
+                Text("Show me to people nearby").font(.app(.headline))
             }
             Toggle(isOn: Binding(
                 get: { casual.hideStartArea },
                 set: { hide in Task { await casual.setHideStartArea(hide) } }
             )) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Hide my start area").font(.headline)
+                    Text("Hide my start area").font(.app(.headline))
                     if startExposed {
                         Label {
                             Text("Anyone nearby can see where you set off from, which may be your home.")
                         } icon: {
                             Image(systemName: "exclamationmark.circle.fill")
                         }
-                        .font(.subheadline)
+                        .font(.app(.subheadline))
                         .foregroundStyle(.orange)
                     } else {
                         Text(Self.hideStartAreaCaption)
-                            .font(.subheadline).foregroundStyle(.secondary)
+                            .font(.app(.subheadline)).foregroundStyle(.secondary)
                     }
                 }
             }
@@ -263,13 +263,13 @@ struct WhoCanSeeMeControls: View {
                 } icon: {
                     Image(systemName: "eye.slash")
                 }
-                .font(.footnote)
+                .font(.app(.footnote))
                 .padding(12)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(Color.secondary.opacity(0.12), in: RoundedRectangle(cornerRadius: 10))
             }
             if let error = casual.settingsError {
-                Text(error).font(.footnote).foregroundStyle(.red)
+                Text(error).font(.app(.footnote)).foregroundStyle(.red)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -361,7 +361,7 @@ struct WhoSeesYouStrip: View {
             .overlay {
                 if let label {
                     Text(label)
-                        .font(.system(size: (label == "?" ? 11 : 9) * scale, weight: .bold))
+                        .font(.app(size: (label == "?" ? 11 : 9) * scale, weight: .bold))
                         .foregroundStyle(.white)
                 }
             }
@@ -606,9 +606,9 @@ private struct ShareRunSheet: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 Text("Share your run")
-                    .font(.largeTitle.bold())
+                    .font(.app(.largeTitle, weight: .bold))
                 Text("Send this link to someone who isn't in the app. They watch your position on a web map. No app and no account.")
-                    .font(.subheadline)
+                    .font(.app(.subheadline))
                     .foregroundStyle(.secondary)
 
                 if let url = casual.watchLink {
@@ -617,7 +617,7 @@ private struct ShareRunSheet: View {
                         .textSelection(.enabled)
                     ShareLink(item: url, message: Text("Watch my run on Dot Watcher")) {
                         Text("Share link")
-                            .font(.headline)
+                            .font(.app(.headline))
                             .frame(maxWidth: .infinity)
                     }
                     .buttonStyle(.borderedProminent)
@@ -634,7 +634,7 @@ private struct ShareRunSheet: View {
                     .buttonStyle(.bordered)
                     .controlSize(.large)
                 } else if let error = casual.watchLinkError {
-                    Text(error).font(.subheadline.weight(.semibold)).foregroundStyle(.red)
+                    Text(error).font(.app(.subheadline, weight: .semibold)).foregroundStyle(.red)
                     Button { Task { await casual.makeWatchLink() } } label: {
                         Text("Try again").frame(maxWidth: .infinity)
                     }
@@ -665,8 +665,8 @@ private struct ShareRunSheet: View {
 
     private func point(_ title: String, _ body: String) -> some View {
         VStack(alignment: .leading, spacing: 2) {
-            Text(title).font(.headline)
-            Text(body).font(.subheadline).foregroundStyle(.secondary)
+            Text(title).font(.app(.headline))
+            Text(body).font(.app(.subheadline)).foregroundStyle(.secondary)
         }
     }
 }
@@ -688,7 +688,7 @@ struct ExtendSheet: View {
                 Text(remaining >= 3600
                      ? "Auto-stops in \(Int(remaining / 3600)) hr \(Int(remaining / 60) % 60) min"
                      : "Auto-stops in \(Int((remaining + 59) / 60)) min")
-                    .font(.headline)
+                    .font(.app(.headline))
             }
             HStack(spacing: 8) {
                 ForEach(Self.options, id: \.0) { option in
@@ -700,7 +700,7 @@ struct ExtendSheet: View {
                 }
             }
             Button(action: onStopNow) {
-                Text("Stop now").fontWeight(.bold).frame(maxWidth: .infinity)
+                Text("Stop now").font(.app(.body, weight: .bold)).frame(maxWidth: .infinity)
             }
             .buttonStyle(.borderedProminent)
             .tint(stopRed)

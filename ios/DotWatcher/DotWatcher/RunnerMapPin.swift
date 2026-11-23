@@ -105,7 +105,7 @@ private struct SleepPin: View {
             .shadow(color: .black.opacity(0.45), radius: 2, y: 1)
             .overlay {
                 Text(RunnerCircle.initials(for: name))
-                    .font(.system(size: size * 0.3, weight: .bold))
+                    .font(.app(size: size * 0.3, weight: .bold))
                     .foregroundStyle(color)
             }
             .scaleEffect(isPulsing ? 1.05 : 0.85)

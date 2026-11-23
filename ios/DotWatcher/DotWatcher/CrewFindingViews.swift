@@ -15,9 +15,9 @@ struct FindNewCrewSection: View {
             )) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Find new crew")
-                        .font(.headline)
+                        .font(.app(.headline))
                     subtitle
-                        .font(.caption)
+                        .font(.app(.caption))
                         .foregroundStyle(.secondary)
                 }
             }
@@ -26,7 +26,7 @@ struct FindNewCrewSection: View {
             if let note = finding.note {
                 VStack(alignment: .leading, spacing: 6) {
                     Text(note)
-                        .font(.footnote)
+                        .font(.app(.footnote))
                         .foregroundStyle(.secondary)
                     if finding.needsSettings {
                         Button("Open Settings") {
@@ -34,14 +34,14 @@ struct FindNewCrewSection: View {
                                 UIApplication.shared.open(url)
                             }
                         }
-                        .font(.footnote.weight(.semibold))
+                        .font(.app(.footnote, weight: .semibold))
                     }
                 }
             }
 
             if let added = finding.justAdded {
                 Label("\(added.label) is in your crew", systemImage: "checkmark.circle.fill")
-                    .font(.subheadline.weight(.semibold))
+                    .font(.app(.subheadline, weight: .semibold))
                     .foregroundStyle(.green)
                     .task(id: added.userId) {
                         try? await Task.sleep(for: .seconds(4))
@@ -93,13 +93,13 @@ struct FindNewCrewSection: View {
             ProgressView()
                 .controlSize(.small)
             Text("Looking for people within 50 m")
-                .font(.footnote)
+                .font(.app(.footnote))
                 .foregroundStyle(.secondary)
         }
 
         if finding.people.isEmpty {
             Text("No one yet. Ask them to turn on Find new crew too.")
-                .font(.footnote)
+                .font(.app(.footnote))
                 .foregroundStyle(.secondary)
         } else {
             VStack(spacing: 0) {
@@ -113,12 +113,12 @@ struct FindNewCrewSection: View {
 
         if let error = finding.acceptError {
             Text(error)
-                .font(.footnote)
+                .font(.app(.footnote))
                 .foregroundStyle(.red)
         }
 
         Text("Only people who also have this on. They see your name too, nothing else.")
-            .font(.caption)
+            .font(.app(.caption))
             .foregroundStyle(.secondary)
     }
 
@@ -135,10 +135,10 @@ struct FindNewCrewSection: View {
                 )
                 VStack(alignment: .leading, spacing: 1) {
                     Text(person.label)
-                        .font(.subheadline.weight(.semibold))
+                        .font(.app(.subheadline, weight: .semibold))
                         .foregroundStyle(.primary)
                     Text(status(person))
-                        .font(.caption)
+                        .font(.app(.caption))
                         .foregroundStyle(.secondary)
                 }
                 Spacer(minLength: 8)
@@ -150,7 +150,7 @@ struct FindNewCrewSection: View {
                     badge("Waiting", color: .orange)
                 } else {
                     Image(systemName: "chevron.right")
-                        .font(.footnote.weight(.semibold))
+                        .font(.app(.footnote, weight: .semibold))
                         .foregroundStyle(.tertiary)
                 }
             }
@@ -172,7 +172,7 @@ struct FindNewCrewSection: View {
 
     private func badge(_ text: String, color: Color) -> some View {
         Text(text)
-            .font(.caption2.weight(.bold))
+            .font(.app(.caption2, weight: .bold))
             .foregroundStyle(color)
             .padding(.horizontal, 6)
             .padding(.vertical, 2)
