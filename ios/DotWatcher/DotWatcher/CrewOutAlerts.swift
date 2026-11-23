@@ -83,5 +83,5 @@ final class CrewOutAlerts {
 
 extension Notification.Name {
     /// Posted when someone taps a crew-out alert; the Go map opens if a Go run is still being tracked.
-    nonisolated static let crewOutAlertTapped =Notification.Name("crewOutAlertTapped")
+    nonisolated static let crewOutAlertTapped = Notification.Name("crewOutAlertTapped")
 }
