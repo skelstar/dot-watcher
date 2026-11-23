@@ -96,7 +96,7 @@ struct SettingsSheet: View {
             }
             if let testNotificationSentAt {
                 Text("Sent at \(testNotificationSentAt, style: .time) — lock the phone now.")
-                    .font(.caption)
+                    .font(.app(.caption))
                     .foregroundStyle(.secondary)
             }
             postStatsRow("Normal posts", location.normalPostStats)
@@ -118,7 +118,7 @@ struct SettingsSheet: View {
         VStack(alignment: .leading, spacing: 2) {
             Text(title)
             Text("\(stats.successes)/\(stats.attempts) sent · \(stats.transportFailures) failed · \(stats.retries) retries · \(stats.pathTriggers) path triggers")
-                .font(.caption)
+                .font(.app(.caption))
                 .foregroundStyle(.secondary)
         }
     }

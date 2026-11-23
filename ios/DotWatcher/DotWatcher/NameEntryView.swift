@@ -11,7 +11,7 @@ struct NameEntryView: View {
             RunnerCircle(name: name, size: 72)
 
             Text(isFirstLaunch ? "Welcome to DotWatcher" : "Enter Initials")
-                .font(.title2.bold())
+                .font(.app(.title2, weight: .bold))
 
             Text("Enter your 2-letter initials so others can find you on the map.")
                 .multilineTextAlignment(.center)

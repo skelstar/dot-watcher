@@ -64,7 +64,7 @@ struct AuthSheet: View {
                         if mode == .register {
                             VStack(alignment: .leading, spacing: 6) {
                                 Text("Your initials")
-                                    .font(.caption)
+                                    .font(.app(.caption))
                                     .foregroundStyle(.secondary)
                                 CodeBoxField(text: $displayName, length: 2, lettersOnly: true)
                             }
@@ -78,12 +78,12 @@ struct AuthSheet: View {
                         if mode == .register {
                             if !username.isEmpty && !isValidEmail {
                                 Text("Enter a valid email address")
-                                    .font(.caption)
+                                    .font(.app(.caption))
                                     .foregroundStyle(.orange)
                             }
                         } else if !username.isEmpty && username.count < 3 {
                             Text("Username must be at least 3 characters")
-                                .font(.caption)
+                                .font(.app(.caption))
                                 .foregroundStyle(.orange)
                         }
                         SecureField("Password", text: $password)

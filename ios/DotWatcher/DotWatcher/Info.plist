@@ -45,6 +45,14 @@
 	<string>DotWatcher uses your location in the background to track your position during a run. This includes while the phone is locked in order for you to find your group.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>DotWatcher uses your location to track your position during a run, and to find runs starting near you while the app is open.</string>
+	<key>UIAppFonts</key>
+	<array>
+		<string>RedHatText-Regular.ttf</string>
+		<string>RedHatText-Medium.ttf</string>
+		<string>RedHatText-SemiBold.ttf</string>
+		<string>RedHatText-Bold.ttf</string>
+		<string>SpaceMono-Regular.ttf</string>
+	</array>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

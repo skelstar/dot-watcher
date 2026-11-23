@@ -16,12 +16,12 @@ struct HelpView: View {
                 ForEach(Array(rawMarkdown.components(separatedBy: "\n").enumerated()), id: \.offset) { _, line in
                     if line.hasPrefix("# ") {
                         Text(String(line.dropFirst(2)))
-                            .font(.title2.bold())
+                            .font(.app(.title2, weight: .bold))
                             .padding(.top, 8)
                             .padding(.bottom, 4)
                     } else if line.hasPrefix("## ") {
                         Text(String(line.dropFirst(3)))
-                            .font(.headline)
+                            .font(.app(.headline))
                             .underline()
                             .padding(.top, 16)
                             .padding(.bottom, 2)

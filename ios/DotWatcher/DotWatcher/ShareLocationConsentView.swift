@@ -18,14 +18,14 @@ struct ShareLocationConsentView: View {
     var body: some View {
         VStack(spacing: 24) {
             Image(systemName: "location.circle.fill")
-                .font(.system(size: 44))
+                .font(.app(size: 44))
                 .foregroundStyle(Color.accentColor)
                 .frame(width: 64, height: 64)
                 .background(Color.accentColor.opacity(0.16), in: RoundedRectangle(cornerRadius: 16))
 
             VStack(spacing: 8) {
                 Text("Share your location?")
-                    .font(.title2.bold())
+                    .font(.app(.title2, weight: .bold))
                 Text("Other members of “\(sessionName)” will be able to see your live position on the map while tracking is active. You can stop at any time.")
                     .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
@@ -34,8 +34,7 @@ struct ShareLocationConsentView: View {
 
             VStack(alignment: .leading, spacing: 8) {
                 Text("Share for")
-                    .font(.caption)
-                    .fontWeight(.semibold)
+                    .font(.app(.caption, weight: .semibold))
                     .foregroundStyle(.secondary)
                 Picker("Share for", selection: $selectedDuration) {
                     ForEach(LocationManager.trackingDurationOptions, id: \.self) { duration in
@@ -44,7 +43,7 @@ struct ShareLocationConsentView: View {
                 }
                 .pickerStyle(.segmented)
                 Text("Sharing always stops on its own — this just picks how soon, up to 24 hours.")
-                    .font(.caption2)
+                    .font(.app(.caption2))
                     .foregroundStyle(.tertiary)
             }
 
@@ -72,7 +71,7 @@ struct ShareLocationConsentView: View {
             }
 
             Text("If you don't share, you'll leave the session. You can rejoin with the invite code.")
-                .font(.caption)
+                .font(.app(.caption))
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.tertiary)
         }

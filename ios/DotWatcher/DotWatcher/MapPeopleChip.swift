@@ -73,7 +73,7 @@ struct MapPeopleChip: View {
                 }
                 if extra > 0 {
                     Text("+\(extra)")
-                        .font(.system(size: 12.5, weight: .bold))
+                        .font(.app(size: 12.5, weight: .bold))
                         .foregroundStyle(.black.opacity(0.6))
                         .padding(.leading, overlapped ? 14 : 6)
                 }
@@ -111,7 +111,7 @@ struct MapPeopleSheet: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("\(title) · \(people.count)")
-                .font(.title3.bold())
+                .font(.app(.title3, weight: .bold))
                 .padding(.horizontal, 20)
                 .padding(.top, 20)
             ScrollView {
@@ -129,8 +129,8 @@ struct MapPeopleSheet: View {
                                     isDisconnected: age == nil || (age ?? 0) > MapPinAge.disconnectedAfter
                                 )
                                 VStack(alignment: .leading, spacing: 2) {
-                                    Text(person.id == me ? "You" : person.id).font(.headline)
-                                    Text(Self.statusText(age)).font(.caption).foregroundStyle(.secondary)
+                                    Text(person.id == me ? "You" : person.id).font(.app(.headline))
+                                    Text(Self.statusText(age)).font(.app(.caption)).foregroundStyle(.secondary)
                                 }
                                 Spacer()
                                 if followedId == person.id {
