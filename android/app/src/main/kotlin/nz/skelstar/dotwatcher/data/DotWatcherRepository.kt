@@ -214,7 +214,8 @@ class DotWatcherRepository(
 
     suspend fun casualStart(): Response<CasualStartResponse> = api.casualStart(bearer(requireToken()))
 
-    suspend fun casualStop(): Response<Unit> = api.casualStop(bearer(requireToken()))
+    suspend fun casualStop(forSession: Boolean = false): Response<Unit> =
+        api.casualStop(bearer(requireToken()), forSession = if (forSession) true else null)
 
     suspend fun casualLive(): Response<CasualLiveResponse> = api.casualLive(bearer(requireToken()))
 

@@ -526,9 +526,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     fun startSharing(membership: SessionMembership, duration: Duration) {
         // The service tracks one thing at a time. Starting a session replaces a casual run, so end
-        // that one properly rather than leaving it open on the server.
+        // that one properly rather than leaving it open on the server. forSession: this isn't the
+        // person pressing Stop, so the session can still show them on their crew's Go map.
         if ((LocationTrackingService.state.value as? TrackingState.Tracking)?.sessionId == CASUAL_SESSION_ID) {
-            viewModelScope.launch { runCatching { repository.casualStop() } }
+            viewModelScope.launch { runCatching { repository.casualStop(forSession = true) } }
         }
         LocationTrackingService.start(getApplication(), membership.sessionId, duration)
         _destination.value = Destination.Map(membership)

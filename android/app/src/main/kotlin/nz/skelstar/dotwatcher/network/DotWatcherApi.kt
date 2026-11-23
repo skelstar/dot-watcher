@@ -561,9 +561,13 @@ interface DotWatcherApi {
         @Header("X-Api-Version") apiVersion: String = API_VERSION,
     ): Response<CasualStartResponse>
 
+    /** [forSession] is true when ending Go because a named session is starting, not because the person
+     *  pressed Stop: the server then lets the session show them on Go with the lock straight away. Null
+     *  leaves the parameter off, which a server without it also accepts. */
     @POST("casual/stop")
     suspend fun casualStop(
         @Header("Authorization") bearerToken: String,
+        @Query("forSession") forSession: Boolean? = null,
         @Header("X-Api-Version") apiVersion: String = API_VERSION,
     ): Response<Unit>
 
