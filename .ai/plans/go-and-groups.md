@@ -1,7 +1,7 @@
 # Go and groups — Plan
 
 *DotWatcher — plan, November 2026. Status (24 November 2026): mock-ups done; step 1 and the server half of step 2 built
-and green in CI but **not merged**; the Android half of step 2 mostly built (not tried on a device); iOS not started. **Start with
+and green in CI but **not merged**; the phone side of step 2 built on Android and iOS (not tried on a device). **Start with
 [Picking this up again](#picking-this-up-again) below.** Decisions marked **Open** need an answer before the step that
 depends on them.*
 
@@ -18,6 +18,7 @@ one when its base branch is deleted, otherwise retarget it to `staging` by hand)
 | #388 | `android-groups-join` | Step 2 Android, part 1: join a nearby group without starting tracking (based on #387) | Compiles, 91 unit tests pass locally; not tried on a device |
 | #396 | `groups-ends-at` | Step 2 server: each group's end time (`endsAt`) on memberships and the nearby list (based on #387) | CI green, not merged |
 | #397 | `android-groups-part2` | Step 2 Android, part 2: join while out, group chip, end times, "Join and Go now", organiser codes (based on #388) | Compiles, 99 unit tests pass locally; not tried on a device |
+| #398 | `ios-groups` | Step 2 iOS: everything in #388 and #397 (based on #396) | Builds for the simulator; not run in a simulator or on a device |
 
 To try it end to end: deploy the server stack, then grant `groups` to a test account (`PUT /api/admin/users/{id}/features`,
 body `{ "features": ["groups"] }`, admin token). Without the flag, nothing changes for anyone.
@@ -27,9 +28,10 @@ body `{ "features": ["groups"] }`, admin token). Without the flag, nothing chang
 1. ~~**Server: send each group's end time**~~ Done in #396.
 2. ~~**Android, part 2**~~ Done in #397. Still open on Android: invite-code join and the organiser's own session
    following the groups flow, and the start-screen redesign.
-3. **Try both Android PRs on a device** against a server with the stack deployed and `groups` granted.
-4. **iOS:** the same as Android parts 1 and 2 (`NearbyJoinViews.swift`, `EventsStore.swift`, `ContentView.swift`,
-   `CasualViews.swift`, `LocationManager.swift`). iOS doesn't read the account's `features` yet either.
+3. **Try the phone PRs on devices** (Android #388 + #397, iOS #398) against a server with the stack deployed and
+   `groups` granted. On iOS check where the "‹ Home" pill sits under the timer, and that "Join and Go now" opens
+   "Before you go" after the join sheet closes.
+4. ~~**iOS**~~ Done in #398.
 5. **Invite links** for groups (join from anywhere, e.g. the entry email); decide whether they ask for the entry code.
 6. Step 3 onwards.
 
@@ -245,9 +247,21 @@ Built from mock-up 0a.
       the `android-start-screen-design` branch.
 - [ ] Before pushing: `cd android && ./gradlew :app:compileDebugKotlin :app:testDebugUnitTest`.
 
-**iOS** (not started)
+**iOS** (**#398**, not merged; builds for the simulator, not run yet)
 
-- [ ] Everything in the Android list above. iOS doesn't read `features` yet either.
+- [x] Read the account's `features` (sign-in, `GET /me`; kept in `UserDefaults`); `LocationManager.hasGroups`.
+- [x] Join from a tile without selecting the session or asking to share.
+- [x] Entry code: "· Code needed" on the tile, code field on the join sheet, wrong-code message.
+- [x] Group wording on the join sheet, "Join group", "Join and Go now".
+- [x] "You're in" cards with end time and Leave.
+- [x] Groups survive a relaunch: no auto-select of the first membership, no leaving stale sessions, for groups
+      accounts.
+- [x] Join while out: "‹ Home" on the Go map, "You're out · Back to the map" on the start screen; the session map
+      never covers a Go run.
+- [x] Group chip on the Go map and the "Your groups" sheet.
+- [x] Organiser: "Ask for a code to join" at create; Entry code section in the nearby settings sheet.
+- [ ] Invite-code join and the organiser's own session follow the groups flow too.
+- [ ] Start screen redesign (as Android).
 
 ### Step 3 — Groups as their own thing; rules; events as run slices
 
