@@ -110,7 +110,10 @@ public record SessionMembership(
     string OwnerDisplayName,
     // ISO-8601 UTC creation time of the session (not the membership), so clients can tell
     // same-named sessions apart ("3 days ago"). Additive; older clients ignore it.
-    string? CreatedAt = null
+    string? CreatedAt = null,
+    // ISO-8601 UTC time the session (a group, see .ai/plans/go-and-groups.md) ends: created_at plus its
+    // event length (max_length_hours, default 24 h). Additive; older clients ignore it.
+    string? EndsAt = null
 );
 
 public record BlockedUser(
