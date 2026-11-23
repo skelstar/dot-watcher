@@ -1,7 +1,7 @@
 # Go and groups — Plan
 
 *DotWatcher — plan, November 2026. Status (24 November 2026): mock-ups done; step 1 and the server half of step 2 built
-and green in CI but **not merged**; the Android half of step 2 started; iOS not started. **Start with
+and green in CI but **not merged**; the Android half of step 2 mostly built (not tried on a device); iOS not started. **Start with
 [Picking this up again](#picking-this-up-again) below.** Decisions marked **Open** need an answer before the step that
 depends on them.*
 
@@ -17,6 +17,7 @@ one when its base branch is deleted, otherwise retarget it to `staging` by hand)
 | #387 | `groups-entry-code` | Step 2 server: entry codes on nearby sessions | CI green, not merged |
 | #388 | `android-groups-join` | Step 2 Android, part 1: join a nearby group without starting tracking (based on #387) | Compiles, 91 unit tests pass locally; not tried on a device |
 | #396 | `groups-ends-at` | Step 2 server: each group's end time (`endsAt`) on memberships and the nearby list (based on #387) | CI green, not merged |
+| #397 | `android-groups-part2` | Step 2 Android, part 2: join while out, group chip, end times, "Join and Go now", organiser codes (based on #388) | Compiles, 99 unit tests pass locally; not tried on a device |
 
 To try it end to end: deploy the server stack, then grant `groups` to a test account (`PUT /api/admin/users/{id}/features`,
 body `{ "features": ["groups"] }`, admin token). Without the flag, nothing changes for anyone.
@@ -24,14 +25,13 @@ body `{ "features": ["groups"] }`, admin token). Without the flag, nothing chang
 **Next, in order:**
 
 1. ~~**Server: send each group's end time**~~ Done in #396.
-2. **Android, part 2:** "‹ Home" on the Go map and a "You're out · Back to the map" tile on the start screen, so you
-   can join while out (the start screen is replaced by the map while tracking today); the group chip on the Go map
-   (name, time left, Leave); "Join and Go now" on the join sheet; organisers can set and change the entry code
-   (create dialog, and on their session's card).
-3. **iOS:** the same as Android parts 1 and 2 (`NearbyJoinViews.swift`, `EventsStore.swift`, `ContentView.swift`,
+2. ~~**Android, part 2**~~ Done in #397. Still open on Android: invite-code join and the organiser's own session
+   following the groups flow, and the start-screen redesign.
+3. **Try both Android PRs on a device** against a server with the stack deployed and `groups` granted.
+4. **iOS:** the same as Android parts 1 and 2 (`NearbyJoinViews.swift`, `EventsStore.swift`, `ContentView.swift`,
    `CasualViews.swift`, `LocationManager.swift`). iOS doesn't read the account's `features` yet either.
-4. **Invite links** for groups (join from anywhere, e.g. the entry email); decide whether they ask for the entry code.
-5. Step 3 onwards.
+5. **Invite links** for groups (join from anywhere, e.g. the entry email); decide whether they ask for the entry code.
+6. Step 3 onwards.
 
 **Things to know:**
 
@@ -224,7 +224,7 @@ Built from mock-up 0a.
 - [ ] Invite links for groups that work outside the region (e.g. `dotwatchr.app/g/<slug>`), opening the join sheet
       with the code field; joined from home shows the card on the main screen on the day.
 
-**Android** (part 1 is **#388**, not merged, not tried on a device)
+**Android** (part 1 is **#388**, part 2 is **#397**; neither merged nor tried on a device)
 
 - [x] Read the account's `features` (sign-in, register, `GET /me`); `repository.hasFeature("groups")`.
 - [x] Join from a tile without switching the tracking target (no consent screen, no tracking in the session).
@@ -232,11 +232,14 @@ Built from mock-up 0a.
 - [x] Group wording on the join sheet ("Join group").
 - [x] Join before Go: "You're in" card on the start screen with Leave (no time yet: needs `endsAt`).
 - [x] Keep group memberships on relaunch (`decideRestore` `keepMemberships`).
-- [ ] Join while out: "‹ Home" on the Go map, "You're out · Back to the map" tile on the start screen, back to the map
-      after joining.
-- [ ] Group chip on the Go map: name, time left, Leave.
-- [ ] "Join and Go now" on the join sheet.
-- [ ] Organiser: set the entry code in the create dialog, and see or change it on their session's card.
+- [x] Join while out (#397): "‹ Home" on the Go map, "You're out · Back to the map" tile on the start screen, back to
+      the map after joining.
+- [x] Group chip on the Go map (#397): newest group's name and time left; opens "Your groups" with end times and
+      Leave.
+- [x] End time on the "You're in" cards (#397), from `endsAt` (`groups/GroupTime.kt`).
+- [x] "Join and Go now" on the join sheet (#397), before Go only.
+- [x] Organiser (#397): "Ask for a code to join" in the create dialog; an Entry code section (change, remove) in the
+      nearby sheet on their session map.
 - [ ] Invite-code join and the organiser's own session follow the groups flow too.
 - [ ] Start screen: Go and "Who can see me" replace the four cards (Private / Crew / Group / Race). Coordinate with
       the `android-start-screen-design` branch.
