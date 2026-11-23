@@ -16,6 +16,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -61,14 +62,17 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import nz.skelstar.dotwatcher.ui.casual.holdToComplete
 import nz.skelstar.dotwatcher.ui.map.initialsFor
 import nz.skelstar.dotwatcher.ui.theme.SignColors
 import nz.skelstar.dotwatcher.ui.theme.SignFontFamily
+import nz.skelstar.dotwatcher.ui.theme.UiFontFamily
 import nz.skelstar.dotwatcher.ui.theme.animatedSignColors
 
 private val BarHeight = 12.dp
@@ -213,7 +217,7 @@ private fun OrganiserDot(name: String, colors: SignColors) {
         Text(
             text = initialsFor(name),
             color = initialsColor,
-            style = TextStyle(fontSize = 9.sp, fontWeight = FontWeight.SemiBold, lineHeight = 9.sp),
+            style = TextStyle(fontFamily = UiFontFamily, fontSize = 9.sp, fontWeight = FontWeight.SemiBold, lineHeight = 9.sp),
         )
     }
 }
@@ -286,18 +290,18 @@ private fun SignContent(
 ) {
     val base = LocalTextStyle.current
     val eyebrowStyle = base.merge(
-        TextStyle(fontFamily = SignFontFamily, fontWeight = FontWeight.ExtraBold, fontSize = 11.sp, letterSpacing = 1.sp),
+        TextStyle(fontFamily = SignFontFamily, fontWeight = FontWeight.Normal, fontSize = 11.sp, letterSpacing = 1.sp),
     )
     val titleStyle = base.merge(
         TextStyle(
             fontFamily = SignFontFamily,
-            fontWeight = FontWeight.ExtraBold,
+            fontWeight = FontWeight.Normal,
             fontSize = titleSize.sp,
             lineHeight = (titleSize * 1.05f).sp,
         ),
     )
     val subtitleStyle = base.merge(
-        TextStyle(fontFamily = SignFontFamily, fontWeight = FontWeight.ExtraBold, fontSize = 15.sp, lineHeight = 18.sp),
+        TextStyle(fontFamily = SignFontFamily, fontWeight = FontWeight.Normal, fontSize = 13.sp, lineHeight = 17.sp),
     )
     val placement = iconPlacement(icon.scale, eyebrow?.uppercase(), eyebrowStyle, title, titleStyle, subtitle, subtitleStyle)
     val mirrored = LocalLayoutDirection.current == LayoutDirection.Rtl && icon != SignIcon.Plus
@@ -306,7 +310,7 @@ private fun SignContent(
         Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
             Column(modifier = Modifier.weight(1f)) {
                 eyebrow?.let { Text(text = it.uppercase(), color = ink, style = eyebrowStyle) }
-                Text(text = title, color = ink, style = titleStyle)
+                FittedSignTitle(title = title, color = ink, style = titleStyle)
                 if (organiser != null) {
                     Row(
                         modifier = Modifier
@@ -340,6 +344,60 @@ private fun SignContent(
 
 private val SubtitleGap = 3.dp
 
+/** The smallest a sign title shrinks to before it is cut with "…" (see [chooseTitleStep]). */
+internal const val SignTitleMinimumSize = 24
+
+/** One size a sign title can be drawn at; [tight] is the last step, 2% tighter. */
+internal data class TitleStep(val size: Int, val tight: Boolean, val cut: Boolean = false)
+
+/**
+ * The rule from .ai/plans/start-screen-font.md, kept apart from Compose so it can be unit tested: try the title's own
+ * size, then 2 smaller at a time down to [SignTitleMinimumSize] (that last step 2% tighter), and take the first that
+ * [fits] on one line. If none does, the smallest step, cut with "…". A title already at or below the minimum keeps
+ * its size and is only cut. Go, Join and Create always fit at their own size.
+ */
+internal fun chooseTitleStep(baseSize: Int, fits: (TitleStep) -> Boolean): TitleStep {
+    val steps = if (baseSize <= SignTitleMinimumSize) {
+        listOf(TitleStep(baseSize, tight = false))
+    } else {
+        (baseSize downTo SignTitleMinimumSize step 2).map { TitleStep(it, tight = it == SignTitleMinimumSize) }
+    }
+    return steps.firstOrNull(fits) ?: steps.last().copy(cut = true)
+}
+
+/**
+ * A sign's title, shown lowercase, on one line. Only a title that won't fit changes (see [chooseTitleStep]); it is
+ * measured at the phone's text size against the room the tile gives it. The semantics keep the title as written, so
+ * TalkBack doesn't read it lowercased or cut.
+ */
+@Composable
+private fun FittedSignTitle(title: String, color: Color, style: TextStyle) {
+    val shown = title.lowercase()
+    val measurer = rememberTextMeasurer()
+    val baseSize = style.fontSize.value.toInt()
+    fun styleFor(step: TitleStep) = style.copy(
+        fontSize = step.size.sp,
+        lineHeight = (step.size * 1.05f).sp,
+        letterSpacing = if (step.tight) (-0.02).em else style.letterSpacing,
+    )
+    BoxWithConstraints(Modifier.clearAndSetSemantics { contentDescription = title }) {
+        val room = constraints.maxWidth
+        val step = remember(shown, baseSize, room, style) {
+            chooseTitleStep(baseSize) { candidate ->
+                measurer.measure(shown, styleFor(candidate), maxLines = 1, softWrap = false).size.width <= room
+            }
+        }
+        Text(
+            text = shown,
+            color = color,
+            style = styleFor(step),
+            maxLines = 1,
+            softWrap = false,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
 private class IconPlacement(val top: Dp, val height: Dp)
 
 /**
@@ -364,10 +422,10 @@ private fun iconPlacement(
             val titleTop = eyebrow?.let { measurer.measure(it, eyebrowStyle).size.height.toFloat() } ?: 0f
             val titleLayout = measurer.measure(title, titleStyle)
             val subtitleLayout = measurer.measure(subtitle, subtitleStyle)
-            val typeface = fontResolver.resolve(SignFontFamily, FontWeight.ExtraBold).value as? Typeface
+            val typeface = fontResolver.resolve(SignFontFamily, FontWeight.Normal).value as? Typeface
             val bounds = Rect()
             Paint().apply {
-                this.typeface = typeface ?: Typeface.SERIF
+                this.typeface = typeface ?: Typeface.MONOSPACE
                 textSize = titleStyle.fontSize.toPx()
             }.getTextBounds("H", 0, 1, bounds)
             val capHeight = -bounds.top.toFloat()

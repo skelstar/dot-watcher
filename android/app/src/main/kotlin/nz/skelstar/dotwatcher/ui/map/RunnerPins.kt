@@ -1,5 +1,6 @@
 package nz.skelstar.dotwatcher.ui.map
 
+import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.DashPathEffect
@@ -7,7 +8,10 @@ import android.graphics.Matrix
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.RectF
+import android.graphics.Typeface
+import androidx.core.content.res.ResourcesCompat
 import androidx.core.graphics.PathParser
+import nz.skelstar.dotwatcher.R
 import nz.skelstar.dotwatcher.network.RunnerPosition
 import java.time.Duration
 import java.time.Instant
@@ -24,6 +28,21 @@ private val DISCONNECTED_AFTER: Duration = Duration.ofSeconds(60)
 /** Granularity of the own-dot send-countdown ring. One cached bitmap per step per color, so this
  *  stays small; 15 matches the 15 s post cadence (one step per second). */
 const val RING_STEPS = 15
+
+/** Red Hat Text Bold for the letters drawn on map pins (which are bitmaps, outside Compose). Loaded once at app start
+ *  by [load]; until then, or if the font can't be read, pins use the system font made bold, as before. */
+object PinTypeface {
+    @Volatile private var bold: Typeface? = null
+
+    fun load(context: Context) {
+        bold = runCatching { ResourcesCompat.getFont(context, R.font.red_hat_text_bold) }.getOrNull()
+    }
+
+    fun applyBold(paint: Paint) {
+        val typeface = bold
+        if (typeface != null) paint.typeface = typeface else paint.isFakeBoldText = true
+    }
+}
 
 enum class PinState { Live, Stale, Disconnected }
 
@@ -164,7 +183,7 @@ fun pinBitmap(spec: PinSpec, density: Float): Bitmap {
     val text = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         this.color = textColor
         textSize = dp(12.5f)
-        isFakeBoldText = true
+        PinTypeface.applyBold(this)
         textAlign = Paint.Align.CENTER
     }
     canvas.drawText(spec.label, cx, cy - (text.descent() + text.ascent()) / 2, text)
@@ -224,7 +243,7 @@ fun pinBitmap(spec: PinSpec, density: Float): Bitmap {
         val bang = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             this.color = 0xFFFFFFFF.toInt()
             textSize = dp(11f)
-            isFakeBoldText = true
+            PinTypeface.applyBold(this)
             textAlign = Paint.Align.CENTER
         }
         canvas.drawText("!", bx, by - (bang.descent() + bang.ascent()) / 2, bang)
@@ -272,7 +291,7 @@ fun nearbyBitmap(locked: Boolean, density: Float): Bitmap {
     val text = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = 0xFFFFFFFF.toInt()
         textSize = dp(12.5f * 0.8f)
-        isFakeBoldText = true
+        PinTypeface.applyBold(this)
         textAlign = Paint.Align.CENTER
     }
     canvas.drawText("?", cx, cy - (text.descent() + text.ascent()) / 2, text)

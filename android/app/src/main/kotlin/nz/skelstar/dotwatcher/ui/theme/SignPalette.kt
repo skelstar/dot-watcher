@@ -10,7 +10,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontVariation
 import androidx.compose.ui.text.font.FontWeight
 import nz.skelstar.dotwatcher.R
 
@@ -23,15 +22,20 @@ object SignPalette {
     val Ink = Color(0xFF1F2A3D)
 }
 
-/** EB Garamond (OFL, android/third_party) at ExtraBold, the nearest free face to the ITC Garamond
- *  on the park signs. One variable font file; variation settings need API 26, our minSdk. */
-@OptIn(androidx.compose.ui.text.ExperimentalTextApi::class)
+/** Space Mono Regular (OFL, android/third_party): every sign's label, title and subtitle. Monospaced, so a title's
+ *  width depends only on how many characters it has (see FittedSignTitle in ui/landing/SignButton.kt). */
 val SignFontFamily = FontFamily(
-    Font(
-        R.font.eb_garamond,
-        weight = FontWeight.ExtraBold,
-        variationSettings = FontVariation.Settings(FontVariation.weight(800)),
-    ),
+    Font(R.font.space_mono_regular, weight = FontWeight.Normal),
+)
+
+/** Red Hat Text (OFL, android/third_party): the app's text font everywhere except the signs. Four static weights;
+ *  Compose uses the nearest one for any weight in between (ExtraBold draws as Bold). Set on every style of the
+ *  app's Typography (ui/theme/Theme.kt), so screens pick it up without naming it. */
+val UiFontFamily = FontFamily(
+    Font(R.font.red_hat_text_regular, weight = FontWeight.Normal),
+    Font(R.font.red_hat_text_medium, weight = FontWeight.Medium),
+    Font(R.font.red_hat_text_semibold, weight = FontWeight.SemiBold),
+    Font(R.font.red_hat_text_bold, weight = FontWeight.Bold),
 )
 
 /**

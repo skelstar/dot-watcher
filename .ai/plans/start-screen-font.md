@@ -82,26 +82,27 @@ is only cut.
 
 ## Android
 
-- [ ] Fonts:
-  - Add `res/font/space_mono_regular.ttf` and `res/font/red_hat_text.ttf` (variable).
-  - Add the OFL licences to `android/third_party`.
-  - Remove `eb_garamond.ttf` once unused.
-- [ ] `SignFontFamily` (ui/theme/SignPalette.kt): Space Mono Regular. Add `UiFontFamily` for Red Hat Text with
-      `FontVariation.weight` 400–700.
-- [ ] `SignContent` (ui/landing/SignButton.kt):
-  - Eyebrow, title and subtitle styles to Space Mono Normal.
-  - Subtitle 13.sp.
-  - Titles shown lowercase (`lowercase()`), keeping the content description as written.
-  - Check `iconPlacement` still lines up the icon. The typeface lookup at line ~367 asks for ExtraBold; change it to
-    Normal.
-- [ ] `FittedSignTitle`:
-  - Measure with `rememberTextMeasurer()` inside `BoxWithConstraints`.
-  - Pick the step by the same rule.
-  - At the last step: `maxLines = 1`, `overflow = TextOverflow.Ellipsis` and `letterSpacing = (-0.02).em`.
-- [ ] Red Hat Text across the app: set `UiFontFamily` as the default in the app's `Typography` (every Material text
-      style) so all screens pick it up, plus any hard-coded `FontFamily.Default` / `TextStyle(fontSize = ...)` uses.
-- [ ] Unit test the step choice with a fake measurer: the five canvas names; a text-size scale of 1.3 pushes
-      "rogaine - hutt park" to the cut.
+- [x] Fonts:
+  - Add `res/font/space_mono_regular.ttf` and four static Red Hat Text weights (`red_hat_text_regular`,
+    `_medium`, `_semibold`, `_bold`).
+  - Add the OFL licences to `android/third_party`. Remove `eb_garamond.ttf` and its licence.
+- [x] `SignFontFamily` (ui/theme/SignPalette.kt): Space Mono Regular. New `UiFontFamily`: Red Hat Text, four
+      weights; Compose uses the nearest for any other weight (ExtraBold draws as Bold).
+- [x] Red Hat Text across the app:
+  - Every style of `AppTypography` (ui/theme/Theme.kt) gets `UiFontFamily`, so any `Text` using a theme style, or
+    none, is in it.
+  - The few `TextStyle(...)` built from scratch name it too: the map wordmark and countdown, and the organiser dot.
+  - Map pins draw their letters on bitmaps, so `PinTypeface` (ui/map/RunnerPins.kt) loads Red Hat Text Bold at app
+    start.
+  - Code-style text (`FontFamily.Monospace`: code boxes, crew code, watch link) is unchanged.
+- [x] `SignContent` (ui/landing/SignButton.kt): label, title and subtitle in Space Mono Normal; subtitle 13.sp. The
+      icon placement looks up the Normal typeface (was ExtraBold).
+- [x] `FittedSignTitle`: lowercase on screen; TalkBack gets the title as written.
+  - `BoxWithConstraints` plus `rememberTextMeasurer` measure each step at the phone's text size.
+  - `chooseTitleStep`, a pure function, picks the step: own size down to 24 by 2, 24 at −0.02em, else cut with "…".
+  - Unit tested in `TitleStepTest`.
+- [ ] Build (CI runs `assembleDebug` only; run `./gradlew testDebugUnitTest` for `TitleStepTest`) and check on a
+      phone or emulator: icons line up, weights look right, the five canvas names.
 
 ## Testing
 
