@@ -65,4 +65,19 @@ final class SatelliteAlerts: NSObject, UNUserNotificationCenterDelegate {
     ) {
         completionHandler([.banner, .sound])
     }
+
+    /// This is the app's one notification delegate, so it also routes taps on crew-out alerts
+    /// (`CrewOutAlerts`): those open the Go map.
+    func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        didReceive response: UNNotificationResponse,
+        withCompletionHandler completionHandler: @escaping () -> Void
+    ) {
+        if response.notification.request.identifier.hasPrefix(CrewOutAlerts.identifierPrefix) {
+            DispatchQueue.main.async {
+                NotificationCenter.default.post(name: .crewOutAlertTapped, object: nil)
+            }
+        }
+        completionHandler()
+    }
 }

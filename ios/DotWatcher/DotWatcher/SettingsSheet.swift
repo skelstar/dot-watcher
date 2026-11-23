@@ -53,6 +53,7 @@ struct SettingsSheet: View {
             Toggle("Satellite alerts", isOn: $location.satelliteAlertsEnabled)
             Toggle("Play sound", isOn: $location.satelliteAlertSound)
                 .disabled(!location.satelliteAlertsEnabled)
+            Toggle("Crew alerts", isOn: $location.crewOutAlertsEnabled)
             if notificationStatus == .denied {
                 Button("Allow notifications in Settings") {
                     if let url = URL(string: UIApplication.openSettingsURLString) { openURL(url) }
@@ -62,8 +63,8 @@ struct SettingsSheet: View {
             Text("Notifications")
         } footer: {
             Text(notificationStatus == .denied
-                 ? "Notifications are turned off for DotWatcher in iOS Settings, so satellite alerts can't be shown."
-                 : "Alerts you when your phone switches to satellite while you're tracking.")
+                 ? "Notifications are turned off for DotWatcher in iOS Settings, so these alerts can't be shown."
+                 : "Satellite alerts tell you when your phone switches to satellite while you're tracking. Crew alerts tell you when someone in your crew starts a Go run while you're on one.")
         }
     }
 
@@ -87,6 +88,10 @@ struct SettingsSheet: View {
                     after: Self.testNotificationDelay,
                     playSound: location.satelliteAlertSound
                 )
+                testNotificationSentAt = Date()
+            }
+            Button("Send test crew alert in \(Int(Self.testNotificationDelay))s") {
+                CrewOutAlerts.shared.sendTestNotification(after: Self.testNotificationDelay)
                 testNotificationSentAt = Date()
             }
             if let testNotificationSentAt {
