@@ -411,7 +411,9 @@
   "sessionName": "string",
   "inviteCode": "string",
   "role": "runner" | "viewer",
-  "displayName": "string"
+  "displayName": "string",
+  "createdAt": "ISO-8601 | null",  // when the session was created
+  "endsAt": "ISO-8601 | null"      // createdAt + maxLengthHours (default 24 h), UTC. Older servers leave it out
 }]</pre>
         </div>
       </div>
@@ -446,7 +448,9 @@
   "sessionName": "string",
   "inviteCode": "string",
   "role": "runner",
-  "displayName": "string"
+  "displayName": "string",
+  "createdAt": "ISO-8601",
+  "endsAt": "ISO-8601"          // createdAt + maxLengthHours (default 24 h), UTC
 }</pre>
         </div>
       </div>
@@ -474,7 +478,9 @@
   "sessionName": "string",
   "inviteCode": "string",
   "role": "runner" | "viewer",
-  "displayName": "string"
+  "displayName": "string",
+  "createdAt": "ISO-8601",
+  "endsAt": "ISO-8601"          // createdAt + maxLengthHours (default 24 h), UTC
 }</pre>
         </div>
       </div>
@@ -592,7 +598,8 @@
   "subtitle": "Organised by Alice",
   "sessionId": "string | null",  // always set now; null only on old placeholder entries
   "organiser": "string | null",  // the organiser's display name, drawn as a small dot
-  "needsCode": true | false      // groups only; left out otherwise. True: joining needs the entry code
+  "needsCode": true | false,     // groups only; left out otherwise. True: joining needs the entry code
+  "endsAt": "ISO-8601"           // groups only; left out otherwise. When the group ends, UTC
 }]</pre>
         </div>
       </div>
@@ -625,6 +632,8 @@
   "role": "runner",
   "displayName": "string",
   "ownerDisplayName": "string",
+  "createdAt": "ISO-8601",
+  "endsAt": "ISO-8601",         // createdAt + maxLengthHours (default 24 h), UTC
   "participants": [...]
 }</pre>
         </div>
