@@ -67,16 +67,19 @@ receive. The only work is to diff it.
 
 ## Android
 
-- [ ] Give casual posts a `CasualLiveResponse` body: a separate `postCasualLocation` in `DotWatcherApi` or a
-      lenient shared type. Don't widen `RunnerPosition`.
-- [ ] `CrewOutAlerts` in `location/`: the same diff as iOS (same rules, same tests), reset when tracking starts and
-      stops.
-- [ ] `LocationTrackingService.postOrEnqueue`: on a successful casual post, feed the reply in.
-  - [ ] Queued flushes in `flushQueue` don't alert, because they're stale.
-- [ ] New channel "Crew alerts" at `IMPORTANCE_DEFAULT`, separate from the low-importance tracking channel, so
-      people can mute one without the other. `POST_NOTIFICATIONS` is already requested in `MainActivity`.
-- [ ] Tap opens `MainActivity` on the Go map (an intent extra).
-- [ ] Settings switch and a developer test button, as on iOS.
+- [x] Read `isSelf`/`inSession` from the Go post reply: two defaulted fields on `RunnerPosition` (false in a session
+      reply), as iOS did, so the post path stays one. `CasualWireTest` checks they decode.
+- [x] `location/CrewOutAlerts.kt`: `CrewOutTracker` (same rules as iOS, unit tested in `CrewOutTrackerTest`),
+      `CrewAlertSettings` and `CrewOutAlerts`. Reset when tracking starts and stops.
+- [x] `LocationTrackingService.postOrEnqueue`: on a successful Go post, feed the reply in.
+  - [x] Queued flushes in `flushQueue` don't alert, because they're stale.
+- [x] New channel "Crew alerts" at `IMPORTANCE_DEFAULT`, separate from the low-importance tracking channel, so
+      people can mute one without the other. `POST_NOTIFICATIONS` is already requested in `MainActivity`. Its own
+      small icon, `ic_stat_dot` (a dot in a ring).
+- [x] Tap opens `MainActivity` with `open_go_map`; `AppViewModel.openGoMapIfTracking` shows the Go map.
+- [x] Settings: "Crew alerts" switch under a new Notifications heading. No developer test button: Android's Settings
+      has no Developer section yet.
+- [ ] Build (CI runs `assembleDebug` only; run `./gradlew testDebugUnitTest` for the tests) and the two-phone test.
 
 ## Testing
 

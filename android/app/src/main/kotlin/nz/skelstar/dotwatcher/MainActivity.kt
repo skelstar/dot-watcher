@@ -17,6 +17,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.core.content.ContextCompat
 import nz.skelstar.dotwatcher.crew.CrewLink
+import nz.skelstar.dotwatcher.location.CrewOutAlerts
 
 /**
  * Android's location background-tracking permissions come in a strict sequence a single request
@@ -75,7 +76,10 @@ class MainActivity : ComponentActivity() {
 
         // On a rotation or other recreation the original intent is still attached, and replaying
         // it would pop the same "Add X to your crew?" confirmation again.
-        if (savedInstanceState == null) handleCrewLink(intent)
+        if (savedInstanceState == null) {
+            handleCrewLink(intent)
+            handleCrewOutAlertTap(intent)
+        }
 
         setContent {
             DotWatcherApp(hasBackgroundLocationPermission = hasBackgroundLocationPermission)
@@ -88,6 +92,14 @@ class MainActivity : ComponentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         handleCrewLink(intent)
+        handleCrewOutAlertTap(intent)
+    }
+
+    /** A tap on a crew-out alert ("DW: Mia has joined"): the Go map, if the Go run is still going. */
+    private fun handleCrewOutAlertTap(intent: Intent?) {
+        if (intent?.getBooleanExtra(CrewOutAlerts.EXTRA_OPEN_GO_MAP, false) != true) return
+        intent.removeExtra(CrewOutAlerts.EXTRA_OPEN_GO_MAP)
+        appViewModel.openGoMapIfTracking()
     }
 
     /** An Android App Link: https://<web host>/crew/{CODE}, from a tap in a message or from the

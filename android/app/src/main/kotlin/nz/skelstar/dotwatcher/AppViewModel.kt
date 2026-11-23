@@ -233,6 +233,15 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    /** A tap on a crew-out alert: back to the Go map if a Go run is still being tracked. While restoring, the
+     *  restore lands there by itself. */
+    fun openGoMapIfTracking() {
+        val tracking = LocationTrackingService.state.value as? TrackingState.Tracking ?: return
+        if (tracking.sessionId == CASUAL_SESSION_ID && _destination.value != Destination.Restoring) {
+            _destination.value = Destination.Casual
+        }
+    }
+
     /** True if the app landed on the casual map. */
     private suspend fun restoreCasual(): Boolean {
         val tracking = LocationTrackingService.state.value as? TrackingState.Tracking

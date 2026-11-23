@@ -92,6 +92,7 @@ class LocationTrackingService : Service() {
     private lateinit var repository: DotWatcherRepository
     private lateinit var updateQueue: LocationUpdateQueue
     private lateinit var shareChoices: ShareChoiceStore
+    private lateinit var crewOutAlerts: CrewOutAlerts
 
     override fun onCreate() {
         super.onCreate()
@@ -101,6 +102,7 @@ class LocationTrackingService : Service() {
         repository = DotWatcherRepository(api, tokenStore)
         updateQueue = LocationUpdateQueue(applicationContext)
         shareChoices = ShareChoiceStore(applicationContext)
+        crewOutAlerts = CrewOutAlerts(applicationContext)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -215,6 +217,8 @@ class LocationTrackingService : Service() {
     private fun startTracking(sessionId: String, duration: Duration, total: Duration) {
         trackingJob?.cancel()
         batteryOverride = false
+        // Every run starts with a silent baseline: crew already out when you start don't alert.
+        crewOutAlerts.reset()
         locationTracker.startHeadingUpdates()
         locationTracker.startLocationUpdates()
 
@@ -290,6 +294,11 @@ class LocationTrackingService : Service() {
         when {
             response != null && response.isSuccessful -> {
                 recordSuccess()
+                // A Go post's reply lists you and your crew who are out: alert on anyone newly out. Only live
+                // posts, never queued ones flushed late (those are stale).
+                if (captured.sessionId == CASUAL_SESSION_ID) {
+                    response.body()?.let { crewOutAlerts.handle(it.positions.flatten()) }
+                }
                 flushQueue()
             }
             // Permanent failure (see flushQueue's kdoc) — retrying would never help, so report
@@ -359,6 +368,7 @@ class LocationTrackingService : Service() {
     }
 
     private fun stopTracking() {
+        crewOutAlerts.reset()
         trackingJob?.cancel()
         trackingJob = null
         locationTracker.stopHeadingUpdates()
