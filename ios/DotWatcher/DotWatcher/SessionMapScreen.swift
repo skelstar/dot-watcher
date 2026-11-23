@@ -295,7 +295,11 @@ struct SessionMapCover: ViewModifier {
     func body(content: Content) -> some View {
         content
             .fullScreenCover(isPresented: Binding(
-                get: { location.activeMembership != nil && (location.isTracking || showShareConsent) && !casualMapPresented },
+                // Never over a Go run: with groups the start screen can show while out, and a group isn't a session map.
+                get: {
+                    location.activeMembership != nil && (location.isTracking || showShareConsent) && !casualMapPresented
+                        && !location.isCasualTracking
+                },
                 set: { _ in }
             )) {
                 SessionMapScreen(location: location, crew: crew)

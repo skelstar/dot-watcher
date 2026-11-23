@@ -35,8 +35,17 @@ struct NearbyCreateDraft {
     var isOn = false
     var title = ""
     var radiusMeters = NearbyRadius.defaultMeters
+    /// Groups: "Ask for a code to join" (see .ai/plans/go-and-groups.md).
+    var askForCode = false
+    var entryCode = ""
 
     var trimmedTitle: String { title.trimmingCharacters(in: .whitespacesAndNewlines) }
+
+    /// The code to send, or nil when not asking for one.
+    var entryCodeToSend: String? { askForCode && !entryCode.isEmpty ? entryCode : nil }
+
+    /// Asking for a code needs a code the server accepts.
+    var isEntryCodeValid: Bool { !askForCode || EntryCode.isValid(entryCode) }
 }
 
 /// Whether a position can be taken now, for the Create sheet's nearby switch.
@@ -82,6 +91,8 @@ struct NearbyCreateSection: View {
     @Binding var draft: NearbyCreateDraft
     let locationState: NearbyLocationState
     let onAllowLocation: () -> Void
+    /// The "groups" feature: offers "Ask for a code to join".
+    var groupsAvailable = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -107,9 +118,33 @@ struct NearbyCreateSection: View {
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                 locationNote
+                if groupsAvailable { entryCodeChoice }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    @ViewBuilder
+    private var entryCodeChoice: some View {
+        Toggle("Ask for a code to join", isOn: $draft.askForCode)
+        if draft.askForCode {
+            TextField("Entry code", text: $draft.entryCode)
+                .textFieldStyle(.roundedBorder)
+                .textInputAutocapitalization(.characters)
+                .autocorrectionDisabled()
+                .onChange(of: draft.entryCode) { _, value in
+                    let cleaned = EntryCode.clean(value)
+                    if cleaned != value { draft.entryCode = cleaned }
+                }
+            Text("4 to 8 letters or numbers. Give it to entrants. People nearby still see the run, but can't join without it.")
+                .font(.footnote)
+                .foregroundStyle(draft.entryCode.isEmpty || draft.isEntryCodeValid ? Color.secondary : Color.red)
+                .fixedSize(horizontal: false, vertical: true)
+        } else {
+            Text("Off: anyone nearby can join with one tap.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+        }
     }
 
     @ViewBuilder
@@ -139,13 +174,23 @@ struct NearbyCreateSection: View {
 
 /// What tapping a nearby run shows: who will see you, and when. Not a choice between runner and viewer:
 /// watching without sharing is the shared watch link.
+///
+/// With groups (`location.hasGroups`) joining only changes who sees you, and nothing happens until you press Go.
+/// When the run asks for an entry code (`NearbyEvent.needsCode`) the sheet has a field for it.
 struct NearbyJoinSheet: View {
     let event: NearbyEvent
     var location: LocationManager
     let onJoined: () -> Void
+    /// Groups, before Go: "Join and Go now" joins, then this starts Go. Nil hides it.
+    var onJoinAndGo: (() -> Void)? = nil
     @Environment(\.dismiss) private var dismiss
     @State private var isBusy = false
     @State private var errorText: String?
+    @State private var code = ""
+
+    private var asGroup: Bool { location.hasGroups }
+    private var needsCode: Bool { asGroup && event.needsCode == true }
+    private var canJoin: Bool { !isBusy && !location.isOffline && (!needsCode || EntryCode.isValid(code)) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -160,9 +205,32 @@ struct NearbyJoinSheet: View {
             }
 
             VStack(alignment: .leading, spacing: 12) {
-                infoRow("person.2", "Everyone in the run sees your name and live location.")
-                infoRow("clock", "Only while you're tracking. You choose how long, and you can leave any time.")
-                infoRow("arrow.counterclockwise", "A replay of the run is kept afterwards.")
+                if asGroup {
+                    infoRow("person.2", "Everyone in this group sees you by name on their map, wherever they are, while you're out.")
+                    infoRow("flag", "Not out yet? Join now and the group waits. Nobody sees you until you press Go.")
+                    infoRow("clock", groupUntilText)
+                    infoRow("eye", "Your run stays yours: joining doesn't change how you track.")
+                } else {
+                    infoRow("person.2", "Everyone in the run sees your name and live location.")
+                    infoRow("clock", "Only while you're tracking. You choose how long, and you can leave any time.")
+                    infoRow("arrow.counterclockwise", "A replay of the run is kept afterwards.")
+                }
+            }
+
+            if needsCode {
+                VStack(alignment: .leading, spacing: 6) {
+                    TextField("Entry code", text: $code)
+                        .textFieldStyle(.roundedBorder)
+                        .textInputAutocapitalization(.characters)
+                        .autocorrectionDisabled()
+                        .onChange(of: code) { _, value in
+                            let cleaned = EntryCode.clean(value)
+                            if cleaned != value { code = cleaned }
+                        }
+                    Text("The organiser gave entrants this code.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
             }
 
             if let errorText {
@@ -173,13 +241,24 @@ struct NearbyJoinSheet: View {
             }
 
             Button {
-                Task { await join() }
+                Task { await join(thenGo: false) }
             } label: {
-                Text(isBusy ? "Joining…" : "Join this run")
+                Text(isBusy ? "Joining…" : (asGroup ? "Join group" : "Join this run"))
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.borderedProminent)
-            .disabled(isBusy || location.isOffline)
+            .disabled(!canJoin)
+
+            if asGroup, onJoinAndGo != nil {
+                Button {
+                    Task { await join(thenGo: true) }
+                } label: {
+                    Text("Join and Go now")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+                .disabled(!canJoin)
+            }
 
             Button("Not now", role: .cancel) { dismiss() }
                 .frame(maxWidth: .infinity)
@@ -198,7 +277,14 @@ struct NearbyJoinSheet: View {
         }
     }
 
-    private func join() async {
+    private var groupUntilText: String {
+        if let time = GroupTime(endsAtISO: event.endsAt, now: Date()) {
+            return "Until the group ends at \(time.endsAt). You can leave any time."
+        }
+        return "Until the group ends. You can leave any time."
+    }
+
+    private func join(thenGo: Bool) async {
         guard let sessionId = event.sessionId else { return }
         isBusy = true
         errorText = nil
@@ -209,9 +295,19 @@ struct NearbyJoinSheet: View {
             return
         }
         do {
-            try await location.joinNearby(sessionId: sessionId, fix: fix, displayName: location.runnerName)
+            try await location.joinNearby(
+                sessionId: sessionId, fix: fix, displayName: location.runnerName, entryCode: needsCode ? code : nil)
             dismiss()
-            onJoined()
+            if thenGo, let onJoinAndGo {
+                onJoinAndGo()
+            } else {
+                onJoined()
+            }
+        } catch DotWatcherAPIError.badResponse(403, let message) where asGroup {
+            // The only 403 this call gives is a missing or wrong entry code.
+            errorText = code.isEmpty
+                ? "Enter the code the organiser gave you."
+                : (message ?? "That code doesn't match. Check with the organiser.")
         } catch DotWatcherAPIError.badResponse(404, _) {
             // One answer for every refusal, by design: too far, ended, switched off or gone.
             errorText = "You can't join this run from here. Move closer to the start and try again."
@@ -299,6 +395,10 @@ struct NearbySettingsSheet: View {
     private var status: NearbyJoinStatus? { location.nearbyStatuses[sessionId] }
 
     var body: some View {
+        ScrollView { content }
+    }
+
+    private var content: some View {
         VStack(alignment: .leading, spacing: 16) {
             Text("Nearby join")
                 .font(.title2.bold())
@@ -340,6 +440,11 @@ struct NearbySettingsSheet: View {
                 Text(message)
                     .font(.subheadline.weight(.semibold))
                     .fixedSize(horizontal: false, vertical: true)
+            }
+
+            if location.hasGroups {
+                Divider()
+                EntryCodeSection(location: location, sessionId: sessionId)
             }
 
             Divider()

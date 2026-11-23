@@ -39,11 +39,14 @@ struct ContentView: View {
     /// — the only way to reach satellite-mode testing on a TestFlight/Release build.
     @State private var versionTapCount = 0
     @State private var lastVersionTap: Date?
+    /// For the groups' end times on the start screen; ticks once a minute.
+    @State private var now = Date()
 
     /// Whether the session map covers the screen; the same test `SessionMapCover` uses. The crew sheet is then
     /// presented by that map, since a sheet can't present from beneath a full-screen cover.
     private var isSessionMapPresented: Bool {
         location.activeMembership != nil && (location.isTracking || showShareConsent) && !casual.isMapPresented
+            && !location.isCasualTracking
     }
 
     /// The first half of `body`'s modifier chain. Split from `body` because one chain this long
@@ -84,6 +87,8 @@ struct ContentView: View {
             .onChange(of: scenePhase) { _, newPhase in
                 if newPhase == .active {
                     location.startConnectivityPolling()
+                    // Groups change on other phones (an organiser ends one); pick that up on coming back.
+                    if location.hasGroups { Task { await location.loadSessions() } }
                     // Use the palette the last fetch saved, then fetch the server's and fade it in if it changed.
                     PaletteStore.apply()
                     fetchPalette()
@@ -116,6 +121,7 @@ struct ContentView: View {
                     maxLengthHours: $noSessionCreateLengthHours,
                     nearby: $noSessionNearbyDraft,
                     nearbyAvailable: events.isAvailable,
+                    groupsAvailable: location.hasGroups,
                     locationState: location.nearbyLocationState,
                     onAllowLocation: { location.requestWhenInUseAuthorizationIfNeeded() },
                     isBusy: isBusy,
@@ -201,6 +207,18 @@ struct ContentView: View {
                 VStack(spacing: 16) {
                     headerSection
                     CrewRow(crew: crew)
+                    // The groups the person is in (only with the "groups" feature): joined ahead of Go, or while out.
+                    ForEach(location.groupMemberships) { group in
+                        GroupInCard(group: group, isOut: location.isCasualTracking, now: now) {
+                            Task {
+                                do {
+                                    try await location.leaveGroup(sessionId: group.sessionId)
+                                } catch {
+                                    formError = "Couldn't leave the group. Check your connection and try again."
+                                }
+                            }
+                        }
+                    }
                     if casual.isAvailable, !crew.members.isEmpty, let line = crewOutLine(casual.crewOut) {
                         Text(line)
                             .font(.subheadline)
@@ -240,11 +258,23 @@ struct ContentView: View {
         .background {
             if let screen = AppliedPalette.shared.colors?.screen { screen.ignoresSafeArea() }
         }
+        .task {
+            while !Task.isCancelled {
+                now = Date()
+                try? await Task.sleep(for: .seconds(60))
+            }
+        }
     }
 
     private var noSessionSigns: some View {
         VStack(spacing: 14) {
-            if casual.isAvailable {
+            if location.isCasualTracking {
+                // Reached from the Go map's "‹ Home" (groups): tracking carries on.
+                EventSignButton(
+                    eyebrow: "You're out", title: "Back to the map",
+                    subtitle: "Tracking carries on while you're here"
+                ) { casual.isMapPresented = true }
+            } else if casual.isAvailable {
                 HoldSignButton(
                     title: "Go",
                     subtitle: "Hold to start"
@@ -254,7 +284,8 @@ struct ContentView: View {
             // nearby can join, or the placeholder while there's no position to look near.
             ForEach(events.joinable) { event in
                 EventSignButton(
-                    eyebrow: event.eyebrow, title: event.title, subtitle: event.subtitle, organiser: event.organiser,
+                    eyebrow: event.needsCode == true ? "\(event.eyebrow) · Code needed" : event.eyebrow,
+                    title: event.title, subtitle: event.subtitle, organiser: event.organiser,
                     nudging: true
                 ) {
                     nearbyCandidate = event
@@ -283,7 +314,12 @@ struct ContentView: View {
         .padding(.top, 8)
         .padding(.bottom)
         .sheet(item: $nearbyCandidate) { event in
-            NearbyJoinSheet(event: event, location: location) { offerSharingAfterJoin() }
+            NearbyJoinSheet(
+                event: event, location: location,
+                onJoined: { afterNearbyJoin() },
+                onJoinAndGo: location.hasGroups && !location.isCasualTracking && casual.isAvailable
+                    ? { goAfterJoin() } : nil
+            )
                 .presentationDetents([.medium, .large])
                 .preferredColorScheme(location.appearanceMode.colorScheme)
         }
@@ -415,6 +451,8 @@ struct ContentView: View {
     /// isn't sharing any more, and the person rejoins with the invite code. Skipped while tracking, or while the
     /// share dialog is up, which means a session was only just joined.
     private func leaveStaleSessions() async {
+        // With groups a membership is a group joined ahead of Go, which waits for it: keep it.
+        guard !location.hasGroups else { return }
         for membership in location.memberships {
             guard !location.isTracking, !showShareConsent else { return }
             try? await location.leaveSession(sessionId: membership.sessionId)
@@ -444,7 +482,8 @@ struct ContentView: View {
                 name: name,
                 displayName: location.runnerName,
                 maxLengthHours: noSessionCreateLengthHours,
-                nearby: nearbySettings)
+                nearby: nearbySettings,
+                entryCode: nearbySettings == nil ? nil : noSessionNearbyDraft.entryCodeToSend)
             noSessionCreateCode = ""
             noSessionCreateLengthHours = CreateSessionView.defaultLengthHours
             noSessionNearbyDraft = NearbyCreateDraft()
@@ -491,6 +530,28 @@ struct ContentView: View {
         guard let code = pendingLinkCode, location.isAuthenticated else { return }
         noSessionInviteCode = code
         showJoinSheet = true
+    }
+
+    /// After joining from a nearby tile. With groups nothing starts: someone already out goes back to the Go map
+    /// (where the group now sees them), anyone else stays here with the "You're in" card. Without groups, ask
+    /// how long to share for, as before.
+    private func afterNearbyJoin() {
+        guard location.hasGroups else {
+            offerSharingAfterJoin()
+            return
+        }
+        Task { await events.refresh() }
+        if location.isCasualTracking { casual.isMapPresented = true }
+    }
+
+    /// "Join and Go now": once the join sheet has gone, carry on to "Before you go" as holding Go would.
+    private func goAfterJoin() {
+        Task {
+            await events.refresh()
+            // Wait for the join sheet to finish dismissing, or the next sheet is dropped.
+            try? await Task.sleep(for: .milliseconds(400))
+            casual.isBeforeYouGoPresented = true
+        }
     }
 
     /// Just joined or created: ask how long to share for straight away, so confirming starts tracking and the
