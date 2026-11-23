@@ -66,6 +66,11 @@ import nz.skelstar.dotwatcher.ui.casual.crewOutLine
 import nz.skelstar.dotwatcher.blocks.BlocksModel
 import nz.skelstar.dotwatcher.ui.theme.AppearanceMode
 import java.time.Duration
+import java.time.Instant
+import nz.skelstar.dotwatcher.groups.groupTime
+import nz.skelstar.dotwatcher.location.CASUAL_SESSION_ID
+import nz.skelstar.dotwatcher.location.LocationTrackingService
+import nz.skelstar.dotwatcher.location.TrackingState
 import nz.skelstar.dotwatcher.ui.CodeBoxField
 import nz.skelstar.dotwatcher.ui.crew.CrewFlow
 import nz.skelstar.dotwatcher.ui.crew.CrewRow
@@ -132,6 +137,8 @@ fun SessionScreen(
     groups: GroupsModel,
     onStartCasual: (Duration) -> Unit,
     onJoinNearby: (sessionId: String, entryCode: String?) -> Unit,
+    /** While out on a Go run: back to the Go map (this screen is reached from its "‹ Home"). */
+    onBackToMap: () -> Unit = {},
     activeSessionConflict: ActiveSessionConflict?,
     onEndActiveSessionAndCreate: () -> Unit,
     onDismissActiveSessionConflict: () -> Unit,
@@ -148,6 +155,19 @@ fun SessionScreen(
     val casualState by casual.state.collectAsState()
     val eventsState by events.state.collectAsState()
     val groupsState by groups.state.collectAsState()
+    // Out on a Go run, reached from the map's "‹ Home": tracking carries on, and Go becomes "Back to the map".
+    val trackingState by LocationTrackingService.state.collectAsState()
+    val outOnGo = (trackingState as? TrackingState.Tracking)?.sessionId == CASUAL_SESSION_ID
+    // "Join and Go now": once the group shows as joined, carry straight on to Go.
+    var goAfterJoin by remember { mutableStateOf(false) }
+    // Group end times count down; a minute is fine-grained enough.
+    var now by remember { mutableStateOf(Instant.now()) }
+    LaunchedEffect(Unit) {
+        while (isActive) {
+            delay(60_000)
+            now = Instant.now()
+        }
+    }
     var showCreateDialog by remember { mutableStateOf(false) }
     var showAccount by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
@@ -227,11 +247,15 @@ fun SessionScreen(
                     }
                 }
 
-                // Groups joined ahead of Go (only with the "groups" feature). The start screen only shows
-                // while the person isn't out, so each card says nobody can see them yet.
+                // The groups the person is in (only with the "groups" feature): joined ahead of Go, or while out.
                 groupsState.joined.forEach { group ->
                     Spacer(modifier = Modifier.height(12.dp))
-                    GroupInCard(group = group, isOut = false, onLeave = { groups.leave(group.sessionId) })
+                    GroupInCard(
+                        group = group,
+                        isOut = outOnGo,
+                        time = groupTime(group.endsAt, now),
+                        onLeave = { groups.leave(group.sessionId) },
+                    )
                 }
                 groupsState.error?.let {
                     Spacer(modifier = Modifier.height(8.dp))
@@ -259,7 +283,14 @@ fun SessionScreen(
             modifier = Modifier.padding(start = 24.dp, top = 16.dp, end = 24.dp, bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            if (casualState.isAvailable) {
+            if (outOnGo) {
+                EventSignButton(
+                    eyebrow = "You're out",
+                    title = "Back to the map",
+                    subtitle = "Tracking carries on while you're here",
+                    onClick = onBackToMap,
+                )
+            } else if (casualState.isAvailable) {
                 HoldSignButton(
                     title = "Go",
                     subtitle = "Hold to start",
@@ -367,15 +398,35 @@ fun SessionScreen(
             onJoin = { entryCode ->
                 event.sessionId?.let {
                     joinAttempted = true
+                    goAfterJoin = false
                     onJoinNearby(it, entryCode)
                 }
             },
             onDismiss = { nearbyCandidate = null },
             asGroup = groupsState.isAvailable,
+            // Only before Go: someone already out just joins, and goes back to the map.
+            onJoinAndGo = if (groupsState.isAvailable && !outOnGo && casualState.isAvailable) {
+                { entryCode ->
+                    event.sessionId?.let {
+                        joinAttempted = true
+                        goAfterJoin = true
+                        onJoinNearby(it, entryCode)
+                    }
+                }
+            } else {
+                null
+            },
         )
-        // A group join stays on this screen, so close the sheet once the group shows as joined.
+        // A group join stays on this screen, so close the sheet once the group shows as joined; "Join and Go
+        // now" then carries on to "Before you go".
         LaunchedEffect(groupsState.joined, event.sessionId) {
-            if (groupsState.joined.any { it.sessionId == event.sessionId }) nearbyCandidate = null
+            if (groupsState.joined.any { it.sessionId == event.sessionId }) {
+                nearbyCandidate = null
+                if (goAfterJoin) {
+                    goAfterJoin = false
+                    showBeforeYouGo = true
+                }
+            }
         }
     }
 
@@ -402,6 +453,7 @@ fun SessionScreen(
             enabled = state !is SessionUiState.Loading,
             nearbyAvailable = eventsState.isAvailable,
             hasPreciseLocation = hasPreciseLocation,
+            groupsAvailable = groupsState.isAvailable,
             onCreate = { sessionName, nearby ->
                 showCreateDialog = false
                 onCreateSession(sessionName, nearby)
@@ -564,6 +616,7 @@ private fun CreateSessionDialog(
     enabled: Boolean,
     nearbyAvailable: Boolean,
     hasPreciseLocation: Boolean,
+    groupsAvailable: Boolean,
     onCreate: (sessionName: String?, nearby: NearbyDraft?) -> Unit,
     onCancel: () -> Unit,
 ) {
@@ -621,13 +674,14 @@ private fun CreateSessionDialog(
                     draft = nearby,
                     onChange = { nearby = it },
                     hasPreciseLocation = hasPreciseLocation,
+                    groupsAvailable = groupsAvailable,
                 )
             }
             Spacer(modifier = Modifier.height(20.dp))
             Button(
                 onClick = { onCreate(sessionName.ifBlank { null }, nearby.takeIf { nearbyIsOn }) },
                 enabled = enabled && if (nearbyIsOn) {
-                    nearby.trimmedTitle.isNotEmpty() && hasPreciseLocation
+                    nearby.trimmedTitle.isNotEmpty() && hasPreciseLocation && nearby.isEntryCodeValid
                 } else {
                     sessionName.isEmpty() || sessionName.length >= 4
                 },

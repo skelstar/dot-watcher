@@ -2,6 +2,7 @@ package nz.skelstar.dotwatcher.data
 
 import nz.skelstar.dotwatcher.network.BlockedUser
 import nz.skelstar.dotwatcher.network.CasualLiveResponse
+import nz.skelstar.dotwatcher.network.EntryCodeBody
 import nz.skelstar.dotwatcher.network.SessionRunner
 import nz.skelstar.dotwatcher.network.CasualSettings
 import nz.skelstar.dotwatcher.network.CasualWatchLinkResponse
@@ -118,6 +119,7 @@ class DotWatcherRepository(
         sessionName: String?,
         displayName: String?,
         nearby: NearbyCreate? = null,
+        entryCode: String? = null,
     ): Response<SessionMembership> {
         val token = requireToken()
         val request = CreateSessionRequest(
@@ -128,6 +130,7 @@ class DotWatcherRepository(
             latitude = nearby?.fix?.latitude,
             longitude = nearby?.fix?.longitude,
             accuracy = nearby?.fix?.accuracyMetres,
+            entryCode = entryCode?.takeIf { nearby != null },
         )
         return api.createSession(bearer(token), request)
     }
@@ -277,6 +280,12 @@ class DotWatcherRepository(
             bearer(requireToken()),
             UpdateNearbyRequest(fix?.latitude, fix?.longitude, fix?.accuracyMetres, enabled, radiusMeters),
         )
+
+    suspend fun getEntryCode(sessionId: String): Response<EntryCodeBody> =
+        api.getEntryCode(sessionId, bearer(requireToken()))
+
+    suspend fun setEntryCode(sessionId: String, code: String?): Response<EntryCodeBody> =
+        api.setEntryCode(sessionId, bearer(requireToken()), EntryCodeBody(code))
 
     suspend fun endSession(sessionId: String): Response<Unit> = api.endSession(sessionId, bearer(requireToken()))
 

@@ -18,6 +18,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.viewmodel.compose.viewModel
 import nz.skelstar.dotwatcher.nearby.NearbyOrganiser
+import nz.skelstar.dotwatcher.nearby.EntryCodeActions
 import nz.skelstar.dotwatcher.network.SessionMembership
 import nz.skelstar.dotwatcher.network.UpdateRequiredState
 import nz.skelstar.dotwatcher.ui.crew.CrewConfirmDialog
@@ -113,6 +114,7 @@ fun DotWatcherApp(hasBackgroundLocationPermission: Boolean) {
                     events = viewModel.events,
                     groups = viewModel.groups,
                     onJoinNearby = viewModel::joinNearby,
+                    onBackToMap = viewModel::backToCasualMap,
                     activeSessionConflict = activeSessionConflict,
                     onEndActiveSessionAndCreate = viewModel::endActiveSessionAndCreate,
                     onDismissActiveSessionConflict = viewModel::dismissActiveSessionConflict,
@@ -134,6 +136,8 @@ fun DotWatcherApp(hasBackgroundLocationPermission: Boolean) {
                     appearance = appearance,
                     onAppearanceChange = viewModel::setAppearance,
                     onStop = viewModel::stopCasual,
+                    groups = viewModel.groups.takeIf { it.isAvailable },
+                    onHome = if (viewModel.groups.isAvailable) viewModel::showStartScreen else null,
                 )
 
                 // One branch for both, so the map is not rebuilt when the runner answers the share sheet.
@@ -187,6 +191,14 @@ private fun SessionMapDestination(membership: SessionMembership, asking: Boolean
             setJoinLocation = { radius -> viewModel.pingJoinLocation(membership.sessionId, radius) },
             stopShowing = { viewModel.stopShowingNearby(membership.sessionId) },
             endSession = { viewModel.endSession(membership) },
+            entryCode = if (viewModel.groups.isAvailable) {
+                EntryCodeActions(
+                    load = { viewModel.loadEntryCode(membership.sessionId) },
+                    change = { code -> viewModel.changeEntryCode(membership.sessionId, code) },
+                )
+            } else {
+                null
+            },
         )
     }
 

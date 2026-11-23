@@ -39,6 +39,10 @@ import nz.skelstar.dotwatcher.network.networkMessage
 import nz.skelstar.dotwatcher.route.CasualRouteCache
 import nz.skelstar.dotwatcher.route.RoutePoint
 import nz.skelstar.dotwatcher.ui.casual.StopPill
+import nz.skelstar.dotwatcher.groups.GroupsModel
+import nz.skelstar.dotwatcher.ui.groups.GoMapGroupBar
+import nz.skelstar.dotwatcher.ui.groups.GroupsOnMapSheet
+import java.time.Instant
 import nz.skelstar.dotwatcher.ui.casual.ShareRunSheet
 import nz.skelstar.dotwatcher.ui.casual.WatchLinkState
 import nz.skelstar.dotwatcher.ui.casual.WhoCanSeeMeSheet
@@ -64,6 +68,10 @@ fun CasualMapScreen(
     appearance: AppearanceMode,
     onAppearanceChange: (AppearanceMode) -> Unit,
     onStop: () -> Unit,
+    /** Groups the person is in (see .ai/plans/go-and-groups.md); null without the "groups" feature. */
+    groups: GroupsModel? = null,
+    /** "‹ Home": the start screen with tracking carrying on; null hides it (no groups). */
+    onHome: (() -> Unit)? = null,
 ) {
     val context = LocalContext.current
     var positions by remember { mutableStateOf<List<RunnerPosition>>(emptyList()) }
@@ -78,6 +86,10 @@ fun CasualMapScreen(
     var showSettings by remember { mutableStateOf(false) }
     var crewStage by remember { mutableStateOf(CrewStage.None) }
     val crewState by crew.state.collectAsState()
+    var showGroups by remember { mutableStateOf(false) }
+    val groupsState = groups?.state?.collectAsState()?.value
+    // The chip's time left counts down; once a minute is enough.
+    var now by remember { mutableStateOf(Instant.now()) }
     // The link made for this run, kept while the screen is up so reopening the sheet doesn't make another.
     var watchLink by remember { mutableStateOf<WatchLinkState>(WatchLinkState.Creating) }
     val scope = rememberCoroutineScope()
@@ -137,6 +149,32 @@ fun CasualMapScreen(
                 delay(POLL_INTERVAL_MS)
             }
         }
+    }
+    // The groups list changes rarely (join, leave, end), so it is fetched when the map comes to the front, and
+    // the clock for the chip ticks once a minute.
+    if (groups != null) {
+        LaunchedEffect(lifecycleOwner) {
+            lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                groups.refreshNow()
+                while (isActive) {
+                    now = Instant.now()
+                    delay(60_000)
+                }
+            }
+        }
+    }
+
+    if (showGroups && groups != null && groupsState != null) {
+        GroupsOnMapSheet(
+            groups = groupsState.joined,
+            now = now,
+            onLeave = groups::leave,
+            onDismiss = {
+                showGroups = false
+                groups.clearError()
+            },
+            error = groupsState.error,
+        )
     }
 
     // This person's own route, shown to their crew and to anyone with their watch link.
@@ -294,10 +332,20 @@ fun CasualMapScreen(
                 .statusBarsPadding()
                 .padding(start = 14.dp, top = 8.dp),
         ) {
-            if (tracking != null) {
-                WordmarkTimerPill(displayName.initials(), tracking) { showExtendSheet = true }
-            } else {
-                Wordmark(initials = displayName.initials())
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                if (tracking != null) {
+                    WordmarkTimerPill(displayName.initials(), tracking) { showExtendSheet = true }
+                } else {
+                    Wordmark(initials = displayName.initials())
+                }
+                if (onHome != null) {
+                    GoMapGroupBar(
+                        groups = groupsState?.joined.orEmpty(),
+                        now = now,
+                        onHome = onHome,
+                        onOpenGroups = { showGroups = true },
+                    )
+                }
             }
         }
 

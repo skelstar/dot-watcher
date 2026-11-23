@@ -265,6 +265,39 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         return true
     }
 
+    /** True while this device is out on a Go (casual) run, whichever screen is showing. */
+    val isOutCasually: Boolean
+        get() = (LocationTrackingService.state.value as? TrackingState.Tracking)?.sessionId == CASUAL_SESSION_ID
+
+    /** "‹ Home" on the Go map: the start screen, with tracking carrying on (to join a group while out). */
+    fun showStartScreen() {
+        if (_destination.value == Destination.Casual) _destination.value = Destination.Session
+    }
+
+    /** "Back to the map" on the start screen while out. */
+    fun backToCasualMap() {
+        if (isOutCasually) _destination.value = Destination.Casual
+    }
+
+    /** The organiser reads their group's entry code. Null with words for the person when it couldn't be read. */
+    suspend fun loadEntryCode(sessionId: String): Result<String?> {
+        val response = runCatching { repository.getEntryCode(sessionId) }.getOrElse { return Result.failure(it) }
+        val body = response.body()
+        return if (response.isSuccessful && body != null) Result.success(body.entryCode)
+        else Result.failure(IllegalStateException(response.errorMessageOrStatus()))
+    }
+
+    /** The organiser sets, changes or (null) clears their group's entry code. Returns words for the person. */
+    suspend fun changeEntryCode(sessionId: String, code: String?): String {
+        val result = runCatching { repository.setEntryCode(sessionId, code) }
+        val response = result.getOrElse { return it.networkMessage() }
+        return when {
+            response.isSuccessful -> if (code == null) "Anyone nearby can join now" else "Code changed to ${code.uppercase()}"
+            response.code() == 410 -> "This session has ended."
+            else -> response.errorMessageOrStatus()
+        }
+    }
+
     /** Holding Go, then Go on "Before you go": start the casual run on the server, then the
      *  tracking service, then show the map. A failure stays on the start screen with the reason. */
     fun startCasual(duration: Duration) {
@@ -373,7 +406,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             }
 
             val name = if (draft != null) draft.trimmedTitle else sessionName?.ifBlank { null }
-            val result = runCatching { repository.createSession(name, displayName = repository.displayName, nearby = nearbyCreate) }
+            val entryCode = draft?.entryCodeToSend?.takeIf { groups.isAvailable }
+            val result = runCatching {
+                repository.createSession(name, displayName = repository.displayName, nearby = nearbyCreate, entryCode = entryCode)
+            }
 
             val response = result.getOrNull()
             if (response != null && response.code() == 409) {
@@ -459,6 +495,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 else -> if (asGroup && response?.isSuccessful == true) {
                     groups.refreshNow()
                     events.refresh()
+                    // Joined while out: straight back to the Go map, where the group now sees them.
+                    if (isOutCasually) _destination.value = Destination.Casual
                     SessionUiState.Idle
                 } else {
                     handleSessionResult(result)
