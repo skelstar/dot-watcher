@@ -248,6 +248,15 @@
     </div>
 
     <div class="notes" style="margin-bottom: 2rem;">
+      <strong>Groups:</strong> accounts granted the <code>groups</code> feature (in <code>user.features</code>) get
+      named sessions that act as groups (see <code>.ai/plans/go-and-groups.md</code>). People who share an
+      active named session (not ended, and within its <code>maxLengthHours</code>, default 24) see each other
+      by name on the Go map, exactly as crew do: the same "My crew" switch and block rules apply, and crew
+      keep their crew label. Nothing is stored for this; it stops when the session ends or either person
+      leaves. Without the feature, the endpoints below behave as they always have.
+    </div>
+
+    <div class="notes" style="margin-bottom: 2rem;">
       <strong>Client compatibility:</strong> every call above also sends <code>X-Api-Version: &lt;int&gt;</code>
       (the <code>apiVersion</code> constant in <code>LocationManager.swift</code>), bumped only when the app
       adopts a change that could break against the server — not on every release. If the server's configured
@@ -284,7 +293,7 @@
     "userId": "string",
     "username": "string",
     "displayName": "string",
-    "features": ["crew"]   // grants stored on the account; no longer gates anything. Older builds ignore it
+    "features": ["crew", "groups"]   // grants stored on the account. Only "groups" gates anything now; older builds ignore it
   }
 }</pre>
         </div>
@@ -354,7 +363,7 @@
   "userId": "string",
   "username": "string",
   "displayName": "string",
-  "features": ["crew"],
+  "features": ["crew", "groups"],
   "config": {
     "palette": {
       "version": 1,
