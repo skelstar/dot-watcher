@@ -159,11 +159,19 @@ public partial class SessionStore
     /// <summary>
     /// Ends the caller's open run, if any. They leave everyone's map at once. Idempotent. Returns the
     /// run that was ended, or null when there was none open.
+    ///
+    /// Pressing Stop keeps named-session posts from putting the person back on Go for
+    /// <see cref="CasualStopSuppression"/>. With <paramref name="forSession"/> (the phone is moving to a
+    /// named session) it doesn't: that's not a choice to be off Go, so the session's copies show them
+    /// with the lock as usual.
     /// </summary>
-    public (string RunId, DateTimeOffset StartedAt)? StopCasualRun(string userId, DateTimeOffset now)
+    public (string RunId, DateTimeOffset StartedAt)? StopCasualRun(string userId, DateTimeOffset now, bool forSession = false)
     {
         _casualRuns.TryRemove(userId, out _);
-        _casualSuppressedUntil[userId] = now + CasualStopSuppression;
+        if (forSession)
+            _casualSuppressedUntil.TryRemove(userId, out _);
+        else
+            _casualSuppressedUntil[userId] = now + CasualStopSuppression;
 
         // The route goes with the run: nobody should keep a copy of where someone went.
         DeleteCasualRoute(userId);
@@ -171,11 +179,12 @@ public partial class SessionStore
         using var conn = Connect();
         using var cmd = conn.CreateCommand();
         cmd.CommandText = """
-            UPDATE casual_runs SET ended_at = @endedAt, stopped_by_user = TRUE
+            UPDATE casual_runs SET ended_at = @endedAt, stopped_by_user = @stoppedByUser
             WHERE user_id = @userId AND ended_at IS NULL
             RETURNING id, started_at
             """;
         cmd.Parameters.AddWithValue("@endedAt", ToIso(now));
+        cmd.Parameters.AddWithValue("@stoppedByUser", !forSession);
         cmd.Parameters.AddWithValue("@userId", userId);
         (string, DateTimeOffset)? stopped = null;
         using (var reader = cmd.ExecuteReader())
@@ -258,10 +267,22 @@ public partial class SessionStore
     private bool StoppedRecently(NpgsqlConnection conn, string userId, DateTimeOffset now)
     {
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "SELECT MAX(ended_at) FROM casual_runs WHERE user_id = @userId AND stopped_by_user";
+        // Only the latest run counts: a Stop pressed this morning doesn't hold someone back after they
+        // started Go again and then switched to a named session.
+        cmd.CommandText = """
+            SELECT ended_at, stopped_by_user FROM casual_runs
+            WHERE user_id = @userId AND ended_at IS NOT NULL
+            ORDER BY ended_at DESC
+            LIMIT 1
+            """;
         cmd.Parameters.AddWithValue("@userId", userId);
-        if (cmd.ExecuteScalar() is not string stoppedAt)
-            return false;
+        string stoppedAt;
+        using (var reader = cmd.ExecuteReader())
+        {
+            if (!reader.Read() || !reader.GetBoolean(1))
+                return false;
+            stoppedAt = reader.GetString(0);
+        }
 
         var until = DateTimeOffset.Parse(stoppedAt) + CasualStopSuppression;
         if (now >= until)

@@ -581,6 +581,48 @@ public class CasualApiTests
     }
 
     [Fact]
+    public async Task SwitchingFromGoToANamedSession_ShowsTheRunnerWithTheLock()
+    {
+        using var factory = CasualFactory();
+        using var client = factory.CreateClient();
+        var (alice, bob) = await MakeCrewAsync(client, "alice", "bob");
+        await SetVisibleAsync(client, alice.AccessToken, true);
+        await StartAsync(client, alice.AccessToken);
+        await PostCasualOkAsync(client, alice.AccessToken, HereLatitude);
+
+        // The phone ends Go because it's moving to a session, not because Alice pressed Stop.
+        await StopAsync(client, alice.AccessToken, forSession: true);
+        var session = await AuthTestHelpers.CreateSessionAsync(client, alice.AccessToken);
+        await LocationsApiTests.PostLocationAsync(client, Fix(session.SessionId, HereLatitude), alice.AccessToken);
+
+        var position = Assert.Single((await GetLiveAsync(client, bob.AccessToken)).Positions).Single();
+        Assert.True(position.InSession);
+    }
+
+    [Fact]
+    public async Task AnEarlierStop_DoesNotHideTheRunner_AfterGoingOutAgainAndSwitchingToASession()
+    {
+        using var factory = CasualFactory();
+        using var client = factory.CreateClient();
+        var (alice, bob) = await MakeCrewAsync(client, "alice", "bob");
+        await SetVisibleAsync(client, alice.AccessToken, true);
+
+        await StartAsync(client, alice.AccessToken);
+        await PostCasualOkAsync(client, alice.AccessToken, HereLatitude);
+        await StopAsync(client, alice.AccessToken);
+
+        await StartAsync(client, alice.AccessToken);
+        await PostCasualOkAsync(client, alice.AccessToken, HereLatitude);
+        await StopAsync(client, alice.AccessToken, forSession: true);
+
+        // Only the database remembers the earlier Stop now, and it must not count.
+        var session = await AuthTestHelpers.CreateSessionAsync(client, alice.AccessToken);
+        await LocationsApiTests.PostLocationAsync(client, Fix(session.SessionId, HereLatitude), alice.AccessToken);
+
+        Assert.True(Assert.Single((await GetLiveAsync(client, bob.AccessToken)).Positions).Single().InSession);
+    }
+
+    [Fact]
     public async Task TheCasualOwnerAccount_CannotBeDeleted_AndIsHiddenFromAdminSessionLists()
     {
         using var factory = CasualFactory();
@@ -678,9 +720,10 @@ public class CasualApiTests
         return (await response.Content.ReadFromJsonAsync<CasualStartResponse>())!;
     }
 
-    private static async Task StopAsync(HttpClient client, string accessToken)
+    private static async Task StopAsync(HttpClient client, string accessToken, bool forSession = false)
     {
-        var response = await SendAsync(client, HttpMethod.Post, "/casual/stop", accessToken);
+        var response = await SendAsync(
+            client, HttpMethod.Post, forSession ? "/casual/stop?forSession=true" : "/casual/stop", accessToken);
         Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
     }
 

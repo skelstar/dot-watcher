@@ -32,18 +32,23 @@ public class CasualController(
         return Ok(started);
     }
 
-    /// <summary>Ends the caller's casual run. They leave everyone's map at once. Safe to repeat.</summary>
+    /// <summary>
+    /// Ends the caller's casual run. They leave everyone's map at once. Safe to repeat.
+    /// <paramref name="forSession"/> is true when the phone is switching to a named session rather than
+    /// the person pressing Stop: the run still ends, but their session posts may then show them on Go
+    /// with the lock straight away, instead of being held back for twelve hours.
+    /// </summary>
     [HttpPost("/casual/stop")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public IActionResult Stop()
+    public IActionResult Stop([FromQuery] bool forSession = false)
     {
         if (Gate(out var user) is { } denied)
             return denied;
 
         var now = timeProvider.GetUtcNow();
-        if (store.StopCasualRun(user.UserId, now) is { } stopped)
+        if (store.StopCasualRun(user.UserId, now, forSession) is { } stopped)
             HttpContext.SetActivity(
                 runId: stopped.RunId,
                 dedupeKey: stopped.RunId,
