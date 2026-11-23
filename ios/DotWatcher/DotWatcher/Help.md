@@ -16,6 +16,20 @@ DotWatcher shares your location in real time so other runners in the session kno
 
 **Move or stop it** — on the map, tap the join-location button to move the join location to where you are now, for example from the start to the finish. Hold it to change the range, stop showing the run nearby, or end the session for everyone.
 
+## Groups
+
+If groups are turned on for your account, a run near you works as a group instead.
+
+**Join a group** — find it with **Find runs near you** and tap **Join group**. Joining doesn't start tracking or change how you track. Everyone in the group sees you by name on their map while you're out on **Go**, wherever they are. Not out yet? Join now and the group waits: nobody sees you until you press **Go**. Tap **Join and Go now** to do both at once.
+
+**Join while you're out** — on the Go map, tap **‹ Home** to get back to the start screen. Tracking carries on while you join.
+
+**Entry codes** — some groups ask for a code. Enter the one the organiser gave you. Anyone just walking past can see the group but can't join without it.
+
+**See your groups** — the start screen shows the groups you're in and when each ends. On the Go map, tap the group chip under the timer to see them all. A group ends at the time shown, and you can **Leave group** at any time. Your crew can still see you.
+
+**Ask for a code (organisers)** — when you create a run with **Let people nearby join**, turn on **Ask for a code to join** and choose 4 to 8 letters or numbers. Give the code to entrants. To change or remove it later, hold the join-location button on the map. People already in stay in.
+
 ## Tracking
 
 Tap **Start Tracking** to begin sharing your location. Your position is sent every 15 seconds.
