@@ -193,6 +193,11 @@ struct NearbyJoinSheet: View {
     private var canJoin: Bool { !isBusy && !location.isOffline && (!needsCode || EntryCode.isValid(code)) }
 
     var body: some View {
+        // Scrolls: with groups (the code field, a second button) it is taller than the half-height sheet.
+        ScrollView { content }
+    }
+
+    private var content: some View {
         VStack(alignment: .leading, spacing: 16) {
             VStack(alignment: .leading, spacing: 4) {
                 Text(event.eyebrow.uppercased())

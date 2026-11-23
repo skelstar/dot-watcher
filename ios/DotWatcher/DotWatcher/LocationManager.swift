@@ -655,6 +655,11 @@ final class LocationManager {
     func currentFix() async -> CLLocation? {
         guard canUseLocationNow else { return nil }
         if let cached = clManager.location, Self.isFresh(cached) { return cached }
+        // Out on a run (joining a group while out): tracking keeps `latestLocation` current. Its timestamp goes
+        // stale while standing still, because the distance filter holds back new fixes (see `captureAndPost`),
+        // but the position is still where the person is. A one-off request here could wait for ever: while
+        // continuous updates run, CoreLocation may never answer it.
+        if isTracking, let tracked = latestLocation, tracked.horizontalAccuracy >= 0 { return tracked }
         // One request at a time: a second would replace the first's continuation and leave it waiting forever.
         guard oneShotLocationContinuation == nil else { return nil }
         return await requestOneShotLocation()
@@ -996,11 +1001,26 @@ final class LocationManager {
     /// one. `requestLocation()` delivers through the same delegate callback as continuous updates,
     /// so no delegate changes were needed.
     private func requestOneShotLocation() async -> CLLocation? {
-        await withCheckedContinuation { continuation in
+        oneShotRequestNumber += 1
+        let request = oneShotRequestNumber
+        return await withCheckedContinuation { continuation in
             oneShotLocationContinuation = continuation
             clManager.requestLocation()
+            // Never wait for ever: if no answer comes, give up with nil (the caller says it couldn't get a
+            // location) and free the slot. Only for this request, not a later one that took the slot.
+            Task { @MainActor [weak self] in
+                try? await Task.sleep(for: .seconds(Self.oneShotTimeoutSeconds))
+                guard let self, self.oneShotRequestNumber == request,
+                      let waiting = self.oneShotLocationContinuation else { return }
+                self.oneShotLocationContinuation = nil
+                waiting.resume(returning: nil)
+            }
         }
     }
+
+    private static let oneShotTimeoutSeconds = 15
+    /// Counts one-off requests, so a timeout only ever ends its own.
+    @ObservationIgnored private var oneShotRequestNumber = 0
 
     /// -1.0 (monitoring disabled/unsupported) becomes nil — shared by every call site that needs
     /// this conversion (captureAndPost, sendLocationNowWhilePaused) rather than duplicating it.
