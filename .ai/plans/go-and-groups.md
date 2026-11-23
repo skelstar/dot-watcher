@@ -1,6 +1,6 @@
 # Go and groups — Plan
 
-*DotWatcher — plan, November 2026. Status (22 November 2026): mock-ups done; step 1 and the server half of step 2 built
+*DotWatcher — plan, November 2026. Status (24 November 2026): mock-ups done; step 1 and the server half of step 2 built
 and green in CI but **not merged**; the Android half of step 2 started; iOS not started. **Start with
 [Picking this up again](#picking-this-up-again) below.** Decisions marked **Open** need an answer before the step that
 depends on them.*
@@ -15,15 +15,15 @@ one when its base branch is deleted, otherwise retarget it to `staging` by hand)
 | #379 | `go-and-groups-plan` | This plan and both mock-ups | Docs only |
 | #386 | `groups-casual-visibility` | Step 1: people in the same active session see each other by name in casual (`groups` flag) | CI green, not merged |
 | #387 | `groups-entry-code` | Step 2 server: entry codes on nearby sessions | CI green, not merged |
-| #388 | `android-groups-join` | Step 2 Android, part 1: join a nearby group without starting tracking | Compiles, 91 unit tests pass locally; not tried on a device |
+| #388 | `android-groups-join` | Step 2 Android, part 1: join a nearby group without starting tracking (based on #387) | Compiles, 91 unit tests pass locally; not tried on a device |
+| #396 | `groups-ends-at` | Step 2 server: each group's end time (`endsAt`) on memberships and the nearby list (based on #387) | CI green, not merged |
 
 To try it end to end: deploy the server stack, then grant `groups` to a test account (`PUT /api/admin/users/{id}/features`,
 body `{ "features": ["groups"] }`, admin token). Without the flag, nothing changes for anyone.
 
 **Next, in order:**
 
-1. **Server: send each group's end time** (additive `endsAt` on `GET /me/sessions` and the nearby list, from
-   `created_at + max_length_hours`). Needed by the "You're in" card's time and the map chip.
+1. ~~**Server: send each group's end time**~~ Done in #396.
 2. **Android, part 2:** "‹ Home" on the Go map and a "You're out · Back to the map" tile on the start screen, so you
    can join while out (the start screen is replaced by the map while tracking today); the group chip on the Go map
    (name, time left, Leave); "Join and Go now" on the join sheet; organisers can set and change the entry code
@@ -218,7 +218,9 @@ Built from mock-up 0a.
       accounts and hides coded sessions from everyone else; nearby join takes `entryCode`, and a missing or wrong code
       is `403 { reason: "entry_code" }` only once every other check passes (otherwise the usual 404). New nullable
       `app_sessions.entry_code`. `EntryCodeTests` (18).
-- [ ] Each group's end time (`endsAt`) on `GET /me/sessions` and the nearby list, for the card's time and the map chip.
+- [x] Each group's end time (**#396**, CI green, not merged): `endsAt` (created plus event length, default 24 h, UTC)
+      on every membership (create, both joins, `GET /me/sessions`) and, for `groups` accounts only, on the nearby list.
+      `SessionStore.GroupEndsAt` is the one rule, also behind `IsGroupActive`. `GroupEndsAtTests` (4).
 - [ ] Invite links for groups that work outside the region (e.g. `dotwatchr.app/g/<slug>`), opening the join sheet
       with the code field; joined from home shows the card on the main screen on the day.
 
