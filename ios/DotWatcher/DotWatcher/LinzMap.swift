@@ -42,7 +42,7 @@ struct LinzAttribution: View {
             Text("·")
             Link("Basemaps data attribution", destination: LinzBasemap.dataAttributionURL)
         }
-        .font(.system(size: 9.5))
+        .font(.app(size: 9.5))
         .foregroundStyle(.black.opacity(0.7))
         .tint(.black.opacity(0.7))
         .padding(.horizontal, 6)

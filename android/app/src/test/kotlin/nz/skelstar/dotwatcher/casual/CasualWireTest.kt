@@ -64,6 +64,9 @@ class CasualWireTest {
 
         assertEquals(2, response.positions.size)
         assertEquals("AL", response.positions[0][0].runnerName)
+        // Crew-out alerts read these two from the same reply.
+        assertTrue(response.positions[0][0].isSelf)
+        assertTrue(response.positions[1][0].inSession)
     }
 
     @Test fun `an older server's answer without the new fields still reads`() {

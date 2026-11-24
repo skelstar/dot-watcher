@@ -23,14 +23,14 @@ struct BlockedUsersView: View {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(blocked.displayName)
                                 Text("Blocked \(blocked.blockedAt.formattedAsDate)")
-                                    .font(.caption)
+                                    .font(.app(.caption))
                                     .foregroundStyle(.secondary)
                             }
                             Spacer()
                             Button("Unblock") {
                                 pendingUnblockUserId = blocked.userId
                             }
-                            .font(.subheadline.weight(.medium))
+                            .font(.app(.subheadline, weight: .medium))
                             .disabled(pendingUnblockUserId != nil)
                         }
                     }

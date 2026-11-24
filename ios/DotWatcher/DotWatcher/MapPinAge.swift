@@ -20,18 +20,18 @@ struct SatelliteStatusBadge: View {
     var body: some View {
         VStack(spacing: 2) {
             Label("On satellite — sending position, map paused", systemImage: "antenna.radiowaves.left.and.right")
-                .font(.subheadline.weight(.semibold))
+                .font(.app(.subheadline, weight: .semibold))
                 .multilineTextAlignment(.leading)
             if let lastSent {
                 Text("Last sent \(lastSent, style: .relative) ago")
-                    .font(.caption)
+                    .font(.app(.caption))
                     .foregroundStyle(.white.opacity(0.8))
             }
             // Only present after a failed send, and only until that retry fires (or the regular
             // send takes over). `.timer` counts down live without needing a view refresh.
             if let nextRetryAt, nextRetryAt > Date() {
                 Text("Send failed — retrying in \(nextRetryAt, style: .timer)")
-                    .font(.caption)
+                    .font(.app(.caption))
                     .foregroundStyle(.white.opacity(0.8))
             }
         }

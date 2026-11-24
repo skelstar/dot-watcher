@@ -32,7 +32,7 @@ struct CreateSessionView: View {
         VStack(spacing: 0) {
             if isOffline {
                 Label("No internet connection. Creating a session needs a connection.", systemImage: "wifi.slash")
-                    .font(.headline)
+                    .font(.app(.headline))
                     .foregroundStyle(.white)
                     .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
@@ -45,7 +45,7 @@ struct CreateSessionView: View {
             ScrollView {
                 VStack(spacing: 24) {
                     Text("Create a New Session")
-                        .font(.title2.bold())
+                        .font(.app(.title2, weight: .bold))
 
                     if nearbyIsOn {
                         Text("Give your run a title. People nearby will see it. You'll still get an invite code to share.")
@@ -83,7 +83,7 @@ struct CreateSessionView: View {
                             .pickerStyle(.menu)
                         }
                         Text("Pick the longest your event could run. Going over won't stop tracking, but replay will start later.")
-                            .font(.footnote)
+                            .font(.app(.footnote))
                             .foregroundStyle(.secondary)
                             .multilineTextAlignment(.leading)
                             .fixedSize(horizontal: false, vertical: true)

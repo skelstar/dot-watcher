@@ -82,6 +82,7 @@ import nz.skelstar.dotwatcher.ui.casual.StopPill
 import nz.skelstar.dotwatcher.ui.crew.CrewFlow
 import nz.skelstar.dotwatcher.ui.crew.CrewStage
 import nz.skelstar.dotwatcher.ui.nearby.NearbyOrganiserSheet
+import nz.skelstar.dotwatcher.ui.theme.UiFontFamily
 import java.time.Duration
 import java.time.Instant
 
@@ -470,6 +471,7 @@ internal fun String.initials(): String = initialsFor(this)
 internal fun Wordmark(initials: String, halo: Boolean = true) {
     val shadow = if (halo) Shadow(color = Color.White, blurRadius = 8f) else null
     val textStyle = TextStyle(
+        fontFamily = UiFontFamily,
         color = Color.Black,
         fontSize = 19.sp,
         fontWeight = FontWeight.ExtraBold,
@@ -521,7 +523,7 @@ internal fun WordmarkTimerPill(initials: String, tracking: TrackingState.Trackin
                 color = Color.Black,
                 fontSize = 13.sp,
                 fontWeight = FontWeight.Bold,
-                style = TextStyle(fontFeatureSettings = "tnum"),
+                style = TextStyle(fontFamily = UiFontFamily, fontFeatureSettings = "tnum"),
             )
         }
     }

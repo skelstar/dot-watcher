@@ -20,13 +20,13 @@ private struct WordmarkText: View {
 
     var body: some View {
         HStack(spacing: 1) {
-            Text("d").font(.system(size: 19, weight: .heavy))
+            Text("d").font(.app(size: 19, weight: .heavy))
             Text(RunnerCircle.initials(for: runnerName))
-                .font(.system(size: 9.5, weight: .bold))
+                .font(.app(size: 9.5, weight: .bold))
                 .foregroundStyle(.white)
                 .frame(width: 25, height: 25)
                 .background(Circle().fill(RunnerColorPalette.currentUser))
-            Text("t-watchr").font(.system(size: 19, weight: .heavy))
+            Text("t-watchr").font(.app(size: 19, weight: .heavy))
         }
         .foregroundStyle(.black)
     }
@@ -60,7 +60,7 @@ struct MapTimerPill: View {
                         WordmarkText(runnerName: runnerName)
                         Spacer(minLength: 10)
                         Text(Self.timeLeft(remaining))
-                            .font(.system(size: 13, weight: .bold))
+                            .font(.app(size: 13, weight: .bold))
                             .monospacedDigit()
                             .foregroundStyle(.black)
                     }
@@ -95,7 +95,7 @@ struct MapRailButton: View {
     var body: some View {
         Button(action: action) {
             Image(systemName: symbol)
-                .font(.system(size: 18, weight: .semibold))
+                .font(.app(size: 18, weight: .semibold))
                 .foregroundStyle(.black)
                 .frame(width: 44, height: 44)
                 .background(Color.white.opacity(0.85), in: Circle())
@@ -116,7 +116,7 @@ struct StopPill: View {
     var body: some View {
         Button { confirming = true } label: {
             Text("Stop")
-                .font(.system(size: 15, weight: .bold))
+                .font(.app(size: 15, weight: .bold))
                 .foregroundStyle(.white)
                 .frame(width: 150, height: 48)
         }
@@ -147,10 +147,10 @@ struct BatteryPausedCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Label("Battery critical, updates paused", systemImage: "battery.0percent")
-                .font(.system(size: 13.5, weight: .bold))
+                .font(.app(size: 13.5, weight: .bold))
                 .foregroundStyle(Color(red: 0xC4 / 255, green: 0x27 / 255, blue: 0x1D / 255))
             Text("Others can't see you move until you send manually, plug in, or turn automatic updates back on.")
-                .font(.system(size: 11.5))
+                .font(.app(size: 11.5))
                 .foregroundStyle(.secondary)
             HStack(spacing: 8) {
                 Button { Task { await location.sendLocationNowWhilePaused() } } label: {
@@ -163,7 +163,7 @@ struct BatteryPausedCard: View {
                 .buttonStyle(.bordered)
             }
             Button(action: onStop) {
-                Text("Stop").fontWeight(.bold).frame(maxWidth: .infinity)
+                Text("Stop").font(.app(.body, weight: .bold)).frame(maxWidth: .infinity)
             }
             .buttonStyle(.borderedProminent)
             .tint(stopRed)

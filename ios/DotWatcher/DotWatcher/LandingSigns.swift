@@ -1,4 +1,3 @@
-import CoreText
 import SwiftUI
 
 // The start screen's "sign" buttons: Go, Join and Create, plus a placeholder event sign. Laid out
@@ -13,33 +12,19 @@ enum SignPalette {
     static let ink = Color(red: 0x1F / 255, green: 0x2A / 255, blue: 0x3D / 255)
 }
 
-/// EB Garamond (OFL, ios/third_party) at ExtraBold, the nearest free face to the ITC Garamond on the
-/// park signs. One variable font file, registered on first use and set to weight 800 through its
-/// `wght` axis. Falls back to the system serif if the file can't be loaded.
+/// Space Mono Regular (OFL, ios/third_party): every sign's label, title and subtitle. Registered through
+/// `UIAppFonts` in Info.plist. Monospaced, so a title's width depends only on how many characters it has
+/// (see `FittedSignTitle`). Falls back to the system monospaced font if the file can't be loaded. The rest of
+/// the app uses Red Hat Text (`AppFont`).
 enum SignFont {
-    private static let registered: Void = {
-        if let url = Bundle.main.url(forResource: "EBGaramond", withExtension: "ttf") {
-            CTFontManagerRegisterFontsForURL(url as CFURL, .process, nil)
-        }
-    }()
-
-    private static let weightAxis = 0x7767_6874  // 'wght'
-
     static func font(size: CGFloat) -> Font {
         Font(uiFont(size: size))
     }
 
-    /// The same font as `font(size:)`, for reading its metrics.
+    /// The same font as `font(size:)`, for reading its metrics and measuring text.
     static func uiFont(size: CGFloat) -> UIFont {
-        _ = registered
-        let descriptor = UIFontDescriptor(fontAttributes: [
-            .name: "EBGaramond-Regular",
-            UIFontDescriptor.AttributeName(rawValue: kCTFontVariationAttribute as String): [weightAxis: 800],
-        ])
-        let font = UIFont(descriptor: descriptor, size: size)
-        guard font.familyName.contains("Garamond") else {
-            let system = UIFont.systemFont(ofSize: size, weight: .heavy)
-            return system.fontDescriptor.withDesign(.serif).map { UIFont(descriptor: $0, size: size) } ?? system
+        guard let font = UIFont(name: "SpaceMono-Regular", size: size) else {
+            return UIFontMetrics.default.scaledFont(for: .monospacedSystemFont(ofSize: size, weight: .regular))
         }
         return UIFontMetrics.default.scaledFont(for: font)
     }
@@ -48,6 +33,9 @@ enum SignFont {
 private let signBarHeight: CGFloat = 12
 private let signFrameWidth: CGFloat = 2
 private let signLineSpacing: CGFloat = 3
+private let signSubtitleSize: CGFloat = 13
+/// The smallest a title shrinks to before it is cut with "…". See `FittedSignTitle`.
+private let signTitleMinimumSize: CGFloat = 24
 
 /// The line icon on the right of a sign. All are drawn with the same stroke so they read as a set:
 /// chevrons to head off (Go, events), an arrow going in to join a run, a plus to make a new one.
@@ -106,7 +94,7 @@ private struct IconPlacement {
 
     init(icon: SignIcon, hasEyebrow: Bool, titleSize: CGFloat) {
         let titleFont = SignFont.uiFont(size: titleSize)
-        let subtitleFont = SignFont.uiFont(size: 15)
+        let subtitleFont = SignFont.uiFont(size: signSubtitleSize)
         let titleTop = hasEyebrow ? SignFont.uiFont(size: 11).lineHeight + signLineSpacing : 0
         let capTop = titleTop + titleFont.ascender - titleFont.capHeight
         let subtitleBaseline = titleTop + titleFont.lineHeight + signLineSpacing + subtitleFont.ascender
@@ -138,17 +126,16 @@ private struct SignContent: View {
                         .font(SignFont.font(size: 11))
                         .tracking(1)
                 }
-                Text(title)
-                    .font(SignFont.font(size: titleSize))
+                FittedSignTitle(title: title, size: titleSize)
                 if let organiser {
                     HStack(spacing: 6) {
                         Text("Organised by")
-                            .font(SignFont.font(size: 15))
+                            .font(SignFont.font(size: signSubtitleSize))
                         organiser
                     }
                 } else {
                     Text(subtitle)
-                        .font(SignFont.font(size: 15))
+                        .font(SignFont.font(size: signSubtitleSize))
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
@@ -164,6 +151,36 @@ private struct SignContent: View {
                 .accessibilityHidden(true)
         }
         .foregroundStyle(ink)
+    }
+}
+
+/// A sign's title, shown lowercase, on one line. Only a title that won't fit changes: it steps down 2pt at a time
+/// from its own size to `signTitleMinimumSize`, the last step 2% tighter, and if it still doesn't fit it is cut
+/// with "…". `ViewThatFits` measures each candidate at the current text size, so Dynamic Type and the tile's
+/// width are both taken into account. Go, Join and Create always fit at their own size. The spoken label is the
+/// sign's (`accessibilityLabel`), so VoiceOver reads the title as written, not lowercased or cut.
+private struct FittedSignTitle: View {
+    let title: String
+    let size: CGFloat
+
+    private var sizes: [CGFloat] {
+        size <= signTitleMinimumSize ? [size] : Array(stride(from: size, through: signTitleMinimumSize, by: -2))
+    }
+
+    private func line(_ size: CGFloat) -> some View {
+        Text(title.lowercased())
+            .font(SignFont.font(size: size))
+            .tracking(size == signTitleMinimumSize ? -0.02 * SignFont.uiFont(size: size).pointSize : 0)
+            .lineLimit(1)
+    }
+
+    var body: some View {
+        ViewThatFits(in: .horizontal) {
+            ForEach(sizes, id: \.self) { size in
+                line(size).fixedSize(horizontal: true, vertical: false)
+            }
+            line(sizes.last ?? size).truncationMode(.tail)
+        }
     }
 }
 
@@ -275,7 +292,7 @@ struct OrganiserDot: View {
 
     var body: some View {
         Text(initials)
-            .font(.system(size: 9, weight: .semibold))
+            .font(.app(size: 9, weight: .semibold))
             .foregroundStyle(ink)
             .frame(width: 20, height: 20)
             .background(Circle().fill(fill))

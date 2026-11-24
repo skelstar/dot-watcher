@@ -29,7 +29,7 @@ struct CrewDot: View {
             .frame(width: size, height: size)
             .overlay(
                 Text(initials)
-                    .font(.system(size: size * 0.34, weight: .bold))
+                    .font(.app(size: size * 0.34, weight: .bold))
                     .foregroundStyle(.white)
             )
         if isCrew {
@@ -86,21 +86,21 @@ struct CrewRow: View {
                         }
                         if summary.extra > 0 {
                             Text("+\(summary.extra)")
-                                .font(.caption.weight(.bold))
+                                .font(.app(.caption, weight: .bold))
                                 .foregroundStyle(.secondary)
                         }
                     }
                     VStack(alignment: .leading, spacing: 2) {
                         Text(summary.title)
-                            .font(.headline)
+                            .font(.app(.headline))
                         if !summary.meta.isEmpty {
                             Text(summary.meta)
-                                .font(.caption)
+                                .font(.app(.caption))
                                 .foregroundStyle(.secondary)
                         }
                         ForEach(CrewFormat.rowNotes(newMembers: crew.newMemberIds.count, pendingInvites: crew.pendingInvites), id: \.self) { note in
                             Text(note)
-                                .font(.caption.weight(.semibold))
+                                .font(.app(.caption, weight: .semibold))
                                 .foregroundStyle(Color.accentColor)
                         }
                     }
@@ -229,15 +229,15 @@ struct CrewListView: View {
                 Color.clear.frame(height: 0).onAppear { crew.markMembersSeen() }
                 FindNewCrewSection(finding: crew.finding)
                 Text("People you have chosen. They see you in their crew too, and you can remove each other at any time. Removing someone takes effect straight away.")
-                    .font(.subheadline)
+                    .font(.app(.subheadline))
                     .foregroundStyle(.secondary)
 
                 Text("In your crew · \(crew.members.count)")
-                    .font(.headline)
+                    .font(.app(.headline))
 
                 if crew.members.isEmpty {
                     Text("No one yet. Ask someone to send you a crew code, or send them yours.")
-                        .font(.subheadline)
+                        .font(.app(.subheadline))
                         .foregroundStyle(.secondary)
                 } else {
                     LazyVGrid(columns: [GridItem(.adaptive(minimum: 72), spacing: 8)], spacing: 8) {
@@ -249,20 +249,20 @@ struct CrewListView: View {
                         detailCard(selected)
                     } else {
                         Text("Tap someone to see their details.")
-                            .font(.footnote)
+                            .font(.app(.footnote))
                             .foregroundStyle(.secondary)
                     }
                 }
 
                 if let error = crew.removeError {
                     Text(error)
-                        .font(.subheadline)
+                        .font(.app(.subheadline))
                         .foregroundStyle(.red)
                 }
 
                 Button(action: onAdd) {
                     Text("Add someone")
-                        .fontWeight(.semibold)
+                        .font(.app(.body, weight: .semibold))
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.borderedProminent)
@@ -306,7 +306,7 @@ struct CrewListView: View {
             VStack(spacing: 4) {
                 crewDot(for: member, color: crew.color(for: member.userId), size: 38)
                 Text(member.label)
-                    .font(.caption2)
+                    .font(.app(.caption2))
                     .lineLimit(1)
                     .foregroundStyle(isSelected ? Color.primary : Color.secondary)
             }
@@ -322,16 +322,16 @@ struct CrewListView: View {
             crewDot(for: member, color: crew.color(for: member.userId), size: 34)
             VStack(alignment: .leading, spacing: 2) {
                 Text(member.label)
-                    .font(.headline)
+                    .font(.app(.headline))
                 Text("Crew \(CrewFormat.sinceLabel(member.since))")
-                    .font(.caption)
+                    .font(.app(.caption))
                     .foregroundStyle(.secondary)
             }
             Spacer()
             Button("Remove", role: .destructive) {
                 memberToRemove = member
             }
-            .font(.subheadline.weight(.semibold))
+            .font(.app(.subheadline, weight: .semibold))
         }
         .padding(12)
         .background(Color(.systemGray5), in: RoundedRectangle(cornerRadius: 12))
@@ -352,12 +352,12 @@ struct AddCrewView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 Text("Ask them to send you their crew code, then enter it here. If they show you a QR code, just open your camera and point it at the code.")
-                    .font(.subheadline)
+                    .font(.app(.subheadline))
                     .foregroundStyle(.secondary)
 
                 HStack {
                     Text("Enter their crew code")
-                        .font(.subheadline.weight(.semibold))
+                        .font(.app(.subheadline, weight: .semibold))
                     Spacer()
                     Button {
                         if let pasted = UIPasteboard.general.string {
@@ -366,7 +366,7 @@ struct AddCrewView: View {
                         }
                     } label: {
                         Label("Paste", systemImage: "doc.on.clipboard")
-                            .font(.subheadline)
+                            .font(.app(.subheadline))
                     }
                     .buttonStyle(.plain)
                 }
@@ -382,7 +382,7 @@ struct AddCrewView: View {
                     Task { await crew.beginAdd(code) }
                 } label: {
                     Text("Add")
-                        .fontWeight(.semibold)
+                        .font(.app(.body, weight: .semibold))
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.borderedProminent)
@@ -440,10 +440,10 @@ struct MyCrewCodeView: View {
     private var namePrompt: some View {
         VStack(spacing: 14) {
             Text("What should your crew call you?")
-                .font(.title3.bold())
+                .font(.app(.title3, weight: .bold))
                 .multilineTextAlignment(.center)
             Text("People you add see this name. If you skip it they see your initials. You can change it later in Settings.")
-                .font(.subheadline)
+                .font(.app(.subheadline))
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
             TextField("Your name", text: $draft)
@@ -457,7 +457,7 @@ struct MyCrewCodeView: View {
                 }
             if let error = crew.nicknameError {
                 Text(error)
-                    .font(.footnote)
+                    .font(.app(.footnote))
                     .foregroundStyle(.red)
             }
             Button {
@@ -468,7 +468,7 @@ struct MyCrewCodeView: View {
                 }
             } label: {
                 Text("Continue")
-                    .fontWeight(.semibold)
+                    .font(.app(.body, weight: .semibold))
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.borderedProminent)
@@ -491,18 +491,18 @@ struct MyCrewCodeView: View {
                 .font(.system(size: 30, weight: .bold, design: .monospaced))
                 .accessibilityLabel("Crew code \(spaced)")
             Text(CrewFormat.expiryLabel(code.expiresAt))
-                .font(.footnote)
+                .font(.app(.footnote))
                 .foregroundStyle(.secondary)
             Text("Send this to one person. It works once.")
-                .font(.subheadline.weight(.semibold))
+                .font(.app(.subheadline, weight: .semibold))
                 .multilineTextAlignment(.center)
             Text("In person, they can scan the QR code with their camera. Otherwise share it as a message.")
-                .font(.footnote)
+                .font(.app(.footnote))
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
             ShareLink(item: CrewLink.shareMessage(base: webBaseURL, code: code.code)) {
                 Label("Share code", systemImage: "square.and.arrow.up")
-                    .fontWeight(.semibold)
+                    .font(.app(.body, weight: .semibold))
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.borderedProminent)
@@ -512,7 +512,7 @@ struct MyCrewCodeView: View {
             }
             .disabled(crew.isLoadingMyCode)
             Text("Making a new code stops this one working.")
-                .font(.footnote)
+                .font(.app(.footnote))
                 .foregroundStyle(.secondary)
         } else if crew.isLoadingMyCode {
             ProgressView()
@@ -589,31 +589,31 @@ struct CrewConfirmOverlay: View {
         case .loading:
             ProgressView()
             Text("Checking the code…")
-                .font(.headline)
+                .font(.app(.headline))
 
         case .adding:
             ProgressView()
             Text("Adding to your crew…")
-                .font(.headline)
+                .font(.app(.headline))
 
         case .ready(_, let owner):
             if owner.alreadyCrew {
                 title("\(owner.label) is already in your crew")
                 Text("You don't need to use this code.")
-                    .font(.subheadline)
+                    .font(.app(.subheadline))
                     .foregroundStyle(.secondary)
                 okButton
             } else {
                 title("Add \(owner.label) to your crew?")
                 Text("They'll see you in their crew too. You can each remove the other at any time.")
-                    .font(.subheadline)
+                    .font(.app(.subheadline))
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
                 Button {
                     Task { await crew.confirmAdd() }
                 } label: {
                     Text("Add")
-                        .fontWeight(.semibold)
+                        .font(.app(.body, weight: .semibold))
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.borderedProminent)
@@ -629,7 +629,7 @@ struct CrewConfirmOverlay: View {
                 onFinished()
             } label: {
                 Text("OK")
-                    .fontWeight(.semibold)
+                    .font(.app(.body, weight: .semibold))
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.borderedProminent)
@@ -638,7 +638,7 @@ struct CrewConfirmOverlay: View {
         case .failed(let message):
             title("Couldn't add them")
             Text(message)
-                .font(.subheadline)
+                .font(.app(.subheadline))
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
             okButton
@@ -647,7 +647,7 @@ struct CrewConfirmOverlay: View {
 
     private func title(_ text: String) -> some View {
         Text(text)
-            .font(.headline)
+            .font(.app(.headline))
             .multilineTextAlignment(.center)
     }
 
@@ -656,7 +656,7 @@ struct CrewConfirmOverlay: View {
             crew.dismissConfirm()
         } label: {
             Text("OK")
-                .fontWeight(.semibold)
+                .font(.app(.body, weight: .semibold))
                 .frame(maxWidth: .infinity)
         }
         .buttonStyle(.borderedProminent)
