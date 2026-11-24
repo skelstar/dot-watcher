@@ -113,7 +113,14 @@ public record SessionMembership(
     string? CreatedAt = null,
     // ISO-8601 UTC time the session (a group, see .ai/plans/go-and-groups.md) ends: created_at plus its
     // event length (max_length_hours, default 24 h). Additive; older clients ignore it.
-    string? EndsAt = null
+    string? EndsAt = null,
+    // Whether the caller owns (organised) this session, so a phone can show the organiser's controls on
+    // the start screen. Additive; older clients ignore it.
+    bool IsOwner = false,
+    // The owner's view of whether people nearby can find it; null for everyone else (not their business,
+    // and an older client never reads it).
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    bool? Nearby = null
 );
 
 public record BlockedUser(
