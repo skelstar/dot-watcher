@@ -108,6 +108,10 @@ struct SessionMembership: Codable, Identifiable {
     /// ISO-8601 UTC times the session was created and ends (created plus its event length). Nil from older servers.
     var createdAt: String? = nil
     var endsAt: String? = nil
+    /// Whether this account organised the session; nil from older servers.
+    var isOwner: Bool? = nil
+    /// The organiser's view of whether people nearby can find it; nil for everyone else and older servers.
+    var nearby: Bool? = nil
 }
 
 struct BlockedUser: Codable, Identifiable, Hashable {
@@ -627,6 +631,8 @@ final class LocationManager {
             nearbyMeetingPoints[membership.sessionId] = nearby.fix.coordinate
         }
         upsertMembership(membership)
+        // With groups a created session is a group: nothing is selected, so no session map or tracking in it.
+        if hasGroups { return }
         selectSession(membership)
     }
 
@@ -710,6 +716,21 @@ final class LocationManager {
         return status
     }
 
+    /// Groups: the organiser's Ping from their group's card. Keeps the range they chose; needs no tracking.
+    func pingGroup(sessionId targetId: String) async -> String {
+        guard let fix = await currentFix(), isUsableNearbyFix(fix) else {
+            return "Couldn't get an accurate location. Try again with a clear view of the sky."
+        }
+        do {
+            try await pingNearby(sessionId: targetId, fix: fix, enabled: true)
+            return "Join location set here"
+        } catch DotWatcherAPIError.badResponse(410, _) {
+            return "This session has ended."
+        } catch {
+            return error.localizedDescription
+        }
+    }
+
     /// Ends a session for everyone (owner only). Replay stays on the server.
     func endSession(sessionId targetId: String) async throws {
         if isTracking && sessionId == targetId { stop() }
@@ -736,6 +757,8 @@ final class LocationManager {
                 "role": "runner",
             ])
         upsertMembership(membership)
+        // With groups an invite join is a group join, as from a nearby tile.
+        if hasGroups { return }
         selectSession(membership)
         if let joinParticipants = membership.participants {
             participants = Array(Set(joinParticipants.map(\.displayName))).sorted()
