@@ -20,10 +20,11 @@
 # the upload step; bump the version or upload from a newer branch.
 #
 # Signing is automatic: the App Store Connect API key (Admin role) lets xcodebuild create the
-# distribution certificate and profile itself, so no certificates are stored here. The catch: each run's
-# keychain starts empty, so each run makes a new Apple Distribution certificate. Apple allows only a few;
-# when archiving fails with "reached the maximum number of certificates", revoke the old "Created via API"
-# ones under Certificates on developer.apple.com and run again.
+# distribution certificate and profile itself, so no certificates are stored here. The certificate is
+# cloud-managed ("Distribution Managed" on developer.apple.com): Apple holds its private key, so every run
+# reuses it. Don't revoke it. The archive signs for distribution (see the Archive step), so runs make no
+# Development certificates. If archiving ever fails with "reached the maximum number of certificates", look
+# for leftover "Created via API" Development certificates under Certificates, revoke those, and run again.
 #
 # Repository secrets:
 #   ASC_KEY_ID      App Store Connect API key ID
