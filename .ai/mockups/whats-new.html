@@ -1,0 +1,235 @@
+<title>What's New Tile</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=EB+Garamond:wght@800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* Layout: phone screens side by side (stacking when narrow): two places for the tile, and the list it opens. */
+:root {
+  --page: #eceae4;
+  --fg: #1f2a3d;
+  --muted: #5f6672;
+  --line: #d3d0c7;
+  --phone: #ffffff;
+  --phone-fg: #1f2a3d;
+  --phone-muted: #6b7280;
+  --sheet: #ffffff;
+  --sheet-line: #e5e7eb;
+  --phone-edge: #1b1d22;
+  --navy: #1f3350;
+  --sand: #f2efe4;
+  --cream: #f6f1e4;
+  --chip: #1f3350;
+  --chip-fg: #f2efe4;
+  --font-sign: "EB Garamond", Georgia, "Times New Roman", serif;
+  --font-ui: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --page: #16181c; --fg: #ece9e1; --muted: #a2a6ae; --line: #2f333a;
+    --phone: #000000; --phone-fg: #f2f2f7; --phone-muted: #9ca3af; --sheet: #1c1c1e; --sheet-line: #2c2c2e;
+    --phone-edge: #3a3d44; --chip: #f2efe4; --chip-fg: #1f3350;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --page: #16181c; --fg: #ece9e1; --muted: #a2a6ae; --line: #2f333a;
+  --phone: #000000; --phone-fg: #f2f2f7; --phone-muted: #9ca3af; --sheet: #1c1c1e; --sheet-line: #2c2c2e;
+  --phone-edge: #3a3d44; --chip: #f2efe4; --chip-fg: #1f3350;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--page); color: var(--fg); font: 15px/1.5 var(--font-ui);
+  padding-block: 28px 48px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+.wrap { max-width: 1120px; margin: 0 auto; display: grid; gap: 28px; }
+header { display: grid; gap: 6px; max-width: 66ch; }
+h1 { font-family: var(--font-sign); font-weight: 800; font-size: 36px; line-height: 1.1; margin: 0; text-wrap: balance; }
+header p { margin: 0; color: var(--muted); }
+.controls button {
+  font: 500 14px var(--font-ui); color: var(--chip-fg); background: var(--chip);
+  border: 0; border-radius: 999px; padding: 8px 16px; cursor: pointer;
+}
+button:focus-visible { outline: 3px solid #f28c28; outline-offset: 3px; }
+
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 28px; }
+.option { display: grid; gap: 12px; align-content: start; min-width: 0; }
+.option h2 { margin: 0; font: 600 16px var(--font-ui); display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+.option h2 small { font-weight: 400; color: var(--muted); font-size: 13px; }
+.option p { margin: 0; color: var(--muted); font-size: 14px; }
+
+.phone {
+  width: 100%; max-width: 340px; height: 640px; border: 10px solid var(--phone-edge); border-radius: 44px;
+  background: var(--phone); padding: 54px 16px 28px; display: flex; flex-direction: column; gap: 14px;
+  position: relative; overflow: hidden;
+}
+.phone::before {
+  content: ""; position: absolute; top: 12px; left: 50%; width: 96px; height: 26px;
+  transform: translateX(-50%); border-radius: 20px; background: var(--phone-edge); z-index: 3;
+}
+
+/* The start screen's signs, as in go-sign-icons.html. */
+button.sign { all: unset; box-sizing: border-box; cursor: pointer; }
+.sign { font-family: var(--font-sign); font-weight: 800; display: flex; align-items: center; gap: 12px; }
+.sign .text { flex: 1; min-width: 0; display: grid; gap: 1px; }
+.sign .title { line-height: 1.05; }
+.sign .sub { font-size: 15px; line-height: 1.2; }
+.icon { flex: none; display: block; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; }
+.go { background: var(--navy); color: var(--sand); }
+.go .bar { height: 18px; background: var(--sand); }
+.go .body { padding: 18px 20px; min-height: 150px; display: flex; align-items: flex-end; gap: 12px; }
+.go .title { font-size: 44px; }
+.go .icon { width: 31px; height: 43px; stroke-width: 6.5; margin-bottom: 9px; }
+.alt { background: var(--cream); color: var(--navy); border: 2px solid var(--navy); padding: 14px 16px; }
+.alt .title { font-size: 26px; }
+.alt .icon { width: 36px; height: 36px; stroke-width: 6.5; }
+
+/* Option A: a slim sign under Create, sand with a navy frame. */
+.news-sign { background: var(--sand); color: var(--navy); border: 2px dashed var(--navy); padding: 10px 16px; width: 100%; }
+.news-sign .title { font-size: 20px; }
+.news-sign .sub { font-size: 14px; }
+.news-sign .icon { width: 28px; height: 28px; stroke-width: 6.5; }
+
+/* Option B: a compact banner above Go. */
+.news-banner {
+  font-family: var(--font-sign); font-weight: 800; background: var(--sand); color: var(--navy);
+  border-left: 6px solid var(--navy); padding: 9px 14px; display: flex; align-items: center; gap: 10px; width: 100%;
+}
+.news-banner .t { font-size: 18px; }
+.news-banner .s { font-size: 14px; color: var(--navy); opacity: .75; flex: 1; min-width: 0; }
+.news-banner .icon { width: 20px; height: 20px; stroke-width: 7; }
+.dot { width: 9px; height: 9px; border-radius: 50%; background: #f28c28; flex: none; }
+
+/* The list it opens: a sheet over the start screen. */
+.sheet {
+  position: absolute; left: 0; right: 0; bottom: 0; top: 64px; background: var(--sheet); color: var(--phone-fg);
+  border-radius: 14px 14px 0 0; box-shadow: 0 -6px 24px rgba(0,0,0,.25); padding: 10px 18px 18px;
+  display: flex; flex-direction: column; gap: 12px; transform: translateY(105%); transition: transform .3s ease; z-index: 2;
+}
+.sheet.open { transform: none; }
+.scrim { position: absolute; inset: 0; background: rgba(0,0,0,.35); opacity: 0; pointer-events: none; transition: opacity .3s; z-index: 1; }
+.scrim.open { opacity: 1; pointer-events: auto; }
+.grabber { width: 36px; height: 5px; border-radius: 3px; background: var(--sheet-line); margin: 0 auto 4px; }
+.sheet h3 { margin: 0; font: 800 28px/1.1 var(--font-sign); }
+.sheet .since { margin: -6px 0 0; color: var(--phone-muted); font-size: 13px; }
+.versions { overflow-y: auto; display: grid; gap: 16px; align-content: start; flex: 1; min-height: 0; }
+.version { display: grid; gap: 6px; border-top: 1px solid var(--sheet-line); padding-top: 12px; }
+.version .vh { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.version .vh b { font: 800 19px var(--font-sign); }
+.version .vh span { color: var(--phone-muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.version ul { margin: 0; padding-left: 18px; display: grid; gap: 5px; font-size: 14px; line-height: 1.4; }
+.done {
+  font: 600 16px var(--font-ui); background: var(--navy); color: var(--sand); border: 0; border-radius: 12px;
+  padding: 13px; cursor: pointer;
+}
+.hidden-note { font: 13px var(--font-ui); color: var(--phone-muted); text-align: center; margin-top: auto; }
+
+.note { border-top: 1px solid var(--line); padding-top: 18px; display: grid; gap: 8px; max-width: 72ch; color: var(--muted); font-size: 14px; }
+.note strong { color: var(--fg); font-weight: 600; }
+.note ul { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>What’s new on the start screen</h1>
+    <p>Two places for the tile, and the list it opens. Tap a tile to open the list; closing it hides the tile until the next update, as it would in the app. The notes are examples.</p>
+  </header>
+
+  <div class="controls"><button type="button" id="reset">Show the tiles again</button></div>
+
+  <div class="grid" id="grid"></div>
+
+  <div class="note">
+    <p><strong>How it would work</strong></p>
+    <ul>
+      <li>The phone remembers the version it last ran. After an update, it asks the server for notes on every version after that one, for its own platform.</li>
+      <li>The tile only appears when that list isn’t empty, and goes away once the list has been opened.</li>
+      <li>Skipping versions is fine: someone going from 1.4.0 to 1.4.2 sees both 1.4.2 and 1.4.1, newest first.</li>
+      <li>New installs don’t see it.</li>
+    </ul>
+  </div>
+</div>
+
+<script>
+const CHEV = '<svg class="icon" viewBox="0 0 40 56"><path d="M3.25 3.25 L18.25 28 L3.25 52.75"/><path d="M21.25 3.25 L36.25 28 L21.25 52.75"/></svg>';
+const ENTER = '<svg class="icon" viewBox="0 0 56 56"><path d="M31 3.25 H52.75 V52.75 H31"/><path d="M3.25 28 H39"/><path d="M27.5 16.5 L39 28 L27.5 39.5"/></svg>';
+const PLUS = '<svg class="icon" viewBox="0 0 56 56"><path d="M28 3.25 V52.75"/><path d="M3.25 28 H52.75"/></svg>';
+// A four-point sparkle, in the same line style as the other sign icons.
+const SPARKLE = '<svg class="icon" viewBox="0 0 56 56"><path d="M28 3.25 C30 20 36 26 52.75 28 C36 30 30 36 28 52.75 C26 36 20 30 3.25 28 C20 26 26 20 28 3.25 Z"/></svg>';
+
+const NOTES = [
+  { version: "1.4.2", date: "14 Nov 2026", items: [
+    "Stop is now a tap, then a quick “Stop tracking?” check, so it no longer lags on the map.",
+    "The Go sign’s chevrons nudge to point the way.",
+    "Join and Create have their own icons.",
+    "Your dot shows a ring counting down to the next send.",
+  ]},
+  { version: "1.4.1", date: "11 Nov 2026", items: [
+    "Leave message pins on the map for others to see.",
+    "Choose the size of the dots on the map in Settings.",
+  ]},
+];
+const count = NOTES.reduce((n, v) => n + v.items.length, 0);
+const subline = `${count} changes since 1.4.0`;
+
+const signs = `
+  <div class="go"><div class="bar"></div><div class="body sign">
+    <div class="text"><span class="title">Go</span><span class="sub">Hold to start</span></div>${CHEV}</div></div>
+  <div class="alt sign"><div class="text"><span class="title">Join</span><span class="sub">Enter an invite code</span></div>${ENTER}</div>
+  <div class="alt sign"><div class="text"><span class="title">Create</span><span class="sub">Set up a new run for others</span></div>${PLUS}</div>`;
+
+const tileA = `<button type="button" class="sign news-sign tile"><div class="text"><span class="title">What’s new?</span><span class="sub">${subline}</span></div>${SPARKLE}</button>`;
+const tileB = `<button type="button" class="news-banner tile"><span class="dot" aria-hidden="true"></span><span class="t">What’s new?</span><span class="s">${subline}</span>${CHEV}</button>`;
+
+const sheet = `
+  <div class="scrim"></div>
+  <div class="sheet" role="dialog" aria-label="What’s new">
+    <div class="grabber"></div>
+    <h3>What’s new</h3>
+    <p class="since">Since you last updated (1.4.0)</p>
+    <div class="versions">${NOTES.map(v => `
+      <section class="version"><div class="vh"><b>${v.version}</b><span>${v.date}</span></div>
+        <ul>${v.items.map(i => `<li>${i}</li>`).join("")}</ul></section>`).join("")}
+    </div>
+    <button type="button" class="done">Got it</button>
+  </div>`;
+
+const options = [
+  { name: "A. Slim sign under Create", timing: "same family as the signs",
+    desc: "A shorter sand sign with a dashed frame and a sparkle, below the main three. Calm, and clearly one of the start screen’s signs.",
+    screen: signs + tileA + sheet },
+  { name: "B. Banner above Go", timing: "first thing you see",
+    desc: "A compact strip at the top with an orange dot. Harder to miss, but it pushes Go down a little.",
+    screen: tileB + signs + sheet },
+  { name: "The list it opens", timing: "a sheet over the start screen",
+    desc: "Grouped by version, newest first, with the date each came out. “Got it” closes it and hides the tile.",
+    screen: signs + tileA + sheet, open: true },
+];
+
+const grid = document.getElementById("grid");
+for (const o of options) {
+  const col = document.createElement("section");
+  col.className = "option";
+  col.innerHTML = `<h2>${o.name}<small>${o.timing}</small></h2><p>${o.desc}</p><div class="phone">${o.screen}<p class="hidden-note" hidden>Tile hidden until the next update with notes.</p></div>`;
+  grid.appendChild(col);
+  const phone = col.querySelector(".phone");
+  const sh = phone.querySelector(".sheet"), scrim = phone.querySelector(".scrim"), tile = phone.querySelector(".tile");
+  const open = () => { sh.classList.add("open"); scrim.classList.add("open"); };
+  const close = () => {
+    sh.classList.remove("open"); scrim.classList.remove("open");
+    if (!o.open) { tile.hidden = true; phone.querySelector(".hidden-note").hidden = false; }
+  };
+  tile.addEventListener("click", open);
+  phone.querySelector(".done").addEventListener("click", close);
+  scrim.addEventListener("click", close);
+  if (o.open) open();
+}
+
+document.getElementById("reset").addEventListener("click", () => {
+  document.querySelectorAll(".tile").forEach(t => t.hidden = false);
+  document.querySelectorAll(".hidden-note").forEach(n => n.hidden = true);
+  options.forEach((o, i) => { if (o.open) { const p = grid.children[i]; p.querySelector(".sheet").classList.add("open"); p.querySelector(".scrim").classList.add("open"); } });
+});
+</script>
