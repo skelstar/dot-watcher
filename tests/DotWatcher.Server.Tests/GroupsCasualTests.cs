@@ -92,6 +92,24 @@ public class GroupsCasualTests
     }
 
     [Fact]
+    public async Task GrantingAndRevokingTheFeature_TakesEffectAtOnce()
+    {
+        using var factory = new DotWatcherApiFactory { EnabledForAll = [Features.Crew, Features.Casual] };
+        using var client = factory.CreateClient();
+        var (alice, bob, _) = await GroupOfTwoAsync(client);
+        await GoAsync(client, bob.AccessToken, FarLatitude);
+
+        // Read once without the feature, so the grant below has a cached "no" to replace.
+        Assert.Empty((await GetLiveAsync(client, alice.AccessToken)).Participants);
+
+        await SetFeaturesAsync(client, alice.User.UserId, [Features.Groups]);
+        Assert.Contains("Bobby", (await GetLiveAsync(client, alice.AccessToken)).Participants);
+
+        await SetFeaturesAsync(client, alice.User.UserId, []);
+        Assert.Empty((await GetLiveAsync(client, alice.AccessToken)).Participants);
+    }
+
+    [Fact]
     public async Task MemberWhoLeft_IsNoLongerNamed_EitherWay()
     {
         using var factory = GroupsFactory();
@@ -200,6 +218,16 @@ public class GroupsCasualTests
         var response = await SendAsync(client, HttpMethod.Get, "/casual/live", accessToken);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         return (await response.Content.ReadFromJsonAsync<CasualLiveResponse>())!;
+    }
+
+    private static async Task SetFeaturesAsync(HttpClient client, string userId, string[] features)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Put, $"/admin/users/{userId}/features")
+        {
+            Content = JsonContent.Create(new { features }),
+        };
+        request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", "test-token");
+        Assert.True((await client.SendAsync(request)).IsSuccessStatusCode);
     }
 
     private static async Task<HttpResponseMessage> SendAsync(

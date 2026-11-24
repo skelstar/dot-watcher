@@ -1,3 +1,5 @@
+using System.Collections.Concurrent;
+
 namespace DotWatcher.Server;
 
 /// <summary>Names of the features that can be switched on per account. See .ai/plans/crew-feature-flag.md.</summary>
@@ -72,10 +74,42 @@ public sealed class FeatureFlags
         _enabledForAll.Contains(feature) || _store.GetUserFeatures(userId).Contains(feature);
 
     /// <summary>
-    /// Granted to this account and not switched off globally. Checks the switch first, so a feature
-    /// that is off costs no account read.
+    /// Granted to this account and not switched off globally. Used on hot paths (every casual
+    /// POST /location and live read), so the account's grants are cached for a short while rather than
+    /// read from the database on each call: a feature that is off, or on for everyone, costs no read at
+    /// all, and otherwise one read per account every <see cref="UserCacheMs"/>. An admin change to an
+    /// account's grants on this server clears its entry at once (<see cref="ForgetUser"/>); another
+    /// server picks it up within that time.
     /// </summary>
-    public bool IsOnFor(string userId, string feature) => IsOn(feature) && IsEnabled(userId, feature);
+    public bool IsOnFor(string userId, string feature)
+    {
+        if (!IsOn(feature))
+            return false;
+        if (_enabledForAll.Contains(feature))
+            return true;
+        return CachedUserFeatures(userId).Contains(feature);
+    }
+
+    /// <summary>Drops the cached grants for an account, after they changed.</summary>
+    public void ForgetUser(string userId) => _userFeatures.TryRemove(userId, out _);
+
+    private const long UserCacheMs = 30_000;
+    private const int MaxCachedUsers = 10_000;
+    private readonly ConcurrentDictionary<string, (IReadOnlyList<string> Features, long At)> _userFeatures = new();
+
+    private IReadOnlyList<string> CachedUserFeatures(string userId)
+    {
+        var now = Environment.TickCount64;
+        if (_userFeatures.TryGetValue(userId, out var cached) && now - cached.At < UserCacheMs)
+            return cached.Features;
+
+        var fresh = _store.GetUserFeatures(userId);
+        // Bounded: far more accounts than are out at once means the cache is simply started again.
+        if (_userFeatures.Count >= MaxCachedUsers)
+            _userFeatures.Clear();
+        _userFeatures[userId] = (fresh, now);
+        return fresh;
+    }
 
     /// <summary>Trims, lower-cases, drops blanks and duplicates, and sorts, so storage is stable.</summary>
     public static IReadOnlyList<string> Normalize(IEnumerable<string>? features) =>
