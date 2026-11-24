@@ -1,48 +1,76 @@
 # Go and groups — Plan
 
-*DotWatcher — plan, November 2026. Status (24 November 2026): mock-ups done; step 1 and the server half of step 2 built
-and green in CI but **not merged**; the phone side of step 2 built on Android and iOS (not tried on a device). **Start with
+*DotWatcher — plan, November 2026. Status (24 November 2026): mock-ups done; step 1 and step 2 built on the server (CI green) and both
+phones (iOS run in the simulator, nothing yet on a device); **nothing merged into `staging`**. **Start with
 [Picking this up again](#picking-this-up-again) below.** Decisions marked **Open** need an answer before the step that
 depends on them.*
 
 ## Picking this up again
 
-Everything is in a stack of open PRs, each based on the one before (merge from the bottom; GitHub retargets the next
-one when its base branch is deleted, otherwise retarget it to `staging` by hand):
+Everything is in a stack of open PRs, each based on the one before. Merge from the bottom; GitHub retargets the next
+one when its base branch is deleted, otherwise retarget it by hand. Server PRs run CI; phone PRs don't (CI only covers
+`server/` and `tests/`).
 
-| PR | Branch | What | State |
-| --- | --- | --- | --- |
-| #379 | `go-and-groups-plan` | This plan and both mock-ups | Docs only |
-| #386 | `groups-casual-visibility` | Step 1: people in the same active session see each other by name in casual (`groups` flag) | CI green, not merged |
-| #387 | `groups-entry-code` | Step 2 server: entry codes on nearby sessions | CI green, not merged |
-| #388 | `android-groups-join` | Step 2 Android, part 1: join a nearby group without starting tracking (based on #387) | Compiles, 91 unit tests pass locally; not tried on a device |
-| #396 | `groups-ends-at` | Step 2 server: each group's end time (`endsAt`) on memberships and the nearby list (based on #387) | CI green, not merged |
-| #397 | `android-groups-part2` | Step 2 Android, part 2: join while out, group chip, end times, "Join and Go now", organiser codes (based on #388) | Compiles, 99 unit tests pass locally; not tried on a device |
-| #398 | `ios-groups` | Step 2 iOS: everything in #388 and #397 (based on #396) | Builds for the simulator; not run in a simulator or on a device |
+| PR | Branch | What | Based on | State |
+| --- | --- | --- | --- | --- |
+| #379 | `go-and-groups-plan` | This plan and the mock-ups | `staging` | Docs only |
+| #386 | `groups-casual-visibility` | Step 1: people in the same active session see each other by name in casual (`groups` flag); per-account grants cached 30 s on the hot path | `staging` | CI green (359 tests) |
+| #387 | `groups-entry-code` | Step 2 server: entry codes; now also contains #396 (`endsAt`, merged into it 24 Nov) | #386 | CI green |
+| #407 | `groups-owner-flag` | Step 2 server: `isOwner` (and owner-only `nearby`) on memberships | #387 | CI green (389 tests) |
+| #388 | `android-groups-join` | Android part 1: join a nearby group without starting tracking; entry code; "You're in" cards; groups survive relaunch | #387 | Compiles, unit tests pass; not on a device |
+| #397 | `android-groups-part2` | Android part 2: join while out, group chip, end times, "Join and Go now", organiser codes | #388 | Compiles, 99 unit tests pass; not on a device |
+| #408 | `android-groups-flows` | Android: invite-code join and creating are group joins; organiser card (Ping, code, End group) | #397 | Compiles, 99 unit tests pass; not on a device |
+| #398 | `ios-groups` | iOS: everything in #388 and #397, plus two fixes found in the simulator | #387 | Run in the simulator (see below) |
+| #409 | `ios-groups-flows` | iOS: the same as #408 | #398 | Builds; not run |
 
-To try it end to end: deploy the server stack, then grant `groups` to a test account (`PUT /api/admin/users/{id}/features`,
-body `{ "features": ["groups"] }`, admin token). Without the flag, nothing changes for anyone.
+Merge order: #386 → #387 → #407 on the server; then the phone PRs (#388 → #397 → #408, and #398 → #409), which only
+work fully against a server with #407.
+
+**Trying it:**
+
+- *Against prod*, after the server PRs are merged and deployed: grant `groups` to test accounts only
+  (`PUT /api/admin/users/{id}/features`, body `{ "features": ["groups"] }`, admin token). **Don't** add `groups` to
+  `Features:EnabledForAll` until the new phone builds are out. Without the flag nothing changes for anyone, and older
+  builds are unaffected (all fields additive and ignored; API version unchanged; one nullable column).
+- *Locally*: run the server from the top of the stack with
+  `Features__EnabledForAll__0=crew …__1=casual …__2=events …__3=groups dotnet run --urls "http://*:8080"`.
+  Phones: Android `./gradlew :app:installDevice` (uses `DEVICE_API_BASE_URL` in `local.properties`), iOS scheme
+  **"DotWatcher (Device Local)"** (`jakkuu.local:8080`; the plain scheme's `localhost` doesn't reach the Mac). Needs
+  Docker (Postgres) up.
+
+**Checked in the iOS simulator** (24 Nov, against a local server with the stack, before #409): tiles with "Code needed";
+join sheet with group wording and end time; wrong code then right code; "Join and Go now" → "Before you go"; Go map
+with "‹ Home" and the group chip; the organiser showing **by name** although not crew (step 1 end to end); "Your
+groups" sheet; Home while out ("Back to the map", no session map); joining a second group while out; the group
+surviving a relaunch; "Ask for a code to join" at create. Two bugs found and fixed in #398: the join sheet didn't
+scroll (title cut off), and joining while out hung on "Joining…" (a one-off location request never answered while
+tracking and standing still; now uses the tracked position, and one-off requests time out after 15 s). Android was
+reviewed for the same hang: its one-off request already has a 10 s limit. Android was **not** run (the emulator run was
+cut short by a full disk).
 
 **Next, in order:**
 
-1. ~~**Server: send each group's end time**~~ Done in #396.
-2. ~~**Android, part 2**~~ Done in #397. Still open on Android: invite-code join and the organiser's own session
-   following the groups flow, and the start-screen redesign.
-3. **Try the phone PRs on devices** (Android #388 + #397, iOS #398) against a server with the stack deployed and
-   `groups` granted. On iOS check where the "‹ Home" pill sits under the timer, and that "Join and Go now" opens
-   "Before you go" after the join sheet closes.
-4. ~~**iOS**~~ Done in #398.
-5. **Invite links** for groups (join from anywhere, e.g. the entry email); decide whether they ask for the entry code.
+1. **Try the phones on devices**: Android #408 and iOS #409 (tops of their stacks) against a server with #407.
+   Not yet checked anywhere: the organiser card (Ping here, Entry code, End group), invite-code join as a group join,
+   and anything on Android.
+2. **Merge the stack** (order above).
+3. **Invite links** for groups (join from anywhere, e.g. the entry email); decide whether they ask for the entry code
+   (an invite code skips it today).
+4. **Start-screen redesign** (Go and "Who can see me" replace the four cards; ties in with `android-start-screen-design`).
+5. The **name** for "group members" (the only open design decision).
 6. Step 3 onwards.
 
 **Things to know:**
 
-- Only the **nearby-tile join** follows the groups flow so far. Joining by invite code, and an organiser's own session,
-  still go to consent and track in the session, on both phones.
+- For groups accounts, every way in now follows the groups flow on both phones: nearby tile, invite code, and
+  creating (#408, #409). The organiser's controls live on their group's card, not a session map.
 - Android used to leave every session on relaunch; for groups accounts it now keeps them (`decideRestore`
-  `keepMemberships`), so a group joined ahead of Go survives.
+  `keepMemberships`). iOS likewise skips its "leave stale sessions" step and never auto-selects a group.
 - The `groups` flag is checked for the **viewer** only (#386): if you have it and a fellow member doesn't, you see them
   by name and they see you as before. Members of a session already see each other by name in the session itself.
+- Mixed groups: a groups tester in a session doesn't track *in* it, so old-build members don't see them on that
+  session's map, only on the Go map. Expected while both models exist.
+- Merging into `main` triggers the server release workflow.
 
 Goal: every time someone goes out, they press **Go** and are tracking. That is the only way to track. Races, events
 and groups stop being things you track *in*; they become **groups** that only control who can see whom. Each group is
@@ -223,10 +251,13 @@ Built from mock-up 0a.
 - [x] Each group's end time (**#396**, CI green, not merged): `endsAt` (created plus event length, default 24 h, UTC)
       on every membership (create, both joins, `GET /me/sessions`) and, for `groups` accounts only, on the nearby list.
       `SessionStore.GroupEndsAt` is the one rule, also behind `IsGroupActive`. `GroupEndsAtTests` (4).
+- [x] Who organised a group (**#407**, CI green): `isOwner` on every membership, and owner-only `nearby`.
+- [x] Per-account feature grants cached on the hot path (#386): `FeatureFlags.IsOnFor` no longer reads the database on
+      every casual post and live read; 30 s cache, cleared at once by the admin features endpoint.
 - [ ] Invite links for groups that work outside the region (e.g. `dotwatchr.app/g/<slug>`), opening the join sheet
       with the code field; joined from home shows the card on the main screen on the day.
 
-**Android** (part 1 is **#388**, part 2 is **#397**; neither merged nor tried on a device)
+**Android** (**#388**, **#397**, **#408**; none merged nor tried on a device)
 
 - [x] Read the account's `features` (sign-in, register, `GET /me`); `repository.hasFeature("groups")`.
 - [x] Join from a tile without switching the tracking target (no consent screen, no tracking in the session).
@@ -242,12 +273,13 @@ Built from mock-up 0a.
 - [x] "Join and Go now" on the join sheet (#397), before Go only.
 - [x] Organiser (#397): "Ask for a code to join" in the create dialog; an Entry code section (change, remove) in the
       nearby sheet on their session map.
-- [ ] Invite-code join and the organiser's own session follow the groups flow too.
+- [x] Invite-code join and the organiser's own session follow the groups flow too (#408): creating stays on the start
+      screen; the organiser's card has Ping here, Entry code and End group (`endGroup` doesn't stop a Go run).
 - [ ] Start screen: Go and "Who can see me" replace the four cards (Private / Crew / Group / Race). Coordinate with
       the `android-start-screen-design` branch.
 - [ ] Before pushing: `cd android && ./gradlew :app:compileDebugKotlin :app:testDebugUnitTest`.
 
-**iOS** (**#398**, not merged; builds for the simulator, not run yet)
+**iOS** (**#398** and **#409**, not merged; #398 run in the simulator, #409 builds)
 
 - [x] Read the account's `features` (sign-in, `GET /me`; kept in `UserDefaults`); `LocationManager.hasGroups`.
 - [x] Join from a tile without selecting the session or asking to share.
@@ -260,7 +292,8 @@ Built from mock-up 0a.
       never covers a Go run.
 - [x] Group chip on the Go map and the "Your groups" sheet.
 - [x] Organiser: "Ask for a code to join" at create; Entry code section in the nearby settings sheet.
-- [ ] Invite-code join and the organiser's own session follow the groups flow too.
+- [x] Invite-code join and the organiser's own session follow the groups flow too (#409).
+- [x] Fixes from the simulator run (#398): scrolling join sheet; no hang getting a location while out.
 - [ ] Start screen redesign (as Android).
 
 ### Step 3 — Groups as their own thing; rules; events as run slices
