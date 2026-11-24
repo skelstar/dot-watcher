@@ -47,6 +47,39 @@ Use normal merge commits, not squash, or the next PR in a stack shows the earlie
 Android `./gradlew :app:installDevice` (uses `DEVICE_API_BASE_URL` in `local.properties`) and iOS scheme
 **"DotWatcher (Device Local)"** (`jakkuu.local:8080`). Needs Docker (Postgres) up.
 
+**Testing on two phones** (both signed in with accounts that have the Groups chip on, both on the test builds):
+
+*Organiser's phone (A)*
+- [ ] Create → "Let people nearby join" on → "Ask for a code to join" appears; set a code; Create stays disabled until
+      there's a title and the code is 4-8 letters or numbers.
+- [ ] Start screen shows **YOUR GROUP · ENDS hh:mm · … LEFT** with the group's name and "People near your join
+      location see it on their start screen. You don't need to be out." No sharing prompt, no session map.
+- [ ] **Ping here** says "Join location set here" and keeps the range.
+- [ ] **Entry code** shows the current code; **Change code** works; **Remove code** gives "Anyone nearby can join
+      now". People already in stay in.
+- [ ] Press **Go**: the Go map has "‹ Home" and the group chip (name, time left). **‹ Home** shows "You're out · Back
+      to the map"; the card says you're out.
+
+*Joiner's phone (B), within range of A's join location*
+- [ ] Start screen shows A's group as a tile, with "· Code needed" if A set a code (pull down to refresh).
+- [ ] Join sheet: group wording, "Until the group ends at hh:mm", code field. A **wrong code** shows "That code doesn't
+      match. Check with the organiser."; the **right code** (any case) joins.
+- [ ] **Join group** (before Go): a **YOU'RE IN** card, "Not out yet. Nobody in the group can see you until you press
+      Go." Or **Join and Go now**: joins, then opens "Before you go".
+- [ ] Joining **by invite code** (Join → code) also lands on a YOU'RE IN card, with no sharing prompt.
+- [ ] Joining **while out** (Go, then ‹ Home, then the tile) goes straight back to the Go map.
+
+*Both*
+- [ ] Both out: each sees the other **by name** on the Go map, at any distance, even though they aren't crew.
+- [ ] The group chip opens **Your groups**: end time, Leave (B) or the organiser controls (A).
+- [ ] Relaunch either app: the group is still there.
+- [ ] B **Leave group**: A no longer sees B by name (and B no longer sees A). Or A **End group**: B's card goes; B's Go
+      run carries on.
+- [ ] A phone signed in with an account **without** the Groups chip sees none of this (no tile; old flows unchanged).
+
+Results so far: **iOS, one phone against prod (24 Nov)**: creating a group and the YOUR GROUP card work. Two phones,
+and anything on Android, still to do.
+
 **Checked in the iOS simulator** (24 Nov, against a local server with the stack, before #409): tiles with "Code needed";
 join sheet with group wording and end time; wrong code then right code; "Join and Go now" → "Before you go"; Go map
 with "‹ Home" and the group chip; the organiser showing **by name** although not crew (step 1 end to end); "Your
@@ -60,9 +93,9 @@ cut short by a full disk).
 **Next, in order:**
 
 1. **Merge #411** to release the server and admin page, then grant `groups` to test accounts from the admin page.
-2. **Try the phones on devices** against prod: Android #408 and iOS #409 (tops of their stacks). Not yet checked
-   anywhere: the organiser card (Ping here, Entry code, End group), invite-code join as a group join, and anything on
-   Android.
+2. **Try the phones on devices** against prod: Android #408 and iOS #409 (tops of their stacks), using
+   "Testing on two phones" above. Done so far: iOS organiser card on one phone. Not yet: a second phone, invite-code
+   join as a group join, and anything on Android.
 3. **Merge the phone stacks** (bottom-up), then build and release the apps. Only then
    consider `groups` for everyone.
 4. **Invite links** for groups (join from anywhere, e.g. the entry email); decide whether they ask for the entry code
@@ -81,6 +114,8 @@ cut short by a full disk).
   by name and they see you as before. Members of a session already see each other by name in the session itself.
 - Mixed groups: a groups tester in a session doesn't track *in* it, so old-build members don't see them on that
   session's map, only on the Go map. Expected while both models exist.
+- **Every group currently behaves as "Everyone"** (everyone in it sees everyone by name). The Race rule (members see
+  their crew and the organiser; the organiser sees everyone) is step 3.
 - Merging into `main` triggers the server release workflow.
 
 Goal: every time someone goes out, they press **Go** and are tracking. That is the only way to track. Races, events
@@ -265,6 +300,8 @@ Built from mock-up 0a.
 - [x] Who organised a group (**#407**, CI green): `isOwner` on every membership, and owner-only `nearby`.
 - [x] Per-account feature grants cached on the hot path (#386): `FeatureFlags.IsOnFor` no longer reads the database on
       every casual post and live read; 30 s cache, cleared at once by the admin features endpoint.
+- [ ] Show the invite code on a nearby group's organiser card. Today the card only shows it for groups without nearby,
+      so for a nearby group the tile is the only way in unless the organiser finds the code elsewhere.
 - [ ] Invite links for groups that work outside the region (e.g. `dotwatchr.app/g/<slug>`), opening the join sheet
       with the code field; joined from home shows the card on the main screen on the day.
 
