@@ -958,8 +958,19 @@ final class LocationManager {
     /// scaffolding already existed (declared, resumed) but had no caller until this feature needed
     /// one. `requestLocation()` delivers through the same delegate callback as continuous updates,
     /// so no delegate changes were needed.
-    private func requestOneShotLocation() async -> CLLocation? {
-        await withCheckedContinuation { continuation in
+    ///
+    /// CoreLocation doesn't always answer `requestLocation()` (stopping updates, for one, cancels it with no
+    /// callback), so after `timeout` this gives up with nil. Without that, the caller waits forever and every
+    /// later request returns nil because the old continuation is still there.
+    private func requestOneShotLocation(timeout: Duration = .seconds(15)) async -> CLLocation? {
+        let giveUp = Task { [weak self] in
+            try? await Task.sleep(for: timeout)
+            guard !Task.isCancelled, let self else { return }
+            self.oneShotLocationContinuation?.resume(returning: nil)
+            self.oneShotLocationContinuation = nil
+        }
+        defer { giveUp.cancel() }
+        return await withCheckedContinuation { continuation in
             oneShotLocationContinuation = continuation
             clManager.requestLocation()
         }

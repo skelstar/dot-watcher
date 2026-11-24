@@ -53,6 +53,9 @@ final class CrewFinding {
     /// Called once for each person who becomes crew, so the crew list can show them straight away.
     @ObservationIgnored var onAdded: ((CrewMember) -> Void)?
     @ObservationIgnored private var loop: Task<Void, Never>?
+    /// The start in progress, so switching off (or closing the sheet) can cancel it.
+    @ObservationIgnored private var starting: Task<Void, Never>?
+    @ObservationIgnored private var startId: UUID?
     @ObservationIgnored private var reported: Set<String> = []
     @ObservationIgnored private weak var location: LocationManager?
 
@@ -63,7 +66,14 @@ final class CrewFinding {
     /// The switch.
     func setOn(_ on: Bool) {
         if on {
-            Task { await start() }
+            guard starting == nil else { return }
+            let id = UUID()
+            startId = id
+            starting = Task { [weak self] in
+                await self?.start()
+                // A cancelled start finishing late mustn't clear a newer one.
+                if self?.startId == id { self?.starting = nil }
+            }
         } else {
             stop()
         }
@@ -87,14 +97,23 @@ final class CrewFinding {
         }
 
         isStarting = true
-        defer { isStarting = false }
-        guard let fix = await location.currentFix() else {
+        // When cancelled, `stop()` has already cleared it, and a newer start may own it now.
+        defer { if !Task.isCancelled { isStarting = false } }
+        let fix = await location.currentFix()
+        // Switched off (or the sheet closed) while waiting.
+        guard !Task.isCancelled else { return }
+        guard let fix else {
             note = "Couldn't get your position. Try again in a moment."
             return
         }
         do {
             let state: CrewFindingState = try await location.send(
                 path: "/me/crew/finding", method: "POST", body: Self.body(fix))
+            guard !Task.isCancelled else {
+                // The server turned it on after the person switched it off: turn it off there too.
+                Task { try? await location.sendAuthorizedEmpty(path: "/me/crew/finding", method: "DELETE") }
+                return
+            }
             isOn = true
             reported = []
             apply(state)
@@ -109,13 +128,18 @@ final class CrewFinding {
                 note = "Couldn't turn this on. Try again."
             }
         } catch {
+            guard !Task.isCancelled else { return }
             note = "Network error. Try again."
         }
     }
 
     /// Off: from the switch, when the sheet closes, or when the two minutes are up (`expired`). Unanswered
-    /// accepts are dropped by the server.
+    /// accepts are dropped by the server. Also cancels a start that is still waiting.
     func stop(expired: Bool = false) {
+        starting?.cancel()
+        starting = nil
+        startId = nil
+        isStarting = false
         loop?.cancel()
         loop = nil
         let wasOn = isOn
