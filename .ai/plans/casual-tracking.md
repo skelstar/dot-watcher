@@ -341,6 +341,8 @@ battery. The named session's behaviour is unchanged.
 
 ## Replay tasks (phase 2)
 
+Continued in [`go-run-replay.md`](go-run-replay.md) (user replay, crew rule, export).
+
 - [x] Admin-only first step (2026-11-15): `GET /admin/casual/runs`, `GET /admin/casual/runs/{id}/recording(/meta)`,
       web admin **Go runs** tab → `/admin/go/{runId}` using the session player (`useSessionTimeline` now takes a
       `TimelineSource`). Runner only, no crew; not live-following an open run.
