@@ -6,6 +6,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import nz.skelstar.dotwatcher.data.DotWatcherRepository
+import nz.skelstar.dotwatcher.nearby.EntryCodeActions
 import nz.skelstar.dotwatcher.network.SessionMembership
 
 // Groups (see .ai/plans/go-and-groups.md, step 2): for accounts with the "groups" feature, joining a nearby
@@ -14,6 +15,17 @@ import nz.skelstar.dotwatcher.network.SessionMembership
 
 /** The server's name for the feature. */
 const val GROUPS_FEATURE = "groups"
+
+/** What the organiser can do from their own group's card on the start screen (the session map isn't used for a
+ *  group). Each returns words for the person, or null on success for [end]. */
+class GroupOrganiserActions(
+    /** Moves the join location to here; null when the group isn't shown nearby. */
+    val ping: (suspend () -> String)?,
+    /** The entry code; null when the group isn't shown nearby (codes only apply to nearby joins). */
+    val entryCode: EntryCodeActions?,
+    /** Ends the group for everyone. */
+    val end: suspend () -> String?,
+)
 
 data class GroupsUiState(
     /** True when the account has the "groups" feature; everything else here is empty without it. */

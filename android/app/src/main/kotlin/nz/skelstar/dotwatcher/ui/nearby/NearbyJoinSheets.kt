@@ -376,7 +376,7 @@ fun NearbyOrganiserSheet(organiser: NearbyOrganiser, onDismiss: () -> Unit) {
  * People already in stay in; only joins from now on need the new code.
  */
 @Composable
-private fun EntryCodeSection(actions: EntryCodeActions) {
+fun EntryCodeSection(actions: EntryCodeActions) {
     val scope = rememberCoroutineScope()
     var current by remember { mutableStateOf<String?>(null) }
     var loaded by remember { mutableStateOf(false) }
