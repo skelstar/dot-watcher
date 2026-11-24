@@ -21,7 +21,7 @@ struct FindNewCrewSection: View {
                         .foregroundStyle(.secondary)
                 }
             }
-            .disabled(finding.isStarting)
+            // Not disabled while "Turning on…": switching off then cancels the start.
 
             if let note = finding.note {
                 VStack(alignment: .leading, spacing: 6) {

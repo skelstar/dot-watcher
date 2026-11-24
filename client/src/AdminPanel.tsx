@@ -3,6 +3,7 @@ import { apiHeaders } from './apiHeaders'
 import LoadRouteButton from './LoadRouteButton.tsx'
 import ActivityTab from './ActivityTab.tsx'
 import { BEARER_TOKEN_KEY, readAdminToken } from './adminToken.ts'
+import { withFeature } from './featureGrants.ts'
 
 interface AdminUser {
   id: string
@@ -83,7 +84,7 @@ const PROTECTED_USERNAMES = new Set(['dw-demo', 'dw-casual'])
 // Global kill switches (server: GET/PUT /admin/features). A feature is on unless switched off here;
 // off makes its endpoints return 404 for every account.
 type FeatureSwitch = { feature: string; enabled: boolean }
-const FEATURE_LABELS: Record<string, string> = { crew: 'Crew', casual: 'Casual tracking', events: 'Events' }
+const FEATURE_LABELS: Record<string, string> = { crew: 'Crew', casual: 'Casual tracking', events: 'Events', groups: 'Groups' }
 
 type AdminTab = 'users' | 'sessions' | 'go' | 'activity' | 'palette'
 const TABS: { id: AdminTab; label: string }[] = [
@@ -127,6 +128,8 @@ export default function AdminPanel({ serverUrl }: { serverUrl: string }) {
   const [featureSwitches, setFeatureSwitches] = useState<FeatureSwitch[]>([])
   const [switchesUnavailable, setSwitchesUnavailable] = useState(false)
   const [switchBusy, setSwitchBusy] = useState<string | null>(null)
+  // The account whose granted features are being saved, so its chips wait for the answer.
+  const [grantBusy, setGrantBusy] = useState<string | null>(null)
   const [tab, setTab] = useState<AdminTab>('users')
   const [userSort, setUserSort] = useState<{ key: UserSortKey; dir: SortDir }>({ key: 'lastSeenAt', dir: 'desc' })
   // null until loaded; 'unsupported' on a server without GET /admin/casual/runs.
@@ -278,6 +281,30 @@ export default function AdminPanel({ serverUrl }: { serverUrl: string }) {
       setError('Network error.')
     } finally {
       setSwitchBusy(null)
+    }
+  }
+
+  async function handleToggleGrant(user: AdminUser, feature: string) {
+    const granted = user.features ?? []
+    const next = withFeature(granted, feature, !granted.includes(feature))
+    setGrantBusy(user.id)
+    setError(null)
+    try {
+      const r = await fetch(`${serverUrl}/admin/users/${user.id}/features`, {
+        method: 'PUT',
+        headers: { ...apiHeaders(token, 'web-admin'), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ features: next }),
+      })
+      if (!r.ok) {
+        setError(`Failed to update ${user.username}'s features (HTTP ${r.status}).`)
+        return
+      }
+      const saved = await r.json() as string[]
+      setUsers(prev => prev.map(u => u.id === user.id ? { ...u, features: saved } : u))
+    } catch {
+      setError('Network error.')
+    } finally {
+      setGrantBusy(null)
     }
   }
 
@@ -646,6 +673,10 @@ export default function AdminPanel({ serverUrl }: { serverUrl: string }) {
         <>
           <h2 style={subheadingNoMargin}>Features</h2>
           <p style={featuresNote}>Kill switches. Switching a feature off hides it for every account until you switch it back on.</p>
+          <p style={featuresNote}>
+            Switched on here doesn't give it to anyone: an account also needs the feature granted, in the Features
+            column below (or listed in the server's <code>Features:EnabledForAll</code> config, which isn't shown here).
+          </p>
           {switchesUnavailable && <p style={errorText}>This server doesn't support feature switches yet.</p>}
           <table style={{ ...table, marginBottom: 24 }}>
             <tbody>
@@ -712,6 +743,7 @@ export default function AdminPanel({ serverUrl }: { serverUrl: string }) {
                   </th>
                 )
               })}
+              {featureSwitches.length > 0 && <th style={th}>Features</th>}
             </tr>
           </thead>
           <tbody>
@@ -733,6 +765,31 @@ export default function AdminPanel({ serverUrl }: { serverUrl: string }) {
                   {user.lastSeenAt ? formatDate(user.lastSeenAt) : '—'}
                 </td>
                 <td style={td} title={formatDate(user.createdAt)}>{timeAgo(user.createdAt)}</td>
+                {featureSwitches.length > 0 && (
+                  <td style={td}>
+                    {/* The system accounts get no grants: their features come from the server itself. */}
+                    {!PROTECTED_USERNAMES.has(user.username) && (
+                      <div style={grantRow}>
+                        {featureSwitches.map(sw => {
+                          const granted = (user.features ?? []).includes(sw.feature)
+                          const label = FEATURE_LABELS[sw.feature] ?? sw.feature
+                          return (
+                            <button
+                              key={sw.feature}
+                              style={granted ? grantChipOn : grantChipOff}
+                              onClick={() => void handleToggleGrant(user, sw.feature)}
+                              disabled={grantBusy === user.id}
+                              aria-pressed={granted}
+                              title={granted ? `Take ${label} away from ${user.username}` : `Give ${user.username} ${label}`}
+                            >
+                              {label}
+                            </button>
+                          )
+                        })}
+                      </div>
+                    )}
+                  </td>
+                )}
               </tr>
             ))}
           </tbody>
@@ -1183,6 +1240,30 @@ const primaryBtn: React.CSSProperties = {
   cursor: 'pointer',
   fontFamily: 'system-ui, sans-serif',
   fontSize: '0.9rem',
+  fontWeight: 600,
+}
+
+const grantRow: React.CSSProperties = {
+  display: 'flex',
+  flexWrap: 'wrap',
+  gap: '0.3rem',
+}
+
+const grantChipOff: React.CSSProperties = {
+  padding: '0.15rem 0.5rem',
+  borderRadius: 999,
+  border: '1px solid #cbd5e1',
+  background: '#fff',
+  color: '#64748b',
+  fontSize: '0.75rem',
+  cursor: 'pointer',
+}
+
+const grantChipOn: React.CSSProperties = {
+  ...grantChipOff,
+  border: '1px solid #1e293b',
+  background: '#1e293b',
+  color: '#fff',
   fontWeight: 600,
 }
 

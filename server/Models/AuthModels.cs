@@ -63,7 +63,10 @@ public record CreateSessionRequest(
     int? NearbyRadiusMeters = null,
     double? Latitude = null,
     double? Longitude = null,
-    double? Accuracy = null
+    double? Accuracy = null,
+    // Groups (see .ai/plans/go-and-groups.md): 4-8 letters or digits; nearby sessions only, and only
+    // for accounts with the "groups" feature.
+    string? EntryCode = null
 );
 
 /// <summary>The organiser's Ping: a fresh fix sets the meeting point; Enabled/RadiusMeters change the nearby setting.</summary>
@@ -80,7 +83,9 @@ public record JoinNearbyRequest(
     double? Latitude = null,
     double? Longitude = null,
     double? Accuracy = null,
-    string? DisplayName = null
+    string? DisplayName = null,
+    // The organiser's entry code, when the tile said one is needed. Case and spaces don't matter.
+    string? EntryCode = null
 );
 
 /// <summary>Admin/ops: creates a session owned by an existing account, for callers (e.g. the admin
@@ -105,7 +110,17 @@ public record SessionMembership(
     string OwnerDisplayName,
     // ISO-8601 UTC creation time of the session (not the membership), so clients can tell
     // same-named sessions apart ("3 days ago"). Additive; older clients ignore it.
-    string? CreatedAt = null
+    string? CreatedAt = null,
+    // ISO-8601 UTC time the session (a group, see .ai/plans/go-and-groups.md) ends: created_at plus its
+    // event length (max_length_hours, default 24 h). Additive; older clients ignore it.
+    string? EndsAt = null,
+    // Whether the caller owns (organised) this session, so a phone can show the organiser's controls on
+    // the start screen. Additive; older clients ignore it.
+    bool IsOwner = false,
+    // The owner's view of whether people nearby can find it; null for everyone else (not their business,
+    // and an older client never reads it).
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    bool? Nearby = null
 );
 
 public record BlockedUser(

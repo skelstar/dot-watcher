@@ -39,7 +39,9 @@ public class EventsController(UserTokenAuth userAuth, FeatureFlags features, Ses
             || !NearbyJoin.IsValidPosition(latitude, longitude, null) || accuracy is < 0)
             return BadRequest(new { error = "lat and lon must be a valid position, and accuracy cannot be negative." });
 
-        var sessions = store.FindNearbySessions(user.UserId, latitude, longitude, accuracy, timeProvider.GetUtcNow());
+        // Only accounts that can type an entry code are shown sessions that ask for one.
+        var canEnterCode = features.IsOnFor(user.UserId, Features.Groups);
+        var sessions = store.FindNearbySessions(user.UserId, latitude, longitude, accuracy, timeProvider.GetUtcNow(), canEnterCode);
         var events = sessions.Select(match =>
         {
             var rounded = NearbyJoin.RoundDistance(match.DistanceMeters);
@@ -50,7 +52,9 @@ public class EventsController(UserTokenAuth userAuth, FeatureFlags features, Ses
                 match.Title,
                 $"Organised by {match.OrganiserName}",
                 match.SessionId,
-                match.OrganiserName);
+                match.OrganiserName,
+                canEnterCode ? match.NeedsCode : null,
+                canEnterCode ? match.EndsAt?.ToString("O") : null);
         }).ToList();
 
         return Ok(events);

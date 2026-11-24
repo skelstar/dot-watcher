@@ -426,7 +426,9 @@ public partial class SessionStore
     /// account could scan the map for strangers. <paramref name="includeCrew"/> is false for accounts
     /// without the crew feature, who then see everyone else as a non-crew dot.
     /// <paramref name="viewerVisibleToCrew"/> is the viewer's own "My crew": off, they don't see
-    /// their crew (as they aren't seen by them).
+    /// their crew (as they aren't seen by them). <paramref name="includeGroups"/> (the "groups" feature,
+    /// see .ai/plans/go-and-groups.md) also names people the viewer shares an active named session with,
+    /// treated exactly as crew (same "My crew" switch, same block rule). Crew keep their crew label.
     /// </summary>
     public CasualLiveResponse GetCasualLive(
         string viewerId,
@@ -434,7 +436,8 @@ public partial class SessionStore
         bool viewerVisibleToCrew,
         bool includeCrew,
         CasualLiveEntry? self,
-        DateTimeOffset now)
+        DateTimeOffset now,
+        bool includeGroups = false)
     {
         var entries = GetCasualSnapshot(now).ToList();
         if (self is not null)
@@ -452,6 +455,9 @@ public partial class SessionStore
         if (includeCrew)
             foreach (var member in GetCrewOverview(conn, viewerId).Crew)
                 crewLabels[member.UserId] = string.IsNullOrWhiteSpace(member.Nickname) ? member.DisplayName : member.Nickname;
+        if (includeGroups)
+            foreach (var (userId, label) in GetGroupMemberLabels(conn, viewerId, now))
+                crewLabels.TryAdd(userId, label);
 
         return CasualVisibility.ForViewer(
             viewerId,

@@ -116,7 +116,8 @@ public class LocationsController(
             account.VisibleToCrew,
             features.IsOn(Features.Crew),
             result.Self,
-            now));
+            now,
+            includeGroups: features.IsOnFor(user.UserId, Features.Groups)));
     }
 
     /// <summary>Gets the latest live position per runner for a session.</summary>
