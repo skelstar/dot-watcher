@@ -15,6 +15,7 @@ import nz.skelstar.dotwatcher.blocks.BlocksModel
 import nz.skelstar.dotwatcher.casual.CasualModel
 import nz.skelstar.dotwatcher.casual.CasualPrefs
 import nz.skelstar.dotwatcher.events.EventsModel
+import nz.skelstar.dotwatcher.groups.GroupsModel
 import nz.skelstar.dotwatcher.crew.CrewModel
 import nz.skelstar.dotwatcher.crew.CrewPrefs
 import nz.skelstar.dotwatcher.data.AuthTokenStore
@@ -37,6 +38,7 @@ import nz.skelstar.dotwatcher.network.SessionMembership
 import nz.skelstar.dotwatcher.network.errorMessageOrStatus
 import nz.skelstar.dotwatcher.network.networkMessage
 import nz.skelstar.dotwatcher.network.parsedError
+import nz.skelstar.dotwatcher.network.ENTRY_CODE_REASON
 import nz.skelstar.dotwatcher.ui.theme.AppearanceMode
 import nz.skelstar.dotwatcher.ui.theme.AppearancePrefs
 import nz.skelstar.dotwatcher.ui.theme.AppliedSignColors
@@ -127,6 +129,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     /** Public events near the signed-in account: the runs people nearby can join. */
     val events = EventsModel(repository, viewModelScope, nearbyFix::current)
 
+    /** The groups the account is in, for accounts with the "groups" feature (see .ai/plans/go-and-groups.md). */
+    val groups = GroupsModel(repository, viewModelScope)
+
     /** Whether the Create dialog can place a nearby run: location allowed, and precise. */
     val hasPreciseLocation: Boolean get() = nearbyFix.hasPreciseLocation
 
@@ -207,6 +212,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 choice = shareChoices.read(),
                 now = Instant.now(),
                 canResumeSharing = hasLocationPermissionsForSharing(),
+                // A group is joined ahead of Go and waits for it, so it must survive a relaunch.
+                keepMemberships = groups.isAvailable,
             )
             if (decision is RestoreDecision.LeaveStale) {
                 // A session doesn't carry over a relaunch: leave it, so the others stop seeing someone who
@@ -423,8 +430,15 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         _activeSessionConflict.value = null
     }
 
-    /** Joins a run from the nearby list. The server re-checks the position, and every refusal is the same 404. */
-    fun joinNearby(sessionId: String) {
+    /**
+     * Joins a run from the nearby list. The server re-checks the position, and every refusal is the same 404,
+     * except a missing or wrong [entryCode] (a 403 the sheet shows next to the code field).
+     *
+     * With groups, joining doesn't start tracking in the session: the person stays on the start screen and
+     * the group sees them by name once they press Go. Without groups, it goes on to the consent screen as
+     * before.
+     */
+    fun joinNearby(sessionId: String, entryCode: String? = null) {
         viewModelScope.launch {
             _sessionState.value = SessionUiState.Loading
             val fix = nearbyFix.current()
@@ -434,12 +448,30 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 )
                 return@launch
             }
-            val result = runCatching { repository.joinNearbySession(sessionId, fix, displayName = repository.displayName) }
-            _sessionState.value = when (result.getOrNull()?.code()) {
+            val asGroup = groups.isAvailable
+            val result = runCatching {
+                repository.joinNearbySession(sessionId, fix, displayName = repository.displayName, entryCode = entryCode)
+            }
+            val response = result.getOrNull()
+            _sessionState.value = when (response?.code()) {
                 // One answer for every refusal, by design: too far, ended, switched off or gone.
                 404 -> SessionUiState.Error("You can't join this run from here. Move closer to the start and try again.")
                 429 -> SessionUiState.Error("Too many attempts. Try again in a little while.")
-                else -> handleSessionResult(result)
+                403 -> {
+                    val error = response.parsedError()
+                    when {
+                        error?.reason != ENTRY_CODE_REASON -> SessionUiState.Error(error?.error ?: "You can't join this run.")
+                        entryCode.isNullOrBlank() -> SessionUiState.Error("Enter the code the organiser gave you.")
+                        else -> SessionUiState.Error(error?.error ?: "That code doesn't match. Check with the organiser.")
+                    }
+                }
+                else -> if (asGroup && response?.isSuccessful == true) {
+                    groups.refreshNow()
+                    events.refresh()
+                    SessionUiState.Idle
+                } else {
+                    handleSessionResult(result)
+                }
             }
         }
     }
@@ -574,6 +606,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     crew.clear()
                     casual.clear()
                     events.clear()
+                    groups.clear()
                     _nearbyStatuses.value = emptyMap()
         _nearbyMeetingPoints.value = emptyMap()
                     _destination.value = Destination.Auth
@@ -591,6 +624,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         crew.clear()
         casual.clear()
         events.clear()
+        groups.clear()
         _nearbyStatuses.value = emptyMap()
         _nearbyMeetingPoints.value = emptyMap()
         viewModelScope.launch {

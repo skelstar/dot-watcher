@@ -24,6 +24,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -37,6 +38,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.filled.Flag
+import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 import nz.skelstar.dotwatcher.SessionUiState
@@ -51,16 +56,25 @@ import nz.skelstar.dotwatcher.network.NearbyEvent
 /**
  * What tapping a nearby run shows: who will see you, and when. Not a choice between runner and viewer:
  * watching without sharing is the shared watch link. [state] is the start screen's, so the sheet stays up
- * while joining and shows what went wrong; on success the app moves on and the sheet goes with its screen.
+ * while joining and shows what went wrong; on success the app moves on and the sheet goes with its screen
+ * (or, for a group, the start screen closes it once the group shows as joined).
+ *
+ * [asGroup] is the "groups" feature (see .ai/plans/go-and-groups.md): joining only changes who sees you, and
+ * nothing happens until you press Go. When the run asks for an entry code ([NearbyEvent.needsCode]) the sheet
+ * has a field for it and [onJoin] gets what was typed.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun NearbyJoinSheet(
     event: NearbyEvent,
     state: SessionUiState,
-    onJoin: () -> Unit,
+    onJoin: (entryCode: String?) -> Unit,
     onDismiss: () -> Unit,
+    asGroup: Boolean = false,
 ) {
+    val needsCode = asGroup && event.needsCode == true
+    var code by remember { mutableStateOf("") }
+    val trimmedCode = code.trim()
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
@@ -82,23 +96,55 @@ fun NearbyJoinSheet(
                 Text(text = event.subtitle, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
 
-            InfoRow(Icons.Default.Group, "Everyone in the run sees your name and live location.")
-            InfoRow(
-                Icons.Default.Schedule,
-                "Only while you're sharing. You choose how long, and you can leave any time.",
-            )
-            InfoRow(Icons.Default.Replay, "A replay of the run is kept afterwards.")
+            if (asGroup) {
+                InfoRow(
+                    Icons.Default.Group,
+                    "Everyone in this group sees you by name on their map, wherever they are, while you're out.",
+                )
+                InfoRow(
+                    Icons.Default.Flag,
+                    "Not out yet? Join now and the group waits. Nobody sees you until you press Go.",
+                )
+                InfoRow(Icons.Default.Schedule, "Until the group ends. You can leave any time.")
+                InfoRow(Icons.Default.Visibility, "Your run stays yours: joining doesn't change how you track.")
+            } else {
+                InfoRow(Icons.Default.Group, "Everyone in the run sees your name and live location.")
+                InfoRow(
+                    Icons.Default.Schedule,
+                    "Only while you're sharing. You choose how long, and you can leave any time.",
+                )
+                InfoRow(Icons.Default.Replay, "A replay of the run is kept afterwards.")
+            }
+
+            if (needsCode) {
+                OutlinedTextField(
+                    value = code,
+                    onValueChange = { typed -> code = typed.filter { it.isLetterOrDigit() }.take(ENTRY_CODE_MAX_LENGTH) },
+                    label = { Text("Entry code") },
+                    supportingText = { Text("The organiser gave entrants this code.") },
+                    singleLine = true,
+                    isError = state is SessionUiState.Error,
+                    keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Characters),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
 
             (state as? SessionUiState.Error)?.let {
                 Text(text = it.message, color = MaterialTheme.colorScheme.error)
             }
 
             Button(
-                onClick = onJoin,
-                enabled = state !is SessionUiState.Loading,
+                onClick = { onJoin(if (needsCode) trimmedCode else null) },
+                enabled = state !is SessionUiState.Loading && (!needsCode || trimmedCode.length >= ENTRY_CODE_MIN_LENGTH),
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                Text(if (state is SessionUiState.Loading) "Joining…" else "Join this run")
+                Text(
+                    when {
+                        state is SessionUiState.Loading -> "Joining…"
+                        asGroup -> "Join group"
+                        else -> "Join this run"
+                    }
+                )
             }
             TextButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) {
                 Text("Not now")
@@ -106,6 +152,10 @@ fun NearbyJoinSheet(
         }
     }
 }
+
+/** The server's limits for an entry code: 4 to 8 letters or digits. */
+private const val ENTRY_CODE_MIN_LENGTH = 4
+private const val ENTRY_CODE_MAX_LENGTH = 8
 
 @Composable
 private fun InfoRow(icon: ImageVector, text: String) {

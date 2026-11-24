@@ -59,6 +59,8 @@ data class AuthenticatedUser(
     // Server-driven settings, e.g. config.palette (see data/RemotePalette.kt). Kept as raw JSON so an
     // unexpected shape in here can never fail a sign-in; null from a server that does not send it.
     val config: JsonObject? = null,
+    // What the account can use (e.g. "groups"); null from a server that does not send it.
+    val features: List<String>? = null,
 )
 
 @Serializable
@@ -211,6 +213,8 @@ data class NearbyEvent(
     val subtitle: String,
     val sessionId: String? = null,
     val organiser: String? = null,
+    /** True when joining needs the organiser's entry code. Only sent to accounts with "groups". */
+    val needsCode: Boolean? = null,
 )
 
 // --- Nearby join (server: Controllers/SessionsController.cs) ---------------------------
@@ -222,6 +226,8 @@ data class JoinNearbyRequest(
     val longitude: Double,
     val accuracy: Double? = null,
     val displayName: String? = null,
+    /** The organiser's entry code, when the tile said one is needed. Case and spaces don't matter. */
+    val entryCode: String? = null,
 )
 
 /** The organiser's Ping: a fresh fix sets the join location; [enabled] and [radiusMeters] change the setting.
@@ -344,7 +350,13 @@ data class ApiErrorResponse(
     val error: String? = null,
     /** Only on the 409 for "you already have an active session": that session's id. */
     val sessionId: String? = null,
+    /** Why a request was refused, where the server says: "entry_code" on a nearby join with a missing or
+     *  wrong entry code. */
+    val reason: String? = null,
 )
+
+/** [ApiErrorResponse.reason] on a nearby join refused for a missing or wrong entry code. */
+const val ENTRY_CODE_REASON = "entry_code"
 
 /**
  * The failed response's body as [ApiErrorResponse], or null if it isn't that shape (e.g. a proxy's HTML
