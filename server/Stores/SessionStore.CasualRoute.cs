@@ -72,9 +72,10 @@ public partial class SessionStore
     /// or a crew member who is visible to them), else null. Uses the same rules as the live map, so a
     /// route is never reachable by someone who couldn't see the dot.
     /// </summary>
-    public string? GetCasualRouteForViewer(string viewerId, string runId, CasualAccount account, bool includeCrew, DateTimeOffset now)
+    public string? GetCasualRouteForViewer(
+        string viewerId, string runId, CasualAccount account, bool includeCrew, DateTimeOffset now, bool includeGroups = false)
     {
-        var live = GetCasualLive(viewerId, account.VisibleToNonCrew, account.VisibleToCrew, includeCrew, self: null, now);
+        var live = GetCasualLive(viewerId, account.VisibleToNonCrew, account.VisibleToCrew, includeCrew, self: null, now, includeGroups);
         return live.Routes?.Any(r => r.RunId == runId) == true ? GetCasualRouteGpx(runId) : null;
     }
 
