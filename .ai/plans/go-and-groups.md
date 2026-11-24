@@ -1,42 +1,51 @@
 # Go and groups — Plan
 
-*DotWatcher — plan, November 2026. Status (24 November 2026): mock-ups done; step 1 and step 2 built on the server (CI green) and both
-phones (iOS run in the simulator, nothing yet on a device); **nothing merged into `staging`**. **Start with
+*DotWatcher — plan, November 2026. Status (24 November 2026): mock-ups done; step 1 and step 2 built. **Server and admin merged into
+`staging`**, released to `main` by #411; both phones built (iOS run in the simulator, nothing yet on a device) and not
+merged. **Start with
 [Picking this up again](#picking-this-up-again) below.** Decisions marked **Open** need an answer before the step that
 depends on them.*
 
 ## Picking this up again
 
-Everything is in a stack of open PRs, each based on the one before. Merge from the bottom; GitHub retargets the next
-one when its base branch is deleted, otherwise retarget it by hand. Server PRs run CI; phone PRs don't (CI only covers
-`server/` and `tests/`).
+**Server and admin are merged into `staging`** (24 Nov): #386, #387 (with #396), #407, #410, and this plan (#379).
+**#411 (`staging` → `main`)** releases them; merging it runs the release workflow. The phone PRs are **not merged** and
+wait for a device test:
 
 | PR | Branch | What | Based on | State |
 | --- | --- | --- | --- | --- |
-| #379 | `go-and-groups-plan` | This plan and the mock-ups | `staging` | Docs only |
-| #386 | `groups-casual-visibility` | Step 1: people in the same active session see each other by name in casual (`groups` flag); per-account grants cached 30 s on the hot path | `staging` | CI green (359 tests) |
-| #387 | `groups-entry-code` | Step 2 server: entry codes; now also contains #396 (`endsAt`, merged into it 24 Nov) | #386 | CI green |
-| #407 | `groups-owner-flag` | Step 2 server: `isOwner` (and owner-only `nearby`) on memberships | #387 | CI green (389 tests) |
-| #388 | `android-groups-join` | Android part 1: join a nearby group without starting tracking; entry code; "You're in" cards; groups survive relaunch | #387 | Compiles, unit tests pass; not on a device |
+| #386 | `groups-casual-visibility` | Step 1: people in the same active session see each other by name in casual (`groups` flag); per-account grants cached 30 s | `staging` | Merged into `staging` |
+| #387 | `groups-entry-code` | Step 2 server: entry codes; includes #396 (`endsAt`) | `staging` | Merged into `staging` |
+| #407 | `groups-owner-flag` | Step 2 server: `isOwner` (and owner-only `nearby`) on memberships | `staging` | Merged into `staging` |
+| #410 | `admin-account-features` | Admin: per-account feature chips in the Users table; Groups label | `staging` | Merged into `staging` |
+| #411 | `staging` | Release of all the above (and #403-#405) to `main` | `main` | Open |
+| #388 | `android-groups-join` | Android part 1: join a nearby group without starting tracking; entry code; "You're in" cards; groups survive relaunch | #387's branch | Compiles, unit tests pass; not on a device |
 | #397 | `android-groups-part2` | Android part 2: join while out, group chip, end times, "Join and Go now", organiser codes | #388 | Compiles, 99 unit tests pass; not on a device |
 | #408 | `android-groups-flows` | Android: invite-code join and creating are group joins; organiser card (Ping, code, End group) | #397 | Compiles, 99 unit tests pass; not on a device |
-| #398 | `ios-groups` | iOS: everything in #388 and #397, plus two fixes found in the simulator | #387 | Run in the simulator (see below) |
+| #398 | `ios-groups` | iOS: everything in #388 and #397, plus two fixes found in the simulator | #387's branch | Run in the simulator (see below) |
 | #409 | `ios-groups-flows` | iOS: the same as #408 | #398 | Builds; not run |
 
-Merge order: #386 → #387 → #407 on the server; then the phone PRs (#388 → #397 → #408, and #398 → #409), which only
-work fully against a server with #407.
+#388 and #398 were based on `groups-entry-code`, which is now merged: retarget them to `staging` (their diffs then
+show only their own commits), then merge each phone stack bottom-up (#388 → #397 → #408, #398 → #409) once tested.
+Use normal merge commits, not squash, or the next PR in a stack shows the earlier commits again.
 
-**Trying it:**
+**Trying it (after #411 is deployed):**
 
-- *Against prod*, after the server PRs are merged and deployed: grant `groups` to test accounts only
-  (`PUT /api/admin/users/{id}/features`, body `{ "features": ["groups"] }`, admin token). **Don't** add `groups` to
-  `Features:EnabledForAll` until the new phone builds are out. Without the flag nothing changes for anyone, and older
-  builds are unaffected (all fields additive and ignored; API version unchanged; one nullable column).
-- *Locally*: run the server from the top of the stack with
-  `Features__EnabledForAll__0=crew …__1=casual …__2=events …__3=groups dotnet run --urls "http://*:8080"`.
-  Phones: Android `./gradlew :app:installDevice` (uses `DEVICE_API_BASE_URL` in `local.properties`), iOS scheme
-  **"DotWatcher (Device Local)"** (`jakkuu.local:8080`; the plain scheme's `localhost` doesn't reach the Mac). Needs
-  Docker (Postgres) up.
+1. Admin → Users tab: **Groups** shows under the kill switches (On) and as a chip per account. Tap **Groups** on a
+   couple of test accounts only. **Don't** add `groups` to `Features:EnabledForAll` until the new phone builds are out.
+   Without a grant nothing changes for anyone; older builds are unaffected (additive fields, API version unchanged,
+   one nullable column).
+2. Build the phones from the tops of their stacks, **pointed at prod**:
+   - iOS: `ios-groups-flows`, scheme **"DotWatcher (Device Prod)"**.
+   - Android: `android-groups-flows`, `./gradlew :app:installRelease` (the `release` build type uses prod and the
+     release signing config; `debug`/`device` point at a local server).
+3. Sign in on each phone with a granted test account. One creates a nearby group with "Ask for a code to join"; the
+   other joins it.
+
+*Locally instead* (no deploy needed): run the server from `staging` with
+`Features__EnabledForAll__0=crew …__1=casual …__2=events …__3=groups dotnet run --urls "http://*:8080"`; phones on
+Android `./gradlew :app:installDevice` (uses `DEVICE_API_BASE_URL` in `local.properties`) and iOS scheme
+**"DotWatcher (Device Local)"** (`jakkuu.local:8080`). Needs Docker (Postgres) up.
 
 **Checked in the iOS simulator** (24 Nov, against a local server with the stack, before #409): tiles with "Code needed";
 join sheet with group wording and end time; wrong code then right code; "Join and Go now" → "Before you go"; Go map
@@ -50,15 +59,17 @@ cut short by a full disk).
 
 **Next, in order:**
 
-1. **Try the phones on devices**: Android #408 and iOS #409 (tops of their stacks) against a server with #407.
-   Not yet checked anywhere: the organiser card (Ping here, Entry code, End group), invite-code join as a group join,
-   and anything on Android.
-2. **Merge the stack** (order above).
-3. **Invite links** for groups (join from anywhere, e.g. the entry email); decide whether they ask for the entry code
+1. **Merge #411** to release the server and admin page, then grant `groups` to test accounts from the admin page.
+2. **Try the phones on devices** against prod: Android #408 and iOS #409 (tops of their stacks). Not yet checked
+   anywhere: the organiser card (Ping here, Entry code, End group), invite-code join as a group join, and anything on
+   Android.
+3. **Merge the phone stacks** (retarget #388 and #398 to `staging` first), then build and release the apps. Only then
+   consider `groups` for everyone.
+4. **Invite links** for groups (join from anywhere, e.g. the entry email); decide whether they ask for the entry code
    (an invite code skips it today).
-4. **Start-screen redesign** (Go and "Who can see me" replace the four cards; ties in with `android-start-screen-design`).
-5. The **name** for "group members" (the only open design decision).
-6. Step 3 onwards.
+5. **Start-screen redesign** (Go and "Who can see me" replace the four cards; ties in with `android-start-screen-design`).
+6. The **name** for "group members" (the only open design decision).
+7. Step 3 onwards.
 
 **Things to know:**
 
