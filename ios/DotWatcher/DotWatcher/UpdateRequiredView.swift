@@ -10,12 +10,12 @@ struct UpdateRequiredView: View {
     var body: some View {
         VStack(spacing: 16) {
             Image(systemName: "arrow.up.circle.fill")
-                .font(.system(size: 56))
+                .font(.app(size: 56))
                 .foregroundStyle(.blue)
             Text("Update Required")
-                .font(.title2.bold())
+                .font(.app(.title2, weight: .bold))
             Text("This version of DotWatcher is no longer supported. Open TestFlight to install the latest build.")
-                .font(.subheadline)
+                .font(.app(.subheadline))
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 24)

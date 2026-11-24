@@ -9,6 +9,7 @@ import kotlinx.coroutines.launch
 import nz.skelstar.dotwatcher.crash.CrashReporter
 import nz.skelstar.dotwatcher.data.PaletteStore
 import nz.skelstar.dotwatcher.network.DotWatcherApiClient
+import nz.skelstar.dotwatcher.ui.map.PinTypeface
 import nz.skelstar.dotwatcher.ui.theme.AppliedSignColors
 
 /** Installs the crash reporter before anything else runs, and sends any crash saved by the
@@ -19,6 +20,8 @@ class DotWatcherApplication : Application() {
         CrashReporter.install(this)
         // The start screen's colours for this run: the last palette the server sent, if any.
         AppliedSignColors.palette = PaletteStore(this).current()
+        // The map pins draw their letters outside Compose, so they need the typeface loaded here.
+        PinTypeface.load(this)
 
         CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
             // Not on the critical path of startup, and a crash loop shouldn't hammer the network.

@@ -98,7 +98,7 @@ struct NearbyCreateSection: View {
         VStack(alignment: .leading, spacing: 10) {
             Toggle("Let people nearby join", isOn: $draft.isOn)
             Text("People near you can find this run and join. Turn off any time.")
-                .font(.footnote)
+                .font(.app(.footnote))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
@@ -114,7 +114,7 @@ struct NearbyCreateSection: View {
                     .pickerStyle(.menu)
                 }
                 Text("GPS can be off by 10 to 50 m, so a wider range is easier to join from.")
-                    .font(.footnote)
+                    .font(.app(.footnote))
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                 locationNote
@@ -158,7 +158,7 @@ struct NearbyCreateSection: View {
         case .denied:
             VStack(alignment: .leading, spacing: 6) {
                 Text("Location is off for DotWatcher, so people nearby can't find this run.")
-                    .font(.footnote)
+                    .font(.app(.footnote))
                     .foregroundStyle(.red)
                     .fixedSize(horizontal: false, vertical: true)
                 Button("Open Settings") {
@@ -201,10 +201,10 @@ struct NearbyJoinSheet: View {
         VStack(alignment: .leading, spacing: 16) {
             VStack(alignment: .leading, spacing: 4) {
                 Text(event.eyebrow.uppercased())
-                    .font(.caption.weight(.semibold))
+                    .font(.app(.caption, weight: .semibold))
                     .foregroundStyle(.secondary)
                 Text(event.title)
-                    .font(.title2.bold())
+                    .font(.app(.title2, weight: .bold))
                 Text(event.subtitle)
                     .foregroundStyle(.secondary)
             }
@@ -240,7 +240,7 @@ struct NearbyJoinSheet: View {
 
             if let errorText {
                 Text(errorText)
-                    .font(.subheadline.weight(.semibold))
+                    .font(.app(.subheadline, weight: .semibold))
                     .foregroundStyle(.red)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -343,7 +343,7 @@ struct NearbyOrganiserControls: ViewModifier {
             .overlay(alignment: .top) {
                 if let note {
                     Text(note)
-                        .font(.subheadline.weight(.semibold))
+                        .font(.app(.subheadline, weight: .semibold))
                         .foregroundStyle(.black)
                         .padding(.horizontal, 14)
                         .padding(.vertical, 8)
@@ -406,7 +406,7 @@ struct NearbySettingsSheet: View {
     private var content: some View {
         VStack(alignment: .leading, spacing: 16) {
             Text("Nearby join")
-                .font(.title2.bold())
+                .font(.app(.title2, weight: .bold))
 
             if let status, status.nearby {
                 Text("People within \(status.radiusMeters) m of your join location can find this run and join. Tap the button on the map to move it, for example from the start to the finish.")
@@ -443,7 +443,7 @@ struct NearbySettingsSheet: View {
 
             if let message {
                 Text(message)
-                    .font(.subheadline.weight(.semibold))
+                    .font(.app(.subheadline, weight: .semibold))
                     .fixedSize(horizontal: false, vertical: true)
             }
 

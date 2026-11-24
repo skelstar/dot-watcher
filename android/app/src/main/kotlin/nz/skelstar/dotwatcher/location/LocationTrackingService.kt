@@ -38,6 +38,12 @@ import java.time.Instant
  *  connectivity signal yet, so unlike iOS there is no slower fallback cadence for now. */
 const val POST_INTERVAL_SECONDS = 15L
 
+/** Until a run's first good fix, how soon to try again instead of waiting for the next 15 s mark. The GPS
+ *  has only just started, so the first tries are often missing or too coarse; like iOS (`postFirstFixIfAwaited`),
+ *  the first position should go as soon as there is one. */
+private const val FIRST_FIX_RETRY_MS = 2_000L
+private const val FIRST_FIX_QUICK_RETRY_WINDOW_MS = 60_000L
+
 /** Options offered for how long a share session runs before it auto-stops, ascending — mirrors
  *  `LocationManager.trackingDurationOptions` (ios/DotWatcher/DotWatcher/LocationManager.swift:212).
  *  This is a cap on *automatic* sharing, not a mode switch: every option still auto-stops, the
@@ -92,6 +98,7 @@ class LocationTrackingService : Service() {
     private lateinit var repository: DotWatcherRepository
     private lateinit var updateQueue: LocationUpdateQueue
     private lateinit var shareChoices: ShareChoiceStore
+    private lateinit var crewOutAlerts: CrewOutAlerts
 
     override fun onCreate() {
         super.onCreate()
@@ -101,6 +108,7 @@ class LocationTrackingService : Service() {
         repository = DotWatcherRepository(api, tokenStore)
         updateQueue = LocationUpdateQueue(applicationContext)
         shareChoices = ShareChoiceStore(applicationContext)
+        crewOutAlerts = CrewOutAlerts(applicationContext)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -215,6 +223,8 @@ class LocationTrackingService : Service() {
     private fun startTracking(sessionId: String, duration: Duration, total: Duration) {
         trackingJob?.cancel()
         batteryOverride = false
+        // Every run starts with a silent baseline: crew already out when you start don't alert.
+        crewOutAlerts.reset()
         locationTracker.startHeadingUpdates()
         locationTracker.startLocationUpdates()
 
@@ -223,6 +233,10 @@ class LocationTrackingService : Service() {
         shareChoices.recordSharing(sessionId, initialExpiry, total)
 
         trackingJob = serviceScope.launch {
+            // False until this run captures its first good fix; till then failed tries retry quickly, for the
+            // first minute only (with precise location off every try fails, and that shouldn't spin all run).
+            var haveFirstFix = false
+            val quickRetriesUntil = Instant.now().plusMillis(FIRST_FIX_QUICK_RETRY_WINDOW_MS)
             while (isActive) {
                 val now = Instant.now()
                 // Re-read each pass: the runner can extend the session while this loop sleeps.
@@ -253,15 +267,21 @@ class LocationTrackingService : Service() {
                             batteryLevel = battery.level,
                         )
                     }.fold(
-                        onSuccess = { captured -> postOrEnqueue(captured) },
+                        onSuccess = { captured ->
+                            haveFirstFix = true
+                            postOrEnqueue(captured)
+                        },
                         onFailure = { error -> recordError(error.message) },
                     )
                 }
 
                 val beforeDelay = Instant.now()
-                val delayMillis = Duration.between(beforeDelay, nextPostAt(beforeDelay, POST_INTERVAL_SECONDS))
+                val untilNextMark = Duration.between(beforeDelay, nextPostAt(beforeDelay, POST_INTERVAL_SECONDS))
                     .toMillis()
                     .coerceAtLeast(0)
+                // No first fix yet (and not paused for battery): try again shortly rather than at the next mark.
+                val retryQuickly = !haveFirstFix && !pause && beforeDelay < quickRetriesUntil
+                val delayMillis = if (retryQuickly) minOf(FIRST_FIX_RETRY_MS, untilNextMark) else untilNextMark
                 delay(delayMillis)
             }
         }
@@ -290,6 +310,11 @@ class LocationTrackingService : Service() {
         when {
             response != null && response.isSuccessful -> {
                 recordSuccess()
+                // A Go post's reply lists you and your crew who are out: alert on anyone newly out. Only live
+                // posts, never queued ones flushed late (those are stale).
+                if (captured.sessionId == CASUAL_SESSION_ID) {
+                    response.body()?.let { crewOutAlerts.handle(it.positions.flatten()) }
+                }
                 flushQueue()
             }
             // Permanent failure (see flushQueue's kdoc) — retrying would never help, so report
@@ -359,6 +384,7 @@ class LocationTrackingService : Service() {
     }
 
     private fun stopTracking() {
+        crewOutAlerts.reset()
         trackingJob?.cancel()
         trackingJob = null
         locationTracker.stopHeadingUpdates()

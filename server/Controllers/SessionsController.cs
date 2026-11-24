@@ -300,6 +300,7 @@ public class SessionsController(
             membership.OwnerDisplayName,
             membership.CreatedAt,
             membership.EndsAt,
+            membership.IsOwner,
             Participants = participants,
         });
     }
@@ -361,6 +362,7 @@ public class SessionsController(
             membership.OwnerDisplayName,
             membership.CreatedAt,
             membership.EndsAt,
+            membership.IsOwner,
             Participants = participants,
         });
     }

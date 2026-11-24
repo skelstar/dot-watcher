@@ -44,7 +44,7 @@ struct RunnerCircle: View {
                     .frame(width: size, height: size)
             }
             Text(RunnerCircle.initials(for: label ?? name))
-                .font(.system(size: fontSize ?? size * 0.3, weight: .bold))
+                .font(.app(size: fontSize ?? size * 0.3, weight: .bold))
                 .foregroundStyle(isDisconnected ? color : (fillColor != nil || isHighlighted ? .white : .primary))
         }
     }
@@ -54,8 +54,7 @@ struct RunnerCircle: View {
     let names = ["SKE", "JOH", "CHQ", "ALI", "ROS", "TOM", "BEA", "WIL", "ZOE", "MAX"]
     VStack(alignment: .leading, spacing: 10) {
         Text("PARTICIPANTS")
-            .font(.caption)
-            .fontWeight(.semibold)
+            .font(.app(.caption, weight: .semibold))
             .foregroundStyle(.secondary)
         LazyVGrid(columns: [GridItem(.adaptive(minimum: 56))], spacing: 10) {
             ForEach(names, id: \.self) { name in

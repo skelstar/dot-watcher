@@ -31,11 +31,16 @@ public class AdminController(SessionStore store, BearerTokenAuth auth, FeatureFl
         if (request?.Features is null)
             return BadRequest(new { error = "features is required." });
 
-        var features = FeatureFlags.Normalize(request.Features);
-        if (features.Any(f => f.Contains(',')))
+        var granted = FeatureFlags.Normalize(request.Features);
+        if (granted.Any(f => f.Contains(',')))
             return BadRequest(new { error = "Feature names can't contain commas." });
 
-        return store.SetUserFeatures(userId, features) ? Ok(features) : NotFound();
+        if (!store.SetUserFeatures(userId, granted))
+            return NotFound();
+
+        // IsOnFor caches grants for a short while; this account's must take effect now.
+        features.ForgetUser(userId);
+        return Ok(granted);
     }
 
     /// <summary>Admin/ops: every saved palette, with the app versions each is assigned to.</summary>

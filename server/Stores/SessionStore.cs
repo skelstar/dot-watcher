@@ -671,7 +671,7 @@ public partial class SessionStore(string connectionString) : IDisposable
         UpsertMembership(conn, sessionId, userId, "runner", displayName, now);
 
         return new SessionMembership(sessionId, sessionName, inviteCode, "runner", displayName, displayName, now,
-            GroupEndsAt(DateTimeOffset.Parse(now), maxLengthHours).ToString("O"));
+            GroupEndsAt(DateTimeOffset.Parse(now), maxLengthHours).ToString("O"), IsOwner: true, Nearby: nearby is not null);
     }
 
     /// <summary>
@@ -1062,7 +1062,8 @@ public partial class SessionStore(string connectionString) : IDisposable
         using var conn = Connect();
         using var cmd = conn.CreateCommand();
         cmd.CommandText = """
-            SELECT s.id, s.session_name, s.invite_code, m.role, m.display_name, owner.display_name, s.created_at, s.max_length_hours
+            SELECT s.id, s.session_name, s.invite_code, m.role, m.display_name, owner.display_name, s.created_at, s.max_length_hours,
+                   s.owner_user_id = m.user_id, s.nearby
             FROM session_members m
             JOIN app_sessions s ON s.id = m.session_id
             JOIN session_members owner ON owner.session_id = s.id AND owner.user_id = s.owner_user_id
@@ -1080,7 +1081,8 @@ public partial class SessionStore(string connectionString) : IDisposable
         using var conn = Connect();
         using var cmd = conn.CreateCommand();
         cmd.CommandText = """
-            SELECT s.id, s.session_name, s.invite_code, m.role, m.display_name, owner.display_name, s.created_at, s.max_length_hours
+            SELECT s.id, s.session_name, s.invite_code, m.role, m.display_name, owner.display_name, s.created_at, s.max_length_hours,
+                   s.owner_user_id = m.user_id, s.nearby
             FROM session_members m
             JOIN app_sessions s ON s.id = m.session_id
             JOIN session_members owner ON owner.session_id = s.id AND owner.user_id = s.owner_user_id
@@ -1111,7 +1113,9 @@ public partial class SessionStore(string connectionString) : IDisposable
                 reader.GetString(4),
                 reader.GetString(5),
                 reader.GetString(6),
-                EndsAtIso(reader, 6, 7)));
+                EndsAtIso(reader, 6, 7),
+                reader.GetBoolean(8),
+                reader.GetBoolean(8) ? reader.GetBoolean(9) : null));
 
         return sessions;
     }
@@ -1130,7 +1134,8 @@ public partial class SessionStore(string connectionString) : IDisposable
     {
         using var cmd = conn.CreateCommand();
         cmd.CommandText = """
-            SELECT s.id, s.session_name, s.invite_code, m.role, m.display_name, owner.display_name, s.created_at, s.max_length_hours
+            SELECT s.id, s.session_name, s.invite_code, m.role, m.display_name, owner.display_name, s.created_at, s.max_length_hours,
+                   s.owner_user_id = m.user_id, s.nearby
             FROM session_members m
             JOIN app_sessions s ON s.id = m.session_id
             JOIN session_members owner ON owner.session_id = s.id AND owner.user_id = s.owner_user_id
@@ -1140,7 +1145,8 @@ public partial class SessionStore(string connectionString) : IDisposable
         cmd.Parameters.AddWithValue("@userId", userId);
         using var reader = cmd.ExecuteReader();
         return reader.Read()
-            ? new SessionMembership(reader.GetString(0), reader.GetString(1), inviteCode ?? reader.GetString(2), reader.GetString(3), reader.GetString(4), reader.GetString(5), reader.GetString(6), EndsAtIso(reader, 6, 7))
+            ? new SessionMembership(reader.GetString(0), reader.GetString(1), inviteCode ?? reader.GetString(2), reader.GetString(3), reader.GetString(4), reader.GetString(5), reader.GetString(6), EndsAtIso(reader, 6, 7),
+                reader.GetBoolean(8), reader.GetBoolean(8) ? reader.GetBoolean(9) : null)
             : null;
     }
 

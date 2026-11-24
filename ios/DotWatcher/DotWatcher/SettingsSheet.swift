@@ -53,6 +53,7 @@ struct SettingsSheet: View {
             Toggle("Satellite alerts", isOn: $location.satelliteAlertsEnabled)
             Toggle("Play sound", isOn: $location.satelliteAlertSound)
                 .disabled(!location.satelliteAlertsEnabled)
+            Toggle("Crew alerts", isOn: $location.crewOutAlertsEnabled)
             if notificationStatus == .denied {
                 Button("Allow notifications in Settings") {
                     if let url = URL(string: UIApplication.openSettingsURLString) { openURL(url) }
@@ -62,8 +63,8 @@ struct SettingsSheet: View {
             Text("Notifications")
         } footer: {
             Text(notificationStatus == .denied
-                 ? "Notifications are turned off for DotWatcher in iOS Settings, so satellite alerts can't be shown."
-                 : "Alerts you when your phone switches to satellite while you're tracking.")
+                 ? "Notifications are turned off for DotWatcher in iOS Settings, so these alerts can't be shown."
+                 : "Satellite alerts tell you when your phone switches to satellite while you're tracking. Crew alerts tell you when someone in your crew starts a Go run while you're on one.")
         }
     }
 
@@ -89,9 +90,13 @@ struct SettingsSheet: View {
                 )
                 testNotificationSentAt = Date()
             }
+            Button("Send test crew alert in \(Int(Self.testNotificationDelay))s") {
+                CrewOutAlerts.shared.sendTestNotification(after: Self.testNotificationDelay)
+                testNotificationSentAt = Date()
+            }
             if let testNotificationSentAt {
                 Text("Sent at \(testNotificationSentAt, style: .time) — lock the phone now.")
-                    .font(.caption)
+                    .font(.app(.caption))
                     .foregroundStyle(.secondary)
             }
             postStatsRow("Normal posts", location.normalPostStats)
@@ -113,7 +118,7 @@ struct SettingsSheet: View {
         VStack(alignment: .leading, spacing: 2) {
             Text(title)
             Text("\(stats.successes)/\(stats.attempts) sent · \(stats.transportFailures) failed · \(stats.retries) retries · \(stats.pathTriggers) path triggers")
-                .font(.caption)
+                .font(.app(.caption))
                 .foregroundStyle(.secondary)
         }
     }

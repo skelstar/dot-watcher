@@ -310,6 +310,10 @@ data class RunnerPosition(
     /** The account's display name, for the letters on the dot when [runnerName] is a crew nickname.
      *  Only the casual map sets it; null means draw the letters from [runnerName]. */
     val displayName: String? = null,
+    /** Only in a Go post's reply (a `CasualLiveResponse`): in a named session rather than on a Go run,
+     *  and this account's own position. False in a session reply. Read by crew-out alerts. */
+    val inSession: Boolean = false,
+    val isSelf: Boolean = false,
 )
 
 /** A crash saved by [nz.skelstar.dotwatcher.crash.CrashReporter] and uploaded on the next launch.

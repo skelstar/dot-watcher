@@ -221,19 +221,19 @@ struct ContentView: View {
                     }
                     if casual.isAvailable, !crew.members.isEmpty, let line = crewOutLine(casual.crewOut) {
                         Text(line)
-                            .font(.subheadline)
+                            .font(.app(.subheadline))
                             .foregroundStyle(.secondary)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
                     if let error = casual.startError {
                         Text(error)
-                            .font(.subheadline.weight(.semibold))
+                            .font(.app(.subheadline, weight: .semibold))
                             .foregroundStyle(.red)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
                     if let formError {
                         Label(formError, systemImage: "exclamationmark.triangle.fill")
-                            .font(.subheadline.weight(.semibold))
+                            .font(.app(.subheadline, weight: .semibold))
                             .foregroundStyle(.red)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(12)
@@ -339,7 +339,7 @@ struct ContentView: View {
 
     private var offlineBanner: some View {
         Label("No internet connection", systemImage: "wifi.slash")
-            .font(.headline)
+            .font(.app(.headline))
             .foregroundStyle(.white)
             .frame(maxWidth: .infinity)
             .padding(.vertical, 10)
@@ -362,7 +362,7 @@ struct ContentView: View {
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 2) {
                     Text("d")
-                        .font(.largeTitle.bold())
+                        .font(.app(.largeTitle, weight: .bold))
                     if location.isAuthenticated, !location.runnerName.trimmingCharacters(in: .whitespaces).isEmpty {
                         Button {
                             nameInput = location.runnerName
@@ -370,7 +370,7 @@ struct ContentView: View {
                         } label: {
                             // With a server palette the dot is the Go colour and the initials the sign background.
                             Text(location.runnerName.uppercased())
-                                .font(.callout.bold())
+                                .font(.app(.callout, weight: .bold))
                                 .foregroundStyle(AppliedPalette.shared.colors?.altBg ?? .white)
                                 .frame(width: 38, height: 38)
                                 .background(Circle().fill(AppliedPalette.shared.colors?.goBg ?? RunnerColorPalette.currentUser))
@@ -379,17 +379,17 @@ struct ContentView: View {
                         .accessibilityLabel("Edit your name")
                     } else {
                         Text("o")
-                            .font(.largeTitle.bold())
+                            .font(.app(.largeTitle, weight: .bold))
                     }
                     Text("t-watchr")
-                        .font(.largeTitle.bold())
+                        .font(.app(.largeTitle, weight: .bold))
                 }
                 // The version and the palette's name, which is the release name for now. No build number or commit.
                 let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String
                 let paletteName = AppliedPalette.shared.colors?.name
                 if version != nil || paletteName != nil {
                     Text([version.map { "v\($0)" }, paletteName].compactMap { $0 }.joined(separator: " · "))
-                        .font(.caption2)
+                        .font(.app(.caption2))
                         .foregroundStyle(location.debugForceUltraConstrained ? Color.orange : Color(.tertiaryLabel))
                         .contentShape(Rectangle())
                         .onTapGesture { registerVersionTap() }
@@ -401,7 +401,7 @@ struct ContentView: View {
                 if location.isAuthenticated {
                     Button { showAuth = true } label: {
                         Image(systemName: "person.circle.fill")
-                            .font(.title)
+                            .font(.app(.title))
                             .foregroundStyle(.primary)
                     }
                     .buttonStyle(.plain)
@@ -410,14 +410,14 @@ struct ContentView: View {
                 // App preferences; the same sheet as the gear on the map rail.
                 Button { showSettings = true } label: {
                     Image(systemName: "gearshape")
-                        .font(.title)
+                        .font(.app(.title))
                         .foregroundStyle(.primary)
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Settings")
                 Button { showHelp = true } label: {
                     Image(systemName: "questionmark.circle")
-                        .font(.title)
+                        .font(.app(.title))
                         .foregroundStyle(.primary)
                 }
                 .buttonStyle(.plain)

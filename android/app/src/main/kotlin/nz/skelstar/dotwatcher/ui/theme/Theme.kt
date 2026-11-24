@@ -65,12 +65,26 @@ private val DarkColors = darkColorScheme(
 // A light typographic pass — bolder headline weight matches iOS's frequent use of
 // `.title2.bold()`/`.headline` for screen titles (CreateSessionView.swift,
 // ShareLocationConsentView.swift), rather than Material3's default medium-weight headlines.
+// Every style is Red Hat Text (UiFontFamily, see SignPalette.kt), so any Text that uses the theme's styles, or
+// none (LocalTextStyle is bodyLarge), is in it. See .ai/plans/start-screen-font.md.
 private val AppTypography = Typography().let { base ->
+    val f = UiFontFamily
     base.copy(
-        headlineMedium = base.headlineMedium.copy(fontWeight = FontWeight.Bold),
-        headlineSmall = base.headlineSmall.copy(fontWeight = FontWeight.Bold),
-        titleLarge = base.titleLarge.copy(fontWeight = FontWeight.Bold),
-        titleMedium = base.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+        displayLarge = base.displayLarge.copy(fontFamily = f),
+        displayMedium = base.displayMedium.copy(fontFamily = f),
+        displaySmall = base.displaySmall.copy(fontFamily = f),
+        headlineLarge = base.headlineLarge.copy(fontFamily = f),
+        headlineMedium = base.headlineMedium.copy(fontFamily = f, fontWeight = FontWeight.Bold),
+        headlineSmall = base.headlineSmall.copy(fontFamily = f, fontWeight = FontWeight.Bold),
+        titleLarge = base.titleLarge.copy(fontFamily = f, fontWeight = FontWeight.Bold),
+        titleMedium = base.titleMedium.copy(fontFamily = f, fontWeight = FontWeight.SemiBold),
+        titleSmall = base.titleSmall.copy(fontFamily = f),
+        bodyLarge = base.bodyLarge.copy(fontFamily = f),
+        bodyMedium = base.bodyMedium.copy(fontFamily = f),
+        bodySmall = base.bodySmall.copy(fontFamily = f),
+        labelLarge = base.labelLarge.copy(fontFamily = f),
+        labelMedium = base.labelMedium.copy(fontFamily = f),
+        labelSmall = base.labelSmall.copy(fontFamily = f),
     )
 }
 

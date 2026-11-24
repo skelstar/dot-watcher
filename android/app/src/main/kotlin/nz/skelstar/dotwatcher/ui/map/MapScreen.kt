@@ -238,6 +238,10 @@ fun MapScreen(
             factory = {
                 mapView.apply {
                     getMapAsync { map ->
+                        // North stays up, as on iOS (LinzMap.swift): no two-finger rotation, so MapLibre's
+                        // compass never appears. It sat top-right, under the button rail.
+                        map.uiSettings.isRotateGesturesEnabled = false
+                        map.uiSettings.isCompassEnabled = false
                         map.addOnCameraMoveStartedListener { reason ->
                             if (reason == MapLibreMap.OnCameraMoveStartedListener.REASON_API_GESTURE) {
                                 camera.userGesture = true

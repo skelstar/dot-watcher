@@ -155,7 +155,7 @@ struct SessionMapScreen: View {
         if let inviteCode = location.activeMembership?.inviteCode {
             ShareLink(item: InviteLink.shareMessage(base: location.webBaseURL, code: inviteCode)) {
                 Image(systemName: "square.and.arrow.up")
-                    .font(.system(size: 18, weight: .semibold))
+                    .font(.app(size: 18, weight: .semibold))
                     .foregroundStyle(.black)
                     .frame(width: 44, height: 44)
                     .background(Color.white.opacity(0.85), in: Circle())
@@ -197,7 +197,7 @@ struct SessionMapScreen: View {
                 }
             } label: {
                 Image(systemName: "mappin.and.ellipse")
-                    .font(.system(size: 18, weight: .semibold))
+                    .font(.app(size: 18, weight: .semibold))
                     .foregroundStyle(.black)
                     .frame(width: 44, height: 44)
                     .background(Color.white.opacity(0.85), in: Circle())
