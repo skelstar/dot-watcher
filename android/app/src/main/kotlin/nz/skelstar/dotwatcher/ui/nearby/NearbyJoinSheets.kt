@@ -30,6 +30,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -46,8 +47,11 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 import nz.skelstar.dotwatcher.SessionUiState
 import nz.skelstar.dotwatcher.nearby.NEARBY_RADIUS_OPTIONS
+import nz.skelstar.dotwatcher.nearby.cleanEntryCode
+import nz.skelstar.dotwatcher.nearby.isValidEntryCode
 import nz.skelstar.dotwatcher.nearby.NearbyDraft
 import nz.skelstar.dotwatcher.nearby.NearbyOrganiser
+import nz.skelstar.dotwatcher.nearby.EntryCodeActions
 import nz.skelstar.dotwatcher.network.NearbyEvent
 
 // Nearby join (see .ai/plans/nearby-join.md): what tapping a nearby run shows, the Create dialog's switch, the
@@ -71,6 +75,8 @@ fun NearbyJoinSheet(
     onJoin: (entryCode: String?) -> Unit,
     onDismiss: () -> Unit,
     asGroup: Boolean = false,
+    /** "Join and Go now": joins, then starts Go. Null hides it (not a group, or already out). */
+    onJoinAndGo: ((entryCode: String?) -> Unit)? = null,
 ) {
     val needsCode = asGroup && event.needsCode == true
     var code by remember { mutableStateOf("") }
@@ -119,7 +125,7 @@ fun NearbyJoinSheet(
             if (needsCode) {
                 OutlinedTextField(
                     value = code,
-                    onValueChange = { typed -> code = typed.filter { it.isLetterOrDigit() }.take(ENTRY_CODE_MAX_LENGTH) },
+                    onValueChange = { code = cleanEntryCode(it) },
                     label = { Text("Entry code") },
                     supportingText = { Text("The organiser gave entrants this code.") },
                     singleLine = true,
@@ -135,7 +141,7 @@ fun NearbyJoinSheet(
 
             Button(
                 onClick = { onJoin(if (needsCode) trimmedCode else null) },
-                enabled = state !is SessionUiState.Loading && (!needsCode || trimmedCode.length >= ENTRY_CODE_MIN_LENGTH),
+                enabled = state !is SessionUiState.Loading && (!needsCode || isValidEntryCode(trimmedCode)),
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Text(
@@ -146,16 +152,21 @@ fun NearbyJoinSheet(
                     }
                 )
             }
+            onJoinAndGo?.let { joinAndGo ->
+                OutlinedButton(
+                    onClick = { joinAndGo(if (needsCode) trimmedCode else null) },
+                    enabled = state !is SessionUiState.Loading && (!needsCode || isValidEntryCode(trimmedCode)),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text("Join and Go now")
+                }
+            }
             TextButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) {
                 Text("Not now")
             }
         }
     }
 }
-
-/** The server's limits for an entry code: 4 to 8 letters or digits. */
-private const val ENTRY_CODE_MIN_LENGTH = 4
-private const val ENTRY_CODE_MAX_LENGTH = 8
 
 @Composable
 private fun InfoRow(icon: ImageVector, text: String) {
@@ -178,6 +189,8 @@ fun NearbyCreateSection(
     draft: NearbyDraft,
     onChange: (NearbyDraft) -> Unit,
     hasPreciseLocation: Boolean,
+    /** The "groups" feature: offers "Ask for a code to join". */
+    groupsAvailable: Boolean = false,
 ) {
     Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Row(
@@ -208,6 +221,36 @@ fun NearbyCreateSection(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.error,
                 )
+            }
+            if (groupsAvailable) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(text = "Ask for a code to join", modifier = Modifier.weight(1f))
+                    Switch(checked = draft.askForCode, onCheckedChange = { onChange(draft.copy(askForCode = it)) })
+                }
+                if (draft.askForCode) {
+                    OutlinedTextField(
+                        value = draft.entryCode,
+                        onValueChange = { onChange(draft.copy(entryCode = cleanEntryCode(it))) },
+                        label = { Text("Entry code") },
+                        supportingText = {
+                            Text("Give it to entrants. People nearby still see the run, but can't join without it.")
+                        },
+                        singleLine = true,
+                        isError = draft.entryCode.isNotEmpty() && !draft.isEntryCodeValid,
+                        keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Characters),
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                } else {
+                    Text(
+                        text = "Off: anyone nearby can join with one tap.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
         }
     }
@@ -297,6 +340,11 @@ fun NearbyOrganiserSheet(organiser: NearbyOrganiser, onDismiss: () -> Unit) {
 
             message?.let { Text(text = it, style = MaterialTheme.typography.bodyMedium) }
 
+            organiser.entryCode?.let { actions ->
+                HorizontalDivider()
+                EntryCodeSection(actions)
+            }
+
             HorizontalDivider()
 
             TextButton(onClick = { confirmEnd = true }, modifier = Modifier.fillMaxWidth()) {
@@ -320,6 +368,79 @@ fun NearbyOrganiserSheet(organiser: NearbyOrganiser, onDismiss: () -> Unit) {
             },
             dismissButton = { TextButton(onClick = { confirmEnd = false }) { Text("Cancel") } },
         )
+    }
+}
+
+/**
+ * The organiser's entry code, inside their nearby sheet: what it is now, and a field to change or remove it.
+ * People already in stay in; only joins from now on need the new code.
+ */
+@Composable
+private fun EntryCodeSection(actions: EntryCodeActions) {
+    val scope = rememberCoroutineScope()
+    var current by remember { mutableStateOf<String?>(null) }
+    var loaded by remember { mutableStateOf(false) }
+    var typed by remember { mutableStateOf("") }
+    var message by remember { mutableStateOf<String?>(null) }
+    var busy by remember { mutableStateOf(false) }
+
+    LaunchedEffect(actions) {
+        actions.load().fold(
+            onSuccess = { current = it },
+            onFailure = { message = it.message ?: "Couldn't load the entry code." },
+        )
+        loaded = true
+    }
+
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Text(text = "Entry code", style = MaterialTheme.typography.titleMedium)
+        Text(
+            text = when {
+                !loaded -> "Loading…"
+                current == null -> "None. Anyone nearby can join with one tap."
+                else -> "People need $current to join. Give it to entrants; anyone walking past can't join without it."
+            },
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        OutlinedTextField(
+            value = typed,
+            onValueChange = { typed = cleanEntryCode(it) },
+            label = { Text(if (current == null) "New code" else "Change to") },
+            supportingText = { Text("4 to 8 letters or numbers. People already in stay in.") },
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Characters),
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Button(
+                onClick = {
+                    scope.launch {
+                        busy = true
+                        message = actions.change(typed)
+                        actions.load().onSuccess { current = it }
+                        typed = ""
+                        busy = false
+                    }
+                },
+                enabled = !busy && loaded && isValidEntryCode(typed),
+                modifier = Modifier.weight(1f),
+            ) { Text(if (current == null) "Ask for code" else "Change code") }
+            if (current != null) {
+                OutlinedButton(
+                    onClick = {
+                        scope.launch {
+                            busy = true
+                            message = actions.change(null)
+                            actions.load().onSuccess { current = it }
+                            busy = false
+                        }
+                    },
+                    enabled = !busy,
+                    modifier = Modifier.weight(1f),
+                ) { Text("Remove code") }
+            }
+        }
+        message?.let { Text(text = it, style = MaterialTheme.typography.bodyMedium) }
     }
 }
 

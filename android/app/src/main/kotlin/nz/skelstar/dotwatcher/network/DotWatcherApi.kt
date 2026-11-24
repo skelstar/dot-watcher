@@ -82,7 +82,13 @@ data class CreateSessionRequest(
     val latitude: Double? = null,
     val longitude: Double? = null,
     val accuracy: Double? = null,
+    /** Groups: the code people need to join (4-8 letters or digits). Nearby sessions only. */
+    val entryCode: String? = null,
 )
+
+/** A group's entry code, as the organiser sees it; null when it has none. Also the body to change it. */
+@Serializable
+data class EntryCodeBody(val entryCode: String? = null)
 
 @Serializable
 data class JoinSessionRequest(
@@ -100,6 +106,8 @@ data class SessionMembership(
     val ownerDisplayName: String? = null,
     /** ISO-8601 UTC time the session was created; null from older servers. */
     val createdAt: String? = null,
+    /** ISO-8601 UTC time the session (a group) ends; null from older servers. */
+    val endsAt: String? = null,
 )
 
 /** Someone who has joined a session, whether or not they are sending positions. Blocking needs the id. */
@@ -215,6 +223,8 @@ data class NearbyEvent(
     val organiser: String? = null,
     /** True when joining needs the organiser's entry code. Only sent to accounts with "groups". */
     val needsCode: Boolean? = null,
+    /** ISO-8601 UTC time the group ends. Only sent to accounts with "groups". */
+    val endsAt: String? = null,
 )
 
 // --- Nearby join (server: Controllers/SessionsController.cs) ---------------------------
@@ -667,6 +677,23 @@ interface DotWatcherApi {
         @Body request: JoinNearbyRequest,
         @Header("X-Api-Version") apiVersion: String = API_VERSION,
     ): Response<SessionMembership>
+
+    /** Owner only: the group's entry code (null when none). 404 without the "groups" feature. */
+    @GET("sessions/{sessionId}/entry-code")
+    suspend fun getEntryCode(
+        @Path("sessionId") sessionId: String,
+        @Header("Authorization") bearerToken: String,
+        @Header("X-Api-Version") apiVersion: String = API_VERSION,
+    ): Response<EntryCodeBody>
+
+    /** Owner only: set, change or (null) clear the group's entry code. People already in stay in. */
+    @PUT("sessions/{sessionId}/entry-code")
+    suspend fun setEntryCode(
+        @Path("sessionId") sessionId: String,
+        @Header("Authorization") bearerToken: String,
+        @Body request: EntryCodeBody,
+        @Header("X-Api-Version") apiVersion: String = API_VERSION,
+    ): Response<EntryCodeBody>
 
     /** Owner only: set the join location and/or change the nearby switch and range. */
     @PUT("sessions/{sessionId}/nearby")
