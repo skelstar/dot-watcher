@@ -20,7 +20,10 @@
 # the upload step; bump the version or upload from a newer branch.
 #
 # Signing is automatic: the App Store Connect API key (Admin role) lets xcodebuild create the
-# distribution certificate and profile itself, so no certificates are stored here.
+# distribution certificate and profile itself, so no certificates are stored here. The catch: each run's
+# keychain starts empty, so each run makes a new Apple Distribution certificate. Apple allows only a few;
+# when archiving fails with "reached the maximum number of certificates", revoke the old "Created via API"
+# ones under Certificates on developer.apple.com and run again.
 #
 # Repository secrets:
 #   ASC_KEY_ID      App Store Connect API key ID
@@ -141,6 +144,9 @@ jobs:
           # an empty array safe under set -u in macOS's bash 3.2.)
           version_setting=()
           if [[ -n "$VERSION" ]]; then version_setting=("MARKETING_VERSION=$VERSION"); fi
+          # Sign the archive for distribution straight away. Left to automatic signing, the archive signs for
+          # development, and as the runner's keychain starts empty every run made a new Development
+          # certificate until the account hit Apple's limit (10) and archiving failed.
           xcodebuild archive \
             -project "$PROJECT" \
             -scheme "$SCHEME" \
@@ -152,6 +158,7 @@ jobs:
             -authenticationKeyID "$ASC_KEY_ID" \
             -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
             DEVELOPMENT_TEAM="$TEAM_ID" \
+            CODE_SIGN_IDENTITY="Apple Distribution" \
             ${version_setting[@]+"${version_setting[@]}"}
 
       - name: Upload to TestFlight
