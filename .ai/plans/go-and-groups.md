@@ -19,14 +19,14 @@ wait for a device test:
 | #407 | `groups-owner-flag` | Step 2 server: `isOwner` (and owner-only `nearby`) on memberships | `staging` | Merged into `staging` |
 | #410 | `admin-account-features` | Admin: per-account feature chips in the Users table; Groups label | `staging` | Merged into `staging` |
 | #411 | `staging` | Release of all the above (and #403-#405) to `main` | `main` | Open |
-| #388 | `android-groups-join` | Android part 1: join a nearby group without starting tracking; entry code; "You're in" cards; groups survive relaunch | #387's branch | Compiles, unit tests pass; not on a device |
+| #388 | `android-groups-join` | Android part 1: join a nearby group without starting tracking; entry code; "You're in" cards; groups survive relaunch | `staging` | Compiles, unit tests pass; not on a device |
 | #397 | `android-groups-part2` | Android part 2: join while out, group chip, end times, "Join and Go now", organiser codes | #388 | Compiles, 99 unit tests pass; not on a device |
 | #408 | `android-groups-flows` | Android: invite-code join and creating are group joins; organiser card (Ping, code, End group) | #397 | Compiles, 99 unit tests pass; not on a device |
-| #398 | `ios-groups` | iOS: everything in #388 and #397, plus two fixes found in the simulator | #387's branch | Run in the simulator (see below) |
+| #398 | `ios-groups` | iOS: everything in #388 and #397, plus two fixes found in the simulator | `staging` | Run in the simulator (see below) |
 | #409 | `ios-groups-flows` | iOS: the same as #408 | #398 | Builds; not run |
 
-#388 and #398 were based on `groups-entry-code`, which is now merged: retarget them to `staging` (their diffs then
-show only their own commits), then merge each phone stack bottom-up (#388 → #397 → #408, #398 → #409) once tested.
+GitHub has already moved #388 and #398 onto `staging` (their base branch was deleted on merge). Merge each phone stack
+bottom-up (#388 → #397 → #408, #398 → #409) once tested.
 Use normal merge commits, not squash, or the next PR in a stack shows the earlier commits again.
 
 **Trying it (after #411 is deployed):**
@@ -63,7 +63,7 @@ cut short by a full disk).
 2. **Try the phones on devices** against prod: Android #408 and iOS #409 (tops of their stacks). Not yet checked
    anywhere: the organiser card (Ping here, Entry code, End group), invite-code join as a group join, and anything on
    Android.
-3. **Merge the phone stacks** (retarget #388 and #398 to `staging` first), then build and release the apps. Only then
+3. **Merge the phone stacks** (bottom-up), then build and release the apps. Only then
    consider `groups` for everyone.
 4. **Invite links** for groups (join from anywhere, e.g. the entry email); decide whether they ask for the entry code
    (an invite code skips it today).
