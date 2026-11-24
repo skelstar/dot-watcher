@@ -31,9 +31,32 @@ data class NearbyDraft(
     val isOn: Boolean = false,
     val title: String = "",
     val radiusMeters: Int = NEARBY_DEFAULT_RADIUS_METRES,
+    /** Groups: "Ask for a code to join" (see .ai/plans/go-and-groups.md). */
+    val askForCode: Boolean = false,
+    val entryCode: String = "",
 ) {
     val trimmedTitle: String get() = title.trim()
+
+    /** The code to send, or null when not asking for one. */
+    val entryCodeToSend: String? get() = entryCode.trim().takeIf { askForCode && it.isNotEmpty() }
+
+    /** Asking for a code needs a code the server accepts (4-8 letters or digits). */
+    val isEntryCodeValid: Boolean get() = !askForCode || isValidEntryCode(entryCode.trim())
 }
+
+/** The server's limits for a group's entry code. */
+const val ENTRY_CODE_MIN_LENGTH = 4
+const val ENTRY_CODE_MAX_LENGTH = 8
+
+/** Whether [code] is something the server accepts as an entry code: 4-8 letters A-Z or digits, any case. */
+fun isValidEntryCode(code: String): Boolean =
+    code.length in ENTRY_CODE_MIN_LENGTH..ENTRY_CODE_MAX_LENGTH &&
+        code.all { it in 'A'..'Z' || it in 'a'..'z' || it in '0'..'9' }
+
+/** What someone types into an entry code field, cleaned the way the server reads it: letters and digits only,
+ *  upper case, no longer than the limit. */
+fun cleanEntryCode(typed: String): String =
+    typed.filter { it in 'A'..'Z' || it in 'a'..'z' || it in '0'..'9' }.uppercase().take(ENTRY_CODE_MAX_LENGTH)
 
 /** The session that stopped a new one being created (409), kept with what was being created so ending it
  *  can carry straight on. */
@@ -59,4 +82,14 @@ class NearbyOrganiser(
     /** Ends the session for everyone, after the person has confirmed. Null on success (the app then leaves the
      *  map); otherwise words for what went wrong, and the person stays. */
     val endSession: suspend () -> String?,
+    /** The group's entry code, for accounts with "groups"; null hides the section. */
+    val entryCode: EntryCodeActions? = null,
+)
+
+/** Reading and changing a group's entry code, for its organiser (see .ai/plans/go-and-groups.md). */
+class EntryCodeActions(
+    /** The current code, null when there is none; a failure carries words for the person. */
+    val load: suspend () -> Result<String?>,
+    /** Sets, changes or (null) clears the code. Returns words for the person. */
+    val change: suspend (code: String?) -> String,
 )

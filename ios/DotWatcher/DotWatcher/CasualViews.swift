@@ -443,6 +443,9 @@ struct CasualMapScreen: View {
     @State private var showWhoCanSeeMe = false
     @State private var showShare = false
     @State private var showPeople = false
+    /// Groups (see .ai/plans/go-and-groups.md): the "Your groups" sheet, and the clock for the chip's time left.
+    @State private var showGroups = false
+    @State private var now = Date()
 
     private static let pollInterval: Duration = .seconds(10)
 
@@ -546,6 +549,7 @@ struct CasualMapScreen: View {
                 .presentationDetents([.large])
                 .preferredColorScheme(location.appearanceMode.colorScheme)
         }
+        .modifier(GoMapGroups(location: location, casual: casual, showGroups: $showGroups, now: $now))
     }
 
     /// This person's own route, shown to their crew and to anyone with their watch link. The store
@@ -708,5 +712,47 @@ struct ExtendSheet: View {
         }
         .padding(24)
         .sheetCloseButton()
+    }
+}
+
+/// What the Go map adds for groups: "‹ Home" (to the start screen with tracking carrying on, to join a group
+/// while out), the group chip under the timer, and the "Your groups" sheet. A modifier of its own so the map's
+/// long chain of sheets stays within the type-checker's budget. Nothing shows without the "groups" feature.
+private struct GoMapGroups: ViewModifier {
+    var location: LocationManager
+    var casual: CasualStore
+    @Binding var showGroups: Bool
+    @Binding var now: Date
+
+    func body(content: Content) -> some View {
+        if location.hasGroups {
+            content
+                .overlay(alignment: .topLeading) {
+                    GoMapGroupBar(
+                        groups: location.groupMemberships,
+                        now: now,
+                        onHome: { casual.isMapPresented = false },
+                        onOpenGroups: { showGroups = true }
+                    )
+                    // Below the timer pill, in the map's top-left corner.
+                    .padding(.leading, 14)
+                    .padding(.top, 64)
+                }
+                .sheet(isPresented: $showGroups) {
+                    GroupsOnMapSheet(location: location, now: now)
+                        .presentationDetents([.medium, .large])
+                        .preferredColorScheme(location.appearanceMode.colorScheme)
+                }
+                .task {
+                    // The list changes rarely (join, leave, end): fetch it as the map opens, then tick the clock.
+                    await location.loadSessions()
+                    while !Task.isCancelled {
+                        now = Date()
+                        try? await Task.sleep(for: .seconds(60))
+                    }
+                }
+        } else {
+            content
+        }
     }
 }

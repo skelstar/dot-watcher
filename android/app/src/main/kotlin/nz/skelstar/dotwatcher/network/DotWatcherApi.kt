@@ -59,6 +59,8 @@ data class AuthenticatedUser(
     // Server-driven settings, e.g. config.palette (see data/RemotePalette.kt). Kept as raw JSON so an
     // unexpected shape in here can never fail a sign-in; null from a server that does not send it.
     val config: JsonObject? = null,
+    // What the account can use (e.g. "groups"); null from a server that does not send it.
+    val features: List<String>? = null,
 )
 
 @Serializable
@@ -80,7 +82,13 @@ data class CreateSessionRequest(
     val latitude: Double? = null,
     val longitude: Double? = null,
     val accuracy: Double? = null,
+    /** Groups: the code people need to join (4-8 letters or digits). Nearby sessions only. */
+    val entryCode: String? = null,
 )
+
+/** A group's entry code, as the organiser sees it; null when it has none. Also the body to change it. */
+@Serializable
+data class EntryCodeBody(val entryCode: String? = null)
 
 @Serializable
 data class JoinSessionRequest(
@@ -98,6 +106,12 @@ data class SessionMembership(
     val ownerDisplayName: String? = null,
     /** ISO-8601 UTC time the session was created; null from older servers. */
     val createdAt: String? = null,
+    /** ISO-8601 UTC time the session (a group) ends; null from older servers. */
+    val endsAt: String? = null,
+    /** Whether this account organised the session; false from older servers. */
+    val isOwner: Boolean = false,
+    /** The organiser's view of whether people nearby can find it; null for everyone else and older servers. */
+    val nearby: Boolean? = null,
 )
 
 /** Someone who has joined a session, whether or not they are sending positions. Blocking needs the id. */
@@ -211,6 +225,10 @@ data class NearbyEvent(
     val subtitle: String,
     val sessionId: String? = null,
     val organiser: String? = null,
+    /** True when joining needs the organiser's entry code. Only sent to accounts with "groups". */
+    val needsCode: Boolean? = null,
+    /** ISO-8601 UTC time the group ends. Only sent to accounts with "groups". */
+    val endsAt: String? = null,
 )
 
 // --- Nearby join (server: Controllers/SessionsController.cs) ---------------------------
@@ -222,6 +240,8 @@ data class JoinNearbyRequest(
     val longitude: Double,
     val accuracy: Double? = null,
     val displayName: String? = null,
+    /** The organiser's entry code, when the tile said one is needed. Case and spaces don't matter. */
+    val entryCode: String? = null,
 )
 
 /** The organiser's Ping: a fresh fix sets the join location; [enabled] and [radiusMeters] change the setting.
@@ -344,7 +364,13 @@ data class ApiErrorResponse(
     val error: String? = null,
     /** Only on the 409 for "you already have an active session": that session's id. */
     val sessionId: String? = null,
+    /** Why a request was refused, where the server says: "entry_code" on a nearby join with a missing or
+     *  wrong entry code. */
+    val reason: String? = null,
 )
+
+/** [ApiErrorResponse.reason] on a nearby join refused for a missing or wrong entry code. */
+const val ENTRY_CODE_REASON = "entry_code"
 
 /**
  * The failed response's body as [ApiErrorResponse], or null if it isn't that shape (e.g. a proxy's HTML
@@ -655,6 +681,23 @@ interface DotWatcherApi {
         @Body request: JoinNearbyRequest,
         @Header("X-Api-Version") apiVersion: String = API_VERSION,
     ): Response<SessionMembership>
+
+    /** Owner only: the group's entry code (null when none). 404 without the "groups" feature. */
+    @GET("sessions/{sessionId}/entry-code")
+    suspend fun getEntryCode(
+        @Path("sessionId") sessionId: String,
+        @Header("Authorization") bearerToken: String,
+        @Header("X-Api-Version") apiVersion: String = API_VERSION,
+    ): Response<EntryCodeBody>
+
+    /** Owner only: set, change or (null) clear the group's entry code. People already in stay in. */
+    @PUT("sessions/{sessionId}/entry-code")
+    suspend fun setEntryCode(
+        @Path("sessionId") sessionId: String,
+        @Header("Authorization") bearerToken: String,
+        @Body request: EntryCodeBody,
+        @Header("X-Api-Version") apiVersion: String = API_VERSION,
+    ): Response<EntryCodeBody>
 
     /** Owner only: set the join location and/or change the nearby switch and range. */
     @PUT("sessions/{sessionId}/nearby")

@@ -15,6 +15,9 @@ import nz.skelstar.dotwatcher.blocks.BlocksModel
 import nz.skelstar.dotwatcher.casual.CasualModel
 import nz.skelstar.dotwatcher.casual.CasualPrefs
 import nz.skelstar.dotwatcher.events.EventsModel
+import nz.skelstar.dotwatcher.groups.GroupsModel
+import nz.skelstar.dotwatcher.groups.GroupOrganiserActions
+import nz.skelstar.dotwatcher.nearby.EntryCodeActions
 import nz.skelstar.dotwatcher.crew.CrewModel
 import nz.skelstar.dotwatcher.crew.CrewPrefs
 import nz.skelstar.dotwatcher.data.AuthTokenStore
@@ -37,6 +40,7 @@ import nz.skelstar.dotwatcher.network.SessionMembership
 import nz.skelstar.dotwatcher.network.errorMessageOrStatus
 import nz.skelstar.dotwatcher.network.networkMessage
 import nz.skelstar.dotwatcher.network.parsedError
+import nz.skelstar.dotwatcher.network.ENTRY_CODE_REASON
 import nz.skelstar.dotwatcher.ui.theme.AppearanceMode
 import nz.skelstar.dotwatcher.ui.theme.AppearancePrefs
 import nz.skelstar.dotwatcher.ui.theme.AppliedSignColors
@@ -127,6 +131,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     /** Public events near the signed-in account: the runs people nearby can join. */
     val events = EventsModel(repository, viewModelScope, nearbyFix::current)
 
+    /** The groups the account is in, for accounts with the "groups" feature (see .ai/plans/go-and-groups.md). */
+    val groups = GroupsModel(repository, viewModelScope)
+
     /** Whether the Create dialog can place a nearby run: location allowed, and precise. */
     val hasPreciseLocation: Boolean get() = nearbyFix.hasPreciseLocation
 
@@ -207,6 +214,8 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 choice = shareChoices.read(),
                 now = Instant.now(),
                 canResumeSharing = hasLocationPermissionsForSharing(),
+                // A group is joined ahead of Go and waits for it, so it must survive a relaunch.
+                keepMemberships = groups.isAvailable,
             )
             if (decision is RestoreDecision.LeaveStale) {
                 // A session doesn't carry over a relaunch: leave it, so the others stop seeing someone who
@@ -265,6 +274,39 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         )
         _destination.value = Destination.Casual
         return true
+    }
+
+    /** True while this device is out on a Go (casual) run, whichever screen is showing. */
+    val isOutCasually: Boolean
+        get() = (LocationTrackingService.state.value as? TrackingState.Tracking)?.sessionId == CASUAL_SESSION_ID
+
+    /** "‹ Home" on the Go map: the start screen, with tracking carrying on (to join a group while out). */
+    fun showStartScreen() {
+        if (_destination.value == Destination.Casual) _destination.value = Destination.Session
+    }
+
+    /** "Back to the map" on the start screen while out. */
+    fun backToCasualMap() {
+        if (isOutCasually) _destination.value = Destination.Casual
+    }
+
+    /** The organiser reads their group's entry code. Null with words for the person when it couldn't be read. */
+    suspend fun loadEntryCode(sessionId: String): Result<String?> {
+        val response = runCatching { repository.getEntryCode(sessionId) }.getOrElse { return Result.failure(it) }
+        val body = response.body()
+        return if (response.isSuccessful && body != null) Result.success(body.entryCode)
+        else Result.failure(IllegalStateException(response.errorMessageOrStatus()))
+    }
+
+    /** The organiser sets, changes or (null) clears their group's entry code. Returns words for the person. */
+    suspend fun changeEntryCode(sessionId: String, code: String?): String {
+        val result = runCatching { repository.setEntryCode(sessionId, code) }
+        val response = result.getOrElse { return it.networkMessage() }
+        return when {
+            response.isSuccessful -> if (code == null) "Anyone nearby can join now" else "Code changed to ${code.uppercase()}"
+            response.code() == 410 -> "This session has ended."
+            else -> response.errorMessageOrStatus()
+        }
     }
 
     /** Holding Go, then Go on "Before you go": start the casual run on the server, then the
@@ -375,7 +417,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             }
 
             val name = if (draft != null) draft.trimmedTitle else sessionName?.ifBlank { null }
-            val result = runCatching { repository.createSession(name, displayName = repository.displayName, nearby = nearbyCreate) }
+            val entryCode = draft?.entryCodeToSend?.takeIf { groups.isAvailable }
+            val result = runCatching {
+                repository.createSession(name, displayName = repository.displayName, nearby = nearbyCreate, entryCode = entryCode)
+            }
 
             val response = result.getOrNull()
             if (response != null && response.code() == 409) {
@@ -392,7 +437,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             }
 
             val created = nearbyCreate
-            _sessionState.value = handleSessionResult(result) { membership ->
+            _sessionState.value = handleSessionResult(result, asGroup = groups.isAvailable) { membership ->
                 if (created != null) {
                     setNearbyStatus(membership.sessionId, NearbyStatus(nearby = true, radiusMeters = created.radiusMeters))
                     _nearbyMeetingPoints.update { it + (membership.sessionId to created.fix) }
@@ -423,8 +468,15 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         _activeSessionConflict.value = null
     }
 
-    /** Joins a run from the nearby list. The server re-checks the position, and every refusal is the same 404. */
-    fun joinNearby(sessionId: String) {
+    /**
+     * Joins a run from the nearby list. The server re-checks the position, and every refusal is the same 404,
+     * except a missing or wrong [entryCode] (a 403 the sheet shows next to the code field).
+     *
+     * With groups, joining doesn't start tracking in the session: the person stays on the start screen and
+     * the group sees them by name once they press Go. Without groups, it goes on to the consent screen as
+     * before.
+     */
+    fun joinNearby(sessionId: String, entryCode: String? = null) {
         viewModelScope.launch {
             _sessionState.value = SessionUiState.Loading
             val fix = nearbyFix.current()
@@ -434,12 +486,32 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 )
                 return@launch
             }
-            val result = runCatching { repository.joinNearbySession(sessionId, fix, displayName = repository.displayName) }
-            _sessionState.value = when (result.getOrNull()?.code()) {
+            val asGroup = groups.isAvailable
+            val result = runCatching {
+                repository.joinNearbySession(sessionId, fix, displayName = repository.displayName, entryCode = entryCode)
+            }
+            val response = result.getOrNull()
+            _sessionState.value = when (response?.code()) {
                 // One answer for every refusal, by design: too far, ended, switched off or gone.
                 404 -> SessionUiState.Error("You can't join this run from here. Move closer to the start and try again.")
                 429 -> SessionUiState.Error("Too many attempts. Try again in a little while.")
-                else -> handleSessionResult(result)
+                403 -> {
+                    val error = response.parsedError()
+                    when {
+                        error?.reason != ENTRY_CODE_REASON -> SessionUiState.Error(error?.error ?: "You can't join this run.")
+                        entryCode.isNullOrBlank() -> SessionUiState.Error("Enter the code the organiser gave you.")
+                        else -> SessionUiState.Error(error?.error ?: "That code doesn't match. Check with the organiser.")
+                    }
+                }
+                else -> if (asGroup && response?.isSuccessful == true) {
+                    groups.refreshNow()
+                    events.refresh()
+                    // Joined while out: straight back to the Go map, where the group now sees them.
+                    if (isOutCasually) _destination.value = Destination.Casual
+                    SessionUiState.Idle
+                } else {
+                    handleSessionResult(result)
+                }
             }
         }
     }
@@ -499,16 +571,58 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         return null
     }
 
+    /** Groups: the organiser's Ping from their group's card. Keeps the range they chose; needs no tracking. */
+    suspend fun pingGroup(sessionId: String): String {
+        val fix = nearbyFix.current()
+        if (fix == null || !fix.isUsableForJoinLocation()) {
+            return "Couldn't get an accurate location. Try again with a clear view of the sky."
+        }
+        return updateNearby(sessionId, fix, enabled = true, radiusMeters = null, done = "Join location set here")
+    }
+
+    /** Groups: the organiser ends their group for everyone. Unlike [endSession], a Go run carries on. Null on
+     *  success, otherwise words for the person. */
+    suspend fun endGroup(sessionId: String): String? {
+        val result = runCatching { repository.endSession(sessionId) }
+        val response = result.getOrElse { return it.networkMessage() }
+        if (!response.isSuccessful) return response.errorMessageOrStatus()
+        _nearbyStatuses.update { it - sessionId }
+        _nearbyMeetingPoints.update { it - sessionId }
+        groups.refreshNow()
+        events.refresh()
+        return null
+    }
+
+    /** The organiser's controls for their own group, on its start-screen card. */
+    fun organiserActions(group: SessionMembership): GroupOrganiserActions = GroupOrganiserActions(
+        ping = if (group.nearby == true) ({ pingGroup(group.sessionId) }) else null,
+        entryCode = if (group.nearby == true) {
+            EntryCodeActions(
+                load = { loadEntryCode(group.sessionId) },
+                change = { code -> changeEntryCode(group.sessionId, code) },
+            )
+        } else {
+            null
+        },
+        end = { endGroup(group.sessionId) },
+    )
+
     fun joinSession(inviteCode: String) {
         viewModelScope.launch {
             _sessionState.value = SessionUiState.Loading
             val result = runCatching { repository.joinSession(inviteCode, displayName = repository.displayName) }
-            _sessionState.value = handleSessionResult(result)
+            _sessionState.value = handleSessionResult(result, asGroup = groups.isAvailable)
         }
     }
 
+    /**
+     * After creating or joining a session. Without groups it goes on to "share your location?" and tracking in
+     * the session. With groups ([asGroup]) the session is a group: nothing starts, the person stays on the start
+     * screen (or goes back to the Go map if out), and the group's card there carries on from it.
+     */
     private fun handleSessionResult(
         result: Result<Response<SessionMembership>>,
+        asGroup: Boolean = false,
         onSuccess: (SessionMembership) -> Unit = {},
     ): SessionUiState {
         val response = result.getOrElse {
@@ -517,7 +631,13 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         val membership = response.body()
         return if (response.isSuccessful && membership != null) {
             onSuccess(membership)
-            _destination.value = Destination.Consent(membership)
+            if (asGroup) {
+                groups.refresh()
+                events.refresh()
+                if (isOutCasually) _destination.value = Destination.Casual
+            } else {
+                _destination.value = Destination.Consent(membership)
+            }
             SessionUiState.Idle
         } else {
             SessionUiState.Error(response.errorMessageOrStatus())
@@ -574,6 +694,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     crew.clear()
                     casual.clear()
                     events.clear()
+                    groups.clear()
                     _nearbyStatuses.value = emptyMap()
         _nearbyMeetingPoints.value = emptyMap()
                     _destination.value = Destination.Auth
@@ -591,6 +712,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         crew.clear()
         casual.clear()
         events.clear()
+        groups.clear()
         _nearbyStatuses.value = emptyMap()
         _nearbyMeetingPoints.value = emptyMap()
         viewModelScope.launch {

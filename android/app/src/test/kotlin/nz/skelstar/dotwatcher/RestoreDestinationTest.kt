@@ -20,7 +20,8 @@ class RestoreDestinationTest {
         tracking: TrackingState.Tracking? = null,
         choice: Choice? = null,
         canResume: Boolean = true,
-    ) = decideRestore(memberships, tracking, choice, now, canResume)
+        keepMemberships: Boolean = false,
+    ) = decideRestore(memberships, tracking, choice, now, canResume, keepMemberships)
 
     @Test fun `no membership goes to create or join`() {
         assertEquals(RestoreDecision.CreateOrJoin, decide(memberships = emptyList()))
@@ -28,6 +29,15 @@ class RestoreDestinationTest {
 
     @Test fun `a session left over from an earlier run is left`() {
         assertEquals(RestoreDecision.LeaveStale(listOf(runner)), decide())
+    }
+
+    @Test fun `with groups a group joined ahead of Go is kept`() {
+        assertEquals(RestoreDecision.CreateOrJoin, decide(keepMemberships = true))
+    }
+
+    @Test fun `with groups still sharing in a session still goes back to its map`() {
+        val tracking = TrackingState.Tracking("s1", now.plusSeconds(600))
+        assertEquals(RestoreDecision.Map(runner), decide(tracking = tracking, keepMemberships = true))
     }
 
     @Test fun `every leftover session is left`() {

@@ -2,6 +2,7 @@ package nz.skelstar.dotwatcher.data
 
 import nz.skelstar.dotwatcher.network.BlockedUser
 import nz.skelstar.dotwatcher.network.CasualLiveResponse
+import nz.skelstar.dotwatcher.network.EntryCodeBody
 import nz.skelstar.dotwatcher.network.SessionRunner
 import nz.skelstar.dotwatcher.network.CasualSettings
 import nz.skelstar.dotwatcher.network.CasualWatchLinkResponse
@@ -65,6 +66,7 @@ class DotWatcherRepository(
             tokenStore.userId = auth.user.userId
             tokenStore.displayName = auth.user.displayName
             tokenStore.username = auth.user.username
+            auth.user.features?.let { tokenStore.features = it }
             paletteStore?.save(auth.user.config)
         }
         return stripBody(response)
@@ -77,16 +79,24 @@ class DotWatcherRepository(
             tokenStore.userId = auth.user.userId
             tokenStore.displayName = auth.user.displayName
             tokenStore.username = auth.user.username
+            auth.user.features?.let { tokenStore.features = it }
             paletteStore?.save(auth.user.config)
         }
         return stripBody(response)
     }
 
-    /** Fetches the account and saves its palette for the next launch. A failed request changes nothing. */
+    /** Fetches the account and saves its palette (for the next launch) and its features. A failed request
+     *  changes nothing. */
     suspend fun refreshPalette() {
         val response = api.getMe(bearer(requireToken()))
-        response.body()?.let { paletteStore?.save(it.config) }
+        response.body()?.let { user ->
+            paletteStore?.save(user.config)
+            user.features?.let { tokenStore.features = it }
+        }
     }
+
+    /** Whether the account has [feature] (e.g. "groups"), as the server last said. */
+    fun hasFeature(feature: String): Boolean = feature in tokenStore.features
 
     suspend fun logout() {
         val token = tokenStore.accessToken
@@ -109,6 +119,7 @@ class DotWatcherRepository(
         sessionName: String?,
         displayName: String?,
         nearby: NearbyCreate? = null,
+        entryCode: String? = null,
     ): Response<SessionMembership> {
         val token = requireToken()
         val request = CreateSessionRequest(
@@ -119,6 +130,7 @@ class DotWatcherRepository(
             latitude = nearby?.fix?.latitude,
             longitude = nearby?.fix?.longitude,
             accuracy = nearby?.fix?.accuracyMetres,
+            entryCode = entryCode?.takeIf { nearby != null },
         )
         return api.createSession(bearer(token), request)
     }
@@ -245,11 +257,16 @@ class DotWatcherRepository(
     suspend fun getNearbyEvents(fix: Fix? = null): Response<List<NearbyEvent>> =
         api.getNearbyEvents(bearer(requireToken()), fix?.latitude, fix?.longitude, fix?.accuracyMetres)
 
-    suspend fun joinNearbySession(sessionId: String, fix: Fix, displayName: String?): Response<SessionMembership> =
+    suspend fun joinNearbySession(
+        sessionId: String,
+        fix: Fix,
+        displayName: String?,
+        entryCode: String? = null,
+    ): Response<SessionMembership> =
         api.joinNearbySession(
             sessionId,
             bearer(requireToken()),
-            JoinNearbyRequest(fix.latitude, fix.longitude, fix.accuracyMetres, displayName),
+            JoinNearbyRequest(fix.latitude, fix.longitude, fix.accuracyMetres, displayName, entryCode),
         )
 
     suspend fun updateNearby(
@@ -263,6 +280,12 @@ class DotWatcherRepository(
             bearer(requireToken()),
             UpdateNearbyRequest(fix?.latitude, fix?.longitude, fix?.accuracyMetres, enabled, radiusMeters),
         )
+
+    suspend fun getEntryCode(sessionId: String): Response<EntryCodeBody> =
+        api.getEntryCode(sessionId, bearer(requireToken()))
+
+    suspend fun setEntryCode(sessionId: String, code: String?): Response<EntryCodeBody> =
+        api.setEntryCode(sessionId, bearer(requireToken()), EntryCodeBody(code))
 
     suspend fun endSession(sessionId: String): Response<Unit> = api.endSession(sessionId, bearer(requireToken()))
 

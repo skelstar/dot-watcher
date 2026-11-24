@@ -34,7 +34,9 @@ sealed interface RestoreDecision {
  * - already sharing in this process → the map;
  * - chose a duration that has not run out → resume sharing quietly ([canResumeSharing] is false if
  *   the location permissions it needs are gone, which counts as nothing to carry on);
- * - otherwise any session the server still lists is left, and the runner rejoins with the invite code.
+ * - otherwise any session the server still lists is left, and the runner rejoins with the invite code —
+ *   unless [keepMemberships] (the "groups" feature): a group is joined ahead of Go and waits for it, so the
+ *   person stays in, on the create/join screen.
  */
 fun decideRestore(
     memberships: List<SessionMembership>,
@@ -42,6 +44,7 @@ fun decideRestore(
     choice: ShareChoiceStore.Choice?,
     now: Instant,
     canResumeSharing: Boolean,
+    keepMemberships: Boolean = false,
 ): RestoreDecision {
     if (memberships.isEmpty()) return RestoreDecision.CreateOrJoin
 
@@ -59,5 +62,5 @@ fun decideRestore(
         }
     }
 
-    return RestoreDecision.LeaveStale(memberships)
+    return if (keepMemberships) RestoreDecision.CreateOrJoin else RestoreDecision.LeaveStale(memberships)
 }

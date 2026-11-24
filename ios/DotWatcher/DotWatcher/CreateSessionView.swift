@@ -13,6 +13,8 @@ struct CreateSessionView: View {
     /// The nearby-join choices; only offered when `nearbyAvailable` (the account has the events feature).
     @Binding var nearby: NearbyCreateDraft
     let nearbyAvailable: Bool
+    /// The "groups" feature: the nearby section offers "Ask for a code to join".
+    var groupsAvailable = false
     let locationState: NearbyLocationState
     let onAllowLocation: () -> Void
     let isBusy: Bool
@@ -24,7 +26,9 @@ struct CreateSessionView: View {
 
     private var canCreate: Bool {
         if isBusy || isOffline { return false }
-        if nearbyIsOn { return !nearby.trimmedTitle.isEmpty && locationState == .ready }
+        if nearbyIsOn {
+            return !nearby.trimmedTitle.isEmpty && locationState == .ready && (!groupsAvailable || nearby.isEntryCodeValid)
+        }
         return sessionCode.count >= 4
     }
 
@@ -92,7 +96,8 @@ struct CreateSessionView: View {
 
                     if nearbyAvailable {
                         NearbyCreateSection(
-                            draft: $nearby, locationState: locationState, onAllowLocation: onAllowLocation)
+                            draft: $nearby, locationState: locationState, onAllowLocation: onAllowLocation,
+                            groupsAvailable: groupsAvailable)
                     }
 
                     Button("Create Session") {
