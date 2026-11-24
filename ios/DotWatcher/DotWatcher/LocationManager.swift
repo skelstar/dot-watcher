@@ -12,8 +12,10 @@ struct AppUser: Codable {
     /// Server-driven settings (the start-screen palette). Only read from a response: not saved with the
     /// signed-in user, since `PaletteStore` keeps the palette.
     let config: UserConfig?
+    /// What the account can use (e.g. "groups"). Only read from a response; `LocationManager.features` keeps it.
+    let features: [String]?
 
-    private enum CodingKeys: String, CodingKey { case userId, username, displayName, config }
+    private enum CodingKeys: String, CodingKey { case userId, username, displayName, config, features }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -21,6 +23,7 @@ struct AppUser: Codable {
         username = try c.decode(String.self, forKey: .username)
         displayName = try c.decode(String.self, forKey: .displayName)
         config = try? c.decodeIfPresent(UserConfig.self, forKey: .config)
+        features = try? c.decodeIfPresent([String].self, forKey: .features)
     }
 
     func encode(to encoder: Encoder) throws {
@@ -102,6 +105,9 @@ struct SessionMembership: Codable, Identifiable {
     /// Only present on the join-session response (`POST /session-invites/{code}/join`); nil for
     /// membership objects that don't carry it (e.g. `GET /me/sessions`).
     let participants: [SessionRunner]?
+    /// ISO-8601 UTC times the session was created and ends (created plus its event length). Nil from older servers.
+    var createdAt: String? = nil
+    var endsAt: String? = nil
 }
 
 struct BlockedUser: Codable, Identifiable, Hashable {
@@ -120,6 +126,11 @@ private struct LocationPostResponse: Codable {
     /// `GET /locations/{sessionId}` already returns. Unused today — reserved for a future
     /// native map view.
     let positions: [[RunnerPositionResponse]]?
+}
+
+/// A group's entry code, as the server returns it to the organiser.
+struct EntryCodeBody: Decodable {
+    let entryCode: String?
 }
 
 private struct ServerErrorBody: Decodable {
@@ -167,6 +178,15 @@ final class LocationManager {
     private(set) var isTracking = false
     private(set) var currentUser: AppUser?
     private(set) var memberships: [SessionMembership] = []
+    /// What the account can use (e.g. "groups"), as the server last said at sign-in or `GET /me`. Kept across
+    /// launches so the start screen is right before the first refresh.
+    private(set) var features: [String] = UserDefaults.standard.stringArray(forKey: "features") ?? [] {
+        didSet { UserDefaults.standard.set(features, forKey: "features") }
+    }
+    /// The "groups" feature (see .ai/plans/go-and-groups.md): joining a nearby session only changes who sees you.
+    var hasGroups: Bool { features.contains(groupsFeature) }
+    /// The groups the person is in, newest first; empty without the feature.
+    var groupMemberships: [SessionMembership] { hasGroups ? memberships : [] }
     /// The active session's GPX route (track points), empty when it has none. Kept in sync by `loadRoute()`.
     private(set) var routeCoordinates: [CLLocationCoordinate2D] = []
     var hasRoute: Bool { !routeCoordinates.isEmpty }
@@ -468,6 +488,7 @@ final class LocationManager {
         guard isAuthenticated else { return }
         guard let user: AppUser = try? await send(path: "/me") else { return }
         PaletteStore.save(user.config)
+        if let features = user.features { self.features = features }
     }
 
     func register(username: String, password: String, displayName: String) async throws {
@@ -500,6 +521,7 @@ final class LocationManager {
         accessToken = nil
         currentUser = nil
         memberships = []
+        features = []
         sessionId = ""
         Self.storeToken(nil)
         UserDefaults.standard.removeObject(forKey: "currentUser")
@@ -520,7 +542,9 @@ final class LocationManager {
             if !sessionId.isEmpty && activeMembership == nil {
                 sessionId = ""
             }
-            if sessionId.isEmpty {
+            // With groups a membership is a group joined ahead of Go, not a session to track in, so nothing is
+            // picked: the session map must not come up for it.
+            if sessionId.isEmpty, !hasGroups {
                 if let first = memberships.first {
                     selectSession(first)
                 }
@@ -580,7 +604,8 @@ final class LocationManager {
     /// `nearby` lets people near the organiser find and join the session (see `NearbyJoinSettings`); `name`
     /// is then its public title rather than the code-like name.
     func createSession(
-        name: String, displayName: String?, maxLengthHours: Int, nearby: NearbyJoinSettings? = nil
+        name: String, displayName: String?, maxLengthHours: Int, nearby: NearbyJoinSettings? = nil,
+        entryCode: String? = nil
     ) async throws {
         let requestedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
         let dispName = displayName?.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -593,6 +618,7 @@ final class LocationManager {
             body["nearby"] = true
             body["nearbyRadiusMeters"] = nearby.radiusMeters
             body.merge(Self.positionBody(nearby.fix)) { _, new in new }
+            if let entryCode, hasGroups { body["entryCode"] = entryCode }
         }
         let membership: SessionMembership = try await send(path: "/sessions", method: "POST", body: body)
         ownedSessionIds.insert(membership.sessionId)
@@ -638,20 +664,30 @@ final class LocationManager {
     func currentFix() async -> CLLocation? {
         guard canUseLocationNow else { return nil }
         if let cached = clManager.location, Self.isFresh(cached) { return cached }
+        // Out on a run (joining a group while out): tracking keeps `latestLocation` current. Its timestamp goes
+        // stale while standing still, because the distance filter holds back new fixes (see `captureAndPost`),
+        // but the position is still where the person is. A one-off request here could wait for ever: while
+        // continuous updates run, CoreLocation may never answer it.
+        if isTracking, let tracked = latestLocation, tracked.horizontalAccuracy >= 0 { return tracked }
         // One request at a time: a second would replace the first's continuation and leave it waiting forever.
         guard oneShotLocationContinuation == nil else { return nil }
         return await requestOneShotLocation()
     }
 
     /// Joins a session from the nearby list. The server re-checks the position; a refusal of any kind
-    /// comes back as the same 404.
-    func joinNearby(sessionId targetId: String, fix: CLLocation, displayName: String?) async throws {
+    /// comes back as the same 404, except a missing or wrong `entryCode` (403, see `NearbyJoinSheet`).
+    ///
+    /// With groups, the session is only remembered as a group: it isn't selected, so nothing starts tracking in
+    /// it and the session map doesn't come up. The group sees the person once they're out on Go.
+    func joinNearby(sessionId targetId: String, fix: CLLocation, displayName: String?, entryCode: String? = nil) async throws {
         let name = displayName?.trimmingCharacters(in: .whitespacesAndNewlines)
         var body = Self.positionBody(fix)
         body["displayName"] = (name?.isEmpty ?? true) ? NSNull() : name!
+        if let entryCode { body["entryCode"] = entryCode }
         let membership: SessionMembership = try await send(
             path: "/nearby/sessions/\(targetId)/join", method: "POST", body: body)
         upsertMembership(membership)
+        if hasGroups { return }
         selectSession(membership)
         if let joinParticipants = membership.participants {
             participants = Array(Set(joinParticipants.map(\.displayName))).sorted()
@@ -777,6 +813,26 @@ final class LocationManager {
             participants = []
             status = "Idle"
         }
+    }
+
+    /// Leaves a group. Unlike `leaveSession`, tracking carries on: the group just stops seeing the person by name.
+    func leaveGroup(sessionId code: String) async throws {
+        guard let token = accessToken else { throw DotWatcherAPIError.missingToken }
+        try await sendEmpty(path: "/me/sessions/\(code)/membership", method: "DELETE", token: token)
+        memberships.removeAll { $0.sessionId == code }
+    }
+
+    /// The organiser's view of their group's entry code; nil when it has none.
+    func entryCode(sessionId code: String) async throws -> String? {
+        let body: EntryCodeBody = try await send(path: "/sessions/\(code)/entry-code")
+        return body.entryCode
+    }
+
+    /// Sets, changes or (nil) clears the group's entry code (owner only). Returns the code now set.
+    func setEntryCode(sessionId code: String, code entry: String?) async throws -> String? {
+        let body: EntryCodeBody = try await send(
+            path: "/sessions/\(code)/entry-code", method: "PUT", body: ["entryCode": entry ?? NSNull()])
+        return body.entryCode
     }
 
     /// Blocks a user account-level, cross-session. The server immediately ends any session
@@ -960,21 +1016,29 @@ final class LocationManager {
     /// so no delegate changes were needed.
     ///
     /// CoreLocation doesn't always answer `requestLocation()` (stopping updates, for one, cancels it with no
-    /// callback), so after `timeout` this gives up with nil. Without that, the caller waits forever and every
-    /// later request returns nil because the old continuation is still there.
-    private func requestOneShotLocation(timeout: Duration = .seconds(15)) async -> CLLocation? {
-        let giveUp = Task { [weak self] in
-            try? await Task.sleep(for: timeout)
-            guard !Task.isCancelled, let self else { return }
-            self.oneShotLocationContinuation?.resume(returning: nil)
-            self.oneShotLocationContinuation = nil
-        }
-        defer { giveUp.cancel() }
+    /// callback), so after `oneShotTimeoutSeconds` this gives up with nil. Without that, the caller waits
+    /// forever and every later request returns nil because the old continuation is still there.
+    private func requestOneShotLocation() async -> CLLocation? {
+        oneShotRequestNumber += 1
+        let request = oneShotRequestNumber
         return await withCheckedContinuation { continuation in
             oneShotLocationContinuation = continuation
             clManager.requestLocation()
+            // Never wait for ever: if no answer comes, give up with nil (the caller says it couldn't get a
+            // location) and free the slot. Only for this request, not a later one that took the slot.
+            Task { @MainActor [weak self] in
+                try? await Task.sleep(for: .seconds(Self.oneShotTimeoutSeconds))
+                guard let self, self.oneShotRequestNumber == request,
+                      let waiting = self.oneShotLocationContinuation else { return }
+                self.oneShotLocationContinuation = nil
+                waiting.resume(returning: nil)
+            }
         }
     }
+
+    private static let oneShotTimeoutSeconds = 15
+    /// Counts one-off requests, so a timeout only ever ends its own.
+    @ObservationIgnored private var oneShotRequestNumber = 0
 
     /// -1.0 (monitoring disabled/unsupported) becomes nil — shared by every call site that needs
     /// this conversion (captureAndPost, sendLocationNowWhilePaused) rather than duplicating it.
@@ -1282,6 +1346,7 @@ final class LocationManager {
         }
         runnerName = session.user.displayName.uppercased()
         PaletteStore.save(session.user.config)
+        if let features = session.user.features { self.features = features }
         status = "Signed in"
         await loadSessions()
     }

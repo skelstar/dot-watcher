@@ -18,6 +18,10 @@ struct NearbyEvent: Decodable, Identifiable, Equatable {
     /// The organiser's display name, drawn as a small dot after "Organised by". Nil from servers that don't send
     /// it, and on the placeholder; the sign then shows `subtitle` as text.
     let organiser: String?
+    /// Groups: true when joining needs the organiser's entry code. Only sent to accounts with "groups".
+    var needsCode: Bool? = nil
+    /// Groups: ISO-8601 UTC time the group ends. Only sent to accounts with "groups".
+    var endsAt: String? = nil
 }
 
 /// Shares `LocationManager`'s network stack (headers, token, the 426 version gate), like `CasualStore`.
