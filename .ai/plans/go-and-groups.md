@@ -120,6 +120,13 @@ here.
     ("3 of your crew are tracking").
   - iOS in-app help, `Help.md` ("Join while you're out", "…while you're out").
   - This plan's own wording ("join while out", "Both out") can follow once the app text changes.
+- **Maybe — "‹ Home · 1 nearby" on the Go map.** Today "‹ Home" shows for every `groups` account, whether or not
+  a group is in range (iOS `GoMapGroups` in `CasualViews.swift`, Android `onHome` in `DotWatcherApp.kt`). Hiding it
+  unless one is in range was considered and **not** wanted: Home is also how an organiser reaches their YOUR GROUP
+  card, and how someone tracking joins by invite code or creates a group. Instead, keep it always and add a count
+  when groups are joinable nearby. *Cost:* the Go map would need the nearby list while tracking (it isn't fetched
+  there today), so poll it now and then or reuse the casual refresh. *Where:* any time; pairs well with the
+  start-screen redesign.
 
 **Things to know:**
 
