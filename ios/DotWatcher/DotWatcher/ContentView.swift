@@ -209,7 +209,7 @@ struct ContentView: View {
                     CrewRow(crew: crew)
                     // The groups the person is in (only with the "groups" feature): joined ahead of Go, or while out.
                     ForEach(location.groupMemberships) { group in
-                        GroupInCard(group: group, isOut: location.isCasualTracking, now: now) {
+                        GroupInCard(group: group, isOut: location.isCasualTracking, now: now, onLeave: {
                             Task {
                                 do {
                                     try await location.leaveGroup(sessionId: group.sessionId)
@@ -217,7 +217,7 @@ struct ContentView: View {
                                     formError = "Couldn't leave the group. Check your connection and try again."
                                 }
                             }
-                        }
+                        }, organiser: location)
                     }
                     if casual.isAvailable, !crew.members.isEmpty, let line = crewOutLine(casual.crewOut) {
                         Text(line)
@@ -487,7 +487,7 @@ struct ContentView: View {
             noSessionCreateCode = ""
             noSessionCreateLengthHours = CreateSessionView.defaultLengthHours
             noSessionNearbyDraft = NearbyCreateDraft()
-            offerSharingAfterJoin()
+            afterNearbyJoin()
         } catch DotWatcherAPIError.activeSessionExists(let sessionId, _) {
             // The sheet's entries are kept, so ending the old session can carry straight on.
             activeSessionConflict = sessionId
@@ -516,7 +516,7 @@ struct ContentView: View {
             try await location.joinInvite(code: noSessionInviteCode, displayName: location.runnerName)
             noSessionInviteCode = ""
             pendingLinkCode = nil
-            offerSharingAfterJoin()
+            afterNearbyJoin()
         } catch {
             formError = error.localizedDescription
         }
@@ -532,7 +532,7 @@ struct ContentView: View {
         showJoinSheet = true
     }
 
-    /// After joining from a nearby tile. With groups nothing starts: someone already out goes back to the Go map
+    /// After joining (a nearby tile or an invite code) or creating. With groups nothing starts: someone already out goes back to the Go map
     /// (where the group now sees them), anyone else stays here with the "You're in" card. Without groups, ask
     /// how long to share for, as before.
     private func afterNearbyJoin() {

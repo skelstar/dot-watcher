@@ -63,12 +63,23 @@ struct GroupTime: Equatable {
 
 /// One group the person is in, on the start screen and in "Your groups". `isOut` is whether they're on a Go
 /// run right now: out, the group can see them; not out, nobody can yet.
+///
+/// For a group the person organised (`group.isOwner`, with `organiser` set) the card carries the organiser's
+/// controls, since a group has no session map: Ping here, the entry code, and End group in place of Leave.
 struct GroupInCard: View {
     let group: SessionMembership
     let isOut: Bool
     let now: Date
     let onLeave: () -> Void
+    /// Enables the organiser's controls on their own group; nil shows Leave only.
+    var organiser: LocationManager? = nil
     @State private var confirmLeave = false
+    @State private var confirmEnd = false
+    @State private var showCode = false
+    @State private var message: String?
+    @State private var isBusy = false
+
+    private var isOrganiser: Bool { organiser != nil && group.isOwner == true }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -77,14 +88,16 @@ struct GroupInCard: View {
                 .foregroundStyle(.secondary)
             Text(group.sessionName)
                 .font(.title3.bold())
-            Text(isOut
-                 ? "You're out, so everyone in the group can see you by name."
-                 : "Not out yet. Nobody in the group can see you until you press Go.")
+            Text(summary)
                 .font(.subheadline)
                 .fixedSize(horizontal: false, vertical: true)
-            Button("Leave group", role: .destructive) { confirmLeave = true }
-                .font(.subheadline.weight(.semibold))
-                .padding(.top, 4)
+            if isOrganiser, let organiser {
+                organiserControls(organiser)
+            } else {
+                Button("Leave group", role: .destructive) { confirmLeave = true }
+                    .font(.subheadline.weight(.semibold))
+                    .padding(.top, 4)
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(14)
@@ -95,11 +108,72 @@ struct GroupInCard: View {
         } message: {
             Text("The group stops seeing you by name. Your crew still can.")
         }
+        .confirmationDialog("End \(group.sessionName)?", isPresented: $confirmEnd, titleVisibility: .visible) {
+            Button("End group", role: .destructive) {
+                Task { await end() }
+            }
+            Button("Keep it", role: .cancel) {}
+        } message: {
+            Text("It ends for everyone and nobody new can join. Anyone out carries on with their own run.")
+        }
     }
 
     private var eyebrow: String {
-        guard let time = GroupTime(endsAtISO: group.endsAt, now: now) else { return "YOU'RE IN" }
-        return "YOU'RE IN · ENDS \(time.endsAt) · \(time.left.uppercased())"
+        let label = isOrganiser ? "YOUR GROUP" : "YOU'RE IN"
+        guard let time = GroupTime(endsAtISO: group.endsAt, now: now) else { return label }
+        return "\(label) · ENDS \(time.endsAt) · \(time.left.uppercased())"
+    }
+
+    private var summary: String {
+        if isOrganiser {
+            return group.nearby == true
+                ? "People near your join location see it on their start screen. You don't need to be out."
+                : "Only people with the invite code \(group.inviteCode) can join."
+        }
+        return isOut
+            ? "You're out, so everyone in the group can see you by name."
+            : "Not out yet. Nobody in the group can see you until you press Go."
+    }
+
+    @ViewBuilder
+    private func organiserControls(_ location: LocationManager) -> some View {
+        HStack(spacing: 16) {
+            if group.nearby == true {
+                Button("Ping here") {
+                    Task {
+                        isBusy = true
+                        message = await location.pingGroup(sessionId: group.sessionId)
+                        isBusy = false
+                    }
+                }
+                .disabled(isBusy)
+                Button(showCode ? "Hide code" : "Entry code") { showCode.toggle() }
+            }
+            Button("End group", role: .destructive) { confirmEnd = true }
+                .disabled(isBusy)
+        }
+        .font(.subheadline.weight(.semibold))
+        .padding(.top, 4)
+        if showCode {
+            EntryCodeSection(location: location, sessionId: group.sessionId)
+                .padding(.top, 6)
+        }
+        if let message {
+            Text(message)
+                .font(.subheadline.weight(.semibold))
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private func end() async {
+        guard let organiser else { return }
+        isBusy = true
+        defer { isBusy = false }
+        do {
+            try await organiser.endSession(sessionId: group.sessionId)
+        } catch {
+            message = error.localizedDescription
+        }
     }
 }
 
@@ -176,9 +250,9 @@ struct GroupsOnMapSheet: View {
                     Text("You're not in any groups now.")
                 }
                 ForEach(location.groupMemberships) { group in
-                    GroupInCard(group: group, isOut: true, now: now) {
+                    GroupInCard(group: group, isOut: true, now: now, onLeave: {
                         Task { await leave(group.sessionId) }
-                    }
+                    }, organiser: location)
                 }
                 if let errorText {
                     Text(errorText)
