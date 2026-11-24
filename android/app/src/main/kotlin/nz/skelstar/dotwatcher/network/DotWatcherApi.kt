@@ -108,6 +108,10 @@ data class SessionMembership(
     val createdAt: String? = null,
     /** ISO-8601 UTC time the session (a group) ends; null from older servers. */
     val endsAt: String? = null,
+    /** Whether this account organised the session; false from older servers. */
+    val isOwner: Boolean = false,
+    /** The organiser's view of whether people nearby can find it; null for everyone else and older servers. */
+    val nearby: Boolean? = null,
 )
 
 /** Someone who has joined a session, whether or not they are sending positions. Blocking needs the id. */

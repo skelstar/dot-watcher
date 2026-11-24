@@ -91,6 +91,8 @@ import nz.skelstar.dotwatcher.ui.nearby.NearbyCreateSection
 import nz.skelstar.dotwatcher.ui.nearby.NearbyJoinSheet
 import nz.skelstar.dotwatcher.ui.groups.GroupInCard
 import nz.skelstar.dotwatcher.groups.GroupsModel
+import nz.skelstar.dotwatcher.groups.GroupOrganiserActions
+import nz.skelstar.dotwatcher.network.SessionMembership
 
 /** How often the nearby list refreshes by itself while the start screen is showing, matching iOS. Pulling the
  *  screen down refreshes at once; this only stops a screen left open from going stale, and each refresh takes a
@@ -139,6 +141,8 @@ fun SessionScreen(
     onJoinNearby: (sessionId: String, entryCode: String?) -> Unit,
     /** While out on a Go run: back to the Go map (this screen is reached from its "‹ Home"). */
     onBackToMap: () -> Unit = {},
+    /** Groups: the organiser's controls for a group they organised (see [GroupInCard]). */
+    organiserActions: ((SessionMembership) -> GroupOrganiserActions)? = null,
     activeSessionConflict: ActiveSessionConflict?,
     onEndActiveSessionAndCreate: () -> Unit,
     onDismissActiveSessionConflict: () -> Unit,
@@ -255,6 +259,7 @@ fun SessionScreen(
                         isOut = outOnGo,
                         time = groupTime(group.endsAt, now),
                         onLeave = { groups.leave(group.sessionId) },
+                        organiser = organiserActions?.takeIf { group.isOwner }?.invoke(group),
                     )
                 }
                 groupsState.error?.let {

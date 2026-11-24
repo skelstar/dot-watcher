@@ -34,6 +34,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import nz.skelstar.dotwatcher.groups.GroupTime
+import nz.skelstar.dotwatcher.groups.GroupOrganiserActions
+import nz.skelstar.dotwatcher.ui.nearby.EntryCodeSection
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
 import nz.skelstar.dotwatcher.network.SessionMembership
 
 // Groups (see .ai/plans/go-and-groups.md, mock-up .ai/mockups/go-and-groups-before-go.html, option B): a group
@@ -41,7 +45,9 @@ import nz.skelstar.dotwatcher.network.SessionMembership
 
 /**
  * One group the person is in, on the start screen. [isOut] is whether they are tracking right now: out,
- * the group can see them; not out, nobody can yet.
+ * the group can see them; not out, nobody can yet. With [organiser] (their own group) the card carries the
+ * organiser's controls, since a group has no session map: Ping here, the entry code, and End group in place
+ * of Leave.
  */
 @Composable
 fun GroupInCard(
@@ -51,8 +57,14 @@ fun GroupInCard(
     modifier: Modifier = Modifier,
     /** When the group ends; null (an older server) shows no time. */
     time: GroupTime? = null,
+    organiser: GroupOrganiserActions? = null,
 ) {
     var confirmLeave by remember { mutableStateOf(false) }
+    var confirmEnd by remember { mutableStateOf(false) }
+    var showCode by remember { mutableStateOf(false) }
+    var message by remember { mutableStateOf<String?>(null) }
+    var busy by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
     OutlinedCard(
         modifier = modifier.fillMaxWidth(),
         border = BorderStroke(2.dp, MaterialTheme.colorScheme.outline),
@@ -61,22 +73,52 @@ fun GroupInCard(
             modifier = Modifier.padding(start = 16.dp, top = 12.dp, end = 16.dp, bottom = 4.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
+            val label = if (organiser != null) "YOUR GROUP" else "YOU'RE IN"
             Text(
-                text = time?.let { "YOU'RE IN · ENDS ${it.endsAt} · ${it.left.uppercase()}" } ?: "YOU'RE IN",
+                text = time?.let { "$label · ENDS ${it.endsAt} · ${it.left.uppercase()}" } ?: label,
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Text(text = group.sessionName, style = MaterialTheme.typography.titleLarge)
             Text(
-                text = if (isOut) {
-                    "You're out, so everyone in the group can see you by name."
-                } else {
-                    "Not out yet. Nobody in the group can see you until you press Go."
+                text = when {
+                    organiser != null && group.nearby == true ->
+                        "People near your join location see it on their start screen. You don't need to be out."
+                    organiser != null -> "Only people with the invite code ${group.inviteCode} can join."
+                    isOut -> "You're out, so everyone in the group can see you by name."
+                    else -> "Not out yet. Nobody in the group can see you until you press Go."
                 },
                 style = MaterialTheme.typography.bodyMedium,
             )
-            TextButton(onClick = { confirmLeave = true }) {
-                Text("Leave group", color = MaterialTheme.colorScheme.error)
+            if (organiser == null) {
+                TextButton(onClick = { confirmLeave = true }) {
+                    Text("Leave group", color = MaterialTheme.colorScheme.error)
+                }
+            } else {
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    organiser.ping?.let { ping ->
+                        TextButton(
+                            onClick = {
+                                scope.launch {
+                                    busy = true
+                                    message = ping()
+                                    busy = false
+                                }
+                            },
+                            enabled = !busy,
+                        ) { Text("Ping here") }
+                    }
+                    if (organiser.entryCode != null) {
+                        TextButton(onClick = { showCode = !showCode }) {
+                            Text(if (showCode) "Hide code" else "Entry code")
+                        }
+                    }
+                    TextButton(onClick = { confirmEnd = true }, enabled = !busy) {
+                        Text("End group", color = MaterialTheme.colorScheme.error)
+                    }
+                }
+                if (showCode) organiser.entryCode?.let { EntryCodeSection(it) }
+                message?.let { Text(text = it, style = MaterialTheme.typography.bodyMedium) }
             }
         }
     }
@@ -95,6 +137,25 @@ fun GroupInCard(
             dismissButton = {
                 TextButton(onClick = { confirmLeave = false }) { Text("Stay in") }
             },
+        )
+    }
+
+    if (confirmEnd && organiser != null) {
+        AlertDialog(
+            onDismissRequest = { confirmEnd = false },
+            title = { Text("End ${group.sessionName}?") },
+            text = { Text("It ends for everyone and nobody new can join. Anyone out carries on with their own run.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmEnd = false
+                    scope.launch {
+                        busy = true
+                        message = organiser.end()
+                        busy = false
+                    }
+                }) { Text("End group", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = { TextButton(onClick = { confirmEnd = false }) { Text("Keep it") } },
         )
     }
 }
@@ -157,6 +218,8 @@ fun GroupsOnMapSheet(
     onLeave: (sessionId: String) -> Unit,
     onDismiss: () -> Unit,
     error: String? = null,
+    /** The organiser's controls for groups the person organised; null shows Leave on every card. */
+    organiserActions: ((SessionMembership) -> GroupOrganiserActions)? = null,
 ) {
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -183,6 +246,7 @@ fun GroupsOnMapSheet(
                     isOut = true,
                     time = groupTime(group.endsAt, now),
                     onLeave = { onLeave(group.sessionId) },
+                    organiser = organiserActions?.takeIf { group.isOwner }?.invoke(group),
                 )
             }
             error?.let { Text(text = it, color = MaterialTheme.colorScheme.error) }

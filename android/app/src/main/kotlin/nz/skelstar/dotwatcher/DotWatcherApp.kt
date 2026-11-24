@@ -115,6 +115,7 @@ fun DotWatcherApp(hasBackgroundLocationPermission: Boolean) {
                     groups = viewModel.groups,
                     onJoinNearby = viewModel::joinNearby,
                     onBackToMap = viewModel::backToCasualMap,
+                    organiserActions = viewModel::organiserActions,
                     activeSessionConflict = activeSessionConflict,
                     onEndActiveSessionAndCreate = viewModel::endActiveSessionAndCreate,
                     onDismissActiveSessionConflict = viewModel::dismissActiveSessionConflict,
@@ -138,6 +139,7 @@ fun DotWatcherApp(hasBackgroundLocationPermission: Boolean) {
                     onStop = viewModel::stopCasual,
                     groups = viewModel.groups.takeIf { it.isAvailable },
                     onHome = if (viewModel.groups.isAvailable) viewModel::showStartScreen else null,
+                    organiserActions = viewModel::organiserActions,
                 )
 
                 // One branch for both, so the map is not rebuilt when the runner answers the share sheet.

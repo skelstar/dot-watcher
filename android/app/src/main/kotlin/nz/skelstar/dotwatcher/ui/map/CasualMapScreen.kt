@@ -40,6 +40,8 @@ import nz.skelstar.dotwatcher.route.CasualRouteCache
 import nz.skelstar.dotwatcher.route.RoutePoint
 import nz.skelstar.dotwatcher.ui.casual.StopPill
 import nz.skelstar.dotwatcher.groups.GroupsModel
+import nz.skelstar.dotwatcher.groups.GroupOrganiserActions
+import nz.skelstar.dotwatcher.network.SessionMembership
 import nz.skelstar.dotwatcher.ui.groups.GoMapGroupBar
 import nz.skelstar.dotwatcher.ui.groups.GroupsOnMapSheet
 import java.time.Instant
@@ -72,6 +74,8 @@ fun CasualMapScreen(
     groups: GroupsModel? = null,
     /** "‹ Home": the start screen with tracking carrying on; null hides it (no groups). */
     onHome: (() -> Unit)? = null,
+    /** The organiser's controls for groups the person organised. */
+    organiserActions: ((SessionMembership) -> GroupOrganiserActions)? = null,
 ) {
     val context = LocalContext.current
     var positions by remember { mutableStateOf<List<RunnerPosition>>(emptyList()) }
@@ -174,6 +178,7 @@ fun CasualMapScreen(
                 groups.clearError()
             },
             error = groupsState.error,
+            organiserActions = organiserActions,
         )
     }
 

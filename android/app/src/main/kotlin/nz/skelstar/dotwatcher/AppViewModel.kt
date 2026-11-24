@@ -16,6 +16,8 @@ import nz.skelstar.dotwatcher.casual.CasualModel
 import nz.skelstar.dotwatcher.casual.CasualPrefs
 import nz.skelstar.dotwatcher.events.EventsModel
 import nz.skelstar.dotwatcher.groups.GroupsModel
+import nz.skelstar.dotwatcher.groups.GroupOrganiserActions
+import nz.skelstar.dotwatcher.nearby.EntryCodeActions
 import nz.skelstar.dotwatcher.crew.CrewModel
 import nz.skelstar.dotwatcher.crew.CrewPrefs
 import nz.skelstar.dotwatcher.data.AuthTokenStore
@@ -435,7 +437,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             }
 
             val created = nearbyCreate
-            _sessionState.value = handleSessionResult(result) { membership ->
+            _sessionState.value = handleSessionResult(result, asGroup = groups.isAvailable) { membership ->
                 if (created != null) {
                     setNearbyStatus(membership.sessionId, NearbyStatus(nearby = true, radiusMeters = created.radiusMeters))
                     _nearbyMeetingPoints.update { it + (membership.sessionId to created.fix) }
@@ -569,16 +571,58 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         return null
     }
 
+    /** Groups: the organiser's Ping from their group's card. Keeps the range they chose; needs no tracking. */
+    suspend fun pingGroup(sessionId: String): String {
+        val fix = nearbyFix.current()
+        if (fix == null || !fix.isUsableForJoinLocation()) {
+            return "Couldn't get an accurate location. Try again with a clear view of the sky."
+        }
+        return updateNearby(sessionId, fix, enabled = true, radiusMeters = null, done = "Join location set here")
+    }
+
+    /** Groups: the organiser ends their group for everyone. Unlike [endSession], a Go run carries on. Null on
+     *  success, otherwise words for the person. */
+    suspend fun endGroup(sessionId: String): String? {
+        val result = runCatching { repository.endSession(sessionId) }
+        val response = result.getOrElse { return it.networkMessage() }
+        if (!response.isSuccessful) return response.errorMessageOrStatus()
+        _nearbyStatuses.update { it - sessionId }
+        _nearbyMeetingPoints.update { it - sessionId }
+        groups.refreshNow()
+        events.refresh()
+        return null
+    }
+
+    /** The organiser's controls for their own group, on its start-screen card. */
+    fun organiserActions(group: SessionMembership): GroupOrganiserActions = GroupOrganiserActions(
+        ping = if (group.nearby == true) ({ pingGroup(group.sessionId) }) else null,
+        entryCode = if (group.nearby == true) {
+            EntryCodeActions(
+                load = { loadEntryCode(group.sessionId) },
+                change = { code -> changeEntryCode(group.sessionId, code) },
+            )
+        } else {
+            null
+        },
+        end = { endGroup(group.sessionId) },
+    )
+
     fun joinSession(inviteCode: String) {
         viewModelScope.launch {
             _sessionState.value = SessionUiState.Loading
             val result = runCatching { repository.joinSession(inviteCode, displayName = repository.displayName) }
-            _sessionState.value = handleSessionResult(result)
+            _sessionState.value = handleSessionResult(result, asGroup = groups.isAvailable)
         }
     }
 
+    /**
+     * After creating or joining a session. Without groups it goes on to "share your location?" and tracking in
+     * the session. With groups ([asGroup]) the session is a group: nothing starts, the person stays on the start
+     * screen (or goes back to the Go map if out), and the group's card there carries on from it.
+     */
     private fun handleSessionResult(
         result: Result<Response<SessionMembership>>,
+        asGroup: Boolean = false,
         onSuccess: (SessionMembership) -> Unit = {},
     ): SessionUiState {
         val response = result.getOrElse {
@@ -587,7 +631,13 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         val membership = response.body()
         return if (response.isSuccessful && membership != null) {
             onSuccess(membership)
-            _destination.value = Destination.Consent(membership)
+            if (asGroup) {
+                groups.refresh()
+                events.refresh()
+                if (isOutCasually) _destination.value = Destination.Casual
+            } else {
+                _destination.value = Destination.Consent(membership)
+            }
             SessionUiState.Idle
         } else {
             SessionUiState.Error(response.errorMessageOrStatus())
