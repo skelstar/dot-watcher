@@ -1,16 +1,16 @@
 # Go and groups — Plan
 
-*DotWatcher — plan, November 2026. Status (24 November 2026): mock-ups done; step 1 and step 2 built. **Server and admin merged into
-`staging`**, released to `main` by #411; both phones built (iOS run in the simulator, nothing yet on a device) and not
-merged. **Start with
+*DotWatcher — plan, November 2026. Status (25 November 2026): mock-ups done; step 1 and step 2 built. **Server and admin
+released** (#411). **Both phone stacks merged into `staging`** and going out as **1.4.10** on TestFlight and Play
+internal; `groups` is still granted per account only. **Start with
 [Picking this up again](#picking-this-up-again) below.** Decisions marked **Open** need an answer before the step that
 depends on them.*
 
 ## Picking this up again
 
-**Server and admin are merged into `staging`** (24 Nov): #386, #387 (with #396), #407, #410, and this plan (#379).
-**#411 (`staging` → `main`)** releases them; merging it runs the release workflow. The phone PRs are **not merged** and
-wait for a device test:
+**Server and admin** (#386, #387 with #396, #407, #410) were released to `main` by #411 (24 Nov). **The phone stacks**
+were merged into `staging` on 25 Nov and released to `main` by #413, built as **1.4.10** (#414 bumped both apps; iOS
+TestFlight needed #415, which signs the archive for distribution):
 
 | PR | Branch | What | Based on | State |
 | --- | --- | --- | --- | --- |
@@ -18,16 +18,16 @@ wait for a device test:
 | #387 | `groups-entry-code` | Step 2 server: entry codes; includes #396 (`endsAt`) | `staging` | Merged into `staging` |
 | #407 | `groups-owner-flag` | Step 2 server: `isOwner` (and owner-only `nearby`) on memberships | `staging` | Merged into `staging` |
 | #410 | `admin-account-features` | Admin: per-account feature chips in the Users table; Groups label | `staging` | Merged into `staging` |
-| #411 | `staging` | Release of all the above (and #403-#405) to `main` | `main` | Open |
-| #388 | `android-groups-join` | Android part 1: join a nearby group without starting tracking; entry code; "You're in" cards; groups survive relaunch | `staging` | Compiles, unit tests pass; not on a device |
-| #397 | `android-groups-part2` | Android part 2: join while out, group chip, end times, "Join and Go now", organiser codes | #388 | Compiles, 99 unit tests pass; not on a device |
-| #408 | `android-groups-flows` | Android: invite-code join and creating are group joins; organiser card (Ping, code, End group) | #397 | Compiles, 99 unit tests pass; not on a device |
-| #398 | `ios-groups` | iOS: everything in #388 and #397, plus two fixes found in the simulator | `staging` | Run in the simulator (see below) |
-| #409 | `ios-groups-flows` | iOS: the same as #408 | #398 | Builds; not run |
+| #411 | `staging` | Release of all the above (and #403-#405) to `main` | `main` | Merged |
+| #388 | `android-groups-join` | Android part 1: join a nearby group without starting tracking; entry code; "You're in" cards; groups survive relaunch | `staging` | Merged |
+| #397 | `android-groups-part2` | Android part 2: join while out, group chip, end times, "Join and Go now", organiser codes | `staging` | Merged |
+| #408 | `android-groups-flows` | Android: invite-code join and creating are group joins; organiser card (Ping, code, End group) | `staging` | Merged |
+| #398 | `ios-groups` | iOS: everything in #388 and #397, plus two fixes found in the simulator | `staging` | Merged (conflict with `staging` in `requestOneShotLocation` resolved by keeping the groups version) |
+| #409 | `ios-groups-flows` | iOS: the same as #408 | `staging` | Merged |
+| #413 | `staging` | Release of the phone stacks to `main` | `main` | Merged |
 
-GitHub has already moved #388 and #398 onto `staging` (their base branch was deleted on merge). Merge each phone stack
-bottom-up (#388 → #397 → #408, #398 → #409) once tested.
-Use normal merge commits, not squash, or the next PR in a stack shows the earlier commits again.
+Stacks were merged bottom-up with normal merge commits (not squash), so later PRs in a stack didn't show earlier
+commits again. Keep doing that for future stacks.
 
 **Trying it (after #411 is deployed):**
 
@@ -92,17 +92,34 @@ cut short by a full disk).
 
 **Next, in order:**
 
-1. **Merge #411** to release the server and admin page, then grant `groups` to test accounts from the admin page.
-2. **Try the phones on devices** against prod: Android #408 and iOS #409 (tops of their stacks), using
-   "Testing on two phones" above. Done so far: iOS organiser card on one phone. Not yet: a second phone, invite-code
-   join as a group join, and anything on Android.
-3. **Merge the phone stacks** (bottom-up), then build and release the apps. Only then
-   consider `groups` for everyone.
+1. ~~Merge #411~~ (done 24 Nov). Grant `groups` to test accounts from the admin page.
+2. **Try 1.4.10 on devices** against prod, using "Testing on two phones" above. Done so far: iOS organiser card on one
+   phone. Not yet: a second phone, invite-code join as a group join, and anything on Android.
+3. ~~Merge the phone stacks and release the apps~~ (merged 25 Nov; 1.4.10 deploying). Once step 2 passes, consider
+   `groups` for everyone.
 4. **Invite links** for groups (join from anywhere, e.g. the entry email); decide whether they ask for the entry code
    (an invite code skips it today).
 5. **Start-screen redesign** (Go and "Who can see me" replace the four cards; ties in with `android-start-screen-design`).
 6. The **name** for "group members" (the only open design decision).
 7. Step 3 onwards.
+
+**Changes to consider** (ideas from using the apps, not yet scheduled). One line each: what, why, where it would go,
+and **Maybe** or **Agreed**. When one is scheduled, move it into "Next, in order" or a step's checklist and delete it
+here.
+
+- **Agreed — say "tracking", not "out".** "You're tracking" is more accurate than "You're out". Applies to all app text that says someone is out, on both phones. *Where:* any time (text only); do it before
+  `groups` goes to everyone. Found on `staging` (25 Nov):
+  - "You're out" eyebrow above "Back to the map": iOS `ContentView.swift`, Android `SessionScreen.kt`.
+  - YOU'RE IN card, "You're out, so everyone in the group can see you by name." / "Not out yet. Nobody in the group
+    can see you until you press Go.": iOS `GroupsViews.swift`, Android `GroupCards.kt`.
+  - Your groups sheet, "Everyone in these groups sees you by name while you're out.": same two files.
+  - Join sheet, "…sees you by name on their map, wherever they are, while you're out." / "Not out yet? Join now and
+    the group waits…": iOS `NearbyJoinViews.swift`, Android `NearbyJoinSheets.kt`.
+  - Casual Go block, "1 of your crew is out now" / "N of your crew are out now": iOS `CasualViews.swift`, Android
+    `CasualGoBlock.kt` (and its test, `CasualWireTest.kt`). Decide whether "out" about other people changes too
+    ("3 of your crew are tracking").
+  - iOS in-app help, `Help.md` ("Join while you're out", "…while you're out").
+  - This plan's own wording ("join while out", "Both out") can follow once the app text changes.
 
 **Things to know:**
 
