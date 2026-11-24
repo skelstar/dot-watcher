@@ -38,6 +38,12 @@ import java.time.Instant
  *  connectivity signal yet, so unlike iOS there is no slower fallback cadence for now. */
 const val POST_INTERVAL_SECONDS = 15L
 
+/** Until a run's first good fix, how soon to try again instead of waiting for the next 15 s mark. The GPS
+ *  has only just started, so the first tries are often missing or too coarse; like iOS (`postFirstFixIfAwaited`),
+ *  the first position should go as soon as there is one. */
+private const val FIRST_FIX_RETRY_MS = 2_000L
+private const val FIRST_FIX_QUICK_RETRY_WINDOW_MS = 60_000L
+
 /** Options offered for how long a share session runs before it auto-stops, ascending — mirrors
  *  `LocationManager.trackingDurationOptions` (ios/DotWatcher/DotWatcher/LocationManager.swift:212).
  *  This is a cap on *automatic* sharing, not a mode switch: every option still auto-stops, the
@@ -227,6 +233,10 @@ class LocationTrackingService : Service() {
         shareChoices.recordSharing(sessionId, initialExpiry, total)
 
         trackingJob = serviceScope.launch {
+            // False until this run captures its first good fix; till then failed tries retry quickly, for the
+            // first minute only (with precise location off every try fails, and that shouldn't spin all run).
+            var haveFirstFix = false
+            val quickRetriesUntil = Instant.now().plusMillis(FIRST_FIX_QUICK_RETRY_WINDOW_MS)
             while (isActive) {
                 val now = Instant.now()
                 // Re-read each pass: the runner can extend the session while this loop sleeps.
@@ -257,15 +267,21 @@ class LocationTrackingService : Service() {
                             batteryLevel = battery.level,
                         )
                     }.fold(
-                        onSuccess = { captured -> postOrEnqueue(captured) },
+                        onSuccess = { captured ->
+                            haveFirstFix = true
+                            postOrEnqueue(captured)
+                        },
                         onFailure = { error -> recordError(error.message) },
                     )
                 }
 
                 val beforeDelay = Instant.now()
-                val delayMillis = Duration.between(beforeDelay, nextPostAt(beforeDelay, POST_INTERVAL_SECONDS))
+                val untilNextMark = Duration.between(beforeDelay, nextPostAt(beforeDelay, POST_INTERVAL_SECONDS))
                     .toMillis()
                     .coerceAtLeast(0)
+                // No first fix yet (and not paused for battery): try again shortly rather than at the next mark.
+                val retryQuickly = !haveFirstFix && !pause && beforeDelay < quickRetriesUntil
+                val delayMillis = if (retryQuickly) minOf(FIRST_FIX_RETRY_MS, untilNextMark) else untilNextMark
                 delay(delayMillis)
             }
         }
