@@ -10,7 +10,7 @@ namespace DotWatcher.Server;
 /// initials, by design), which newer apps draw as a small dot after "Organised by"; <c>Subtitle</c> still
 /// carries "Organised by …" as text for builds that don't know the field. <c>NeedsCode</c> is true when
 /// joining needs the organiser's entry code (see .ai/plans/go-and-groups.md); it is only ever sent to
-/// accounts with the "groups" feature, and left out (null) otherwise.
+/// accounts with the "groups" feature, and left out (null) otherwise; so is <c>EndsAt</c>, when the group ends.
 /// </summary>
 public record NearbyEvent(
     string Id,
@@ -20,9 +20,14 @@ public record NearbyEvent(
     string? SessionId = null,
     string? Organiser = null,
     [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
-    bool? NeedsCode = null
+    bool? NeedsCode = null,
+    // ISO-8601 UTC time the group ends. Like NeedsCode, only sent to accounts with "groups".
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    string? EndsAt = null
 );
 
 /// <summary>A joinable nearby session as found by the store. Distance is the real figure; the
 /// controller rounds it before it reaches a client.</summary>
-public record NearbySessionMatch(string SessionId, string Title, string OrganiserName, double DistanceMeters, bool NeedsCode = false);
+public record NearbySessionMatch(
+    string SessionId, string Title, string OrganiserName, double DistanceMeters, bool NeedsCode = false,
+    DateTimeOffset? EndsAt = null);

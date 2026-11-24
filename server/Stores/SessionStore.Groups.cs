@@ -13,7 +13,20 @@ public partial class SessionStore
     /// (max_length_hours, default 24 h). Archiving is checked separately, in the query.
     /// </summary>
     public static bool IsGroupActive(DateTimeOffset createdAt, int? maxLengthHours, DateTimeOffset now) =>
-        createdAt.AddHours(maxLengthHours ?? DefaultMaxLengthHours) > now;
+        GroupEndsAt(createdAt, maxLengthHours) > now;
+
+    /// <summary>When a named session (a group) ends: created plus its event length, default 24 h. In UTC.</summary>
+    public static DateTimeOffset GroupEndsAt(DateTimeOffset createdAt, int? maxLengthHours) =>
+        createdAt.AddHours(maxLengthHours ?? DefaultMaxLengthHours).ToUniversalTime();
+
+    /// <summary>
+    /// <see cref="GroupEndsAt"/> as ISO-8601, read from a row's created_at and max_length_hours columns.
+    /// </summary>
+    private static string EndsAtIso(NpgsqlDataReader reader, int createdAtColumn, int maxLengthColumn)
+    {
+        int? maxLengthHours = reader.IsDBNull(maxLengthColumn) ? null : reader.GetInt16(maxLengthColumn);
+        return GroupEndsAt(DateTimeOffset.Parse(reader.GetString(createdAtColumn)), maxLengthHours).ToString("O");
+    }
 
     /// <summary>
     /// The people <paramref name="viewerId"/> shares an active group with, keyed by user id and labelled

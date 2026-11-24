@@ -53,7 +53,8 @@ public class EventsController(UserTokenAuth userAuth, FeatureFlags features, Ses
                 $"Organised by {match.OrganiserName}",
                 match.SessionId,
                 match.OrganiserName,
-                canEnterCode ? match.NeedsCode : null);
+                canEnterCode ? match.NeedsCode : null,
+                canEnterCode ? match.EndsAt?.ToString("O") : null);
         }).ToList();
 
         return Ok(events);

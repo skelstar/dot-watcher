@@ -298,6 +298,8 @@ public class SessionsController(
             membership.Role,
             membership.DisplayName,
             membership.OwnerDisplayName,
+            membership.CreatedAt,
+            membership.EndsAt,
             Participants = participants,
         });
     }
@@ -357,6 +359,8 @@ public class SessionsController(
             membership.Role,
             membership.DisplayName,
             membership.OwnerDisplayName,
+            membership.CreatedAt,
+            membership.EndsAt,
             Participants = participants,
         });
     }
