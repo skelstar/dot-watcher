@@ -1,5 +1,8 @@
 # Crew-out alerts: "DW: Mia has joined" while you're on a Go run
 
+**25 November 2026:** these alerts also fire for group members who aren't crew. The fix, and their replacement
+with alerts decided on the server, is planned in [`server-alerts.md`](server-alerts.md).
+
 Branches: `crew-out-alerts-ios`, then `crew-out-alerts-android`. Client only: no server change.
 
 ## The bug, and why
