@@ -6,6 +6,9 @@ import {
   registerParticipant,
   joinSession,
   joinGroup,
+  findNearbyGroups,
+  joinNearbyGroup,
+  type NearbyGroup,
   postLocation,
   leaveSession,
   enableGo,
@@ -92,6 +95,15 @@ export default function PhoneSimulator({
   const [group, setGroup] = useState<{ sessionId: string; name: string } | null>(null)
   const [groupCode, setGroupCode] = useState(defaultInviteCode)
   const [groupBusy, setGroupBusy] = useState(false)
+  // "Groups near you": the list the app's start screen would show here (null until looked up), and the
+  // entry code typed for one that needs it.
+  const [nearbyGroups, setNearbyGroups] = useState<NearbyGroup[] | null>(null)
+  const [nearbyCode, setNearbyCode] = useState('')
+  // "Stay here": the phone keeps posting from where it is (no heading, as when standing still) instead of
+  // walking on, so it can be moved into a group's zone and left there.
+  const [stayHere, setStayHere] = useState(false)
+  const stayHereRef = useRef(false)
+  useEffect(() => { stayHereRef.current = stayHere }, [stayHere])
   const [watchLink, setWatchLink] = useState<WatchLink | null>(null)
   const [viewerCount, setViewerCount] = useState(0)
   // One poll timer per pretend viewer still watching.
@@ -233,6 +245,44 @@ export default function PhoneSimulator({
       const user = await ensureAccount()
       const membership = await joinGroup(user, code, displayName)
       setGroup({ sessionId: membership.sessionId, name: membership.sessionName })
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to join the group.')
+    } finally {
+      setGroupBusy(false)
+    }
+  }
+
+  // Looks up the groups whose zone this phone is in, from where it is now.
+  async function handleFindNearby() {
+    const here = positionRef.current
+    if (!here) return
+    armBackgroundTimer()
+    setGroupBusy(true)
+    setError(null)
+    try {
+      const user = await ensureAccount()
+      setNearbyGroups(await findNearbyGroups(user, here))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to find groups near you.')
+    } finally {
+      setGroupBusy(false)
+    }
+  }
+
+  // Joins one from the list through nearby join, from where the phone is now (the server checks the
+  // radius again, so a phone that has walked out of the zone is refused).
+  async function handleJoinNearby(nearbyGroup: NearbyGroup) {
+    const here = positionRef.current
+    const user = userRef.current
+    if (!here || !user) return
+    armBackgroundTimer()
+    setGroupBusy(true)
+    setError(null)
+    try {
+      const membership = await joinNearbyGroup(user, nearbyGroup.sessionId, here, displayName, nearbyGroup.needsCode ? nearbyCode.trim() : undefined)
+      setGroup({ sessionId: membership.sessionId, name: membership.sessionName })
+      setNearbyGroups(null)
+      setNearbyCode('')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to join the group.')
     } finally {
@@ -390,7 +440,11 @@ export default function PhoneSimulator({
     // (see the Quality type) — only the isUltraConstrained flag on the post itself differs.
     const movesNormally = qualityRef.current === 'good' || qualityRef.current === 'satellite'
 
-    if (movesNormally && activeRoute && activeRoute.length > 1) {
+    if (stayHereRef.current) {
+      // Standing still where it was put: same spot, and no heading, as a real phone reports when stopped.
+      next = cur
+      nextHeading = null
+    } else if (movesNormally && activeRoute && activeRoute.length > 1) {
       // A route takes priority over the convergence point when both are set — it's the more
       // specific instruction for this phone.
       const result = advanceAlongRoute(activeRoute, routeProgressRef.current, stepMeters)
@@ -573,9 +627,20 @@ export default function PhoneSimulator({
         {position
           ? <span style={positionText}>{position.lat.toFixed(5)}, {position.lon.toFixed(5)}</span>
           : <span style={positionMuted}>No start point set</span>}
-        <button style={changePointBtn} disabled={!canPickPosition} onClick={() => onRequestStartPoint(id, displayName)}>
-          {position ? 'Change' : 'Choose start point'}
+        <button
+          style={changePointBtn}
+          disabled={!canPickPosition}
+          onClick={() => onRequestStartPoint(id, displayName)}
+          title="Works while tracking too: the phone jumps there and carries on from it"
+        >
+          {position ? 'Move' : 'Choose start point'}
         </button>
+        {canPickPosition && (
+          <label style={qualityLabel(stayHere, false)} title="Keep posting from this spot (no heading) instead of walking on">
+            <input type="checkbox" checked={stayHere} onChange={e => setStayHere(e.target.checked)} style={{ marginRight: '0.3rem' }} />
+            Stay here
+          </label>
+        )}
       </div>
 
       <div style={positionRow}>
@@ -661,8 +726,44 @@ export default function PhoneSimulator({
               {defaultInviteCode && defaultInviteCode !== groupCode && (
                 <button style={linkBtn} onClick={() => setGroupCode(defaultInviteCode)}>use {defaultInviteCode}</button>
               )}
+              <button
+                style={changePointBtn}
+                disabled={!position || groupBusy || away}
+                onClick={handleFindNearby}
+                title={position ? 'The groups the app would show as tiles here: zones this phone is in' : 'Choose a start point first'}
+              >
+                Groups near you
+              </button>
             </>
           )}
+        </div>
+      )}
+
+      {canUseGroups && !group && nearbyGroups && (
+        <div style={watchBox}>
+          {nearbyGroups.length === 0 && <span style={positionMuted}>No groups near here.</span>}
+          {nearbyGroups.map(g => (
+            <div key={g.sessionId} style={joinRow}>
+              <span style={positionText}>{g.title} · {g.eyebrow.replace('Happening near you · ', '')}{g.needsCode ? ' · code needed' : ''}</span>
+              {g.needsCode && (
+                <input
+                  style={codeInput}
+                  value={nearbyCode}
+                  onChange={e => setNearbyCode(e.target.value.toUpperCase())}
+                  placeholder="ENTRY CODE"
+                  disabled={groupBusy}
+                />
+              )}
+              <button
+                style={changePointBtn}
+                disabled={groupBusy || away || (g.needsCode === true && !nearbyCode.trim())}
+                onClick={() => handleJoinNearby(g)}
+              >
+                Join group
+              </button>
+            </div>
+          ))}
+          <button style={linkBtn} onClick={() => setNearbyGroups(null)}>close</button>
         </div>
       )}
 

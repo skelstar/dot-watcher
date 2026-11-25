@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { convergenceIcon, phoneMarkerIcon, runnerColour } from './lib/icons'
-import { createSession, deleteSimAccounts, makeCrew, randomSessionName, registerParticipant, removeCrew, SERVER_URL, CLIENT_URL, type SessionMembership } from './lib/dotwatcherApi'
+import {
+  createSession, deleteSimAccounts, makeCrew, randomSessionName, registerParticipant, removeCrew, setEntryCode, setSessionNearby,
+  NEARBY_RADII, SERVER_URL, CLIENT_URL, type AuthedUser, type NearbyStatus, type SessionMembership,
+} from './lib/dotwatcherApi'
 import PhoneSimulator from './PhoneSimulator'
 import MapPickerModal from './MapPickerModal'
 import SimulatorMap from './SimulatorMap'
@@ -93,6 +96,10 @@ export default function ConvergencePage() {
 
       const organizer = await registerParticipant('Simulator')
       organizerUserIdRef.current = organizer.userId
+      organizerRef.current = organizer
+      setNearby(null)
+      setNearbyError(null)
+      setEntryCodeSet(null)
       const name = sessionName.trim() || randomSessionName()
       const membership = await createSession(organizer, name)
       setSession(membership)
@@ -187,6 +194,48 @@ export default function ConvergencePage() {
   // test in progress carries on.
   const [deletingSimData, setDeletingSimData] = useState(false)
   const organizerUserIdRef = useRef<string | null>(null)
+  // The session's organiser, who alone can switch nearby join on and set an entry code.
+  const organizerRef = useRef<AuthedUser | null>(null)
+
+  // Nearby join for the session (the app's "Let people nearby join" and Ping): the meeting point is put at
+  // the convergence point when switched on, and only moves when "Ping here" is pressed again.
+  const [nearby, setNearby] = useState<NearbyStatus | null>(null)
+  const [nearbyRadius, setNearbyRadius] = useState<number>(100)
+  const [nearbyBusy, setNearbyBusy] = useState(false)
+  const [nearbyError, setNearbyError] = useState<string | null>(null)
+  const [entryCodeInput, setEntryCodeInput] = useState('')
+  const [entryCodeSet, setEntryCodeSet] = useState<string | null>(null)
+
+  async function handleNearby(enabled: boolean) {
+    const organizer = organizerRef.current
+    if (!session || !organizer) return
+    if (enabled && !convergencePoint) return
+    setNearbyBusy(true)
+    setNearbyError(null)
+    try {
+      setNearby(await setSessionNearby(organizer, session.sessionId, enabled, enabled ? convergencePoint : null, nearbyRadius))
+    } catch (err) {
+      setNearbyError(err instanceof Error ? err.message : 'Changing nearby join failed.')
+    } finally {
+      setNearbyBusy(false)
+    }
+  }
+
+  async function handleEntryCode(code: string | null) {
+    const organizer = organizerRef.current
+    if (!session || !organizer) return
+    setNearbyBusy(true)
+    setNearbyError(null)
+    try {
+      await setEntryCode(organizer, session.sessionId, code)
+      setEntryCodeSet(code ? code.toUpperCase() : null)
+      if (!code) setEntryCodeInput('')
+    } catch (err) {
+      setNearbyError(err instanceof Error ? err.message : 'Setting the entry code failed.')
+    } finally {
+      setNearbyBusy(false)
+    }
+  }
   const inUseUserIds = new Set(
     [
       ...phones.map(p => snapshots[p.id]?.userId ?? null),
@@ -370,11 +419,53 @@ export default function ConvergencePage() {
               : <span style={mutedText}>Not set</span>}
             <button style={copyBtn} onClick={handleChangeConvergencePoint}>Change</button>
           </div>
+          <div style={sessionInfo}>
+            <strong>Nearby join</strong>
+            {nearby?.nearby
+              ? <span style={statusLine}>On · {nearby.radiusMeters} m</span>
+              : <span style={mutedText}>Off</span>}
+            <select value={nearbyRadius} onChange={e => setNearbyRadius(Number(e.target.value))} disabled={nearbyBusy}>
+              {NEARBY_RADII.map(r => <option key={r} value={r}>{r} m</option>)}
+            </select>
+            <button
+              style={copyBtn}
+              disabled={nearbyBusy || !convergencePoint}
+              onClick={() => handleNearby(true)}
+              title="The organiser's Ping: puts the meeting point at the convergence point, with this radius"
+            >
+              {nearby?.nearby ? 'Ping here' : 'Let people nearby join here'}
+            </button>
+            {nearby?.nearby && (
+              <button style={copyBtn} disabled={nearbyBusy} onClick={() => handleNearby(false)}>Switch off</button>
+            )}
+          </div>
+          <div style={sessionInfo}>
+            <strong>Entry code</strong>
+            {entryCodeSet
+              ? <span style={statusLine}>{entryCodeSet}</span>
+              : <span style={mutedText}>None</span>}
+            <input
+              style={sessionNameInput}
+              placeholder="4-8 letters or numbers"
+              value={entryCodeInput}
+              onChange={e => setEntryCodeInput(e.target.value.toUpperCase())}
+              disabled={nearbyBusy}
+            />
+            <button style={copyBtn} disabled={nearbyBusy || !entryCodeInput.trim()} onClick={() => handleEntryCode(entryCodeInput.trim())}>
+              Set
+            </button>
+            {entryCodeSet && (
+              <button style={copyBtn} disabled={nearbyBusy} onClick={() => handleEntryCode(null)}>Remove</button>
+            )}
+          </div>
+          {nearbyError && <div style={errorText}>{nearbyError}</div>}
           <SimulatorMap convergencePoint={convergencePoint} phones={activePhones} routes={routes} />
           <p style={hint}>
             Each phone's uploaded GPX route is drawn here in that phone's own colour — upload one
             from its card below to have it walk the route instead of straight-line towards the
-            convergence point above.
+            convergence point above. Nearby join puts the session's meeting point at the convergence
+            point (moving the convergence point later doesn't move it; press Ping here). Phones
+            within the radius find it with <strong>Groups near you</strong>.
           </p>
         </section>
       )}
@@ -545,7 +636,7 @@ const createBtn = (disabled: boolean): React.CSSProperties => ({
   background: disabled ? '#e2e8f0' : '#1e293b', color: disabled ? '#94a3b8' : '#fff', cursor: disabled ? 'default' : 'pointer',
 })
 const errorText: React.CSSProperties = { color: '#dc2626', fontSize: '0.85rem', marginBottom: '0.5rem' }
-const sessionInfo: React.CSSProperties = { display: 'flex', alignItems: 'center', gap: '0.6rem', fontSize: '0.9rem', marginBottom: '0.4rem' }
+const sessionInfo: React.CSSProperties = { display: 'flex', alignItems: 'center', gap: '0.6rem', fontSize: '0.9rem', marginBottom: '0.4rem', flexWrap: 'wrap' }
 const inviteCodeText: React.CSSProperties = { fontFamily: 'monospace', fontSize: '1.05rem', letterSpacing: '0.05em' }
 const copyBtn: React.CSSProperties = { padding: '0.2rem 0.6rem', fontSize: '0.78rem', borderRadius: 6, border: '1px solid #cbd5e1', background: '#fff', cursor: 'pointer' }
 const mutedText: React.CSSProperties = { color: '#94a3b8', fontSize: '0.8rem' }

@@ -221,6 +221,81 @@ export async function joinGroup(user: AuthedUser, inviteCode: string, displayNam
   return joinSession(user, inviteCode, displayName)
 }
 
+// A simulated fix is exact, but phones never claim better than a few metres; the server forgives the
+// joiner's and the meeting point's accuracy (each capped at 50 m) when checking the radius.
+const SIM_ACCURACY_METERS = 5
+
+export const NEARBY_RADII = [50, 100, 250, 500] as const
+
+export type NearbyStatus = { nearby: boolean; radiusMeters: number }
+
+// Organiser only: switches nearby join on (or off) with the meeting point at `point`, the app's Ping.
+// The meeting point stays where it was put; call again to move it.
+export async function setSessionNearby(
+  organiser: AuthedUser, sessionId: string, enabled: boolean, point: { lat: number; lon: number } | null, radiusMeters: number,
+): Promise<NearbyStatus> {
+  const res = await fetch(`${SERVER_URL}/sessions/${sessionId}/nearby`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${organiser.accessToken}` },
+    body: JSON.stringify({
+      enabled,
+      radiusMeters,
+      ...(point && { latitude: point.lat, longitude: point.lon, accuracy: SIM_ACCURACY_METERS }),
+    }),
+  })
+  if (!res.ok) throw new ApiError(await errorMessage(res, `Changing nearby join failed (${res.status}).`))
+  return res.json()
+}
+
+// Organiser only: the code people nearby must type to join, or null to remove it. The organiser's account
+// needs "groups", so it gets the sim features first.
+export async function setEntryCode(organiser: AuthedUser, sessionId: string, entryCode: string | null): Promise<void> {
+  await enableGo(organiser)
+  const res = await fetch(`${SERVER_URL}/sessions/${sessionId}/entry-code`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${organiser.accessToken}` },
+    body: JSON.stringify({ entryCode }),
+  })
+  if (!res.ok) throw new ApiError(await errorMessage(res, `Setting the entry code failed (${res.status}).`))
+}
+
+// What the app's start screen shows as tiles: groups whose meeting point is within their radius of the
+// phone. Only joinable entries (with a sessionId) are returned.
+export type NearbyGroup = { sessionId: string; title: string; eyebrow: string; subtitle: string; needsCode?: boolean; endsAt?: string }
+
+export async function findNearbyGroups(user: AuthedUser, point: { lat: number; lon: number }): Promise<NearbyGroup[]> {
+  await enableGo(user)
+  const query = `lat=${point.lat}&lon=${point.lon}&accuracy=${SIM_ACCURACY_METERS}`
+  const res = await fetch(`${SERVER_URL}/me/events/nearby?${query}`, {
+    headers: { Authorization: `Bearer ${user.accessToken}` },
+  })
+  if (res.status === 404) throw new ApiError('Events are switched off on this server (404).')
+  if (!res.ok) throw new ApiError(await errorMessage(res, `Finding groups near you failed (${res.status}).`))
+  // The placeholder entry has no sessionId and can't be joined.
+  const events = await res.json() as (Omit<NearbyGroup, 'sessionId'> & { sessionId?: string })[]
+  return events.filter((e): e is NearbyGroup => typeof e.sessionId === 'string')
+}
+
+// Joins one of findNearbyGroups' groups from where the phone is, as the app's tile does. The server checks
+// the position against the radius again; a wrong code is a 403 with "That code doesn't match…".
+export async function joinNearbyGroup(
+  user: AuthedUser, sessionId: string, point: { lat: number; lon: number }, displayName: string, entryCode?: string,
+): Promise<SessionMembership> {
+  const res = await fetch(`${SERVER_URL}/nearby/sessions/${sessionId}/join`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${user.accessToken}` },
+    body: JSON.stringify({
+      latitude: point.lat,
+      longitude: point.lon,
+      accuracy: SIM_ACCURACY_METERS,
+      displayName,
+      ...(entryCode && { entryCode }),
+    }),
+  })
+  if (!res.ok) throw new ApiError(await errorMessage(res, `Joining the group failed (${res.status}).`))
+  return res.json()
+}
+
 // ---- Crew ------------------------------------------------------------------------------------------
 // The app's way: one makes a single-use crew code, the other redeems it, and they're crew both ways.
 
