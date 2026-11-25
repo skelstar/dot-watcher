@@ -58,6 +58,15 @@ done
 `simctl install` overwrites the existing install in place — no need to
 uninstall first. `simctl launch` restarts the app if it's already running.
 
+To run against **prod** instead of the local server, pass the server override
+at launch (see "Against prod" below):
+
+```bash
+SIMCTL_CHILD_DOTWATCHER_API_BASE_URL="https://dot-watcher.skelstar.io/api" \
+SIMCTL_CHILD_DOTWATCHER_WEB_BASE_URL="https://dot-watcher.skelstar.io" \
+  xcrun simctl launch "$DEV" io.skelstar.DotWatcher
+```
+
 ## 4. Verify visually
 
 ```bash
@@ -74,12 +83,65 @@ that needs the server, make sure it's running first:
 
 ```bash
 lsof -ti:8080 || (cd /Users/skelstar/Documents/GitHub/dot-watcher/server && \
-  (dotnet run --urls "http://localhost:8080" > /tmp/dotwatcher-server.log 2>&1 &))
+  (Features__EnabledForAll__0=crew Features__EnabledForAll__1=casual \
+   Features__EnabledForAll__2=events Features__EnabledForAll__3=groups \
+   dotnet run --urls "http://localhost:8080" > /tmp/dotwatcher-server.log 2>&1 &))
 ```
+
+The `Features__EnabledForAll__*` variables turn those features on for every
+local account, so new simulator accounts can use crew, Go, nearby join and
+groups without granting anything. Needs Docker (Postgres) up.
 
 If a server changed (`server/` diff), kill the stale process
 (`kill $(lsof -ti:8080)`) and restart it the same way — otherwise the app hits
 old server behavior even though the client rebuilt fine.
+
+## Against prod
+
+Debug builds read `DOTWATCHER_API_BASE_URL` / `DOTWATCHER_WEB_BASE_URL` from
+the environment (`configuredBaseURL` in `LocationManager.swift`; Release builds
+ignore it). Two ways to set them:
+
+- **From the command line:** the `SIMCTL_CHILD_…` launch in step 3. The same
+  build works for local and prod; only the launch differs.
+- **From Xcode:** the **"DotWatcher (Simulator Prod)"** scheme (Debug, with
+  both variables set). **"DotWatcher (Device Prod)"** does the same for a
+  phone.
+
+Prod is the only server and its database is real (there's no staging):
+
+- Sign in with **test accounts**, never your own.
+- Accounts on prod don't have `groups` unless granted: Admin → Users →
+  **Groups** chip, per test account.
+- Simulated positions are real positions to prod. Keep simulators somewhere
+  nobody runs (the default Apple Park location is fine), not near home, or
+  real people nearby may see the simulators' anonymous dots.
+
+## Joining groups on the simulators
+
+A group can be joined from a tile only by someone near its join location, so
+both simulators need **the same simulated location** and an account with
+`groups` (automatic on the local server above; granted on prod).
+
+```bash
+# Same spot on every booted simulator (Apple Park; any shared point works).
+for DEV in A62EDA8F-28C6-45C7-97C3-ABEA51F42DFE F3A77401-6AA5-44CA-A385-FD50D7B8050A; do
+  xcrun simctl location "$DEV" set 37.3349,-122.0090
+done
+```
+
+Then, signed in as a different account on each simulator:
+
+1. Simulator A: **Create** → name it → **Let people nearby join** on
+   (optionally **Ask for a code to join**) → Create. The start screen shows
+   **YOUR GROUP**.
+2. Simulator B: pull down on the start screen to refresh; A's group appears
+   as a tile. Tap it → **Join group** (enter the code if A set one).
+3. To see each other by name, both press **Go**.
+
+To join while tracking: on B press **Go**, then **‹ Home**, then tap the tile.
+Keep B's location near A's join location while doing it (a moving preset
+such as Features → Location → City Run would carry B away from it).
 
 ## Driving taps (optional)
 

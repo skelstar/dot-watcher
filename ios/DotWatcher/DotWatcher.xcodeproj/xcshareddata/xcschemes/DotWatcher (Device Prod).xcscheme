@@ -51,6 +51,18 @@
             ReferencedContainer = "container:DotWatcher.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
+      <EnvironmentVariables>
+         <EnvironmentVariable
+            key = "DOTWATCHER_API_BASE_URL"
+            value = "https://dot-watcher.skelstar.io/api"
+            isEnabled = "YES">
+         </EnvironmentVariable>
+         <EnvironmentVariable
+            key = "DOTWATCHER_WEB_BASE_URL"
+            value = "https://dot-watcher.skelstar.io"
+            isEnabled = "YES">
+         </EnvironmentVariable>
+      </EnvironmentVariables>
    </LaunchAction>
    <ProfileAction
       buildConfiguration = "Release"
