@@ -5,6 +5,7 @@ import { parseGpxTrackpoints } from './lib/gpx'
 import {
   registerParticipant,
   joinSession,
+  joinGroup,
   postLocation,
   leaveSession,
   enableGo,
@@ -85,6 +86,12 @@ export default function PhoneSimulator({
   // 'go': out on its own, like the app's Go sign, instead of in a session. Positions then go to the
   // casual session and Leave becomes Stop.
   const [mode, setMode] = useState<'session' | 'go'>('session')
+  // A group this phone's account is in (see joinGroup). Separate from mode: as in the app, a phone can be
+  // in a group before going out, and stays in it when the Go run stops. Its own code box, so joining a
+  // group while out doesn't need the session join row.
+  const [group, setGroup] = useState<{ sessionId: string; name: string } | null>(null)
+  const [groupCode, setGroupCode] = useState(defaultInviteCode)
+  const [groupBusy, setGroupBusy] = useState(false)
   const [watchLink, setWatchLink] = useState<WatchLink | null>(null)
   const [viewerCount, setViewerCount] = useState(0)
   // One poll timer per pretend viewer still watching.
@@ -211,6 +218,40 @@ export default function PhoneSimulator({
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to go out.')
       setStatus('idle')
+    }
+  }
+
+  // Joins a group by its invite code, the app's way for a "groups" account: the account gets the feature,
+  // joins the session, and carries on (or later starts) posting to its own Go run. Doesn't start tracking.
+  async function handleJoinGroup() {
+    const code = groupCode.trim()
+    if (!code) return
+    armBackgroundTimer() // used just now: the 10 s start again
+    setGroupBusy(true)
+    setError(null)
+    try {
+      const user = await ensureAccount()
+      const membership = await joinGroup(user, code, displayName)
+      setGroup({ sessionId: membership.sessionId, name: membership.sessionName })
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to join the group.')
+    } finally {
+      setGroupBusy(false)
+    }
+  }
+
+  async function handleLeaveGroup() {
+    const user = userRef.current
+    if (!user || !group) return
+    armBackgroundTimer()
+    setGroupBusy(true)
+    try {
+      await leaveSession(user, group.sessionId)
+      setGroup(null)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to leave the group.')
+    } finally {
+      setGroupBusy(false)
     }
   }
 
@@ -488,6 +529,8 @@ export default function PhoneSimulator({
   // In the background the app's own buttons can't be pressed; the simulator's controls still work.
   const away = appState === 'back'
   const canPickPosition = status !== 'left'
+  // Groups are for phones on Go (or not out yet), not phones tracking in a joined session.
+  const canUseGroups = mode === 'go' ? status !== 'left' : status === 'idle'
 
   // A route's own end point is this phone's target once it has one, in place of the shared
   // convergence point — matches the priority order tick() and canStart use.
@@ -523,6 +566,7 @@ export default function PhoneSimulator({
       </div>
       <div style={statusPillRow}>
         <span style={statusPill(status)}>{statusLabel(status, mode)}</span>
+        {group && <span style={groupPill}>Group: {group.name}</span>}
       </div>
 
       <div style={positionRow}>
@@ -594,6 +638,32 @@ export default function PhoneSimulator({
       )}
       {status === 'idle' && away && (
         <p style={hint}>The app is closed: switch it on (top right) to join or go.</p>
+      )}
+
+      {canUseGroups && (
+        <div style={joinRow} title="Join a group by its invite code, as a groups account does in the app: no tracking in the session; members see each other by name on Go">
+          {group ? (
+            <button style={changePointBtn} disabled={groupBusy || away} onClick={handleLeaveGroup}>
+              {groupBusy ? 'Leaving…' : `Leave group ${group.name}`}
+            </button>
+          ) : (
+            <>
+              <input
+                style={codeInput}
+                value={groupCode}
+                onChange={e => setGroupCode(e.target.value.toUpperCase())}
+                placeholder="GROUP INVITE CODE"
+                disabled={groupBusy}
+              />
+              <button style={changePointBtn} disabled={!groupCode.trim() || groupBusy || away} onClick={handleJoinGroup}>
+                {groupBusy ? 'Joining…' : 'Join group'}
+              </button>
+              {defaultInviteCode && defaultInviteCode !== groupCode && (
+                <button style={linkBtn} onClick={() => setGroupCode(defaultInviteCode)}>use {defaultInviteCode}</button>
+              )}
+            </>
+          )}
+        </div>
       )}
 
       {error && <div style={errorText}>{error}</div>}
@@ -750,7 +820,8 @@ const nameInput: React.CSSProperties = { flex: 1, minWidth: 0, fontWeight: 600, 
 const nameLabel: React.CSSProperties = { flex: 1, minWidth: 0, fontWeight: 600, fontSize: '0.85rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }
 const removeBtn: React.CSSProperties = { border: 'none', background: 'none', fontSize: '1.1rem', cursor: 'pointer', color: '#94a3b8', lineHeight: 1, padding: '0 0.15rem', flexShrink: 0 }
 
-const statusPillRow: React.CSSProperties = { marginBottom: '0.5rem' }
+const statusPillRow: React.CSSProperties = { marginBottom: '0.5rem', display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }
+const groupPill: React.CSSProperties = { fontSize: '0.72rem', fontWeight: 600, padding: '0.15rem 0.5rem', borderRadius: 999, background: '#ede9fe', color: '#5b21b6' }
 const statusPill = (status: PhoneStatus): React.CSSProperties => {
   const colors: Record<PhoneStatus, [string, string]> = {
     idle: ['#f1f5f9', '#64748b'],

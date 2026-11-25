@@ -13,6 +13,17 @@ export const SERVER_URL = (import.meta.env.VITE_SERVER_URL as string | undefined
 // server's port, this is the separate Vite dev server for client/.
 export const CLIENT_URL = (import.meta.env.VITE_CLIENT_URL as string | undefined) ?? 'http://localhost:5173'
 
+// False when pointed at a real server (prod, via `npm run dev:prod`): the page then shows a warning,
+// since prod has one database and real people near a simulated phone can see its dot.
+export const IS_LOCAL_SERVER = (() => {
+  try {
+    const host = new URL(SERVER_URL).hostname
+    return host === 'localhost' || host === '127.0.0.1' || host.endsWith('.local')
+  } catch {
+    return true
+  }
+})()
+
 // The shared admin bearer token (matches the server's `BearerToken` config) — only needed for
 // the /admin/users cleanup below, not for anything phones themselves do.
 const ADMIN_BEARER_TOKEN = import.meta.env.VITE_BEARER_TOKEN as string | undefined
@@ -182,10 +193,10 @@ export async function reportAppState(user: AuthedUser, state: AppState): Promise
 export type GoRun = { sessionId: string; runId: string }
 export type WatchLink = { token: string; path: string }
 
-// Go and crew are features an admin switches on per account (or for everyone in config). A sim account
-// is new, so it gets both: then any two phones can be made crew, Go or not. Needs VITE_BEARER_TOKEN,
-// like deleteSimAccounts.
-const SIM_FEATURES = ['casual', 'crew']
+// Go, crew and groups are features an admin switches on per account (or for everyone in config). A sim
+// account is new, so it gets all three: then any two phones can be made crew, Go or not, and any phone
+// can join a group. Needs VITE_BEARER_TOKEN, like deleteSimAccounts.
+const SIM_FEATURES = ['casual', 'crew', 'groups']
 
 export async function enableGo(user: AuthedUser): Promise<void> {
   if (!ADMIN_BEARER_TOKEN) {
@@ -196,7 +207,18 @@ export async function enableGo(user: AuthedUser): Promise<void> {
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ADMIN_BEARER_TOKEN}` },
     body: JSON.stringify({ features: SIM_FEATURES }),
   })
-  if (!res.ok) throw new ApiError(await errorMessage(res, `Switching Go and crew on failed (${res.status}).`))
+  if (!res.ok) throw new ApiError(await errorMessage(res, `Switching Go, crew and groups on failed (${res.status}).`))
+}
+
+// ---- Groups ----------------------------------------------------------------------------------------
+// For an account with "groups", joining a session by invite code is a group join (see
+// .ai/plans/go-and-groups.md): the same request as joinSession, but the phone doesn't track in the
+// session. It keeps posting to its Go run, and the group's members see each other there by name.
+// Leaving is leaveSession.
+
+export async function joinGroup(user: AuthedUser, inviteCode: string, displayName: string): Promise<SessionMembership> {
+  await enableGo(user)
+  return joinSession(user, inviteCode, displayName)
 }
 
 // ---- Crew ------------------------------------------------------------------------------------------

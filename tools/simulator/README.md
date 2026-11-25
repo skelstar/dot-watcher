@@ -22,6 +22,23 @@ npm run dev
 
 Opens at `http://localhost:5174`.
 
+### Against prod
+
+```bash
+cp .env.prod.example .env.prod.local   # then set VITE_BEARER_TOKEN to prod's admin token
+npm run dev:prod
+```
+
+`dev:prod` reads `.env.prod.local` (gitignored) over `.env`: the prod server, the deployed web
+client for the live view and watch links, and prod's admin token. The page shows a red banner whenever
+the server isn't local. Prod is the only server, with one database, so:
+
+- **Create session** and **Delete sim data** delete `sim-` accounts **on prod** (only those).
+- Real people near a phone's position can see its dot (anonymous unless crew or in a group with them).
+  Pick start points away from where people run.
+- The admin page's **🧪 Open simulator** link only shows on a local admin page; with `dev:prod` running,
+  open `http://localhost:5174` directly.
+
 ---
 
 ## Configuration
@@ -108,6 +125,12 @@ multi-runner scenarios without needing physical devices.
     makes a crew code, the other redeems it), switching Go and crew on for both accounts first; crew is
     both ways, so the other phone shows the tick too. Unticking removes them from each other's crew.
     Needs `VITE_BEARER_TOKEN`.
+  - Can **Join group** by invite code (its own code box, with "use CODE" for the Session tab's session):
+    the app's way for a `groups` account. It joins the session but doesn't track in it, and stays on (or
+    later starts) its Go run; members of the group see each other **by name** on Go even when they
+    aren't crew. Works before going out or while out on Go, not while tracking in a joined session. The
+    phone shows **Group: NAME** and a **Leave group** button. Stopping the Go run doesn't leave the
+    group, as in the app. Every sim account gets `casual`, `crew` and `groups` (needs `VITE_BEARER_TOKEN`).
   - Can leave the session independently at any time
   - Has an app **Foreground/Background** switch (top right). A new phone's app is closed: switch it on
     before **Join** or **Go** (phones seeded by Create session open it themselves). Opening it the first
