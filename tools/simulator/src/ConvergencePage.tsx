@@ -98,6 +98,7 @@ export default function ConvergencePage() {
       organizerUserIdRef.current = organizer.userId
       organizerRef.current = organizer
       setNearby(null)
+      setMeetingPoint(null)
       setNearbyError(null)
       setEntryCodeSet(null)
       const name = sessionName.trim() || randomSessionName()
@@ -200,6 +201,8 @@ export default function ConvergencePage() {
   // Nearby join for the session (the app's "Let people nearby join" and Ping): the meeting point is put at
   // the convergence point when switched on, and only moves when "Ping here" is pressed again.
   const [nearby, setNearby] = useState<NearbyStatus | null>(null)
+  // Where the last Ping put the meeting point, so the map can draw the capture zone there.
+  const [meetingPoint, setMeetingPoint] = useState<LatLon | null>(null)
   const [nearbyRadius, setNearbyRadius] = useState<number>(100)
   const [nearbyBusy, setNearbyBusy] = useState(false)
   const [nearbyError, setNearbyError] = useState<string | null>(null)
@@ -213,7 +216,9 @@ export default function ConvergencePage() {
     setNearbyBusy(true)
     setNearbyError(null)
     try {
-      setNearby(await setSessionNearby(organizer, session.sessionId, enabled, enabled ? convergencePoint : null, nearbyRadius))
+      const point = enabled ? convergencePoint : null
+      setNearby(await setSessionNearby(organizer, session.sessionId, enabled, point, nearbyRadius))
+      setMeetingPoint(point)
     } catch (err) {
       setNearbyError(err instanceof Error ? err.message : 'Changing nearby join failed.')
     } finally {
@@ -459,13 +464,18 @@ export default function ConvergencePage() {
             )}
           </div>
           {nearbyError && <div style={errorText}>{nearbyError}</div>}
-          <SimulatorMap convergencePoint={convergencePoint} phones={activePhones} routes={routes} />
+          <SimulatorMap
+            convergencePoint={convergencePoint}
+            phones={activePhones}
+            routes={routes}
+            captureZone={nearby?.nearby && meetingPoint ? { center: meetingPoint, radiusMeters: nearby.radiusMeters } : null}
+          />
           <p style={hint}>
             Each phone's uploaded GPX route is drawn here in that phone's own colour — upload one
             from its card below to have it walk the route instead of straight-line towards the
             convergence point above. Nearby join puts the session's meeting point at the convergence
-            point (moving the convergence point later doesn't move it; press Ping here). Phones
-            within the radius find it with <strong>Groups near you</strong>.
+            point (moving the convergence point later doesn't move it; press Ping here), drawn as the
+            yellow circle. Phones within the radius find it with <strong>Groups near you</strong>.
           </p>
         </section>
       )}
