@@ -7,6 +7,8 @@ import {
   joinSession,
   joinGroup,
   findNearbyGroups,
+  createCrewCode,
+  redeemCrewCode,
   joinNearbyGroup,
   type NearbyGroup,
   postLocation,
@@ -101,6 +103,11 @@ export default function PhoneSimulator({
   const [nearbyCode, setNearbyCode] = useState('')
   // "Stay here": the phone keeps posting from where it is (no heading, as when standing still) instead of
   // walking on, so it can be moved into a group's zone and left there.
+  // Crew with a real account, by crew code either way: no accept step, the same as the app's codes.
+  const [crewCodeInput, setCrewCodeInput] = useState('')
+  const [madeCrewCode, setMadeCrewCode] = useState<string | null>(null)
+  const [crewNote, setCrewNote] = useState<string | null>(null)
+  const [crewBusy, setCrewBusy] = useState(false)
   const [stayHere, setStayHere] = useState(false)
   const stayHereRef = useRef(false)
   useEffect(() => { stayHereRef.current = stayHere }, [stayHere])
@@ -249,6 +256,43 @@ export default function PhoneSimulator({
       setError(err instanceof Error ? err.message : 'Failed to join the group.')
     } finally {
       setGroupBusy(false)
+    }
+  }
+
+  // Redeems a code made in the app's crew sheet (or another sim's): this phone and the code's owner are
+  // crew at once.
+  async function handleRedeemCrewCode() {
+    const code = crewCodeInput.trim()
+    if (!code) return
+    armBackgroundTimer()
+    setCrewBusy(true)
+    setError(null)
+    setCrewNote(null)
+    try {
+      const user = await ensureAccount()
+      const owner = await redeemCrewCode(user, code)
+      setCrewNote(`Crew with ${owner.nickname || owner.displayName || 'them'} now.`)
+      setCrewCodeInput('')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to redeem the crew code.')
+    } finally {
+      setCrewBusy(false)
+    }
+  }
+
+  // Makes a code to redeem in the app's crew sheet (Add crew → enter a code).
+  async function handleMakeCrewCode() {
+    armBackgroundTimer()
+    setCrewBusy(true)
+    setError(null)
+    setCrewNote(null)
+    try {
+      const user = await ensureAccount()
+      setMadeCrewCode((await createCrewCode(user)).code)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to make a crew code.')
+    } finally {
+      setCrewBusy(false)
     }
   }
 
@@ -673,6 +717,26 @@ export default function PhoneSimulator({
               {option.pending && <span style={{ color: '#94a3b8', marginLeft: '0.25rem' }}>(once both apps are open)</span>}
             </label>
           ))}
+        </div>
+      )}
+
+      {status !== 'left' && (
+        <div style={joinRow} title="Crew with a real account (or any account) by crew code: crew straight away, no accept step">
+          <input
+            style={codeInput}
+            value={crewCodeInput}
+            onChange={e => setCrewCodeInput(e.target.value.toUpperCase())}
+            placeholder="CREW CODE"
+            disabled={crewBusy}
+          />
+          <button style={changePointBtn} disabled={!crewCodeInput.trim() || crewBusy || away} onClick={handleRedeemCrewCode}>
+            Redeem crew code
+          </button>
+          <button style={changePointBtn} disabled={crewBusy || away} onClick={handleMakeCrewCode}>
+            Make crew code
+          </button>
+          {madeCrewCode && <span style={positionText}>Code: <strong>{madeCrewCode}</strong> (24 h, once)</span>}
+          {crewNote && <span style={positionText}>{crewNote}</span>}
         </div>
       )}
 

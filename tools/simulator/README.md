@@ -146,6 +146,10 @@ multi-runner scenarios without needing physical devices.
     screen tiles do (distance, "code needed"), each with **Join group** (and a code box when needed).
     That joins through nearby join from the phone's current position, so the server checks the radius
     and the entry code again. A wrong code shows the server's "That code doesn't match…"
+  - Can be made crew with **any account**, such as your own on a real phone, by crew code. Crew codes
+    make crew straight away, both ways, with no accept step (Find new crew isn't involved):
+    **Make crew code** shows a single-use code (24 h) to type into the app's crew sheet, or paste a
+    code from the app into **Redeem crew code**. Remove them from crew in the app.
   - Can leave the session independently at any time
   - Has an app **Foreground/Background** switch (top right). A new phone's app is closed: switch it on
     before **Join** or **Go** (phones seeded by Create session open it themselves). Opening it the first

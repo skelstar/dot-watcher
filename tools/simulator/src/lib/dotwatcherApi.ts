@@ -302,18 +302,34 @@ export async function joinNearbyGroup(
 export async function makeCrew(a: AuthedUser, b: AuthedUser): Promise<void> {
   // A phone that joined a session never had the features switched on.
   await Promise.all([enableGo(a), enableGo(b)])
-  const codeRes = await fetch(`${SERVER_URL}/me/crew/codes`, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${a.accessToken}` },
-  })
-  if (!codeRes.ok) throw new ApiError(await errorMessage(codeRes, `Making a crew code failed (${codeRes.status}).`))
-  const { code } = await codeRes.json() as { code: string }
+  const { code } = await createCrewCode(a)
+  await redeemCrewCode(b, code)
+}
 
-  const redeemRes = await fetch(`${SERVER_URL}/me/crew/codes/${encodeURIComponent(code)}/redeem`, {
+// A single-use crew code from this account, valid for 24 hours: whoever redeems it first (a sim, or a
+// real account in the app's crew sheet) becomes crew with it straight away, both ways.
+export type CrewCode = { code: string; expiresAt: string }
+
+export async function createCrewCode(user: AuthedUser): Promise<CrewCode> {
+  await enableGo(user)
+  const res = await fetch(`${SERVER_URL}/me/crew/codes`, {
     method: 'POST',
-    headers: { Authorization: `Bearer ${b.accessToken}` },
+    headers: { Authorization: `Bearer ${user.accessToken}` },
   })
-  if (!redeemRes.ok) throw new ApiError(await errorMessage(redeemRes, `Joining the crew failed (${redeemRes.status}).`))
+  if (!res.ok) throw new ApiError(await errorMessage(res, `Making a crew code failed (${res.status}).`))
+  return res.json()
+}
+
+// Redeems someone's crew code (a sim's, or one made in the app's crew sheet): crew straight away, no
+// accept step. Returns the code's owner as the redeemer now sees them.
+export async function redeemCrewCode(user: AuthedUser, code: string): Promise<{ displayName?: string; nickname?: string | null }> {
+  await enableGo(user)
+  const res = await fetch(`${SERVER_URL}/me/crew/codes/${encodeURIComponent(code.trim())}/redeem`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${user.accessToken}` },
+  })
+  if (!res.ok) throw new ApiError(await errorMessage(res, `Joining the crew failed (${res.status}).`))
+  return res.json()
 }
 
 // Removes them from each other's crew (the server does both sides).
