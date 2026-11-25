@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { apiHeaders } from './apiHeaders'
 import { initialsFor } from './components/InitialsBadge.tsx'
 // The colour each runner has on the map, so a dot looks the same here.
@@ -8,15 +8,16 @@ import {
   buildFlow,
   crewGroups,
   dayRange,
+  timeForX,
+  windowBetween,
+  windowScale,
+  zoomedScale,
   overlaps,
   runIntervals,
   xForTime,
   formatDuration,
-  MAX_TIME_WIDTH,
   layoutFlow,
-  readableWidth,
   timeBreaks,
-  timeScale,
   timeScaleOfWidth,
   timeTicks,
   todayString,
@@ -24,9 +25,9 @@ import {
   type ActivityEventDto,
   type Flow,
   type FlowLayout,
-  type PlacedBranch,
   type RegisterEntryDto,
   type TimeScale,
+  type TimeWindow,
 } from './activityFlow.ts'
 
 // The admin Activity tab: what each dot did on a day, as one line per dot with evenly spaced stops and
@@ -46,18 +47,20 @@ export default function ActivityTab({ serverUrl, token }: { serverUrl: string; t
   const [selected, setSelected] = useState<string[]>([])
   const [events, setEvents] = useState<Load<ActivityEventDto[]>>({ kind: 'idle' })
   const [refreshTick, setRefreshTick] = useState(0)
-  const [view, setView] = useState<'order' | 'time'>('order')
-  const [zoom, setZoom] = useState<'fit' | number>(1)
-  // By time: long stretches where no line has anything shrink to a narrow break.
+  // Stretches zoomed in to by dragging across a line, each inside the one before. The last is shown;
+  // Zoom out goes back one.
+  const [zoomedTo, setZoomedTo] = useState<TimeWindow[]>([])
+  // Long stretches where no line has anything shrink to a narrow break.
   const [collapseQuiet, setCollapseQuiet] = useState(true)
   // Testing on the live server: activity an admin marked as test is left out unless this is off.
   const [hideTest, setHideTest] = useState(true)
   const [markError, setMarkError] = useState<string | null>(null)
-  // How wide the lines can be drawn, so 1× by time fits the panel.
+  // How wide the lines can be drawn: the day (or the stretch zoomed in to) fills the panel.
   const [panelWidth, setPanelWidth] = useState(900)
   const panelRef = useRef<HTMLDivElement>(null)
-  // By time, the lines scroll together: each line's scroller, and the one being scrolled by hand.
+  // Zoomed in, the lines scroll together: each line's scroller. And what's on screen, for the toolbar.
   const scrollers = useRef(new Set<HTMLDivElement>())
+  const [onScreen, setOnScreen] = useState<TimeWindow | null>(null)
 
   const headers = apiHeaders(token, 'web-admin')
 
@@ -69,19 +72,15 @@ export default function ActivityTab({ serverUrl, token }: { serverUrl: string; t
     return () => observer.disconnect()
   }, [])
 
-  // The others follow the one scrolled. Their own scroll events then find everyone already in step, so
-  // nothing bounces back.
-  function syncScroll(source: HTMLDivElement) {
-    if (view !== 'time') return
-    for (const other of scrollers.current)
-      if (other !== source && other.scrollLeft !== source.scrollLeft) other.scrollLeft = source.scrollLeft
-  }
-
-  function registerScroller(el: HTMLDivElement | null) {
-    if (!el) return
-    scrollers.current.add(el)
-    return () => { scrollers.current.delete(el) }
-  }
+  // Esc zooms out one step, as the button does.
+  useEffect(() => {
+    if (zoomedTo.length === 0) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setZoomedTo(current => current.slice(0, -1))
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [zoomedTo.length])
 
   useEffect(() => {
     let cancelled = false
@@ -156,31 +155,67 @@ export default function ActivityTab({ serverUrl, token }: { serverUrl: string; t
   }
 
   const dotList = dots.kind === 'ok' ? dots.value : []
-  const shownEvents = events.kind === 'ok' ? events.value.filter(e => selected.includes(e.userId)) : []
-  // By time, every line shares one scale, so the same moment is at the same place on each. Fit puts the
-  // whole day in the panel; 1× spaces stops about as In order does, and the lines scroll together.
-  const fitWidth = Math.max(300, panelWidth - LINE_CARD_INSET - LAYOUT.startX - LAYOUT.labelWidth - 28)
-  // With collapsing, quiet stretches shrink to breaks, so the cap applies to the width that's drawn.
-  const scale = view !== 'time' ? null : (() => {
-    if (zoom === 'fit') return timeScaleOfWidth(shownEvents, fitWidth, collapseQuiet)
-    const straight = (readableWidth(shownEvents, collapseQuiet ? Infinity : MAX_TIME_WIDTH) ?? fitWidth) * zoom
-    const drawn = timeScale(shownEvents, straight, collapseQuiet)
-    if (!drawn || drawn.width < fitWidth) return timeScaleOfWidth(shownEvents, fitWidth, collapseQuiet)
-    return drawn.width > MAX_TIME_WIDTH ? timeScaleOfWidth(shownEvents, MAX_TIME_WIDTH, collapseQuiet) : drawn
-  })()
+  const dayEvents = events.kind === 'ok' ? events.value.filter(e => selected.includes(e.userId)) : []
+  const zoomWindow = zoomedTo[zoomedTo.length - 1] ?? null
+  const shownEvents = dayEvents
+  // Every line shares one scale, so the same moment is at the same place on each. Zoomed out it fits the
+  // panel; zoomed in, the stretch fills the panel and the rest of the day scrolls either side.
+  // A line in a crew box has that box's edges to fit inside as well.
+  const inCrewBox = crewGroups(dotList.filter(dot => selected.includes(dot.userId))).some(group => group.length > 1)
+  const fitWidth = Math.max(300,
+    panelWidth - LINE_CARD_INSET - (inCrewBox ? CREW_BOX_INSET : 0) - LAYOUT.startX - LAYOUT.labelWidth - 28)
+  // Zoomed in: the day drawn straight at the stretch's rate. Otherwise the day's events, with quiet
+  // stretches shrunk to breaks if asked; with nothing to show, the day itself, so there's always a scale.
+  const { from: dayFrom, to: dayTo } = dayRange(day)
+  const scale: TimeScale = zoomWindow
+    ? zoomedScale(shownEvents, zoomWindow, fitWidth)
+    : timeScaleOfWidth(shownEvents, fitWidth, collapseQuiet)
+      ?? windowScale({ start: Date.parse(dayFrom), end: Date.parse(dayTo) }, fitWidth)
+
+  // What's on screen, from where a line is scrolled to.
+  const onScreenAt = (scrollLeft: number): TimeWindow => ({
+    start: timeForX(scale, scrollLeft + LAYOUT.startX),
+    end: timeForX(scale, scrollLeft + LAYOUT.startX + fitWidth),
+  })
+
+  // On zooming in (or back out a step), every line scrolls so the stretch fills the panel.
+  const zoomLeft = zoomWindow ? Math.max(0, xForTime(scale, zoomWindow.start) - LAYOUT.startX) : 0
+  useLayoutEffect(() => {
+    for (const el of scrollers.current) el.scrollLeft = zoomLeft
+    setOnScreen(zoomWindow ? onScreenAt(zoomLeft) : null)
+    // Only on a new stretch or a new scale width (a resize), not every render, so it doesn't undo scrolling.
+  }, [zoomWindow, zoomLeft, scale.width])
+
+  // The others follow the one scrolled. Their own scroll events then find everyone already in step, so
+  // nothing bounces back.
+  function syncScroll(source: HTMLDivElement) {
+    if (!zoomWindow) return
+    for (const other of scrollers.current)
+      if (other !== source && other.scrollLeft !== source.scrollLeft) other.scrollLeft = source.scrollLeft
+    setOnScreen(onScreenAt(source.scrollLeft))
+  }
+
+  function registerScroller(el: HTMLDivElement | null) {
+    if (!el) return
+    scrollers.current.add(el)
+    // A line that appears while zoomed in starts where the others are.
+    const other = [...scrollers.current].find(s => s !== el)
+    if (other) el.scrollLeft = other.scrollLeft
+    return () => { scrollers.current.delete(el) }
+  }
   const laidOut = dotList
     .filter(dot => selected.includes(dot.userId))
     .map(dot => {
       const flow = buildFlow(shownEvents.filter(e => e.userId === dot.userId), register)
       return { dot, flow, layout: layoutFlow(flow, scale) }
     })
-  // By time, every line is as wide as the widest, so they scroll as one.
-  const sharedWidth = scale ? Math.max(0, ...laidOut.map(l => l.layout.width)) : null
+  // Every line is as wide as the widest, so they line up.
+  const sharedWidth = Math.max(0, ...laidOut.map(l => l.layout.width))
 
   // Crew: lines of dots who are crew sit together in one box, and each line shows when its crew were out
   // with it (both with a Go run going).
   const lineById = new Map(laidOut.map(line => [line.dot.userId, line]))
-  const endOfLine = scale?.end ?? Math.max(0, ...shownEvents.map(e => Date.parse(e.at)))
+  const endOfLine = scale.end
   const togetherFor = (dot: ActivityDotDto, flow: Flow) => (dot.crewWith ?? [])
     .map(id => lineById.get(id))
     .filter((mate): mate is NonNullable<typeof mate> => !!mate)
@@ -198,11 +233,14 @@ export default function ActivityTab({ serverUrl, token }: { serverUrl: string; t
       flow={flow}
       layout={layout}
       scale={scale}
-      width={sharedWidth ?? layout.width}
+      width={sharedWidth}
       together={togetherFor(dot, flow)}
+      scrollable={zoomWindow !== null}
       scrollerRef={registerScroller}
       onScroll={syncScroll}
       onMark={(runId, isTest) => markTest(dot.userId, runId, isTest)}
+      onZoomTo={window => setZoomedTo(current => [...current, window])}
+      onZoomOut={zoomWindow ? () => setZoomedTo(current => current.slice(0, -1)) : undefined}
     />
   )
 
@@ -219,50 +257,55 @@ export default function ActivityTab({ serverUrl, token }: { serverUrl: string; t
     <>
       <h2 style={heading}>Activity</h2>
       <p style={note}>
-        What each dot did. In order: stops evenly spaced, as a story. By time: every line on one clock, so you
-        can see what happened when, relative to the others; the lines scroll together. Orange: a Go run. Dashed:
-        the app was in the background. 🔗 on the line: a watch link was shared. Someone else shows below the
-        line: by time, a 👁️ strip for each viewing, as long as they had it on screen. Crew are boxed
-        together, and each line shows when its crew were out at the same time (by time, a strip in their
-        colour, starting with their dot).
+        What each dot did, every line on one clock, so you can see what happened when, relative to the others.
+        Drag across a line to zoom in to that stretch, then scroll along the day; click a line, Zoom out or Esc
+        to go back.
+        Orange: a Go run. Dashed: the app was in the background. 🔗 on the line: a watch link was shared.
+        Someone else shows below the line: a 👁️ strip for each viewing, as long as they had it on screen.
+        Crew are boxed together, and each line shows when its crew were out at the same time (a strip in
+        their colour, starting with their dot).
         Events are kept for 30 days.
       </p>
 
+      {/* One toolbar row, every control the same height: the day, two toggles, the zoom (when zoomed in),
+          and Refresh at the far end. */}
       <div style={controls}>
-        <label style={fieldLabel}>
-          Day
-          <input type="date" value={day} max={todayString()} onChange={e => e.target.value && setDay(e.target.value)} style={dateInput} />
+        <label style={dayField}>
+          <span style={dayFieldLabel}>Day</span>
+          <input type="date" value={day} max={todayString()} onChange={e => {
+            if (!e.target.value) return
+            setDay(e.target.value)
+            // A new day starts zoomed out.
+            setZoomedTo([])
+          }} style={dateInput} />
         </label>
-        <div style={fieldLabel}>
-          Show
-          <div style={segmented} role="group" aria-label="How to space the stops">
-            <button style={segment(view === 'order')} aria-pressed={view === 'order'} onClick={() => setView('order')}>In order</button>
-            <button style={segment(view === 'time')} aria-pressed={view === 'time'} onClick={() => setView('time')}>By time</button>
-          </div>
-        </div>
-        {view === 'time' && (
-          <label style={fieldLabel}>
-            Zoom
-            <select value={String(zoom)} onChange={e => setZoom(e.target.value === 'fit' ? 'fit' : Number(e.target.value))} style={dateInput}
-              title="Fit: the whole day in the panel. 1×: stops spaced about as In order, scrolling.">
-              <option value="fit">Fit</option>
-              {ZOOMS.map(z => <option key={z} value={z}>{z}×</option>)}
-            </select>
-          </label>
-        )}
-        {view === 'time' && (
-          <label style={{ ...fieldLabel, flexDirection: 'row', alignItems: 'center', alignSelf: 'center', color: '#0f172a' }}
-            title="Long stretches where no line has anything are shrunk to a break marked with how long they were">
-            <input type="checkbox" checked={collapseQuiet} onChange={e => setCollapseQuiet(e.target.checked)} style={{ margin: 0 }} />
-            Collapse quiet stretches
-          </label>
-        )}
-        <label style={{ ...fieldLabel, flexDirection: 'row', alignItems: 'center', alignSelf: 'center', color: '#0f172a' }}
+        <label style={toggleChip(collapseQuiet, zoomWindow !== null)}
+          title={zoomWindow
+            ? 'Zoomed in, the stretch is drawn straight: zoom out to use this'
+            : 'Long stretches where no line has anything are shrunk to a break marked with how long they were'}>
+          <input type="checkbox" checked={collapseQuiet} onChange={e => setCollapseQuiet(e.target.checked)} style={toggleBox}
+            disabled={zoomWindow !== null} />
+          Collapse quiet stretches
+        </label>
+        <label style={toggleChip(hideTest, false)}
           title="Runs and stretches marked as test (testing on the live server) are left out">
-          <input type="checkbox" checked={hideTest} onChange={e => setHideTest(e.target.checked)} style={{ margin: 0 }} />
+          <input type="checkbox" checked={hideTest} onChange={e => setHideTest(e.target.checked)} style={toggleBox} />
           Hide test activity
         </label>
-        <button style={refreshBtn} onClick={() => setRefreshTick(t => t + 1)}>Refresh</button>
+        {zoomWindow && (
+          <div style={zoomGroup} role="group" aria-label="Zoom">
+            {/* What's on screen: the stretch dragged across, then wherever the lines are scrolled to. */}
+            <span style={zoomChip}>{formatTime((onScreen ?? zoomWindow).start)}–{formatTime((onScreen ?? zoomWindow).end)}</span>
+            <button style={toolbarBtn} onClick={() => setZoomedTo(current => current.slice(0, -1))}
+              title="Back to how it was before the last drag (Esc, or click a line)">
+              Zoom out
+            </button>
+            {zoomedTo.length > 1 && (
+              <button style={toolbarBtn} onClick={() => setZoomedTo([])}>Whole day</button>
+            )}
+          </div>
+        )}
+        <button style={{ ...toolbarBtn, marginLeft: 'auto' }} onClick={() => setRefreshTick(t => t + 1)}>Refresh</button>
       </div>
       <p style={note}>
         Testing? Mark a Go run as test with its button on the line.
@@ -308,12 +351,14 @@ export default function ActivityTab({ serverUrl, token }: { serverUrl: string; t
 
 // ---- One dot's line ----------------------------------------------------------------------------
 
-// Times the readable spacing (1×); "Fit" is separate.
-const ZOOMS = [1, 2, 4]
+// A drag narrower than this is taken as a click, not a zoom.
+const MIN_DRAG_PX = 8
 // A line card's horizontal padding and border, both sides.
 const LINE_CARD_INSET = 34
+// A crew box's horizontal padding and borders (4 px left, 1 px right, 10 px padding each side).
+const CREW_BOX_INSET = 25
 const LABEL_ROW = 42
-// One strip per crew mate (and one for watching), By time, with their dot (or 👁️) at its start.
+// One strip per crew mate (and one for watching), with their dot (or 👁️) at its start.
 const CREW_ROW = 23
 // The marker at a strip's start: a crew mate's dot, or the watching icon at a matching size (an emoji
 // has space around it, so it's set a touch bigger to look the same).
@@ -321,7 +366,6 @@ const STRIP_MARKER = CREW_ROW - 3
 // How far down a label its first line's middle is, where the leader's tick meets it.
 const LEADER_TICK_Y = 9
 const BRANCH_HEIGHT = 52
-const ICON_BRANCH_HEIGHT = 26
 // A stop with an icon is drawn on the line as a dot this big, with the icon in it.
 const ICON_DOT = 24
 const BRANCH_GAP = 12
@@ -333,22 +377,56 @@ function formatTime(at: string | number, withSeconds = true) {
 
 type Together = { mate: ActivityDotDto; spans: { start: number; end: number }[] }
 
-function DotLine({ dot, flow, layout, scale, width, together, scrollerRef, onScroll, onMark }: {
+function DotLine({ dot, flow, layout, scale, width, together, scrollable, scrollerRef, onScroll, onMark, onZoomTo, onZoomOut }: {
   dot: ActivityDotDto
   flow: Flow
   layout: FlowLayout
-  scale: TimeScale | null
+  scale: TimeScale
   width: number
   // Crew who were out at the same time as this dot, and when.
   together: Together[]
+  // Zoomed in: the line is wider than the panel and scrolls (with the others).
+  scrollable: boolean
   scrollerRef: (el: HTMLDivElement | null) => (() => void) | undefined
   onScroll: (el: HTMLDivElement) => void
   onMark: (runId: string, isTest: boolean) => void
+  // A stretch dragged across, to zoom in to.
+  onZoomTo: (window: TimeWindow) => void
+  // Zoomed in: a plain click on the line goes back a step. Absent when zoomed out.
+  onZoomOut?: () => void
 }) {
-  // By time, strips just under the line: first one for watching (each viewing along it, 👁️ at its start),
+  // A drag across the line in progress: where it started and where the pointer is, in px.
+  const [drag, setDrag] = useState<{ from: number; to: number } | null>(null)
+  const dragLeft = drag ? Math.min(drag.from, drag.to) : 0
+  const dragRight = drag ? Math.max(drag.from, drag.to) : 0
+  const xIn = (e: React.PointerEvent<HTMLDivElement>) =>
+    Math.min(Math.max(e.clientX - e.currentTarget.getBoundingClientRect().left, 0), width)
+  const zoomDrag = {
+    onPointerDown(e: React.PointerEvent<HTMLDivElement>) {
+      // Left button only, and not on something that does its own thing when clicked.
+      if (e.button !== 0 || (e.target as HTMLElement).closest('button, a, input, select')) return
+      e.preventDefault()
+      e.currentTarget.setPointerCapture(e.pointerId)
+      const x = xIn(e)
+      setDrag({ from: x, to: x })
+    },
+    onPointerMove(e: React.PointerEvent<HTMLDivElement>) {
+      if (drag) setDrag({ ...drag, to: xIn(e) })
+    },
+    onPointerUp() {
+      if (!drag) return
+      if (dragRight - dragLeft >= MIN_DRAG_PX)
+        onZoomTo(windowBetween(timeForX(scale, dragLeft), timeForX(scale, dragRight)))
+      // A click (or a drag too small to mean anything) zooms out a step, when zoomed in.
+      else onZoomOut?.()
+      setDrag(null)
+    },
+    onPointerCancel() { setDrag(null) },
+  }
+  // Strips just under the line: first one for watching (each viewing along it, 👁️ at its start),
   // then one per crew mate in their colour, for when both were out.
-  const watchRows = scale && layout.branches.some(b => b.placement === 'strip') ? 1 : 0
-  const crewRows = scale ? together.length : 0
+  const watchRows = layout.branches.some(b => b.placement === 'strip') ? 1 : 0
+  const crewRows = together.length
   const stripY = (row: number) => lineY + 14 + row * CREW_ROW
   const crewY = (row: number) => stripY(watchRows + row)
   // The Go runs on this line, for their mark buttons. A run is test when its start (or stop) is.
@@ -359,20 +437,18 @@ function DotLine({ dot, flow, layout, scale, width, together, scrollerRef, onScr
       const last = run.toIndex === null ? null : flow.stops[run.toIndex]
       return { runId: run.runId!, first, last, isTest: first.isTest || (last?.isTest ?? false) }
     })
-  // By time, gridline labels sit above the line.
-  const lineY = scale ? 52 : 40
-  // A branch without an icon, by time, still gets a thin bar per span just under the line.
+  // Gridline labels sit above the line.
+  const lineY = 52
+  // A branch without an icon still gets a thin bar per span just under the line.
   const spanY = lineY + 13
   // Labels start below the strips.
-  const labelTop = (row: number) => lineY + (scale ? 22 + (watchRows + crewRows) * CREW_ROW : 12) + row * LABEL_ROW
+  const labelTop = (row: number) => lineY + 22 + (watchRows + crewRows) * CREW_ROW + row * LABEL_ROW
   const labelsBottom = labelTop(layout.labelRows)
-  // Cards go in rows below the labels; a pill (in order) sits in a label row, so the line's box is only
-  // as deep as its labels unless there are cards.
+  // Cards go in rows below the labels, so the line's box is only as deep as its labels unless there are cards.
   const branchTop = (row: number) => labelsBottom + 16 + row * (BRANCH_HEIGHT + BRANCH_GAP)
-  const placedTop = (b: PlacedBranch) => (b.placement === 'labels' ? labelTop(b.row) : branchTop(b.row))
   const height = layout.branchRows > 0 ? branchTop(layout.branchRows - 1) + BRANCH_HEIGHT + 8 : labelsBottom + 4
-  const ticks = scale ? timeTicks(scale) : []
-  const breaks = scale ? timeBreaks(scale) : []
+  const ticks = timeTicks(scale)
+  const breaks = timeBreaks(scale)
   const rail: React.CSSProperties = { position: 'absolute', top: lineY - 2, height: 4, borderRadius: 4 }
 
   return (
@@ -381,14 +457,6 @@ function DotLine({ dot, flow, layout, scale, width, together, scrollerRef, onScr
         <span style={{ ...lineBadge, background: runnerColour(dot.displayName) }}>{initialsFor(dot.displayName)}</span>
         <span style={{ fontWeight: 600 }}>{dot.displayName}</span>
         <span style={{ color: '#64748b', fontSize: '0.8rem' }}>{dot.username}</span>
-        {/* In order there's no clock to line strips up against, so it says so in words. */}
-        {!scale && together.map(t => (
-          <span key={t.mate.userId} style={{ ...togetherChip, borderColor: runnerColour(t.mate.displayName) }}>
-            <span style={{ ...togetherDot, background: runnerColour(t.mate.displayName) }} />
-            out with {t.mate.displayName}{' '}
-            {t.spans.map(s => `${formatTime(s.start, false)}–${formatTime(s.end, false)}`).join(', ')}
-          </span>
-        ))}
         <span style={{ flex: 1 }} />
         {runs.map(run => (
           <button key={run.runId} style={markBtn(run.isTest)} onClick={() => onMark(run.runId, !run.isTest)}
@@ -400,9 +468,11 @@ function DotLine({ dot, flow, layout, scale, width, together, scrollerRef, onScr
       {flow.stops.length === 0 ? (
         <p style={{ ...note, margin: '0.5rem 0 0' }}>Nothing recorded.</p>
       ) : (
-        <div style={{ overflowX: 'auto' }} ref={scrollerRef} onScroll={e => onScroll(e.currentTarget)}>
-          <div style={{ position: 'relative', width, height }}>
-            {/* By time: gridlines first, so everything else draws over them. */}
+        // Zoomed out the line fits the panel, and anything a pixel or two over (rounding) is trimmed rather
+        // than scrolled. Zoomed in it scrolls.
+        <div style={{ overflowX: scrollable ? 'auto' : 'hidden' }} ref={scrollerRef} onScroll={e => onScroll(e.currentTarget)}>
+          <div style={{ position: 'relative', width, height, cursor: 'crosshair', userSelect: 'none' }} {...zoomDrag}>
+            {/* Gridlines first, so everything else draws over them. */}
             {ticks.map(tick => (
               <div key={tick.at}>
                 <div style={{ position: 'absolute', left: tick.x, top: 18, bottom: 0, width: 1, background: COLOURS.grid }} />
@@ -423,7 +493,7 @@ function DotLine({ dot, flow, layout, scale, width, together, scrollerRef, onScr
               }} />
             ))}
 
-            {/* By time, collapsed: a quiet stretch (nothing on any line) shrunk to a break between two dashed
+            {/* Collapsed: a quiet stretch (nothing on any line) shrunk to a break between two dashed
                 lines, cutting the line, with how long it was. */}
             {breaks.map(gap => (
               <div key={`break-${gap.left}`}>
@@ -437,8 +507,8 @@ function DotLine({ dot, flow, layout, scale, width, together, scrollerRef, onScr
               </div>
             ))}
 
-            {/* By time: when each crew mate was out too, a strip per mate in their colour. */}
-            {scale && together.flatMap((t, row) => t.spans.map((span, i) => {
+            {/* When each crew mate was out too, a strip per mate in their colour. */}
+            {together.flatMap((t, row) => t.spans.map((span, i) => {
               const left = xForTime(scale, span.start)
               const colour = runnerColour(t.mate.displayName)
               return (
@@ -456,7 +526,7 @@ function DotLine({ dot, flow, layout, scale, width, together, scrollerRef, onScr
               )
             }))}
 
-            {/* By time, the watching strip: each viewing from when it started to when it ended, its icon
+            {/* The watching strip: each viewing from when it started to when it ended, its icon
                 at the start, the length (or that it's still going) on hover. */}
             {layout.branches.filter(b => b.placement === 'strip').flatMap(({ branch, spans }) => spans.map((span, i) => {
               const seconds = branch.spans[i].end === null ? null : Math.round((branch.spans[i].end! - branch.spans[i].start) / 1000)
@@ -474,7 +544,7 @@ function DotLine({ dot, flow, layout, scale, width, together, scrollerRef, onScr
               )
             }))}
 
-            {/* A card's spans (a branch without an icon), by time: a thin bar under the line. */}
+            {/* A card's spans (a branch without an icon): a thin bar under the line. */}
             {layout.branches.filter(b => b.placement === 'cards').flatMap(({ branch, spans }) => spans.map((span, i) => (
               <div key={`span-${branch.fromIndex}-${branch.kind}-${i}`}
                 style={{
@@ -483,9 +553,9 @@ function DotLine({ dot, flow, layout, scale, width, together, scrollerRef, onScr
                 }} />
             )))}
 
-            {layout.branches.filter(b => b.placement !== 'strip').map(placed => (
+            {layout.branches.filter(b => b.placement === 'cards').map(placed => (
               <div key={`stem-${placed.branch.fromIndex}-${placed.branch.kind}`}
-                style={{ position: 'absolute', left: placed.x - 1, top: lineY, width: 2, height: placedTop(placed) - lineY, background: COLOURS.branch }} />
+                style={{ position: 'absolute', left: placed.x - 1, top: lineY, width: 2, height: branchTop(placed.row) - lineY, background: COLOURS.branch }} />
             ))}
 
             {flow.stops.map(stop => {
@@ -527,20 +597,11 @@ function DotLine({ dot, flow, layout, scale, width, together, scrollerRef, onScr
               )
             })}
 
-            {layout.branches.filter(b => b.placement !== 'strip').map(placed => {
+            {layout.branches.filter(b => b.placement === 'cards').map(placed => {
               const { branch, x } = placed
-              const top = placedTop(placed)
+              const top = branchTop(placed.row)
               const length = branch.totalSeconds > 0 ? formatDuration(branch.totalSeconds) : null
-              const details = `${branch.label}${branch.count > 1 ? ` ×${branch.count}` : ''} · ` +
-                `${branch.count > 1 ? 'first ' : ''}${formatTime(branch.firstAt)}${length ? ` · ${length}` : ''}`
-              return branch.icon ? (
-                // A branch with an icon: a small pill, "👁️ ×3 · 18 s"; the rest on hover.
-                <div key={`card-${branch.fromIndex}-${branch.kind}`} title={details}
-                  style={{ ...branchCard, ...iconBranch, left: x - LAYOUT.branchOffset, top, zIndex: 1 }}>
-                  <span role="img" aria-label={branch.label}>{branch.icon}</span>
-                  {branch.count > 1 ? ` ×${branch.count}` : ''}{length ? ` · ${length}` : ''}
-                </div>
-              ) : (
+              return (
                 <div key={`card-${branch.fromIndex}-${branch.kind}`} style={{ ...branchCard, left: x - LAYOUT.branchOffset, top }}>
                   <div style={{ fontWeight: 600 }}>{branch.label}{branch.count > 1 ? ` ×${branch.count}` : ''}</div>
                   <div style={{ color: '#475569', fontSize: '0.75rem' }}>
@@ -549,6 +610,13 @@ function DotLine({ dot, flow, layout, scale, width, together, scrollerRef, onScr
                 </div>
               )
             })}
+
+            {/* A drag in progress: the stretch it would zoom in to, with its times. */}
+            {drag && dragRight - dragLeft >= MIN_DRAG_PX && (
+              <div style={{ ...dragBox, left: dragLeft, width: dragRight - dragLeft }}>
+                <span style={dragTimes}>{formatTime(timeForX(scale, dragLeft))}–{formatTime(timeForX(scale, dragRight))}</span>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -602,10 +670,35 @@ function RegisterList({ register }: { register: RegisterEntryDto[] }) {
 const heading: React.CSSProperties = { margin: '0 0 0.25rem', fontSize: '1.1rem' }
 const note: React.CSSProperties = { color: '#64748b', fontSize: '0.85rem', margin: '0 0 1rem' }
 const errorText: React.CSSProperties = { color: '#b91c1c', fontSize: '0.85rem' }
-const controls: React.CSSProperties = { display: 'flex', flexWrap: 'wrap', gap: '0.75rem', alignItems: 'flex-end', marginBottom: '1rem' }
-const fieldLabel: React.CSSProperties = { display: 'flex', flexDirection: 'column', gap: 4, fontSize: '0.8rem', color: '#64748b' }
-const dateInput: React.CSSProperties = { font: 'inherit', fontSize: '0.9rem', padding: '0.35rem 0.5rem', border: '1px solid #cbd5e1', borderRadius: 6, color: '#0f172a' }
-const refreshBtn: React.CSSProperties = { font: 'inherit', fontSize: '0.85rem', padding: '0.4rem 0.8rem', border: '1px solid #cbd5e1', borderRadius: 6, background: '#fff', cursor: 'pointer' }
+// The toolbar: one row, every control CONTROL_HEIGHT tall with the same border and radius, so they line up.
+const CONTROL_HEIGHT = 34
+const control: React.CSSProperties = {
+  boxSizing: 'border-box', height: CONTROL_HEIGHT, display: 'inline-flex', alignItems: 'center',
+  border: '1px solid #cbd5e1', borderRadius: 8, background: '#fff', font: 'inherit', fontSize: '0.85rem', color: '#0f172a',
+}
+const controls: React.CSSProperties = {
+  display: 'flex', flexWrap: 'wrap', gap: '0.5rem', alignItems: 'center', marginBottom: '0.5rem',
+  padding: '0.5rem', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 10,
+}
+// The day: a label and the date input joined into one control.
+const dayField: React.CSSProperties = { ...control, overflow: 'hidden' }
+const dayFieldLabel: React.CSSProperties = {
+  alignSelf: 'stretch', display: 'flex', alignItems: 'center', padding: '0 0.65rem', background: '#f1f5f9',
+  borderRight: '1px solid #cbd5e1', color: '#64748b', fontSize: '0.8rem', fontWeight: 600,
+}
+const dateInput: React.CSSProperties = {
+  font: 'inherit', fontSize: '0.85rem', height: '100%', padding: '0 0.5rem', border: 'none', outline: 'none', background: 'transparent', color: '#0f172a',
+  fontVariantNumeric: 'tabular-nums',
+}
+// A checkbox as a toggle chip: tinted when on, faded when it can't be changed.
+const toggleChip = (on: boolean, disabled: boolean): React.CSSProperties => ({
+  ...control, gap: 6, padding: '0 0.75rem', cursor: disabled ? 'not-allowed' : 'pointer', userSelect: 'none',
+  ...(on ? { background: '#eff6ff', borderColor: '#93c5fd', color: '#1e3a8a' } : {}),
+  ...(disabled ? { opacity: 0.5 } : {}),
+})
+const toggleBox: React.CSSProperties = { margin: 0, accentColor: '#2563eb', cursor: 'inherit' }
+const toolbarBtn: React.CSSProperties = { ...control, padding: '0 0.85rem', cursor: 'pointer', fontWeight: 500 }
+const zoomGroup: React.CSSProperties = { display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }
 const dotPicker: React.CSSProperties = { display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '1rem' }
 const dotChip = (on: boolean): React.CSSProperties => ({
   display: 'inline-flex', alignItems: 'center', gap: 6, padding: '0.3rem 0.6rem', borderRadius: 999,
@@ -642,28 +735,19 @@ const stripIcon: React.CSSProperties = {
   display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
   fontSize: `${STRIP_MARKER - 1}px`, lineHeight: 1,
 }
-const iconBranch: React.CSSProperties = {
-  width: 'auto', minWidth: 0, maxWidth: LAYOUT.iconBranchWidth, height: ICON_BRANCH_HEIGHT, padding: '0 0.5rem',
-  display: 'flex', alignItems: 'center', gap: 2, whiteSpace: 'nowrap', fontWeight: 600, cursor: 'default', borderRadius: 999,
-}
 const leader: React.CSSProperties = { position: 'absolute', width: 1, background: '#475569', opacity: 0.6, pointerEvents: 'none' }
 const crewMateDot: React.CSSProperties = {
   width: STRIP_MARKER, height: STRIP_MARKER, borderRadius: '50%', flexShrink: 0, color: '#fff',
   display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.6rem', fontWeight: 700,
 }
 const crewBox: React.CSSProperties = {
-  border: '1px solid #ddd6fe', borderLeft: '4px solid #7c3aed', borderRadius: 12, padding: '0.5rem 0.6rem 0.1rem',
+  border: '1px solid #ddd6fe', borderLeft: '4px solid #7c3aed', borderRadius: 12, padding: '0.5rem 10px 0.1rem',
   marginBottom: '0.75rem', background: '#faf5ff',
 }
 const crewBoxHeader: React.CSSProperties = {
   display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.75rem', fontWeight: 700, color: '#6d28d9',
   textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '0.4rem',
 }
-const togetherChip: React.CSSProperties = {
-  display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: '0.72rem', color: '#334155',
-  border: '1px solid', borderRadius: 999, padding: '0.1rem 0.5rem', background: '#fff',
-}
-const togetherDot: React.CSSProperties = { width: 8, height: 8, borderRadius: '50%', display: 'inline-block' }
 const markBtn = (undo: boolean): React.CSSProperties => ({
   font: 'inherit', fontSize: '0.75rem', padding: '0.2rem 0.55rem', borderRadius: 999, cursor: 'pointer',
   border: `1px solid ${undo ? '#86efac' : '#fcd34d'}`, background: undo ? '#f0fdf4' : '#fffbeb', color: undo ? '#166534' : '#92400e',
@@ -672,14 +756,22 @@ const testTag: React.CSSProperties = {
   marginLeft: 6, padding: '0 0.35rem', borderRadius: 4, fontSize: '0.65rem', fontWeight: 700,
   background: '#fef3c7', color: '#92400e', verticalAlign: 'middle',
 }
+const dragBox: React.CSSProperties = {
+  position: 'absolute', top: 0, bottom: 0, zIndex: 3, pointerEvents: 'none', boxSizing: 'border-box',
+  background: 'rgba(37, 99, 235, 0.12)', borderLeft: '1px solid #2563eb', borderRight: '1px solid #2563eb',
+}
+const dragTimes: React.CSSProperties = {
+  position: 'absolute', top: 2, left: '50%', transform: 'translateX(-50%)', padding: '1px 6px', borderRadius: 4,
+  background: '#2563eb', color: '#fff', fontSize: '0.7rem', fontWeight: 600, whiteSpace: 'nowrap',
+}
+// The stretch zoomed in to, as a control-height chip beside its buttons.
+const zoomChip: React.CSSProperties = {
+  ...control, padding: '0 0.75rem', fontWeight: 600, background: '#dbeafe', borderColor: '#93c5fd', color: '#1e40af',
+  fontVariantNumeric: 'tabular-nums',
+}
 const tickLabel: React.CSSProperties = {
   position: 'absolute', top: 0, transform: 'translateX(-50%)', fontSize: '0.7rem', color: '#64748b', whiteSpace: 'nowrap',
 }
-const segmented: React.CSSProperties = { display: 'inline-flex', border: '1px solid #cbd5e1', borderRadius: 6, overflow: 'hidden' }
-const segment = (on: boolean): React.CSSProperties => ({
-  font: 'inherit', fontSize: '0.85rem', padding: '0.4rem 0.8rem', border: 'none', cursor: 'pointer',
-  background: on ? '#1f6feb' : '#fff', color: on ? '#fff' : '#0f172a', fontWeight: on ? 600 : 400,
-})
 const registerTable: React.CSSProperties ={ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }
 const registerTh: React.CSSProperties = { textAlign: 'left', padding: '0.4rem 0.6rem', borderBottom: '2px solid #e2e8f0', color: '#64748b', fontWeight: 600 }
 const registerTd: React.CSSProperties = { padding: '0.35rem 0.6rem', verticalAlign: 'top' }

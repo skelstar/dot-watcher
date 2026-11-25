@@ -41,7 +41,7 @@ export interface ActivityDotDto {
 }
 
 // ---- Crew --------------------------------------------------------------------------------------------
-// Dots who are crew are shown together, and By time each line shows when its crew were out at the same
+// Dots who are crew are shown together, and each line shows when its crew were out at the same
 // time as it (both with a Go run going).
 
 // The shown dots in crew groups: each group is everyone linked by crew, in the order the dots came.
@@ -235,7 +235,6 @@ function branchStop(stopEvents: ActivityEventDto[], event: ActivityEventDto, bra
 
 export const LAYOUT = {
   startX: 24,
-  spacing: 170,
   labelWidth: 146,
   branchWidth: 150,
   // An event with an icon (the register's `icon`) is drawn as just the icon, or a small pill for a branch.
@@ -275,10 +274,10 @@ export interface PlacedBranch {
   x: number
   // Its row within its placement (unused on a strip).
   row: number
-  // Where it's drawn. A branch with an icon is, by time, a strip just under the line (each span along it,
-  // the icon at its start), and in order a pill in the label rows; one without an icon is a card below.
-  placement: 'strip' | 'labels' | 'cards'
-  // By time: where each of its spans (a viewing) runs along the line. Empty in order.
+  // Where it's drawn. A branch with an icon is a strip just under the line (each span along it, the icon
+  // at its start); one without an icon is a card below.
+  placement: 'strip' | 'cards'
+  // Where each of its spans (a viewing) runs along the line.
   spans: { left: number; right: number; ongoing: boolean }[]
 }
 
@@ -292,7 +291,7 @@ export interface FlowLayout {
   lineLeft: number
   lineRight: number
   width: number
-  // Label rows (stop labels and pills), and rows of cards below them.
+  // Label rows (stop labels), and rows of cards below them.
   labelRows: number
   branchRows: number
 }
@@ -355,38 +354,57 @@ export function timeScaleOfWidth(events: { at: string }[], target: number, colla
   return scale
 }
 
-// How wide to draw a time scale so stops sit about as far apart as In order: the typical (median) gap
-// between one dot's consecutive events becomes one In order step. A median, so one burst of events a
-// second apart doesn't stretch the whole day. Null when there's no gap to go by (fewer than two events).
-// Capped, so a day of hours with a few close events stays scrollable (with collapsing, the cap applies
-// to the collapsed width instead, so pass Infinity).
-export const MAX_TIME_WIDTH = 60_000
-
-export function readableWidth(events: { at: string; userId: string }[], cap: number = MAX_TIME_WIDTH): number | null {
-  const byUser = new Map<string, number[]>()
-  for (const e of events) {
-    const times = byUser.get(e.userId) ?? []
-    times.push(Date.parse(e.at))
-    byUser.set(e.userId, times)
-  }
-  const gaps: number[] = []
-  for (const times of byUser.values()) {
-    times.sort((a, b) => a - b)
-    for (let i = 1; i < times.length; i++)
-      if (times[i] > times[i - 1]) gaps.push(times[i] - times[i - 1])
-  }
-  if (gaps.length === 0) return null
-  gaps.sort((a, b) => a - b)
-  const median = gaps[Math.floor(gaps.length / 2)]
-  const all = events.map(e => Date.parse(e.at))
-  const range = Math.max(...all) - Math.min(...all)
-  return Math.min(cap, (range / median) * LAYOUT.spacing)
-}
-
 export function xForTime(scale: TimeScale, at: number): number {
   if (!scale.pieces) return LAYOUT.startX + ((at - scale.start) / (scale.end - scale.start)) * scale.width
   const piece = scale.pieces.find(p => at <= p.end) ?? scale.pieces[scale.pieces.length - 1]
   return LAYOUT.startX + piece.x0 + ((at - piece.start) / (piece.end - piece.start)) * (piece.x1 - piece.x0)
+}
+
+// The other way round from xForTime: the moment at `x` px along a line, held to the scale's range.
+export function timeForX(scale: TimeScale, x: number): number {
+  const along = x - LAYOUT.startX
+  const share = (from: number, to: number) => (to > from ? Math.min(1, Math.max(0, (along - from) / (to - from))) : 0)
+  if (!scale.pieces) return scale.start + share(0, scale.width) * (scale.end - scale.start)
+  const piece = scale.pieces.find(p => along <= p.x1) ?? scale.pieces[scale.pieces.length - 1]
+  return piece.start + share(piece.x0, piece.x1) * (piece.end - piece.start)
+}
+
+// A stretch of the day picked by dragging across a line, to zoom in to.
+export interface TimeWindow {
+  start: number
+  end: number
+}
+
+// The shortest stretch a drag zooms in to, so a tiny drag doesn't blow seconds up to the whole panel.
+export const MIN_WINDOW_MS = 10_000
+
+// The window between two moments picked on a line, in either order, widened about its middle to at
+// least MIN_WINDOW_MS.
+export function windowBetween(a: number, b: number): TimeWindow {
+  const start = Math.min(a, b)
+  const end = Math.max(a, b)
+  if (end - start >= MIN_WINDOW_MS) return { start, end }
+  const middle = (start + end) / 2
+  return { start: middle - MIN_WINDOW_MS / 2, end: middle + MIN_WINDOW_MS / 2 }
+}
+
+// Exactly the window, `width` px wide, straight.
+export function windowScale(window: TimeWindow, width: number): TimeScale {
+  return { start: window.start, end: window.end, width }
+}
+
+// How wide a zoomed-in line may get, so a tiny window on a long day stays within what browsers can draw.
+export const MAX_ZOOM_WIDTH = 2_000_000
+
+// Zoomed in: the whole of the events' range, straight (no breaks), at the rate that makes the window
+// `viewWidth` px wide, so the window fills the panel and the rest of the day scrolls either side of it.
+// Capped at MAX_ZOOM_WIDTH, so the window then comes out a little wider than asked.
+export function zoomedScale(events: { at: string }[], window: TimeWindow, viewWidth: number): TimeScale {
+  const day = timeScale(events, viewWidth)
+  const start = Math.min(day?.start ?? window.start, window.start)
+  const end = Math.max(day?.end ?? window.end, window.end)
+  const width = Math.min(MAX_ZOOM_WIDTH, ((end - start) / (window.end - window.start)) * viewWidth)
+  return { start, end, width }
 }
 
 // Where a collapsed scale's breaks are, in px along a line, with how long nothing happened.
@@ -407,45 +425,13 @@ function takeRow(rowEnds: number[], left: number, right: number): number {
 export const labelWidthOf = (stop: FlowStop) => (stop.icon ? LAYOUT.iconLabelWidth : LAYOUT.labelWidth)
 export const branchWidthOf = (branch: FlowBranch) => (branch.icon ? LAYOUT.iconBranchWidth : LAYOUT.branchWidth)
 
-export function layoutFlow(flow: Flow, scale: TimeScale | null): FlowLayout {
-  const { startX, spacing, branchOffset } = LAYOUT
+export function layoutFlow(flow: Flow, scale: TimeScale): FlowLayout {
+  const { startX, branchOffset } = LAYOUT
 
   const rowsIn = (branches: PlacedBranch[], placement: PlacedBranch['placement']) =>
     Math.max(0, ...branches.filter(b => b.placement === placement).map(b => b.row + 1))
   // A stop with an icon is drawn on the line itself, so it takes no label row.
   const onLine = (stop: FlowStop) => stop.icon !== null
-
-  if (scale === null) {
-    const stopX = flow.stops.map(stop => startX + stop.index * spacing)
-    const last = stopX.length > 0 ? stopX[stopX.length - 1] : startX
-    // Per stop: pills go in the label rows under its label (row 1 on), cards below the labels.
-    const perStop = new Map<string, number>()
-    const branches: PlacedBranch[] = flow.branches.map(branch => {
-      const placement = branch.icon !== null ? 'labels' : 'cards'
-      const key = `${branch.fromIndex}|${placement}`
-      const nth = perStop.get(key) ?? 0
-      perStop.set(key, nth + 1)
-      return { branch, x: stopX[branch.fromIndex], row: placement === 'labels' ? 1 + nth : nth, placement, spans: [] }
-    })
-    return {
-      stopX,
-      stopRow: flow.stops.map(stop => (onLine(stop) ? -1 : 0)),
-      branches,
-      runs: flow.runs.map(run => ({
-        left: stopX[run.fromIndex],
-        right: run.toIndex === null ? last + spacing / 2 : stopX[run.toIndex],
-      })),
-      away: flow.away.map(span => ({
-        left: stopX[span.fromIndex],
-        right: span.toIndex === null ? last + spacing / 2 : stopX[span.toIndex],
-      })),
-      lineLeft: startX,
-      lineRight: last,
-      width: last + spacing,
-      labelRows: Math.max(1, ...branches.filter(b => b.placement === 'labels').map(b => b.row + 1)),
-      branchRows: rowsIn(branches, 'cards'),
-    }
-  }
 
   const stopX = flow.stops.map(stop => xForTime(scale, Date.parse(stop.at)))
   const branchX = flow.branches.map(branch => xForTime(scale, Date.parse(branch.firstAt)))
