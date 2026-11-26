@@ -46,8 +46,8 @@ import nz.skelstar.dotwatcher.network.SessionMembership
 /**
  * One group the person is in, on the start screen. [isOut] is whether they are tracking right now: out,
  * the group can see them; not out, nobody can yet. With [organiser] (their own group) the card carries the
- * organiser's controls, since a group has no session map: Ping here, the entry code, and End group in place
- * of Leave.
+ * organiser's controls, since a group has no session map: Ping here, Choose on map (a join location somewhere
+ * else), the entry code, and End group in place of Leave.
  */
 @Composable
 fun GroupInCard(
@@ -62,6 +62,7 @@ fun GroupInCard(
     var confirmLeave by remember { mutableStateOf(false) }
     var confirmEnd by remember { mutableStateOf(false) }
     var showCode by remember { mutableStateOf(false) }
+    var showPicker by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
@@ -95,19 +96,27 @@ fun GroupInCard(
                     Text("Leave group", color = MaterialTheme.colorScheme.error)
                 }
             } else {
-                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    organiser.ping?.let { ping ->
-                        TextButton(
-                            onClick = {
-                                scope.launch {
-                                    busy = true
-                                    message = ping()
-                                    busy = false
-                                }
-                            },
-                            enabled = !busy,
-                        ) { Text("Ping here") }
+                // Two rows: where people join (Ping here, or a point chosen on the map), then the code and End.
+                if (organiser.ping != null || organiser.setJoinLocationAt != null) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        organiser.ping?.let { ping ->
+                            TextButton(
+                                onClick = {
+                                    scope.launch {
+                                        busy = true
+                                        message = ping()
+                                        busy = false
+                                    }
+                                },
+                                enabled = !busy,
+                            ) { Text("Ping here") }
+                        }
+                        if (organiser.setJoinLocationAt != null) {
+                            TextButton(onClick = { showPicker = true }, enabled = !busy) { Text("Choose on map") }
+                        }
                     }
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     if (organiser.entryCode != null) {
                         TextButton(onClick = { showCode = !showCode }) {
                             Text(if (showCode) "Hide code" else "Entry code")
@@ -118,6 +127,14 @@ fun GroupInCard(
                     }
                 }
                 if (showCode) organiser.entryCode?.let { EntryCodeSection(it) }
+                if (showPicker) {
+                    JoinLocationPickerDialog(
+                        group = group,
+                        organiser = organiser,
+                        onDismiss = { showPicker = false },
+                        onSet = { message = it },
+                    )
+                }
                 message?.let { Text(text = it, style = MaterialTheme.typography.bodyMedium) }
             }
         }

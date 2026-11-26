@@ -65,7 +65,8 @@ struct GroupTime: Equatable {
 /// run right now: out, the group can see them; not out, nobody can yet.
 ///
 /// For a group the person organised (`group.isOwner`, with `organiser` set) the card carries the organiser's
-/// controls, since a group has no session map: Ping here, the entry code, and End group in place of Leave.
+/// controls, since a group has no session map: Ping here, Choose on map (a join location somewhere else), the
+/// entry code, and End group in place of Leave.
 struct GroupInCard: View {
     let group: SessionMembership
     let isOut: Bool
@@ -76,6 +77,7 @@ struct GroupInCard: View {
     @State private var confirmLeave = false
     @State private var confirmEnd = false
     @State private var showCode = false
+    @State private var showPicker = false
     @State private var message: String?
     @State private var isBusy = false
 
@@ -137,8 +139,9 @@ struct GroupInCard: View {
 
     @ViewBuilder
     private func organiserControls(_ location: LocationManager) -> some View {
-        HStack(spacing: 16) {
-            if group.nearby == true {
+        // Two rows: where people join (Ping here, or a point chosen on the map), then the code and End group.
+        if group.nearby == true {
+            HStack(spacing: 16) {
                 Button("Ping here") {
                     Task {
                         isBusy = true
@@ -147,13 +150,26 @@ struct GroupInCard: View {
                     }
                 }
                 .disabled(isBusy)
+                Button("Choose on map") { showPicker = true }
+                    .disabled(isBusy)
+            }
+            .font(.subheadline.weight(.semibold))
+            .padding(.top, 4)
+        }
+        HStack(spacing: 16) {
+            if group.nearby == true {
                 Button(showCode ? "Hide code" : "Entry code") { showCode.toggle() }
             }
             Button("End group", role: .destructive) { confirmEnd = true }
                 .disabled(isBusy)
         }
         .font(.subheadline.weight(.semibold))
-        .padding(.top, 4)
+        .padding(.top, group.nearby == true ? 0 : 4)
+        .sheet(isPresented: $showPicker) {
+            JoinLocationPickerSheet(location: location, group: group) { message = "Join location set on the map" }
+                .presentationDetents([.large])
+                .preferredColorScheme(location.appearanceMode.colorScheme)
+        }
         if showCode {
             EntryCodeSection(location: location, sessionId: group.sessionId)
                 .padding(.top, 6)
