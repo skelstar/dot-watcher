@@ -376,7 +376,11 @@ fun NearbyOrganiserSheet(organiser: NearbyOrganiser, onDismiss: () -> Unit) {
  * People already in stay in; only joins from now on need the new code.
  */
 @Composable
-fun EntryCodeSection(actions: EntryCodeActions) {
+fun EntryCodeSection(
+    actions: EntryCodeActions,
+    /** Told the code after a change, so a card showing it can keep up. */
+    onChanged: (String?) -> Unit = {},
+) {
     val scope = rememberCoroutineScope()
     var current by remember { mutableStateOf<String?>(null) }
     var loaded by remember { mutableStateOf(false) }
@@ -417,7 +421,7 @@ fun EntryCodeSection(actions: EntryCodeActions) {
                     scope.launch {
                         busy = true
                         message = actions.change(typed)
-                        actions.load().onSuccess { current = it }
+                        actions.load().onSuccess { current = it; onChanged(it) }
                         typed = ""
                         busy = false
                     }
@@ -431,7 +435,7 @@ fun EntryCodeSection(actions: EntryCodeActions) {
                         scope.launch {
                             busy = true
                             message = actions.change(null)
-                            actions.load().onSuccess { current = it }
+                            actions.load().onSuccess { current = it; onChanged(it) }
                             busy = false
                         }
                     },
