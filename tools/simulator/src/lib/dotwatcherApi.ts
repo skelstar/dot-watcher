@@ -13,6 +13,17 @@ export const SERVER_URL = (import.meta.env.VITE_SERVER_URL as string | undefined
 // server's port, this is the separate Vite dev server for client/.
 export const CLIENT_URL = (import.meta.env.VITE_CLIENT_URL as string | undefined) ?? 'http://localhost:5173'
 
+// False when pointed at a real server (prod, via `npm run dev:prod`): the page then shows a warning,
+// since prod has one database and real people near a simulated phone can see its dot.
+export const IS_LOCAL_SERVER = (() => {
+  try {
+    const host = new URL(SERVER_URL).hostname
+    return host === 'localhost' || host === '127.0.0.1' || host.endsWith('.local')
+  } catch {
+    return true
+  }
+})()
+
 // The shared admin bearer token (matches the server's `BearerToken` config) — only needed for
 // the /admin/users cleanup below, not for anything phones themselves do.
 const ADMIN_BEARER_TOKEN = import.meta.env.VITE_BEARER_TOKEN as string | undefined
@@ -182,10 +193,10 @@ export async function reportAppState(user: AuthedUser, state: AppState): Promise
 export type GoRun = { sessionId: string; runId: string }
 export type WatchLink = { token: string; path: string }
 
-// Go and crew are features an admin switches on per account (or for everyone in config). A sim account
-// is new, so it gets both: then any two phones can be made crew, Go or not. Needs VITE_BEARER_TOKEN,
-// like deleteSimAccounts.
-const SIM_FEATURES = ['casual', 'crew']
+// Go, crew and groups are features an admin switches on per account (or for everyone in config). A sim
+// account is new, so it gets all three: then any two phones can be made crew, Go or not, and any phone
+// can join a group. Needs VITE_BEARER_TOKEN, like deleteSimAccounts.
+const SIM_FEATURES = ['casual', 'crew', 'groups']
 
 export async function enableGo(user: AuthedUser): Promise<void> {
   if (!ADMIN_BEARER_TOKEN) {
@@ -196,7 +207,93 @@ export async function enableGo(user: AuthedUser): Promise<void> {
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${ADMIN_BEARER_TOKEN}` },
     body: JSON.stringify({ features: SIM_FEATURES }),
   })
-  if (!res.ok) throw new ApiError(await errorMessage(res, `Switching Go and crew on failed (${res.status}).`))
+  if (!res.ok) throw new ApiError(await errorMessage(res, `Switching Go, crew and groups on failed (${res.status}).`))
+}
+
+// ---- Groups ----------------------------------------------------------------------------------------
+// For an account with "groups", joining a session by invite code is a group join (see
+// .ai/plans/go-and-groups.md): the same request as joinSession, but the phone doesn't track in the
+// session. It keeps posting to its Go run, and the group's members see each other there by name.
+// Leaving is leaveSession.
+
+export async function joinGroup(user: AuthedUser, inviteCode: string, displayName: string): Promise<SessionMembership> {
+  await enableGo(user)
+  return joinSession(user, inviteCode, displayName)
+}
+
+// A simulated fix is exact, but phones never claim better than a few metres; the server forgives the
+// joiner's and the meeting point's accuracy (each capped at 50 m) when checking the radius.
+const SIM_ACCURACY_METERS = 5
+
+export const NEARBY_RADII = [50, 100, 250, 500] as const
+
+export type NearbyStatus = { nearby: boolean; radiusMeters: number }
+
+// Organiser only: switches nearby join on (or off) with the meeting point at `point`, the app's Ping.
+// The meeting point stays where it was put; call again to move it.
+export async function setSessionNearby(
+  organiser: AuthedUser, sessionId: string, enabled: boolean, point: { lat: number; lon: number } | null, radiusMeters: number,
+): Promise<NearbyStatus> {
+  const res = await fetch(`${SERVER_URL}/sessions/${sessionId}/nearby`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${organiser.accessToken}` },
+    body: JSON.stringify({
+      enabled,
+      radiusMeters,
+      ...(point && { latitude: point.lat, longitude: point.lon, accuracy: SIM_ACCURACY_METERS }),
+    }),
+  })
+  if (!res.ok) throw new ApiError(await errorMessage(res, `Changing nearby join failed (${res.status}).`))
+  return res.json()
+}
+
+// Organiser only: the code people nearby must type to join, or null to remove it. The organiser's account
+// needs "groups", so it gets the sim features first.
+export async function setEntryCode(organiser: AuthedUser, sessionId: string, entryCode: string | null): Promise<void> {
+  await enableGo(organiser)
+  const res = await fetch(`${SERVER_URL}/sessions/${sessionId}/entry-code`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${organiser.accessToken}` },
+    body: JSON.stringify({ entryCode }),
+  })
+  if (!res.ok) throw new ApiError(await errorMessage(res, `Setting the entry code failed (${res.status}).`))
+}
+
+// What the app's start screen shows as tiles: groups whose meeting point is within their radius of the
+// phone. Only joinable entries (with a sessionId) are returned.
+export type NearbyGroup = { sessionId: string; title: string; eyebrow: string; subtitle: string; needsCode?: boolean; endsAt?: string }
+
+export async function findNearbyGroups(user: AuthedUser, point: { lat: number; lon: number }): Promise<NearbyGroup[]> {
+  await enableGo(user)
+  const query = `lat=${point.lat}&lon=${point.lon}&accuracy=${SIM_ACCURACY_METERS}`
+  const res = await fetch(`${SERVER_URL}/me/events/nearby?${query}`, {
+    headers: { Authorization: `Bearer ${user.accessToken}` },
+  })
+  if (res.status === 404) throw new ApiError('Events are switched off on this server (404).')
+  if (!res.ok) throw new ApiError(await errorMessage(res, `Finding groups near you failed (${res.status}).`))
+  // The placeholder entry has no sessionId and can't be joined.
+  const events = await res.json() as (Omit<NearbyGroup, 'sessionId'> & { sessionId?: string })[]
+  return events.filter((e): e is NearbyGroup => typeof e.sessionId === 'string')
+}
+
+// Joins one of findNearbyGroups' groups from where the phone is, as the app's tile does. The server checks
+// the position against the radius again; a wrong code is a 403 with "That code doesn't match…".
+export async function joinNearbyGroup(
+  user: AuthedUser, sessionId: string, point: { lat: number; lon: number }, displayName: string, entryCode?: string,
+): Promise<SessionMembership> {
+  const res = await fetch(`${SERVER_URL}/nearby/sessions/${sessionId}/join`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${user.accessToken}` },
+    body: JSON.stringify({
+      latitude: point.lat,
+      longitude: point.lon,
+      accuracy: SIM_ACCURACY_METERS,
+      displayName,
+      ...(entryCode && { entryCode }),
+    }),
+  })
+  if (!res.ok) throw new ApiError(await errorMessage(res, `Joining the group failed (${res.status}).`))
+  return res.json()
 }
 
 // ---- Crew ------------------------------------------------------------------------------------------
@@ -205,18 +302,34 @@ export async function enableGo(user: AuthedUser): Promise<void> {
 export async function makeCrew(a: AuthedUser, b: AuthedUser): Promise<void> {
   // A phone that joined a session never had the features switched on.
   await Promise.all([enableGo(a), enableGo(b)])
-  const codeRes = await fetch(`${SERVER_URL}/me/crew/codes`, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${a.accessToken}` },
-  })
-  if (!codeRes.ok) throw new ApiError(await errorMessage(codeRes, `Making a crew code failed (${codeRes.status}).`))
-  const { code } = await codeRes.json() as { code: string }
+  const { code } = await createCrewCode(a)
+  await redeemCrewCode(b, code)
+}
 
-  const redeemRes = await fetch(`${SERVER_URL}/me/crew/codes/${encodeURIComponent(code)}/redeem`, {
+// A single-use crew code from this account, valid for 24 hours: whoever redeems it first (a sim, or a
+// real account in the app's crew sheet) becomes crew with it straight away, both ways.
+export type CrewCode = { code: string; expiresAt: string }
+
+export async function createCrewCode(user: AuthedUser): Promise<CrewCode> {
+  await enableGo(user)
+  const res = await fetch(`${SERVER_URL}/me/crew/codes`, {
     method: 'POST',
-    headers: { Authorization: `Bearer ${b.accessToken}` },
+    headers: { Authorization: `Bearer ${user.accessToken}` },
   })
-  if (!redeemRes.ok) throw new ApiError(await errorMessage(redeemRes, `Joining the crew failed (${redeemRes.status}).`))
+  if (!res.ok) throw new ApiError(await errorMessage(res, `Making a crew code failed (${res.status}).`))
+  return res.json()
+}
+
+// Redeems someone's crew code (a sim's, or one made in the app's crew sheet): crew straight away, no
+// accept step. Returns the code's owner as the redeemer now sees them.
+export async function redeemCrewCode(user: AuthedUser, code: string): Promise<{ displayName?: string; nickname?: string | null }> {
+  await enableGo(user)
+  const res = await fetch(`${SERVER_URL}/me/crew/codes/${encodeURIComponent(code.trim())}/redeem`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${user.accessToken}` },
+  })
+  if (!res.ok) throw new ApiError(await errorMessage(res, `Joining the crew failed (${res.status}).`))
+  return res.json()
 }
 
 // Removes them from each other's crew (the server does both sides).

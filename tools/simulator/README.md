@@ -22,6 +22,23 @@ npm run dev
 
 Opens at `http://localhost:5174`.
 
+### Against prod
+
+```bash
+cp .env.prod.example .env.prod.local   # then set VITE_BEARER_TOKEN to prod's admin token
+npm run dev:prod
+```
+
+`dev:prod` reads `.env.prod.local` (gitignored) over `.env`: the prod server, the deployed web
+client for the live view and watch links, and prod's admin token. The page shows a red banner whenever
+the server isn't local. Prod is the only server, with one database, so:
+
+- **Create session** and **Delete sim data** delete `sim-` accounts **on prod** (only those).
+- Real people near a phone's position can see its dot (anonymous unless crew or in a group with them).
+  Pick start points away from where people run.
+- The admin page's **🧪 Open simulator** link only shows on a local admin page; with `dev:prod` running,
+  open `http://localhost:5174` directly.
+
 ---
 
 ## Configuration
@@ -61,6 +78,12 @@ multi-runner scenarios without needing physical devices.
   an invite code from a real session created via the iOS or web app.
 - **Convergence point** — shown once a session exists, with a **Change** button that reopens
   the same picker modal at any time (pre-filled with the current point).
+- **Nearby join** and **Entry code** — under the convergence point, acting as the session's organiser
+  (the app's "Let people nearby join" and Ping). **Let people nearby join here** puts the meeting point
+  at the convergence point with the chosen radius (50/100/250/500 m); it stays there until **Ping
+  here** is pressed again, even if the convergence point moves. **Switch off** turns it off. An entry
+  code (4-8 letters or numbers) makes joiners type it; **Remove** drops it. Phones in the zone find the
+  session with **Groups near you**.
 - **Movement** — shared speed (walk/jog/run) and update-interval controls used by every phone.
 - **Live client view** — embeds the real web client (`client/`) in an iframe, pointed at
   `{CLIENT_URL}/code/{inviteCode}` — the one client URL form that skips the sign-in wall, so it
@@ -82,8 +105,11 @@ multi-runner scenarios without needing physical devices.
     `initialsFor`/`InitialsBadge`, e.g. "Phone 1" → "P1"), with a marker colour hashed from its
     display name the same way the client colours runners — so a phone gets the same colour and
     initials here as it would as a real runner on the client's map
-  - Picks its starting point via a **Choose**/**Change** button (same picker modal as the
-    convergence point), whenever you're ready — nothing pops up automatically
+  - Picks its starting point via a **Choose start point**/**Move** button (same picker modal as the
+    convergence point), whenever you're ready — nothing pops up automatically. **Move** works while
+    tracking too: the phone jumps there and carries on from it, as after a GPS gap
+  - **Stay here** keeps the phone posting from where it is, with no heading (as a real phone standing
+    still), instead of walking on. Move a phone into a group's zone, tick it, and it stays in the zone
   - **Start tracking** starts sending live `POST /location` updates once it has a start point and the
     session has a convergence point. On Go there's nothing to press: tracking starts by itself as soon
     as the phone is out and has a start point, as Go does in the app. There's no pause, as in the real
@@ -108,6 +134,22 @@ multi-runner scenarios without needing physical devices.
     makes a crew code, the other redeems it), switching Go and crew on for both accounts first; crew is
     both ways, so the other phone shows the tick too. Unticking removes them from each other's crew.
     Needs `VITE_BEARER_TOKEN`.
+  - Can **Join group** by invite code (its own code box, with "use CODE" for the Session tab's session):
+    the app's way for a `groups` account. It joins the session but doesn't track in it, and stays on (or
+    later starts) its Go run; members of the group see each other **by name** on Go even when they
+    aren't crew. Works before going out or while out on Go, not while tracking in a joined session. The
+    phone shows **Group: NAME** and a **Leave group** button. Stopping the Go run doesn't leave the
+    group, as in the app. Every sim account gets `casual`, `crew` and `groups` (needs `VITE_BEARER_TOKEN`).
+    The phones Create session seeds are joined to the session (tracking in it), so use **+ Add phone**
+    for phones that go out on Go and join groups.
+  - Or **Groups near you**: lists the groups whose zone the phone is in right now, as the app's start
+    screen tiles do (distance, "code needed"), each with **Join group** (and a code box when needed).
+    That joins through nearby join from the phone's current position, so the server checks the radius
+    and the entry code again. A wrong code shows the server's "That code doesn't match…"
+  - Can be made crew with **any account**, such as your own on a real phone, by crew code. Crew codes
+    make crew straight away, both ways, with no accept step (Find new crew isn't involved):
+    **Make crew code** shows a single-use code (24 h) to type into the app's crew sheet, or paste a
+    code from the app into **Redeem crew code**. Remove them from crew in the app.
   - Can leave the session independently at any time
   - Has an app **Foreground/Background** switch (top right). A new phone's app is closed: switch it on
     before **Join** or **Go** (phones seeded by Create session open it themselves). Opening it the first

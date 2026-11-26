@@ -1,5 +1,5 @@
 import { Fragment, useEffect } from 'react'
-import { MapContainer, TileLayer, Marker, Polyline, useMap } from 'react-leaflet'
+import { MapContainer, TileLayer, Marker, Polyline, Circle, useMap } from 'react-leaflet'
 import 'leaflet/dist/leaflet.css'
 import { convergenceIcon, phoneMarkerIcon, runnerColour } from './lib/icons'
 import type { LatLon, PhoneSnapshot } from './lib/types'
@@ -22,13 +22,15 @@ type Props = {
   convergencePoint: LatLon | null
   phones: PhoneSnapshot[]
   routes: Record<number, LatLon[]>
+  // Nearby join's capture zone: the meeting point and its radius, while nearby join is on.
+  captureZone?: { center: LatLon; radiusMeters: number } | null
 }
 
 // A persistent (non-modal) overview of the whole simulated scene: the convergence point, every
 // phone's current position, and any GPX route it's following — each phone in its own colour, the
 // same hash-based palette used for its card border and map marker elsewhere in this tool. Doesn't
 // itself support picking points; that stays on MapPickerModal, this is read-only context.
-export default function SimulatorMap({ convergencePoint, phones, routes }: Props) {
+export default function SimulatorMap({ convergencePoint, phones, routes, captureZone }: Props) {
   const center: [number, number] = convergencePoint
     ? [convergencePoint.lat, convergencePoint.lon]
     : [WELLINGTON.lat, WELLINGTON.lon]
@@ -37,6 +39,13 @@ export default function SimulatorMap({ convergencePoint, phones, routes }: Props
     <MapContainer center={center} zoom={13} style={mapStyle}>
       <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution='&copy; OpenStreetMap contributors' />
       <InvalidateSizeOnSettle />
+      {captureZone && (
+        <Circle
+          center={[captureZone.center.lat, captureZone.center.lon]}
+          radius={captureZone.radiusMeters}
+          pathOptions={{ stroke: false, fillColor: '#facc15', fillOpacity: 0.3 }}
+        />
+      )}
       {convergencePoint && <Marker position={[convergencePoint.lat, convergencePoint.lon]} icon={convergenceIcon()} />}
       {phones.map(phone => {
         const route = routes[phone.id] ?? null
