@@ -53,6 +53,9 @@ import nz.skelstar.dotwatcher.nearby.NearbyDraft
 import nz.skelstar.dotwatcher.nearby.NearbyOrganiser
 import nz.skelstar.dotwatcher.nearby.EntryCodeActions
 import nz.skelstar.dotwatcher.network.NearbyEvent
+import nz.skelstar.dotwatcher.location.Fix
+import nz.skelstar.dotwatcher.ui.map.JoinRange
+import nz.skelstar.dotwatcher.ui.map.JoinRangePreview
 
 // Nearby join (see .ai/plans/nearby-join.md): what tapping a nearby run shows, the Create dialog's switch, the
 // organiser's controls on the map, and the one-active-session prompt.
@@ -191,7 +194,13 @@ fun NearbyCreateSection(
     hasPreciseLocation: Boolean,
     /** The "groups" feature: offers "Ask for a code to join". */
     groupsAvailable: Boolean = false,
+    /** Where the organiser is now, for the map of the join area; null shows no map. */
+    loadPreviewFix: (suspend () -> Fix?)? = null,
 ) {
+    var previewFix by remember { mutableStateOf<Fix?>(null) }
+    LaunchedEffect(draft.isOn, hasPreciseLocation) {
+        if (draft.isOn && hasPreciseLocation && previewFix == null) previewFix = loadPreviewFix?.invoke()
+    }
     Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -209,6 +218,14 @@ fun NearbyCreateSection(
         if (draft.isOn) {
             Text(text = "Range", style = MaterialTheme.typography.labelLarge)
             RadiusChips(selected = draft.radiusMeters, onSelect = { onChange(draft.copy(radiusMeters = it)) })
+            previewFix?.let { fix ->
+                JoinRangePreview(JoinRange(fix.latitude, fix.longitude, draft.radiusMeters))
+                Text(
+                    text = "The yellow area is where people can join from. It starts where you are when you create the run.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
             Text(
                 text = "GPS can be off by 10 to 50 m, so a wider range is easier to join from.",
                 style = MaterialTheme.typography.bodySmall,
@@ -258,7 +275,7 @@ fun NearbyCreateSection(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun RadiusChips(selected: Int, onSelect: (Int) -> Unit) {
+internal fun RadiusChips(selected: Int, onSelect: (Int) -> Unit) {
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         NEARBY_RADIUS_OPTIONS.forEach { metres ->
             FilterChip(
@@ -376,7 +393,11 @@ fun NearbyOrganiserSheet(organiser: NearbyOrganiser, onDismiss: () -> Unit) {
  * People already in stay in; only joins from now on need the new code.
  */
 @Composable
-fun EntryCodeSection(actions: EntryCodeActions) {
+fun EntryCodeSection(
+    actions: EntryCodeActions,
+    /** Told the code after a change, so a card showing it can keep up. */
+    onChanged: (String?) -> Unit = {},
+) {
     val scope = rememberCoroutineScope()
     var current by remember { mutableStateOf<String?>(null) }
     var loaded by remember { mutableStateOf(false) }
@@ -417,7 +438,7 @@ fun EntryCodeSection(actions: EntryCodeActions) {
                     scope.launch {
                         busy = true
                         message = actions.change(typed)
-                        actions.load().onSuccess { current = it }
+                        actions.load().onSuccess { current = it; onChanged(it) }
                         typed = ""
                         busy = false
                     }
@@ -431,7 +452,7 @@ fun EntryCodeSection(actions: EntryCodeActions) {
                         scope.launch {
                             busy = true
                             message = actions.change(null)
-                            actions.load().onSuccess { current = it }
+                            actions.load().onSuccess { current = it; onChanged(it) }
                             busy = false
                         }
                     },

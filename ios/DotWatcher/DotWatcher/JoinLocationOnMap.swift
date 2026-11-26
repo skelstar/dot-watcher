@@ -60,7 +60,7 @@ extension MapCrosshairAction {
 func ownedGroupJoinRange(for location: LocationManager) -> LinzJoinRange? {
     for group in location.groupMemberships where group.isOwner == true && group.nearby == true {
         if let center = location.nearbyMeetingPoints[group.sessionId] {
-            let radius = location.nearbyStatuses[group.sessionId]?.radiusMeters ?? NearbyRadius.defaultMeters
+            let radius = location.nearbyStatuses[group.sessionId]?.radiusMeters ?? group.nearbyRadiusMeters ?? NearbyRadius.defaultMeters
             return LinzJoinRange(center: center, radiusMeters: Double(radius))
         }
     }
@@ -132,7 +132,7 @@ struct JoinLocationPickerSheet: View {
     @State private var errorText: String?
 
     private var radiusMeters: Double {
-        Double(location.nearbyStatuses[group.sessionId]?.radiusMeters ?? NearbyRadius.defaultMeters)
+        Double(location.nearbyStatuses[group.sessionId]?.radiusMeters ?? group.nearbyRadiusMeters ?? NearbyRadius.defaultMeters)
     }
 
     var body: some View {

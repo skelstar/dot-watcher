@@ -120,7 +120,11 @@ public record SessionMembership(
     // The owner's view of whether people nearby can find it; null for everyone else (not their business,
     // and an older client never reads it).
     [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
-    bool? Nearby = null
+    bool? Nearby = null,
+    // The owner's nearby radius in metres while it's shown nearby, so the group card can show and change the
+    // area's size; null (and left out) for everyone else. Additive.
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    int? NearbyRadiusMeters = null
 );
 
 public record BlockedUser(

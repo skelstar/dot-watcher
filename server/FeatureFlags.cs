@@ -5,7 +5,7 @@ namespace DotWatcher.Server;
 /// <summary>Names of the features that can be switched on per account. See .ai/plans/crew-feature-flag.md.</summary>
 public static class Features
 {
-    public static readonly IReadOnlyList<string> All = [Crew, Casual, Events, Groups];
+    public static readonly IReadOnlyList<string> All = [Crew, Casual, Events, Groups, CreateGroups];
 
     public const string Crew = "crew";
     public const string Casual = "casual";
@@ -14,6 +14,11 @@ public static class Features
     // People in the same active named session see each other by name in casual (see
     // .ai/plans/go-and-groups.md, step 1). Per account: off for everyone until granted.
     public const string Groups = "groups";
+
+    // Who may organise a group. With "groups" every session an account creates is a group, and not everyone
+    // should be able to make one, so a "groups" account also needs this to create (the phones hide Create
+    // without it). Accounts without "groups" create sessions as before. Per account: off until granted.
+    public const string CreateGroups = "create-groups";
 }
 
 /// <summary>

@@ -14,7 +14,7 @@ public class EntryCodeTests
     private const double Lon = 174.7600;
     private const double About100m = 0.0009;
 
-    private static DotWatcherApiFactory GroupsFactory() => new() { EnabledForAll = ["events", "groups"] };
+    private static DotWatcherApiFactory GroupsFactory() => new() { EnabledForAll = ["events", "groups", "create-groups"] };
 
     // ---- the pure rules --------------------------------------------------------------------------
 
@@ -304,7 +304,8 @@ public class EntryCodeTests
     {
         using var request = new HttpRequestMessage(HttpMethod.Put, $"/admin/users/{userId}/features")
         {
-            Content = JsonContent.Create(new { features = new[] { "groups" } }),
+            // The organiser creates a group after this, which a "groups" account needs "create-groups" for.
+            Content = JsonContent.Create(new { features = new[] { "groups", "create-groups" } }),
         };
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", "test-token");
         Assert.True((await client.SendAsync(request)).IsSuccessStatusCode);

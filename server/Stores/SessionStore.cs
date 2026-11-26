@@ -671,7 +671,8 @@ public partial class SessionStore(string connectionString) : IDisposable
         UpsertMembership(conn, sessionId, userId, "runner", displayName, now);
 
         return new SessionMembership(sessionId, sessionName, inviteCode, "runner", displayName, displayName, now,
-            GroupEndsAt(DateTimeOffset.Parse(now), maxLengthHours).ToString("O"), IsOwner: true, Nearby: nearby is not null);
+            GroupEndsAt(DateTimeOffset.Parse(now), maxLengthHours).ToString("O"), IsOwner: true, Nearby: nearby is not null,
+            NearbyRadiusMeters: nearby?.RadiusMeters);
     }
 
     /// <summary>
@@ -711,6 +712,10 @@ public partial class SessionStore(string connectionString) : IDisposable
         // Giving a radius to a session that has nearby off turns it on, as the plan describes.
         var nowOn = enabled ?? (wasOn || radiusMeters is not null);
         var radius = radiusMeters ?? currentRadius;
+
+        // Turning on keeps the old join location only if it was on already; otherwise it needs a fresh one.
+        if (point is null && nowOn && !wasOn)
+            return (NearbyUpdateOutcome.NeedsPosition, null);
 
         using var update = conn.CreateCommand();
         update.CommandText = """
@@ -1063,7 +1068,7 @@ public partial class SessionStore(string connectionString) : IDisposable
         using var cmd = conn.CreateCommand();
         cmd.CommandText = """
             SELECT s.id, s.session_name, s.invite_code, m.role, m.display_name, owner.display_name, s.created_at, s.max_length_hours,
-                   s.owner_user_id = m.user_id, s.nearby
+                   s.owner_user_id = m.user_id, s.nearby, s.nearby_radius_m
             FROM session_members m
             JOIN app_sessions s ON s.id = m.session_id
             JOIN session_members owner ON owner.session_id = s.id AND owner.user_id = s.owner_user_id
@@ -1082,7 +1087,7 @@ public partial class SessionStore(string connectionString) : IDisposable
         using var cmd = conn.CreateCommand();
         cmd.CommandText = """
             SELECT s.id, s.session_name, s.invite_code, m.role, m.display_name, owner.display_name, s.created_at, s.max_length_hours,
-                   s.owner_user_id = m.user_id, s.nearby
+                   s.owner_user_id = m.user_id, s.nearby, s.nearby_radius_m
             FROM session_members m
             JOIN app_sessions s ON s.id = m.session_id
             JOIN session_members owner ON owner.session_id = s.id AND owner.user_id = s.owner_user_id
@@ -1115,10 +1120,18 @@ public partial class SessionStore(string connectionString) : IDisposable
                 reader.GetString(6),
                 EndsAtIso(reader, 6, 7),
                 reader.GetBoolean(8),
-                reader.GetBoolean(8) ? reader.GetBoolean(9) : null));
+                reader.GetBoolean(8) ? reader.GetBoolean(9) : null,
+                OwnerRadius(reader)));
 
         return sessions;
     }
+
+    /// <summary>The owner's nearby radius (column 10), for the group card's area size; null for anyone else
+    /// and for a session that isn't shown nearby.</summary>
+    private static int? OwnerRadius(NpgsqlDataReader reader) =>
+        reader.GetBoolean(8) && reader.GetBoolean(9)
+            ? (reader.IsDBNull(10) ? NearbyJoin.DefaultRadiusMeters : reader.GetInt16(10))
+            : null;
 
     public SessionMembership? GetMembership(string sessionId, string userId)
     {
@@ -1135,7 +1148,7 @@ public partial class SessionStore(string connectionString) : IDisposable
         using var cmd = conn.CreateCommand();
         cmd.CommandText = """
             SELECT s.id, s.session_name, s.invite_code, m.role, m.display_name, owner.display_name, s.created_at, s.max_length_hours,
-                   s.owner_user_id = m.user_id, s.nearby
+                   s.owner_user_id = m.user_id, s.nearby, s.nearby_radius_m
             FROM session_members m
             JOIN app_sessions s ON s.id = m.session_id
             JOIN session_members owner ON owner.session_id = s.id AND owner.user_id = s.owner_user_id
@@ -1146,7 +1159,7 @@ public partial class SessionStore(string connectionString) : IDisposable
         using var reader = cmd.ExecuteReader();
         return reader.Read()
             ? new SessionMembership(reader.GetString(0), reader.GetString(1), inviteCode ?? reader.GetString(2), reader.GetString(3), reader.GetString(4), reader.GetString(5), reader.GetString(6), EndsAtIso(reader, 6, 7),
-                reader.GetBoolean(8), reader.GetBoolean(8) ? reader.GetBoolean(9) : null)
+                reader.GetBoolean(8), reader.GetBoolean(8) ? reader.GetBoolean(9) : null, OwnerRadius(reader))
             : null;
     }
 

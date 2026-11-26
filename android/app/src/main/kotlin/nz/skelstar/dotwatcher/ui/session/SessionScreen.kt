@@ -69,6 +69,7 @@ import java.time.Duration
 import java.time.Instant
 import nz.skelstar.dotwatcher.groups.groupTime
 import nz.skelstar.dotwatcher.location.CASUAL_SESSION_ID
+import nz.skelstar.dotwatcher.location.Fix
 import nz.skelstar.dotwatcher.location.LocationTrackingService
 import nz.skelstar.dotwatcher.location.TrackingState
 import nz.skelstar.dotwatcher.ui.CodeBoxField
@@ -90,6 +91,7 @@ import nz.skelstar.dotwatcher.ui.nearby.ActiveSessionDialog
 import nz.skelstar.dotwatcher.ui.nearby.NearbyCreateSection
 import nz.skelstar.dotwatcher.ui.nearby.NearbyJoinSheet
 import nz.skelstar.dotwatcher.ui.groups.GroupInCard
+import nz.skelstar.dotwatcher.groups.goSignEyebrow
 import nz.skelstar.dotwatcher.groups.GroupsModel
 import nz.skelstar.dotwatcher.groups.GroupOrganiserActions
 import nz.skelstar.dotwatcher.network.SessionMembership
@@ -147,6 +149,8 @@ fun SessionScreen(
     onEndActiveSessionAndCreate: () -> Unit,
     onDismissActiveSessionConflict: () -> Unit,
     hasPreciseLocation: Boolean,
+    /** Where the person is now, for the Create dialog's map of the join area. */
+    loadPreviewFix: (suspend () -> Fix?)? = null,
 ) {
     var showJoinDialog by remember { mutableStateOf(false) }
     // Pull-to-refresh: the spinner shows until the nearby list has loaded.
@@ -300,6 +304,7 @@ fun SessionScreen(
                     title = "Go",
                     subtitle = "Hold to start",
                     onComplete = { showBeforeYouGo = true },
+                    eyebrow = goSignEyebrow(groupsState.joined),
                 )
             }
             // Only when the server has events for this account (the "events" feature): the runs people
@@ -334,13 +339,17 @@ fun SessionScreen(
                 enabled = state !is SessionUiState.Loading,
                 onClick = { showJoinDialog = true },
             )
-            SignButton(
-                title = "Create",
-                subtitle = "Set up a new run for others",
-                icon = SignIcon.Plus,
-                enabled = state !is SessionUiState.Loading,
-                onClick = { showCreateDialog = true },
-            )
+            // With groups, Create makes a group, which needs "create-groups". Read from the account's features
+            // (as the server last said) so it doesn't flash up before the groups list loads.
+            if (groupsState.canCreate && groups.canCreate) {
+                SignButton(
+                    title = "Create",
+                    subtitle = "Set up a new run for others",
+                    icon = SignIcon.Plus,
+                    enabled = state !is SessionUiState.Loading,
+                    onClick = { showCreateDialog = true },
+                )
+            }
         }
     }
 
@@ -464,6 +473,7 @@ fun SessionScreen(
                 onCreateSession(sessionName, nearby)
             },
             onCancel = { showCreateDialog = false },
+            loadPreviewFix = loadPreviewFix,
         )
     }
 }
@@ -624,6 +634,7 @@ private fun CreateSessionDialog(
     groupsAvailable: Boolean,
     onCreate: (sessionName: String?, nearby: NearbyDraft?) -> Unit,
     onCancel: () -> Unit,
+    loadPreviewFix: (suspend () -> Fix?)? = null,
 ) {
     var sessionName by remember { mutableStateOf("") }
     var nearby by remember { mutableStateOf(NearbyDraft()) }
@@ -680,6 +691,7 @@ private fun CreateSessionDialog(
                     onChange = { nearby = it },
                     hasPreciseLocation = hasPreciseLocation,
                     groupsAvailable = groupsAvailable,
+                    loadPreviewFix = loadPreviewFix,
                 )
             }
             Spacer(modifier = Modifier.height(20.dp))

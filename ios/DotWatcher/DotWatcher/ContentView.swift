@@ -124,6 +124,7 @@ struct ContentView: View {
                     groupsAvailable: location.hasGroups,
                     locationState: location.nearbyLocationState,
                     onAllowLocation: { location.requestWhenInUseAuthorizationIfNeeded() },
+                    loadPreviewFix: { await location.currentFix() },
                     isBusy: isBusy,
                     isOffline: location.isOffline
                 ) {
@@ -277,7 +278,8 @@ struct ContentView: View {
             } else if casual.isAvailable {
                 HoldSignButton(
                     title: "Go",
-                    subtitle: "Hold to start"
+                    subtitle: "Hold to start",
+                    eyebrow: goSignEyebrow(groups: location.groupMemberships)
                 ) { casual.isBeforeYouGoPresented = true }
             }
             // Only when the server has events for this account (the "events" feature): the runs people
@@ -305,10 +307,12 @@ struct ContentView: View {
                 showJoinSheet = true
             }
             .disabled(isBusy)
-            SignButton(title: "Create", subtitle: "Set up a new run for others", icon: .plus) {
-                showCreateSession = true
+            if location.canCreate {
+                SignButton(title: "Create", subtitle: "Set up a new run for others", icon: .plus) {
+                    showCreateSession = true
+                }
+                .disabled(isBusy)
             }
-            .disabled(isBusy)
         }
         .padding(.horizontal)
         .padding(.top, 8)

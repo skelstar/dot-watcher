@@ -62,7 +62,9 @@ public static class NearbyJoin
 /// <summary>A GPS fix used as a session's meeting point. Never returned to clients.</summary>
 public record MeetingPoint(double Latitude, double Longitude, double? AccuracyMeters);
 
-public enum NearbyUpdateOutcome { Ok, NotOwner, Archived }
+/// <summary>NeedsPosition: a radius alone was sent for a session that isn't shown nearby, so it has no join
+/// location to grow the area around.</summary>
+public enum NearbyUpdateOutcome { Ok, NotOwner, Archived, NeedsPosition }
 
 /// <summary>What a client is told about a session's nearby setting (no coordinates).</summary>
 public record NearbyStatus(bool Nearby, int RadiusMeters);

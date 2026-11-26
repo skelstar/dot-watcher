@@ -37,6 +37,20 @@ import nz.skelstar.dotwatcher.groups.GroupTime
 import nz.skelstar.dotwatcher.groups.GroupOrganiserActions
 import nz.skelstar.dotwatcher.ui.nearby.EntryCodeSection
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.runtime.collectAsState
+import nz.skelstar.dotwatcher.groups.GroupAreaActions
+import nz.skelstar.dotwatcher.ui.map.JoinRange
+import nz.skelstar.dotwatcher.ui.map.JoinRangePreview
+import nz.skelstar.dotwatcher.ui.nearby.RadiusChips
 import kotlinx.coroutines.launch
 import nz.skelstar.dotwatcher.network.SessionMembership
 
@@ -63,9 +77,22 @@ fun GroupInCard(
     var confirmEnd by remember { mutableStateOf(false) }
     var showCode by remember { mutableStateOf(false) }
     var showPicker by remember { mutableStateOf(false) }
+    /** A nearby group's entry code, loaded for the dashed code box; null while loading or when there's none. */
+    var entryCode by remember(group.sessionId) { mutableStateOf<String?>(null) }
     var message by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
+    val entryCodeActions = organiser?.entryCode
+    LaunchedEffect(group.sessionId, entryCodeActions != null) {
+        entryCodeActions?.load()?.onSuccess { entryCode = it }
+    }
+    // The code joiners need (mock-up .ai/mockups/go-and-groups-join.html): a nearby group's entry code when
+    // one is set, otherwise a private group's invite code.
+    val shownCode: Pair<String, String>? = when {
+        group.nearby == true -> entryCode?.let { "Entry code" to it }
+        group.inviteCode.isNotEmpty() -> "Invite code" to group.inviteCode
+        else -> null
+    }
     OutlinedCard(
         modifier = modifier.fillMaxWidth(),
         border = BorderStroke(2.dp, MaterialTheme.colorScheme.outline),
@@ -85,7 +112,7 @@ fun GroupInCard(
                 text = when {
                     organiser != null && group.nearby == true ->
                         "People near your join location see it on their start screen. You don't need to be out."
-                    organiser != null -> "Only people with the invite code ${group.inviteCode} can join."
+                    organiser != null -> "Only people with the invite code can join."
                     isOut -> "You're out, so everyone in the group can see you by name."
                     else -> "Not out yet. Nobody in the group can see you until you press Go."
                 },
@@ -96,6 +123,15 @@ fun GroupInCard(
                     Text("Leave group", color = MaterialTheme.colorScheme.error)
                 }
             } else {
+                shownCode?.let { (label, code) ->
+                    CodeBox(
+                        label = label,
+                        code = code,
+                        // Invite codes are fixed; only a nearby group's entry code can change.
+                        changeLabel = if (entryCodeActions != null) (if (showCode) "Done" else "Change") else null,
+                        onChange = { showCode = !showCode },
+                    )
+                }
                 // Two rows: where people join (Ping here, or a point chosen on the map), then the code and End.
                 if (organiser.ping != null || organiser.setJoinLocationAt != null) {
                     Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -117,7 +153,8 @@ fun GroupInCard(
                     }
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    if (organiser.entryCode != null) {
+                    // With a code set, the box above carries Change; this is only for adding one.
+                    if (entryCodeActions != null && entryCode == null) {
                         TextButton(onClick = { showCode = !showCode }) {
                             Text(if (showCode) "Hide code" else "Entry code")
                         }
@@ -126,7 +163,7 @@ fun GroupInCard(
                         Text("End group", color = MaterialTheme.colorScheme.error)
                     }
                 }
-                if (showCode) organiser.entryCode?.let { EntryCodeSection(it) }
+                if (showCode) entryCodeActions?.let { EntryCodeSection(it, onChanged = { code -> entryCode = code }) }
                 if (showPicker) {
                     JoinLocationPickerDialog(
                         group = group,
@@ -136,6 +173,7 @@ fun GroupInCard(
                     )
                 }
                 message?.let { Text(text = it, style = MaterialTheme.typography.bodyMedium) }
+                organiser.area?.let { GroupAreaSection(group.sessionId, it) }
             }
         }
     }
@@ -174,6 +212,84 @@ fun GroupInCard(
             },
             dismissButton = { TextButton(onClick = { confirmEnd = false }) { Text("Keep it") } },
         )
+    }
+}
+
+/** A join code inside a dashed box, with Change on the right when [changeLabel] is set. */
+@Composable
+private fun CodeBox(label: String, code: String, changeLabel: String?, onChange: () -> Unit) {
+    val ink = MaterialTheme.colorScheme.onSurface
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        modifier = Modifier
+            .padding(top = 6.dp)
+            .fillMaxWidth()
+            .drawBehind {
+                drawRoundRect(
+                    color = ink,
+                    cornerRadius = CornerRadius(8.dp.toPx()),
+                    style = Stroke(
+                        width = 1.5.dp.toPx(),
+                        pathEffect = PathEffect.dashPathEffect(floatArrayOf(4.dp.toPx(), 3.dp.toPx())),
+                    ),
+                )
+            }
+            .padding(start = 10.dp, end = 2.dp, top = 2.dp, bottom = 2.dp)
+            .heightIn(min = 40.dp),
+    ) {
+        Text(text = label, style = MaterialTheme.typography.bodyMedium)
+        SelectionContainer(modifier = Modifier.weight(1f)) {
+            Text(
+                text = code,
+                fontFamily = FontFamily.Monospace,
+                fontWeight = FontWeight.Bold,
+                fontSize = 18.sp,
+                letterSpacing = 2.sp,
+            )
+        }
+        changeLabel?.let { TextButton(onClick = onChange) { Text(it) } }
+    }
+}
+
+/**
+ * On the organiser's card for a nearby group: how big the join area is, and chips to change it. The join location
+ * stays put; only the size changes. A map of the area shows when this phone knows where the join location is (it
+ * set it, by creating the group or Ping here, since the app opened). Matches iOS's `GroupAreaSection`.
+ */
+@Composable
+private fun GroupAreaSection(sessionId: String, area: GroupAreaActions) {
+    val scope = rememberCoroutineScope()
+    // organiserActions builds new flows on every call, so hold on to the first ones for this group.
+    val flows = remember(sessionId) { area }
+    val current by flows.radiusMeters.collectAsState(initial = null)
+    val joinLocation by flows.joinLocation.collectAsState(initial = null)
+    var chosen by remember(sessionId) { mutableStateOf<Int?>(null) }
+    var message by remember(sessionId) { mutableStateOf<String?>(null) }
+    var busy by remember(sessionId) { mutableStateOf(false) }
+    val shown = chosen ?: current ?: return
+
+    Column(
+        modifier = Modifier.padding(top = 6.dp, bottom = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text(text = "Join area", style = MaterialTheme.typography.labelLarge)
+        RadiusChips(
+            selected = shown,
+            onSelect = { radius ->
+                if (busy || radius == shown) return@RadiusChips
+                chosen = radius
+                scope.launch {
+                    busy = true
+                    message = flows.change(radius)
+                    // The server's answer wins; on a failure the chips go back to it.
+                    chosen = null
+                    busy = false
+                }
+            },
+        )
+        joinLocation?.let { JoinRangePreview(JoinRange(it.latitude, it.longitude, shown)) }
+        message?.let { Text(text = it, style = MaterialTheme.typography.bodyMedium) }
     }
 }
 

@@ -16,7 +16,7 @@ public class GroupsCasualTests
     private static readonly DateTimeOffset Created = new(2026, 11, 22, 8, 0, 0, TimeSpan.Zero);
 
     private static DotWatcherApiFactory GroupsFactory() =>
-        new() { EnabledForAll = [Features.Crew, Features.Casual, Features.Groups] };
+        new() { EnabledForAll = [Features.Crew, Features.Casual, Features.Groups, Features.CreateGroups] };
 
     // ---- the pure rule ---------------------------------------------------------------------------
 

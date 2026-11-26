@@ -9,6 +9,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import nz.skelstar.dotwatcher.blocks.BlocksModel
@@ -17,6 +18,7 @@ import nz.skelstar.dotwatcher.casual.CasualPrefs
 import nz.skelstar.dotwatcher.events.EventsModel
 import nz.skelstar.dotwatcher.groups.GroupsModel
 import nz.skelstar.dotwatcher.groups.GroupOrganiserActions
+import nz.skelstar.dotwatcher.groups.GroupAreaActions
 import nz.skelstar.dotwatcher.nearby.EntryCodeActions
 import nz.skelstar.dotwatcher.crew.CrewModel
 import nz.skelstar.dotwatcher.crew.CrewPrefs
@@ -626,9 +628,28 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             null
         },
         joinLocation = _nearbyMeetingPoints.value[group.sessionId],
-        radiusMeters = _nearbyStatuses.value[group.sessionId]?.radiusMeters ?: NEARBY_DEFAULT_RADIUS_METRES,
+        radiusMeters = _nearbyStatuses.value[group.sessionId]?.radiusMeters ?: group.nearbyRadiusMeters ?: NEARBY_DEFAULT_RADIUS_METRES,
         currentPosition = { nearbyFix.current() },
+        area = if (group.nearby == true) {
+            GroupAreaActions(
+                radiusMeters = _nearbyStatuses.map { statuses ->
+                    statuses[group.sessionId]?.radiusMeters ?: group.nearbyRadiusMeters ?: NEARBY_DEFAULT_RADIUS_METRES
+                },
+                joinLocation = _nearbyMeetingPoints.map { it[group.sessionId] },
+                change = { radius -> setGroupRadius(group.sessionId, radius) },
+            )
+        } else {
+            null
+        },
     )
+
+    /** Groups: the organiser changes the join area's size from their group's card. The join location stays where
+     *  it is, so this needs no fix. */
+    suspend fun setGroupRadius(sessionId: String, radiusMeters: Int): String =
+        updateNearby(sessionId, fix = null, enabled = null, radiusMeters = radiusMeters, done = "Area set to $radiusMeters m")
+
+    /** Where the person is now, for the Create dialog's map of the join area; null without a fix. */
+    suspend fun previewFix(): Fix? = nearbyFix.current()
 
     fun joinSession(inviteCode: String) {
         viewModelScope.launch {
