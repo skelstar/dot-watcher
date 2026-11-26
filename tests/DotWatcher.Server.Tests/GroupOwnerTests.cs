@@ -39,6 +39,30 @@ public class GroupOwnerTests
         var mine = Assert.Single((await ListAsync(client, owner)).EnumerateArray());
         Assert.True(mine.GetProperty("isOwner").GetBoolean());
         Assert.True(mine.GetProperty("nearby").GetBoolean());
+        Assert.Equal(100, mine.GetProperty("nearbyRadiusMeters").GetInt32());
+    }
+
+    [Fact]
+    public async Task Owner_SeesTheNewRadius_AfterChangingIt()
+    {
+        using var factory = new DotWatcherApiFactory { EnabledForAll = ["events"] };
+        using var client = factory.CreateClient();
+        var owner = await AuthTestHelpers.RegisterAsync(client, "kiri", "KI");
+        var created = await SendAsync(client, HttpMethod.Post, "/sessions", owner, new
+        {
+            sessionName = "Hunua 50k",
+            nearby = true,
+            latitude = Lat,
+            longitude = Lon,
+            accuracy = 8,
+        });
+        var sessionId = (await created.Content.ReadFromJsonAsync<SessionMembership>())!.SessionId;
+
+        var changed = await SendAsync(client, HttpMethod.Put, $"/sessions/{sessionId}/nearby", owner, new { radiusMeters = 250 });
+        Assert.Equal(HttpStatusCode.OK, changed.StatusCode);
+
+        var mine = Assert.Single((await ListAsync(client, owner)).EnumerateArray());
+        Assert.Equal(250, mine.GetProperty("nearbyRadiusMeters").GetInt32());
     }
 
     [Fact]
@@ -53,6 +77,7 @@ public class GroupOwnerTests
 
         Assert.True(mine.GetProperty("isOwner").GetBoolean());
         Assert.False(mine.GetProperty("nearby").GetBoolean());
+        Assert.False(mine.TryGetProperty("nearbyRadiusMeters", out _));
     }
 
     [Fact]
@@ -72,6 +97,7 @@ public class GroupOwnerTests
         var theirs = Assert.Single((await ListAsync(client, joiner)).EnumerateArray());
         Assert.False(theirs.GetProperty("isOwner").GetBoolean());
         Assert.False(theirs.TryGetProperty("nearby", out _));
+        Assert.False(theirs.TryGetProperty("nearbyRadiusMeters", out _));
     }
 
     private static async Task<JsonElement> ListAsync(HttpClient client, string token)

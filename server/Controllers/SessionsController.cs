@@ -227,10 +227,12 @@ public class SessionsController(
         if (request.RadiusMeters is int radius && !NearbyJoin.IsAllowedRadius(radius))
             return BadRequest(new { error = "Nearby radius must be 50, 100, 250 or 500 metres." });
 
-        // Only switching off may go without a fix; anything else (a Ping, switching on, a new radius
-        // from the same sheet) carries the organiser's position.
+        // Two updates may go without a fix: switching off, and a new radius on its own (the area grows or
+        // shrinks around the join location it already has). Anything else (a Ping, switching on) carries
+        // the organiser's position.
+        var radiusOnly = request.Enabled is null && request.RadiusMeters is not null;
         MeetingPoint? point = null;
-        if (request.Latitude is not null || request.Longitude is not null || request.Enabled != false)
+        if (request.Latitude is not null || request.Longitude is not null || (request.Enabled != false && !radiusOnly))
         {
             if (request.Latitude is not double latitude || request.Longitude is not double longitude
                 || !NearbyJoin.IsValidPosition(latitude, longitude, request.Accuracy))
@@ -244,6 +246,7 @@ public class SessionsController(
         {
             NearbyUpdateOutcome.NotOwner => StatusCode(StatusCodes.Status403Forbidden),
             NearbyUpdateOutcome.Archived => StatusCode(StatusCodes.Status410Gone, new { error = "This session has ended." }),
+            NearbyUpdateOutcome.NeedsPosition => BadRequest(new { error = "A valid position (accuracy 100 m or better) is needed." }),
             _ => Ok(status),
         };
     }

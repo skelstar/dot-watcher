@@ -124,6 +124,7 @@ struct ContentView: View {
                     groupsAvailable: location.hasGroups,
                     locationState: location.nearbyLocationState,
                     onAllowLocation: { location.requestWhenInUseAuthorizationIfNeeded() },
+                    loadPreviewFix: { await location.currentFix() },
                     isBusy: isBusy,
                     isOffline: location.isOffline
                 ) {

@@ -1,3 +1,4 @@
+import CoreLocation
 import SwiftUI
 
 struct CreateSessionView: View {
@@ -17,6 +18,8 @@ struct CreateSessionView: View {
     var groupsAvailable = false
     let locationState: NearbyLocationState
     let onAllowLocation: () -> Void
+    /// Where the organiser is now, for the nearby range preview map.
+    var loadPreviewFix: (() async -> CLLocation?)? = nil
     let isBusy: Bool
     let isOffline: Bool
     let onCreate: () -> Void
@@ -97,7 +100,7 @@ struct CreateSessionView: View {
                     if nearbyAvailable {
                         NearbyCreateSection(
                             draft: $nearby, locationState: locationState, onAllowLocation: onAllowLocation,
-                            groupsAvailable: groupsAvailable)
+                            groupsAvailable: groupsAvailable, loadPreviewFix: loadPreviewFix)
                     }
 
                     Button("Create Session") {

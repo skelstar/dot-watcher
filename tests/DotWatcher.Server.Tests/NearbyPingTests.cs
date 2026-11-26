@@ -107,6 +107,34 @@ public class NearbyPingTests
     }
 
     [Fact]
+    public async Task ARadiusAlone_NeedsNoFix_AndKeepsTheJoinLocation()
+    {
+        using var factory = new DotWatcherApiFactory { EnabledForAll = ["events"] };
+        using var client = factory.CreateClient();
+        var token = await AuthTestHelpers.RegisterAsync(client, "alice", "Alice");
+        var session = await CreateNearbySessionAsync(client, token);
+
+        var response = await PutAsync(client, token, session.SessionId, new { radiusMeters = 500 });
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal(new NearbyStatus(true, 500), await response.Content.ReadFromJsonAsync<NearbyStatus>());
+    }
+
+    [Fact]
+    public async Task ARadiusAlone_CantTurnNearbyBackOn()
+    {
+        using var factory = new DotWatcherApiFactory { EnabledForAll = ["events"] };
+        using var client = factory.CreateClient();
+        var token = await AuthTestHelpers.RegisterAsync(client, "alice", "Alice");
+        var session = await CreateNearbySessionAsync(client, token);
+        await PutAsync(client, token, session.SessionId, new { enabled = false });
+
+        var response = await PutAsync(client, token, session.SessionId, new { radiusMeters = 250 });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
     public async Task SwitchingOff_NeedsNoFix_AndGivingARadiusTurnsItBackOn()
     {
         using var factory = new DotWatcherApiFactory { EnabledForAll = ["events"] };

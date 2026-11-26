@@ -411,7 +411,7 @@ private const val JOIN_RANGE_POINTS = 72
 private const val METRES_PER_DEGREE_LATITUDE = 111_320.0
 
 /** The range as a polygon of [JOIN_RANGE_POINTS] points (flat-earth is plenty at 500 m). */
-private fun JoinRange.toPolygon(): Polygon {
+internal fun JoinRange.toPolygon(): Polygon {
     val dLat = radiusMeters / METRES_PER_DEGREE_LATITUDE
     val dLon = dLat / kotlin.math.cos(Math.toRadians(latitude))
     val ring = (0..JOIN_RANGE_POINTS).map { i ->

@@ -200,6 +200,10 @@ struct GroupInCard: View {
                 .font(.subheadline.weight(.semibold))
                 .fixedSize(horizontal: false, vertical: true)
         }
+        if group.nearby == true {
+            GroupAreaSection(location: location, group: group)
+                .padding(.top, 6)
+        }
     }
 
     /// The code inside a dashed box; Change (nearby groups only, since invite codes are fixed) opens the editor.
@@ -234,6 +238,58 @@ struct GroupInCard: View {
             try await organiser.endSession(sessionId: group.sessionId)
         } catch {
             message = error.localizedDescription
+        }
+    }
+}
+
+/// On the organiser's card for a nearby group: how big the join area is, and a picker to change it. The join
+/// location stays put; only the size changes. A map of the area shows when this phone knows where the join
+/// location is (it set it, by creating the group or pressing Ping here, since the app opened).
+struct GroupAreaSection: View {
+    var location: LocationManager
+    let group: SessionMembership
+    @State private var chosen: Int?
+    @State private var message: String?
+    @State private var isBusy = false
+
+    private var current: Int {
+        location.nearbyStatuses[group.sessionId]?.radiusMeters ?? group.nearbyRadiusMeters ?? NearbyRadius.defaultMeters
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text("Join area")
+                    .font(.subheadline)
+                Spacer()
+                Picker("Join area", selection: Binding(get: { chosen ?? current }, set: { change(to: $0) })) {
+                    ForEach(NearbyRadius.options, id: \.meters) { option in
+                        Text(option.label).tag(option.meters)
+                    }
+                }
+                .pickerStyle(.menu)
+                .disabled(isBusy)
+            }
+            if let center = location.nearbyMeetingPoints[group.sessionId] {
+                NearbyRangePreview(center: center, radiusMeters: chosen ?? current)
+            }
+            if let message {
+                Text(message)
+                    .font(.subheadline.weight(.semibold))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    private func change(to radius: Int) {
+        guard radius != (chosen ?? current) else { return }
+        chosen = radius
+        Task {
+            isBusy = true
+            message = await location.setGroupRadius(sessionId: group.sessionId, radiusMeters: radius)
+            // The server's answer (in nearbyStatuses) wins; on a failure the picker goes back to it.
+            chosen = nil
+            isBusy = false
         }
     }
 }

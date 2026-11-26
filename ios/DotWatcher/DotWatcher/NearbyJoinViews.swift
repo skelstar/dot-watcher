@@ -93,6 +93,9 @@ struct NearbyCreateSection: View {
     let onAllowLocation: () -> Void
     /// The "groups" feature: offers "Ask for a code to join".
     var groupsAvailable = false
+    /// Where the organiser is now, for the range preview; nil shows no map.
+    var loadPreviewFix: (() async -> CLLocation?)? = nil
+    @State private var previewFix: CLLocation?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -113,6 +116,13 @@ struct NearbyCreateSection: View {
                     }
                     .pickerStyle(.menu)
                 }
+                if let previewFix {
+                    NearbyRangePreview(center: previewFix.coordinate, radiusMeters: draft.radiusMeters)
+                    Text("The yellow area is where people can join from. It starts where you are when you create the run.")
+                        .font(.app(.footnote))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
                 Text("GPS can be off by 10 to 50 m, so a wider range is easier to join from.")
                     .font(.app(.footnote))
                     .foregroundStyle(.secondary)
@@ -122,6 +132,10 @@ struct NearbyCreateSection: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .task(id: draft.isOn && locationState == .ready) {
+            guard draft.isOn, locationState == .ready, previewFix == nil, let loadPreviewFix else { return }
+            previewFix = await loadPreviewFix()
+        }
     }
 
     @ViewBuilder
@@ -167,6 +181,45 @@ struct NearbyCreateSection: View {
                 .buttonStyle(.bordered)
             }
         }
+    }
+}
+
+/// A small map of the join area: the yellow spot of `radiusMeters` around `center`, framed so the whole spot
+/// shows, with a dot at the join location (where the organiser is, at create). It re-frames when the range changes.
+struct NearbyRangePreview: View {
+    let center: CLLocationCoordinate2D
+    let radiusMeters: Int
+    @State private var camera = LinzMapCamera()
+
+    var body: some View {
+        LinzMapView(
+            markers: [
+                LinzMapMarker(id: "join-location", coordinate: center) {
+                    Circle()
+                        .fill(Color.accentColor)
+                        .overlay(Circle().stroke(.white, lineWidth: 2))
+                        .frame(width: 14, height: 14)
+                },
+            ],
+            joinRange: LinzJoinRange(center: center, radiusMeters: Double(radiusMeters)),
+            camera: camera
+        )
+        // A look, not a map to move: drags here scroll the sheet.
+        .allowsHitTesting(false)
+        .frame(height: 180)
+        .overlay(alignment: .bottom) { LinzAttribution().padding(.bottom, 4) }
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .accessibilityElement()
+        .accessibilityLabel("Map of the join area, \(radiusMeters) metres around the join location")
+        .onAppear { frame() }
+        .onChange(of: radiusMeters) { _, _ in frame() }
+    }
+
+    /// The spot's width plus a margin each side.
+    private func frame() {
+        let latSpan = Double(radiusMeters) * 2 * 1.4 / 111_320
+        let lonSpan = latSpan / cos(center.latitude * .pi / 180)
+        camera.move(to: LinzMapRegion(center: center, latitudeDelta: latSpan, longitudeDelta: lonSpan))
     }
 }
 
