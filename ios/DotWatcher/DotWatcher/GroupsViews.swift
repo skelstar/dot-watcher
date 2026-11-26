@@ -78,10 +78,21 @@ struct GroupInCard: View {
     @State private var confirmEnd = false
     @State private var showCode = false
     @State private var showPicker = false
+    /// A nearby group's entry code, loaded for the dashed code box; nil while loading or when there's none.
+    @State private var entryCode: String?
     @State private var message: String?
     @State private var isBusy = false
 
     private var isOrganiser: Bool { organiser != nil && group.isOwner == true }
+
+    /// The code joiners need, shown in the dashed box (mock-up `.ai/mockups/go-and-groups-join.html`): a
+    /// nearby group's entry code when one is set, otherwise a private group's invite code.
+    private var shownCode: (label: String, code: String)? {
+        if group.nearby == true {
+            return entryCode.map { ("Entry code", $0) }
+        }
+        return group.inviteCode.isEmpty ? nil : ("Invite code", group.inviteCode)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -130,7 +141,7 @@ struct GroupInCard: View {
         if isOrganiser {
             return group.nearby == true
                 ? "People near your join location see it on their start screen. You don't need to be out."
-                : "Only people with the invite code \(group.inviteCode) can join."
+                : "Only people with the invite code can join."
         }
         return isOut
             ? "You're out, so everyone in the group can see you by name."
@@ -139,6 +150,9 @@ struct GroupInCard: View {
 
     @ViewBuilder
     private func organiserControls(_ location: LocationManager) -> some View {
+        if let shownCode {
+            codeBox(label: shownCode.label, code: shownCode.code)
+        }
         // Two rows: where people join (Ping here, or a point chosen on the map), then the code and End group.
         if group.nearby == true {
             HStack(spacing: 16) {
@@ -157,7 +171,8 @@ struct GroupInCard: View {
             .padding(.top, 4)
         }
         HStack(spacing: 16) {
-            if group.nearby == true {
+            // With a code set, the box above carries Change; this is only for adding one.
+            if group.nearby == true, entryCode == nil {
                 Button(showCode ? "Hide code" : "Entry code") { showCode.toggle() }
             }
             Button("End group", role: .destructive) { confirmEnd = true }
@@ -170,8 +185,12 @@ struct GroupInCard: View {
                 .presentationDetents([.large])
                 .preferredColorScheme(location.appearanceMode.colorScheme)
         }
+        .task(id: group.sessionId) {
+            guard group.nearby == true else { return }
+            entryCode = try? await location.entryCode(sessionId: group.sessionId)
+        }
         if showCode {
-            EntryCodeSection(location: location, sessionId: group.sessionId)
+            EntryCodeSection(location: location, sessionId: group.sessionId, onChanged: { entryCode = $0 })
                 .padding(.top, 6)
         }
         if let message {
@@ -179,6 +198,30 @@ struct GroupInCard: View {
                 .font(.subheadline.weight(.semibold))
                 .fixedSize(horizontal: false, vertical: true)
         }
+    }
+
+    /// The code inside a dashed box; Change (nearby groups only, since invite codes are fixed) opens the editor.
+    private func codeBox(label: String, code: String) -> some View {
+        HStack(spacing: 8) {
+            Text(label)
+                .font(.subheadline)
+            Text(code)
+                .font(.system(.title3, design: .monospaced).weight(.bold))
+                .kerning(2)
+                .textSelection(.enabled)
+            Spacer(minLength: 0)
+            if group.nearby == true {
+                Button(showCode ? "Done" : "Change") { showCode.toggle() }
+                    .font(.subheadline.weight(.semibold))
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color.primary, style: StrokeStyle(lineWidth: 1.5, dash: [4, 3]))
+        )
+        .padding(.top, 6)
     }
 
     private func end() async {
@@ -299,6 +342,8 @@ struct GroupsOnMapSheet: View {
 struct EntryCodeSection: View {
     var location: LocationManager
     let sessionId: String
+    /// Told the code after a change, so a card showing it can keep up.
+    var onChanged: ((String?) -> Void)? = nil
     @State private var current: String?
     @State private var loaded = false
     @State private var typed = ""
@@ -368,6 +413,7 @@ struct EntryCodeSection: View {
         defer { isBusy = false }
         do {
             current = try await location.setEntryCode(sessionId: sessionId, code: code)
+            onChanged?(current)
             message = code == nil ? "Anyone nearby can join now" : "Code changed to \(code!.uppercased())"
             typed = ""
         } catch DotWatcherAPIError.badResponse(410, _) {
