@@ -22,6 +22,13 @@ const val GROUPS_FEATURE = "groups"
 /** Who may organise a group: with groups, creating a session makes a group, and that needs this too. */
 const val CREATE_GROUPS_FEATURE = "create-groups"
 
+/** The line above "Go" on the start screen while the person is in any groups: the newest by name, and how many
+ *  more. Null when they're in none. Matches iOS's `goSignEyebrow`. */
+fun goSignEyebrow(groups: List<SessionMembership>): String? {
+    val newest = groups.firstOrNull() ?: return null
+    return if (groups.size > 1) "With ${newest.sessionName} + ${groups.size - 1} more" else "With ${newest.sessionName}"
+}
+
 /** What the organiser can do from their own group's card on the start screen (the session map isn't used for a
  *  group). Each returns words for the person, or null on success for [end]. */
 class GroupOrganiserActions(
