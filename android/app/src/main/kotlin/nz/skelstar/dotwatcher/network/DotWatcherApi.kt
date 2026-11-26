@@ -112,6 +112,8 @@ data class SessionMembership(
     val isOwner: Boolean = false,
     /** The organiser's view of whether people nearby can find it; null for everyone else and older servers. */
     val nearby: Boolean? = null,
+    /** The organiser's nearby radius in metres while it's shown nearby; null for everyone else and older servers. */
+    val nearbyRadiusMeters: Int? = null,
 )
 
 /** Someone who has joined a session, whether or not they are sending positions. Blocking needs the id. */

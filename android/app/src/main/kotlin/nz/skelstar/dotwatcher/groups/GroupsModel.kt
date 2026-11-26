@@ -1,12 +1,13 @@
 package nz.skelstar.dotwatcher.groups
 
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.flow.Flow
+import nz.skelstar.dotwatcher.location.Fix
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import nz.skelstar.dotwatcher.data.DotWatcherRepository
-import nz.skelstar.dotwatcher.location.Fix
 import nz.skelstar.dotwatcher.nearby.NEARBY_DEFAULT_RADIUS_METRES
 import nz.skelstar.dotwatcher.nearby.EntryCodeActions
 import nz.skelstar.dotwatcher.network.SessionMembership
@@ -37,6 +38,18 @@ class GroupOrganiserActions(
     val radiusMeters: Int = NEARBY_DEFAULT_RADIUS_METRES,
     /** The phone's position now, for "Choose on map" when [joinLocation] is unknown. */
     val currentPosition: suspend () -> Fix? = { null },
+    /** The join area's size; null when the group isn't shown nearby. */
+    val area: GroupAreaActions? = null,
+)
+
+/** The organiser changes how big their group's join area is. The join location stays where it is. */
+class GroupAreaActions(
+    /** The size now, in metres, as the server last said. */
+    val radiusMeters: Flow<Int>,
+    /** Where the join location is, when this phone set it (by creating the group or Ping here); null otherwise. */
+    val joinLocation: Flow<Fix?>,
+    /** Sets a new size. Returns words for the person. */
+    val change: suspend (radiusMeters: Int) -> String,
 )
 
 data class GroupsUiState(

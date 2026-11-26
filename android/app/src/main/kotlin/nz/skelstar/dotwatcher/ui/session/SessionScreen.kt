@@ -69,6 +69,7 @@ import java.time.Duration
 import java.time.Instant
 import nz.skelstar.dotwatcher.groups.groupTime
 import nz.skelstar.dotwatcher.location.CASUAL_SESSION_ID
+import nz.skelstar.dotwatcher.location.Fix
 import nz.skelstar.dotwatcher.location.LocationTrackingService
 import nz.skelstar.dotwatcher.location.TrackingState
 import nz.skelstar.dotwatcher.ui.CodeBoxField
@@ -147,6 +148,8 @@ fun SessionScreen(
     onEndActiveSessionAndCreate: () -> Unit,
     onDismissActiveSessionConflict: () -> Unit,
     hasPreciseLocation: Boolean,
+    /** Where the person is now, for the Create dialog's map of the join area. */
+    loadPreviewFix: (suspend () -> Fix?)? = null,
 ) {
     var showJoinDialog by remember { mutableStateOf(false) }
     // Pull-to-refresh: the spinner shows until the nearby list has loaded.
@@ -464,6 +467,7 @@ fun SessionScreen(
                 onCreateSession(sessionName, nearby)
             },
             onCancel = { showCreateDialog = false },
+            loadPreviewFix = loadPreviewFix,
         )
     }
 }
@@ -624,6 +628,7 @@ private fun CreateSessionDialog(
     groupsAvailable: Boolean,
     onCreate: (sessionName: String?, nearby: NearbyDraft?) -> Unit,
     onCancel: () -> Unit,
+    loadPreviewFix: (suspend () -> Fix?)? = null,
 ) {
     var sessionName by remember { mutableStateOf("") }
     var nearby by remember { mutableStateOf(NearbyDraft()) }
@@ -680,6 +685,7 @@ private fun CreateSessionDialog(
                     onChange = { nearby = it },
                     hasPreciseLocation = hasPreciseLocation,
                     groupsAvailable = groupsAvailable,
+                    loadPreviewFix = loadPreviewFix,
                 )
             }
             Spacer(modifier = Modifier.height(20.dp))

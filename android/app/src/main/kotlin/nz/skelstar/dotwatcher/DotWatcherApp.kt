@@ -120,6 +120,7 @@ fun DotWatcherApp(hasBackgroundLocationPermission: Boolean) {
                     onEndActiveSessionAndCreate = viewModel::endActiveSessionAndCreate,
                     onDismissActiveSessionConflict = viewModel::dismissActiveSessionConflict,
                     hasPreciseLocation = viewModel.hasPreciseLocation,
+                    loadPreviewFix = viewModel::previewFix,
                     onStartCasual = { duration ->
                         if (hasBackgroundLocationPermission) {
                             casualNeedsLocationPermission = false

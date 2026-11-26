@@ -46,6 +46,11 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.runtime.collectAsState
+import nz.skelstar.dotwatcher.groups.GroupAreaActions
+import nz.skelstar.dotwatcher.ui.map.JoinRange
+import nz.skelstar.dotwatcher.ui.map.JoinRangePreview
+import nz.skelstar.dotwatcher.ui.nearby.RadiusChips
 import kotlinx.coroutines.launch
 import nz.skelstar.dotwatcher.network.SessionMembership
 
@@ -168,6 +173,7 @@ fun GroupInCard(
                     )
                 }
                 message?.let { Text(text = it, style = MaterialTheme.typography.bodyMedium) }
+                organiser.area?.let { GroupAreaSection(group.sessionId, it) }
             }
         }
     }
@@ -243,6 +249,47 @@ private fun CodeBox(label: String, code: String, changeLabel: String?, onChange:
             )
         }
         changeLabel?.let { TextButton(onClick = onChange) { Text(it) } }
+    }
+}
+
+/**
+ * On the organiser's card for a nearby group: how big the join area is, and chips to change it. The join location
+ * stays put; only the size changes. A map of the area shows when this phone knows where the join location is (it
+ * set it, by creating the group or Ping here, since the app opened). Matches iOS's `GroupAreaSection`.
+ */
+@Composable
+private fun GroupAreaSection(sessionId: String, area: GroupAreaActions) {
+    val scope = rememberCoroutineScope()
+    // organiserActions builds new flows on every call, so hold on to the first ones for this group.
+    val flows = remember(sessionId) { area }
+    val current by flows.radiusMeters.collectAsState(initial = null)
+    val joinLocation by flows.joinLocation.collectAsState(initial = null)
+    var chosen by remember(sessionId) { mutableStateOf<Int?>(null) }
+    var message by remember(sessionId) { mutableStateOf<String?>(null) }
+    var busy by remember(sessionId) { mutableStateOf(false) }
+    val shown = chosen ?: current ?: return
+
+    Column(
+        modifier = Modifier.padding(top = 6.dp, bottom = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text(text = "Join area", style = MaterialTheme.typography.labelLarge)
+        RadiusChips(
+            selected = shown,
+            onSelect = { radius ->
+                if (busy || radius == shown) return@RadiusChips
+                chosen = radius
+                scope.launch {
+                    busy = true
+                    message = flows.change(radius)
+                    // The server's answer wins; on a failure the chips go back to it.
+                    chosen = null
+                    busy = false
+                }
+            },
+        )
+        joinLocation?.let { JoinRangePreview(JoinRange(it.latitude, it.longitude, shown)) }
+        message?.let { Text(text = it, style = MaterialTheme.typography.bodyMedium) }
     }
 }
 
