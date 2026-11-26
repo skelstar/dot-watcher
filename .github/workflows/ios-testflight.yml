@@ -22,9 +22,12 @@
 # Signing is automatic: the App Store Connect API key (Admin role) lets xcodebuild create the
 # distribution certificate and profile itself, so no certificates are stored here. The certificate is
 # cloud-managed ("Distribution Managed" on developer.apple.com): Apple holds its private key, so every run
-# reuses it. Don't revoke it. The archive signs for distribution (see the Archive step), so runs make no
-# Development certificates. If archiving ever fails with "reached the maximum number of certificates", look
-# for leftover "Created via API" Development certificates under Certificates, revoke those, and run again.
+# reuses it. Don't revoke it. The archive itself signs for development (automatic signing allows nothing
+# else), and the runner's keychain starts empty, so each run makes a new "Created via API" Development
+# certificate. When archiving fails with "reached the maximum number of certificates", revoke those
+# Development certificates under Certificates on developer.apple.com (not the Distribution Managed one) and
+# run again. Forcing CODE_SIGN_IDENTITY="Apple Distribution" on the archive doesn't work: with automatic
+# signing it fails with "conflicting provisioning settings".
 #
 # Repository secrets:
 #   ASC_KEY_ID      App Store Connect API key ID
@@ -145,9 +148,8 @@ jobs:
           # an empty array safe under set -u in macOS's bash 3.2.)
           version_setting=()
           if [[ -n "$VERSION" ]]; then version_setting=("MARKETING_VERSION=$VERSION"); fi
-          # Sign the archive for distribution straight away. Left to automatic signing, the archive signs for
-          # development, and as the runner's keychain starts empty every run made a new Development
-          # certificate until the account hit Apple's limit (10) and archiving failed.
+          # Automatic signing: the archive signs for development and the export re-signs for distribution
+          # (see the note at the top about the Development certificates this makes).
           xcodebuild archive \
             -project "$PROJECT" \
             -scheme "$SCHEME" \
@@ -159,7 +161,6 @@ jobs:
             -authenticationKeyID "$ASC_KEY_ID" \
             -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
             DEVELOPMENT_TEAM="$TEAM_ID" \
-            CODE_SIGN_IDENTITY="Apple Distribution" \
             ${version_setting[@]+"${version_setting[@]}"}
 
       - name: Upload to TestFlight
