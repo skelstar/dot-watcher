@@ -84,7 +84,7 @@ const PROTECTED_USERNAMES = new Set(['dw-demo', 'dw-casual'])
 // Global kill switches (server: GET/PUT /admin/features). A feature is on unless switched off here;
 // off makes its endpoints return 404 for every account.
 type FeatureSwitch = { feature: string; enabled: boolean }
-const FEATURE_LABELS: Record<string, string> = { crew: 'Crew', casual: 'Casual tracking', events: 'Events', groups: 'Groups' }
+const FEATURE_LABELS: Record<string, string> = { crew: 'Crew', casual: 'Casual tracking', events: 'Events', groups: 'Groups', 'create-groups': 'Create groups' }
 
 type AdminTab = 'users' | 'sessions' | 'go' | 'activity' | 'palette'
 const TABS: { id: AdminTab; label: string }[] = [

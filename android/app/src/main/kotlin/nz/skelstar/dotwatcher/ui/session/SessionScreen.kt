@@ -334,13 +334,17 @@ fun SessionScreen(
                 enabled = state !is SessionUiState.Loading,
                 onClick = { showJoinDialog = true },
             )
-            SignButton(
-                title = "Create",
-                subtitle = "Set up a new run for others",
-                icon = SignIcon.Plus,
-                enabled = state !is SessionUiState.Loading,
-                onClick = { showCreateDialog = true },
-            )
+            // With groups, Create makes a group, which needs "create-groups". Read from the account's features
+            // (as the server last said) so it doesn't flash up before the groups list loads.
+            if (groupsState.canCreate && groups.canCreate) {
+                SignButton(
+                    title = "Create",
+                    subtitle = "Set up a new run for others",
+                    icon = SignIcon.Plus,
+                    enabled = state !is SessionUiState.Loading,
+                    onClick = { showCreateDialog = true },
+                )
+            }
         }
     }
 

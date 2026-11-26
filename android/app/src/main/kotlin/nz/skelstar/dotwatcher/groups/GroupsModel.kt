@@ -18,6 +18,9 @@ import nz.skelstar.dotwatcher.network.SessionMembership
 /** The server's name for the feature. */
 const val GROUPS_FEATURE = "groups"
 
+/** Who may organise a group: with groups, creating a session makes a group, and that needs this too. */
+const val CREATE_GROUPS_FEATURE = "create-groups"
+
 /** What the organiser can do from their own group's card on the start screen (the session map isn't used for a
  *  group). Each returns words for the person, or null on success for [end]. */
 class GroupOrganiserActions(
@@ -44,6 +47,9 @@ data class GroupsUiState(
     val isAvailable: Boolean = false,
     /** The groups the person is in, newest first, as the server lists them. */
     val joined: List<SessionMembership> = emptyList(),
+    /** Whether the start screen offers Create. With groups it makes a group, which needs "create-groups" too
+     *  (the server refuses otherwise); without groups anyone can create a session, as before. */
+    val canCreate: Boolean = true,
     /** Words for the person when leaving went wrong; null otherwise. */
     val error: String? = null,
 )
@@ -59,6 +65,9 @@ class GroupsModel(
     /** Whether this account has groups, from what the server last said. Cheap: no network. */
     val isAvailable: Boolean get() = repository.hasFeature(GROUPS_FEATURE)
 
+    /** Whether this account may create a group (see [GroupsUiState.canCreate]). Cheap: no network. */
+    val canCreate: Boolean get() = !isAvailable || repository.hasFeature(CREATE_GROUPS_FEATURE)
+
     fun refresh() {
         scope.launch { refreshNow() }
     }
@@ -71,9 +80,9 @@ class GroupsModel(
         }
         val response = runCatching { repository.getMySessions() }.getOrNull()
         if (response?.isSuccessful == true) {
-            _state.update { it.copy(isAvailable = true, joined = response.body().orEmpty()) }
+            _state.update { it.copy(isAvailable = true, canCreate = canCreate, joined = response.body().orEmpty()) }
         } else {
-            _state.update { it.copy(isAvailable = true) }
+            _state.update { it.copy(isAvailable = true, canCreate = canCreate) }
         }
     }
 

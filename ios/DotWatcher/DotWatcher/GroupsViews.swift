@@ -7,6 +7,8 @@ import SwiftUI
 
 /// The server's name for the feature.
 let groupsFeature = "groups"
+/// Who may organise a group: with "groups", creating a session makes a group, and that needs this too.
+let createGroupsFeature = "create-groups"
 
 /// A group's entry code: the organiser gives it to entrants so someone passing by can't join a race.
 enum EntryCode {

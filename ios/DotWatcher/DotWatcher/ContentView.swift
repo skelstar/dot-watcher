@@ -305,10 +305,12 @@ struct ContentView: View {
                 showJoinSheet = true
             }
             .disabled(isBusy)
-            SignButton(title: "Create", subtitle: "Set up a new run for others", icon: .plus) {
-                showCreateSession = true
+            if location.canCreate {
+                SignButton(title: "Create", subtitle: "Set up a new run for others", icon: .plus) {
+                    showCreateSession = true
+                }
+                .disabled(isBusy)
             }
-            .disabled(isBusy)
         }
         .padding(.horizontal)
         .padding(.top, 8)

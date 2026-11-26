@@ -55,6 +55,7 @@ public class SessionsController(
     [ProducesResponseType(typeof(SessionMembership), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(StatusCodes.Status409Conflict)]
     public IActionResult CreateSession([FromBody] CreateSessionRequest? request)
     {
@@ -62,6 +63,10 @@ public class SessionsController(
             return Unauthorized();
 
         request ??= new CreateSessionRequest();
+
+        // For a "groups" account a new session is a group, and organising one needs "create-groups".
+        if (features.IsOnFor(user.UserId, Features.Groups) && !features.IsOnFor(user.UserId, Features.CreateGroups))
+            return StatusCode(StatusCodes.Status403Forbidden, new { error = "Creating groups isn't available for your account." });
 
         var wantsNearby = request.Nearby == true;
         NearbySettings? nearby = null;

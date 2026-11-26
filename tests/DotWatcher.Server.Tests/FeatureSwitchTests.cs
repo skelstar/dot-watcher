@@ -17,7 +17,7 @@ public class FeatureSwitchTests
         var switches = (await (await SendAsync(client, HttpMethod.Get, "/admin/features", "test-token"))
             .Content.ReadFromJsonAsync<List<FeatureSwitch>>())!;
 
-        Assert.Equal(new[] { "crew", "casual", "events", "groups" }, switches.Select(s => s.Feature));
+        Assert.Equal(new[] { "crew", "casual", "events", "groups", "create-groups" }, switches.Select(s => s.Feature));
         Assert.All(switches, s => Assert.True(s.Enabled));
     }
 
