@@ -22,6 +22,9 @@ npm run dev
 
 Opens at `http://localhost:5174`.
 
+Or, from the repo root, `./start-simulator.sh --local` (this) or `./start-simulator.sh --prod` (below). It
+installs packages when needed and, for prod, checks `.env.prod.local` has a token first.
+
 ### Against prod
 
 ```bash
