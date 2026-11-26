@@ -6,6 +6,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import nz.skelstar.dotwatcher.data.DotWatcherRepository
+import nz.skelstar.dotwatcher.location.Fix
+import nz.skelstar.dotwatcher.nearby.NEARBY_DEFAULT_RADIUS_METRES
 import nz.skelstar.dotwatcher.nearby.EntryCodeActions
 import nz.skelstar.dotwatcher.network.SessionMembership
 
@@ -25,6 +27,16 @@ class GroupOrganiserActions(
     val entryCode: EntryCodeActions?,
     /** Ends the group for everyone. */
     val end: suspend () -> String?,
+    /** Moves the join location to a point chosen on the map (the crosshair), not where the phone is; null when
+     *  the group isn't shown nearby. Null when it's set, otherwise words for what went wrong. */
+    val setJoinLocationAt: (suspend (latitude: Double, longitude: Double) -> String?)? = null,
+    /** The join location as this phone knows it (set from here, or created here); null when it doesn't. Where
+     *  "Choose on map" opens. */
+    val joinLocation: Fix? = null,
+    /** The group's join range, for the ring around the crosshair. */
+    val radiusMeters: Int = NEARBY_DEFAULT_RADIUS_METRES,
+    /** The phone's position now, for "Choose on map" when [joinLocation] is unknown. */
+    val currentPosition: suspend () -> Fix? = { null },
 )
 
 data class GroupsUiState(

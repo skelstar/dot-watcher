@@ -147,6 +147,9 @@ fun MapScreen(
      *  stops following and fitting at the same time, so the next poll doesn't pull the camera back. */
     routeFocus: List<RoutePoint>? = null,
     routeFocusTick: Int = 0,
+    /** Called with the map's centre each time the camera settles, whatever moved it: the crosshair's point
+     *  when choosing a group's join location (see JoinLocationOnMap.kt). */
+    onCenterChanged: ((latitude: Double, longitude: Double) -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -164,6 +167,7 @@ fun MapScreen(
     val now by rememberSecondClock()
     val currentOnRunnerTapped by rememberUpdatedState(onRunnerTapped)
     val currentOnUserMoved by rememberUpdatedState(onUserMovedCamera)
+    val currentOnCenterChanged by rememberUpdatedState(onCenterChanged)
     // The route lines last sent to the map: `update` runs every second (the clock), and a long route
     // shouldn't be re-uploaded each time.
     val shownRoutes = remember { ShownRoutes() }
@@ -248,6 +252,9 @@ fun MapScreen(
                             }
                         }
                         map.addOnCameraIdleListener {
+                            map.cameraPosition.target?.let { centre ->
+                                currentOnCenterChanged?.invoke(centre.latitude, centre.longitude)
+                            }
                             if (!camera.userGesture) return@addOnCameraIdleListener
                             camera.userGesture = false
                             val aimed = camera.aimed ?: return@addOnCameraIdleListener

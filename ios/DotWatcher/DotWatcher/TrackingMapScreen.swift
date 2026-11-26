@@ -101,6 +101,9 @@ struct TrackingMapScreen<RailTop: View, RailMiddle: View, BottomLeading: View>: 
     var joinRange: LinzJoinRange?
     /// nil hides the Route button.
     var route: RouteActions?
+    /// What can be done at the map's centre. While the map is dragged off everyone (not fitting or following),
+    /// a crosshair marks the centre and these show as buttons above Stop. Empty shows neither.
+    var crosshairActions: [MapCrosshairAction] = []
     let onStop: () -> Void
     /// Rail buttons above Fit all.
     @ViewBuilder var railTop: () -> RailTop
@@ -117,6 +120,8 @@ struct TrackingMapScreen<RailTop: View, RailMiddle: View, BottomLeading: View>: 
     @State private var showRoutePicker = false
     @State private var showRemoveRoute = false
     @State private var routeError: String?
+    /// The map's centre after it last settled, for the crosshair's buttons.
+    @State private var mapCentre: CLLocationCoordinate2D?
 
     private static var runnerMarkerPrefix: String { "runner-" }
 
@@ -151,9 +156,13 @@ struct TrackingMapScreen<RailTop: View, RailMiddle: View, BottomLeading: View>: 
                 joinRange: joinRange,
                 camera: controller.camera,
                 onUserMovedCamera: { controller.userMovedCamera() },
-                onMarkerTap: handleMarkerTap
+                onMarkerTap: handleMarkerTap,
+                onCenterChanged: { mapCentre = $0 }
             )
             .onChange(of: context.date) { _, _ in reframe() }
+            .overlay {
+                if showsCrosshair { MapCrosshair() }
+            }
         }
         // Dims the frozen last-known frame while on satellite: positions stop refreshing, so the map is
         // left as it was rather than hidden.
@@ -237,6 +246,11 @@ struct TrackingMapScreen<RailTop: View, RailMiddle: View, BottomLeading: View>: 
         }
     }
 
+    /// Dragged off everyone, with something to do there: neither fitting nor following.
+    private var showsCrosshair: Bool {
+        !crosshairActions.isEmpty && !controller.fitLocked && controller.followedId == nil
+    }
+
     // MARK: Chrome
 
     private var chrome: some View {
@@ -260,6 +274,11 @@ struct TrackingMapScreen<RailTop: View, RailMiddle: View, BottomLeading: View>: 
                     .padding(.top, 10)
             }
             Spacer()
+            if showsCrosshair {
+                MapCrosshairActionBar(actions: crosshairActions, centre: mapCentre)
+                    .padding(.horizontal, 14)
+                    .padding(.bottom, 10)
+            }
             if location.pausedForBattery {
                 BatteryPausedCard(location: location, onStop: onStop)
                     .padding(.horizontal, 12)

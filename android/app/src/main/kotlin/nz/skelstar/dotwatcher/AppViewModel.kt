@@ -580,6 +580,21 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         return updateNearby(sessionId, fix, enabled = true, radiusMeters = null, done = "Join location set here")
     }
 
+    /** Groups: the organiser puts the join location at a point chosen on the map (the crosshair) rather than
+     *  where they are. Sent without an accuracy: the point is exact. Keeps the range they chose. Null when it's
+     *  set, otherwise words for what went wrong. */
+    suspend fun setGroupJoinLocation(sessionId: String, latitude: Double, longitude: Double): String? {
+        val done = "Join location set"
+        val words = updateNearby(
+            sessionId,
+            Fix(latitude, longitude, accuracyMetres = null),
+            enabled = true,
+            radiusMeters = null,
+            done = done,
+        )
+        return words.takeUnless { it == done }
+    }
+
     /** Groups: the organiser ends their group for everyone. Unlike [endSession], a Go run carries on. Null on
      *  success, otherwise words for the person. */
     suspend fun endGroup(sessionId: String): String? {
@@ -605,6 +620,14 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             null
         },
         end = { endGroup(group.sessionId) },
+        setJoinLocationAt = if (group.nearby == true) {
+            { latitude, longitude -> setGroupJoinLocation(group.sessionId, latitude, longitude) }
+        } else {
+            null
+        },
+        joinLocation = _nearbyMeetingPoints.value[group.sessionId],
+        radiusMeters = _nearbyStatuses.value[group.sessionId]?.radiusMeters ?: NEARBY_DEFAULT_RADIUS_METRES,
+        currentPosition = { nearbyFix.current() },
     )
 
     fun joinSession(inviteCode: String) {
