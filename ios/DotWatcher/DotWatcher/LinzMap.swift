@@ -115,7 +115,7 @@ struct LinzMapCamera {
     }
 }
 
-/// A nearby session's join range: a dotted ring of `radiusMeters` around `center`.
+/// A nearby session's join range: a yellow spot of `radiusMeters` around `center`.
 struct LinzJoinRange: Equatable {
     var center: CLLocationCoordinate2D
     var radiusMeters: Double
@@ -249,7 +249,6 @@ struct LinzMapView: UIViewRepresentable {
         private static let routeLayerID = "route-line"
         private static let joinRangeSourceID = "join-range-source"
         private static let joinRangeFillID = "join-range-fill"
-        private static let joinRangeLineID = "join-range-line"
         /// Room for the largest marker (a 36 pt pin plus its badge), centred on the coordinate.
         private static let markerSize = CGSize(width: 64, height: 64)
 
@@ -386,14 +385,10 @@ struct LinzMapView: UIViewRepresentable {
             let rangeSource = MLNShapeSource(identifier: Self.joinRangeSourceID, shape: nil, options: nil)
             style.addSource(rangeSource)
             let rangeFill = MLNFillStyleLayer(identifier: Self.joinRangeFillID, source: rangeSource)
-            rangeFill.fillColor = NSExpression(forConstantValue: UIColor.black)
-            rangeFill.fillOpacity = NSExpression(forConstantValue: 0.04)
+            // A see-through yellow spot with no outline, matching the phone simulator (#facc15 at 30%).
+            rangeFill.fillColor = NSExpression(forConstantValue: UIColor(red: 0xFA / 255, green: 0xCC / 255, blue: 0x15 / 255, alpha: 1))
+            rangeFill.fillOpacity = NSExpression(forConstantValue: 0.3)
             style.addLayer(rangeFill)
-            let rangeLine = MLNLineStyleLayer(identifier: Self.joinRangeLineID, source: rangeSource)
-            rangeLine.lineColor = NSExpression(forConstantValue: UIColor.black)
-            rangeLine.lineWidth = NSExpression(forConstantValue: 1)
-            rangeLine.lineDashPattern = NSExpression(forConstantValue: [5, 5])
-            style.addLayer(rangeLine)
 
             self.style = style
             shapesShown = false

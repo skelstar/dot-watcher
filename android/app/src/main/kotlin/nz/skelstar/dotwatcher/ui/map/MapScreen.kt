@@ -55,7 +55,6 @@ import org.maplibre.android.style.layers.PropertyFactory.iconSize
 import org.maplibre.android.style.layers.Property
 import org.maplibre.android.style.layers.PropertyFactory.lineCap
 import org.maplibre.android.style.layers.PropertyFactory.lineColor
-import org.maplibre.android.style.layers.PropertyFactory.lineDasharray
 import org.maplibre.android.style.layers.PropertyFactory.lineJoin
 import org.maplibre.android.style.layers.PropertyFactory.lineOpacity
 import org.maplibre.android.style.layers.PropertyFactory.lineWidth
@@ -88,7 +87,6 @@ private const val NEARBY_SOURCE_ID = "nearby-source"
 private const val NEARBY_LAYER_ID = "nearby-layer"
 private const val JOIN_RANGE_SOURCE_ID = "join-range-source"
 private const val JOIN_RANGE_FILL_LAYER_ID = "join-range-fill-layer"
-private const val JOIN_RANGE_LINE_LAYER_ID = "join-range-line-layer"
 private const val NEARBY_IMAGE = "nearby-dot"
 private const val NEARBY_LOCKED_IMAGE = "nearby-dot-locked"
 
@@ -138,7 +136,7 @@ fun MapScreen(
     nearby: List<NearbyDot> = emptyList(),
     /** Casual only: runners (by name) who are in a named session rather than out casually. */
     lockedRunners: Set<String> = emptySet(),
-    /** The organiser of a nearby session: the range around the join location, drawn as a dotted ring. */
+    /** The organiser of a nearby session: the range around the join location, drawn as a yellow spot. */
     joinRange: JoinRange? = null,
     /** GPX routes, drawn as orange lines under everything else: the session's one route, or on the
      *  casual map this person's own and their crew's. Lines with fewer than two points are skipped. */
@@ -312,16 +310,9 @@ fun MapScreen(
                             loadedStyle.addSource(GeoJsonSource(JOIN_RANGE_SOURCE_ID))
                             loadedStyle.addLayerBelow(
                                 FillLayer(JOIN_RANGE_FILL_LAYER_ID, JOIN_RANGE_SOURCE_ID).withProperties(
-                                    fillColor("#000000"),
-                                    fillOpacity(0.04f),
-                                ),
-                                NEARBY_LAYER_ID,
-                            )
-                            loadedStyle.addLayerBelow(
-                                LineLayer(JOIN_RANGE_LINE_LAYER_ID, JOIN_RANGE_SOURCE_ID).withProperties(
-                                    lineColor("#000000"),
-                                    lineWidth(1f),
-                                    lineDasharray(arrayOf(5f, 5f)),
+                                    // A see-through yellow spot with no outline, matching the phone simulator.
+                                    fillColor("#facc15"),
+                                    fillOpacity(0.3f),
                                 ),
                                 NEARBY_LAYER_ID,
                             )
