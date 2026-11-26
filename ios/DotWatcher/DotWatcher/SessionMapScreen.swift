@@ -125,7 +125,7 @@ struct SessionMapScreen: View {
 
     // MARK: Map inputs
 
-    /// The organiser's join range: a dotted ring around the join location while nearby is on.
+    /// The organiser's join range: a yellow spot around the join location while nearby is on.
     private var joinRange: LinzJoinRange? {
         guard let id = nearbySessionId, let status = location.nearbyStatuses[id], status.nearby,
               let center = location.nearbyMeetingPoints[id]
