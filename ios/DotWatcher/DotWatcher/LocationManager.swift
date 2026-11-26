@@ -189,6 +189,9 @@ final class LocationManager {
     }
     /// The "groups" feature (see .ai/plans/go-and-groups.md): joining a nearby session only changes who sees you.
     var hasGroups: Bool { features.contains(groupsFeature) }
+    /// Whether the start screen offers Create. With groups it makes a group, which needs "create-groups" too
+    /// (the server refuses otherwise); without groups, anyone can create a session as before.
+    var canCreate: Bool { !hasGroups || features.contains(createGroupsFeature) }
     /// The groups the person is in, newest first; empty without the feature.
     var groupMemberships: [SessionMembership] { hasGroups ? memberships : [] }
     /// The active session's GPX route (track points), empty when it has none. Kept in sync by `loadRoute()`.
