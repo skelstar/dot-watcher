@@ -5,12 +5,16 @@ import {
   buildFlow,
   crewGroups,
   dayRange,
+  MAX_ZOOM_WIDTH,
+  zoomedScale,
+  MIN_WINDOW_MS,
+  timeForX,
+  windowBetween,
+  windowScale,
   overlaps,
   runIntervals,
   formatDuration,
-  MAX_TIME_WIDTH,
   layoutFlow,
-  readableWidth,
   timeBreaks,
   timeScale,
   timeScaleOfWidth,
@@ -124,22 +128,6 @@ test('events are put in time order', () => {
   assert.deepEqual(flow.stops.map(s => s.kind), ['run_started', 'run_stopped'])
 })
 
-test('in order, stops are evenly spaced and branches sit under their stop', () => {
-  const flow = buildFlow([
-    event('run_started', '18:32:13'),
-    event('watch_link_made', '18:33:45'),
-    event('watch_link_opened', '18:34:13'),
-    event('run_stopped', '18:35:07'),
-  ], REGISTER)
-
-  const layout = layoutFlow(flow, null)
-
-  assert.deepEqual(layout.stopX, [LAYOUT.startX, LAYOUT.startX + LAYOUT.spacing, LAYOUT.startX + 2 * LAYOUT.spacing])
-  assert.deepEqual(layout.stopRow, [0, 0, 0])
-  assert.equal(layout.branches[0].x, layout.stopX[1])
-  assert.deepEqual(layout.runs, [{ left: layout.stopX[0], right: layout.stopX[2] }])
-})
-
 test('by time, two lines on one scale put the same moment at the same x', () => {
   const a = [event('run_started', '09:00:00', { userId: 'a' }), event('run_stopped', '09:10:00', { userId: 'a' })]
   const b = [event('run_started', '09:05:00', { userId: 'b' }), event('run_stopped', '09:10:00', { userId: 'b' })]
@@ -196,7 +184,7 @@ test('the app being away runs from put away to opened again', () => {
   ], REGISTER)
 
   assert.deepEqual(flow.away, [{ fromIndex: 2, toIndex: 3 }, { fromIndex: 4, toIndex: null }])
-  assert.equal(layoutFlow(flow, null).away.length, 2)
+  assert.equal(layoutFlow(flow, timeScale([{ at: '2026-11-19T09:00:00Z' }, { at: '2026-11-19T09:20:00Z' }], 1000)!).away.length, 2)
 })
 
 test('a run knows its id, and stops know they are test', () => {
@@ -207,28 +195,6 @@ test('a run knows its id, and stops know they are test', () => {
 
   assert.equal(flow.runs[0].runId, 'r1')
   assert.deepEqual(flow.stops.map(s => s.isTest), [true, true])
-})
-
-test('the readable width spaces a typical gap like one In order step', () => {
-  // Gaps of 10 s, 10 s and 60 s: the median is 10 s, over 80 s in all, so 8 steps.
-  const width = readableWidth([
-    event('app_opened', '09:00:00'),
-    event('run_started', '09:00:10'),
-    event('app_backgrounded', '09:00:20'),
-    event('run_stopped', '09:01:20'),
-  ])
-
-  assert.equal(width, 8 * LAYOUT.spacing)
-  assert.equal(readableWidth([event('app_opened', '09:00:00')]), null)
-})
-
-test('the readable width is capped for a long day of close events', () => {
-  const width = readableWidth([
-    event('app_opened', '06:00:00'), event('run_started', '06:00:01'),
-    event('app_backgrounded', '06:00:02'), event('run_stopped', '22:00:00'),
-  ])
-
-  assert.equal(width, MAX_TIME_WIDTH)
 })
 
 test('a long quiet stretch on every line collapses to a break, and the lines still agree', () => {
@@ -263,6 +229,54 @@ test('a collapsed scale can be made to fit a width', () => {
   assert.ok(Math.abs(scale.width - 900) < 5)
 })
 
+test('timeForX undoes xForTime, straight and collapsed, and holds to the ends', () => {
+  const straight = { start: Date.parse('2026-11-19T09:00:00Z'), end: Date.parse('2026-11-19T10:00:00Z'), width: 1000 }
+  const at = Date.parse('2026-11-19T09:20:00Z')
+  assert.ok(Math.abs(timeForX(straight, xForTime(straight, at)) - at) < 1)
+  assert.equal(timeForX(straight, -50), straight.start)
+  assert.equal(timeForX(straight, 5000), straight.end)
+
+  const events = [event('run_started', '09:00:00'), event('run_stopped', '09:02:00'), event('app_opened', '12:00:00')]
+  const collapsed = timeScale(events, 20_000, true)!
+  assert.ok(collapsed.pieces)
+  for (const t of ['09:01:00', '11:59:30'].map(hms => Date.parse(`2026-11-19T${hms}Z`)))
+    assert.ok(Math.abs(timeForX(collapsed, xForTime(collapsed, t)) - t) < 1)
+})
+
+test('a drag picks a window in either direction, at least MIN_WINDOW_MS long', () => {
+  assert.deepEqual(windowBetween(5_000_000, 4_000_000), { start: 4_000_000, end: 5_000_000 })
+  const tiny = windowBetween(1_000_000, 1_002_000)
+  assert.equal(tiny.end - tiny.start, MIN_WINDOW_MS)
+  assert.equal((tiny.start + tiny.end) / 2, 1_001_000)
+})
+
+test('a window scale is exactly the window, its width wide', () => {
+  const window = { start: Date.parse('2026-11-19T09:10:00Z'), end: Date.parse('2026-11-19T09:45:00Z') }
+  const scale = windowScale(window, 700)
+
+  assert.equal(xForTime(scale, window.start), LAYOUT.startX)
+  assert.equal(xForTime(scale, window.end), LAYOUT.startX + 700)
+})
+
+test('zoomed in, the window is the view width wide and the rest of the day is still there', () => {
+  const events = [event('run_started', '09:00:00'), event('watch_link_made', '09:20:00'), event('run_stopped', '09:40:00')]
+  const window = { start: Date.parse('2026-11-19T09:10:00Z'), end: Date.parse('2026-11-19T09:20:00Z') }
+  const scale = zoomedScale(events, window, 700)
+
+  assert.ok(Math.abs(xForTime(scale, window.end) - xForTime(scale, window.start) - 700) < 0.001)
+  // The run's start, before the window, is still on the line, to the left of it.
+  const layout = layoutFlow(buildFlow(events, REGISTER), scale)
+  assert.ok(layout.stopX[0] < xForTime(scale, window.start))
+  assert.ok(scale.width > 700)
+})
+
+test('zooming in to a sliver of a long day is capped', () => {
+  const events = [event('app_opened', '00:30:00'), event('app_opened', '23:30:00')]
+  const window = { start: Date.parse('2026-11-19T12:00:00Z'), end: Date.parse('2026-11-19T12:00:10Z') }
+
+  assert.equal(zoomedScale(events, window, 900).width, MAX_ZOOM_WIDTH)
+})
+
 test('crew are grouped together, linked through each other, in the order they came', () => {
   const dot = (userId: string, crewWith: string[] = []) => ({ userId, displayName: userId, username: userId, eventCount: 1, crewWith })
 
@@ -282,7 +296,7 @@ test('two runs out at the same time overlap where both were going', () => {
   assert.deepEqual(overlaps(runIntervals(a, end), []), [])
 })
 
-test('icons: 🔗 sits on the line, and 👁️ is a strip by time or a pill in the label rows in order', () => {
+test('icons: 🔗 sits on the line, and 👁️ is a strip under it', () => {
   const withIcons = REGISTER.map(e =>
     e.kind === 'watch_link_made' ? { ...e, icon: '🔗' } : e.kind === 'watch_link_opened' ? { ...e, icon: '👁️' } : e)
   const events = [
@@ -305,12 +319,6 @@ test('icons: 🔗 sits on the line, and 👁️ is a strip by time or a pill in 
   assert.equal(layout.branches[0].placement, 'strip')
   assert.equal(layout.labelRows, 1)
   assert.equal(layout.branchRows, 0)
-
-  // In order there's no clock for a strip, so 👁️ is a pill in the label rows under its stop.
-  const inOrder = layoutFlow(flow, null)
-  assert.equal(inOrder.stopRow[0], -1)
-  assert.equal(inOrder.branches[0].placement, 'labels')
-  assert.equal(inOrder.labelRows, 2)
 })
 
 test('durations read naturally', () => {

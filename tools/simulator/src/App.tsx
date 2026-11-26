@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import GpxConverterPage from './GpxConverterPage'
 import ConvergencePage from './ConvergencePage'
+import { IS_LOCAL_SERVER, SERVER_URL } from './lib/dotwatcherApi'
 
 type Tab = 'gpx' | 'session'
 
@@ -9,6 +10,12 @@ export default function App() {
 
   return (
     <div style={page(activeTab)}>
+      {!IS_LOCAL_SERVER && (
+        <div style={prodBanner} role="alert">
+          Not a local server: {SERVER_URL}. Real database; real people near a phone's position can see its
+          dot. Keep phones away from where people run.
+        </div>
+      )}
       <header style={header}>
         <h1 style={title}>Dot Watcher — Simulator</h1>
         <nav style={tabBar}>
@@ -31,6 +38,16 @@ const page = (tab: Tab): React.CSSProperties => ({
   margin: '0 auto',
   padding: '1.5rem 1rem',
 })
+
+const prodBanner: React.CSSProperties = {
+  background: '#b91c1c',
+  color: '#fff',
+  fontWeight: 600,
+  fontSize: '0.85rem',
+  padding: '0.6rem 0.9rem',
+  borderRadius: 8,
+  marginBottom: '1rem',
+}
 
 const header: React.CSSProperties = {
   marginBottom: '1.5rem',

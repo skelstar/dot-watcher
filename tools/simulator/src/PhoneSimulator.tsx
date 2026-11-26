@@ -5,6 +5,12 @@ import { parseGpxTrackpoints } from './lib/gpx'
 import {
   registerParticipant,
   joinSession,
+  joinGroup,
+  findNearbyGroups,
+  createCrewCode,
+  redeemCrewCode,
+  joinNearbyGroup,
+  type NearbyGroup,
   postLocation,
   leaveSession,
   enableGo,
@@ -85,6 +91,26 @@ export default function PhoneSimulator({
   // 'go': out on its own, like the app's Go sign, instead of in a session. Positions then go to the
   // casual session and Leave becomes Stop.
   const [mode, setMode] = useState<'session' | 'go'>('session')
+  // A group this phone's account is in (see joinGroup). Separate from mode: as in the app, a phone can be
+  // in a group before going out, and stays in it when the Go run stops. Its own code box, so joining a
+  // group while out doesn't need the session join row.
+  const [group, setGroup] = useState<{ sessionId: string; name: string } | null>(null)
+  const [groupCode, setGroupCode] = useState(defaultInviteCode)
+  const [groupBusy, setGroupBusy] = useState(false)
+  // "Groups near you": the list the app's start screen would show here (null until looked up), and the
+  // entry code typed for one that needs it.
+  const [nearbyGroups, setNearbyGroups] = useState<NearbyGroup[] | null>(null)
+  const [nearbyCode, setNearbyCode] = useState('')
+  // "Stay here": the phone keeps posting from where it is (no heading, as when standing still) instead of
+  // walking on, so it can be moved into a group's zone and left there.
+  // Crew with a real account, by crew code either way: no accept step, the same as the app's codes.
+  const [crewCodeInput, setCrewCodeInput] = useState('')
+  const [madeCrewCode, setMadeCrewCode] = useState<string | null>(null)
+  const [crewNote, setCrewNote] = useState<string | null>(null)
+  const [crewBusy, setCrewBusy] = useState(false)
+  const [stayHere, setStayHere] = useState(false)
+  const stayHereRef = useRef(false)
+  useEffect(() => { stayHereRef.current = stayHere }, [stayHere])
   const [watchLink, setWatchLink] = useState<WatchLink | null>(null)
   const [viewerCount, setViewerCount] = useState(0)
   // One poll timer per pretend viewer still watching.
@@ -211,6 +237,115 @@ export default function PhoneSimulator({
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to go out.')
       setStatus('idle')
+    }
+  }
+
+  // Joins a group by its invite code, the app's way for a "groups" account: the account gets the feature,
+  // joins the session, and carries on (or later starts) posting to its own Go run. Doesn't start tracking.
+  async function handleJoinGroup() {
+    const code = groupCode.trim()
+    if (!code) return
+    armBackgroundTimer() // used just now: the 10 s start again
+    setGroupBusy(true)
+    setError(null)
+    try {
+      const user = await ensureAccount()
+      const membership = await joinGroup(user, code, displayName)
+      setGroup({ sessionId: membership.sessionId, name: membership.sessionName })
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to join the group.')
+    } finally {
+      setGroupBusy(false)
+    }
+  }
+
+  // Redeems a code made in the app's crew sheet (or another sim's): this phone and the code's owner are
+  // crew at once.
+  async function handleRedeemCrewCode() {
+    const code = crewCodeInput.trim()
+    if (!code) return
+    armBackgroundTimer()
+    setCrewBusy(true)
+    setError(null)
+    setCrewNote(null)
+    try {
+      const user = await ensureAccount()
+      const owner = await redeemCrewCode(user, code)
+      setCrewNote(`Crew with ${owner.nickname || owner.displayName || 'them'} now.`)
+      setCrewCodeInput('')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to redeem the crew code.')
+    } finally {
+      setCrewBusy(false)
+    }
+  }
+
+  // Makes a code to redeem in the app's crew sheet (Add crew → enter a code).
+  async function handleMakeCrewCode() {
+    armBackgroundTimer()
+    setCrewBusy(true)
+    setError(null)
+    setCrewNote(null)
+    try {
+      const user = await ensureAccount()
+      setMadeCrewCode((await createCrewCode(user)).code)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to make a crew code.')
+    } finally {
+      setCrewBusy(false)
+    }
+  }
+
+  // Looks up the groups whose zone this phone is in, from where it is now.
+  async function handleFindNearby() {
+    const here = positionRef.current
+    if (!here) return
+    armBackgroundTimer()
+    setGroupBusy(true)
+    setError(null)
+    try {
+      const user = await ensureAccount()
+      setNearbyGroups(await findNearbyGroups(user, here))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to find groups near you.')
+    } finally {
+      setGroupBusy(false)
+    }
+  }
+
+  // Joins one from the list through nearby join, from where the phone is now (the server checks the
+  // radius again, so a phone that has walked out of the zone is refused).
+  async function handleJoinNearby(nearbyGroup: NearbyGroup) {
+    const here = positionRef.current
+    const user = userRef.current
+    if (!here || !user) return
+    armBackgroundTimer()
+    setGroupBusy(true)
+    setError(null)
+    try {
+      const membership = await joinNearbyGroup(user, nearbyGroup.sessionId, here, displayName, nearbyGroup.needsCode ? nearbyCode.trim() : undefined)
+      setGroup({ sessionId: membership.sessionId, name: membership.sessionName })
+      setNearbyGroups(null)
+      setNearbyCode('')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to join the group.')
+    } finally {
+      setGroupBusy(false)
+    }
+  }
+
+  async function handleLeaveGroup() {
+    const user = userRef.current
+    if (!user || !group) return
+    armBackgroundTimer()
+    setGroupBusy(true)
+    try {
+      await leaveSession(user, group.sessionId)
+      setGroup(null)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to leave the group.')
+    } finally {
+      setGroupBusy(false)
     }
   }
 
@@ -349,7 +484,11 @@ export default function PhoneSimulator({
     // (see the Quality type) — only the isUltraConstrained flag on the post itself differs.
     const movesNormally = qualityRef.current === 'good' || qualityRef.current === 'satellite'
 
-    if (movesNormally && activeRoute && activeRoute.length > 1) {
+    if (stayHereRef.current) {
+      // Standing still where it was put: same spot, and no heading, as a real phone reports when stopped.
+      next = cur
+      nextHeading = null
+    } else if (movesNormally && activeRoute && activeRoute.length > 1) {
       // A route takes priority over the convergence point when both are set — it's the more
       // specific instruction for this phone.
       const result = advanceAlongRoute(activeRoute, routeProgressRef.current, stepMeters)
@@ -488,6 +627,8 @@ export default function PhoneSimulator({
   // In the background the app's own buttons can't be pressed; the simulator's controls still work.
   const away = appState === 'back'
   const canPickPosition = status !== 'left'
+  // Groups are for phones on Go (or not out yet), not phones tracking in a joined session.
+  const canUseGroups = mode === 'go' ? status !== 'left' : status === 'idle'
 
   // A route's own end point is this phone's target once it has one, in place of the shared
   // convergence point — matches the priority order tick() and canStart use.
@@ -523,15 +664,27 @@ export default function PhoneSimulator({
       </div>
       <div style={statusPillRow}>
         <span style={statusPill(status)}>{statusLabel(status, mode)}</span>
+        {group && <span style={groupPill}>Group: {group.name}</span>}
       </div>
 
       <div style={positionRow}>
         {position
           ? <span style={positionText}>{position.lat.toFixed(5)}, {position.lon.toFixed(5)}</span>
           : <span style={positionMuted}>No start point set</span>}
-        <button style={changePointBtn} disabled={!canPickPosition} onClick={() => onRequestStartPoint(id, displayName)}>
-          {position ? 'Change' : 'Choose start point'}
+        <button
+          style={changePointBtn}
+          disabled={!canPickPosition}
+          onClick={() => onRequestStartPoint(id, displayName)}
+          title="Works while tracking too: the phone jumps there and carries on from it"
+        >
+          {position ? 'Move' : 'Choose start point'}
         </button>
+        {canPickPosition && (
+          <label style={qualityLabel(stayHere, false)} title="Keep posting from this spot (no heading) instead of walking on">
+            <input type="checkbox" checked={stayHere} onChange={e => setStayHere(e.target.checked)} style={{ marginRight: '0.3rem' }} />
+            Stay here
+          </label>
+        )}
       </div>
 
       <div style={positionRow}>
@@ -567,6 +720,26 @@ export default function PhoneSimulator({
         </div>
       )}
 
+      {status !== 'left' && (
+        <div style={joinRow} title="Crew with a real account (or any account) by crew code: crew straight away, no accept step">
+          <input
+            style={codeInput}
+            value={crewCodeInput}
+            onChange={e => setCrewCodeInput(e.target.value.toUpperCase())}
+            placeholder="CREW CODE"
+            disabled={crewBusy}
+          />
+          <button style={changePointBtn} disabled={!crewCodeInput.trim() || crewBusy || away} onClick={handleRedeemCrewCode}>
+            Redeem crew code
+          </button>
+          <button style={changePointBtn} disabled={crewBusy || away} onClick={handleMakeCrewCode}>
+            Make crew code
+          </button>
+          {madeCrewCode && <span style={positionText}>Code: <strong>{madeCrewCode}</strong> (24 h, once)</span>}
+          {crewNote && <span style={positionText}>{crewNote}</span>}
+        </div>
+      )}
+
       {(status === 'idle' || status === 'joining') && (
         <div style={joinRow}>
           <input
@@ -594,6 +767,68 @@ export default function PhoneSimulator({
       )}
       {status === 'idle' && away && (
         <p style={hint}>The app is closed: switch it on (top right) to join or go.</p>
+      )}
+
+      {canUseGroups && (
+        <div style={joinRow} title="Join a group by its invite code, as a groups account does in the app: no tracking in the session; members see each other by name on Go">
+          {group ? (
+            <button style={changePointBtn} disabled={groupBusy || away} onClick={handleLeaveGroup}>
+              {groupBusy ? 'Leaving…' : `Leave group ${group.name}`}
+            </button>
+          ) : (
+            <>
+              <input
+                style={codeInput}
+                value={groupCode}
+                onChange={e => setGroupCode(e.target.value.toUpperCase())}
+                placeholder="GROUP INVITE CODE"
+                disabled={groupBusy}
+              />
+              <button style={changePointBtn} disabled={!groupCode.trim() || groupBusy || away} onClick={handleJoinGroup}>
+                {groupBusy ? 'Joining…' : 'Join group'}
+              </button>
+              {defaultInviteCode && defaultInviteCode !== groupCode && (
+                <button style={linkBtn} onClick={() => setGroupCode(defaultInviteCode)}>use {defaultInviteCode}</button>
+              )}
+              <button
+                style={changePointBtn}
+                disabled={!position || groupBusy || away}
+                onClick={handleFindNearby}
+                title={position ? 'The groups the app would show as tiles here: zones this phone is in' : 'Choose a start point first'}
+              >
+                Groups near you
+              </button>
+            </>
+          )}
+        </div>
+      )}
+
+      {canUseGroups && !group && nearbyGroups && (
+        <div style={watchBox}>
+          {nearbyGroups.length === 0 && <span style={positionMuted}>No groups near here.</span>}
+          {nearbyGroups.map(g => (
+            <div key={g.sessionId} style={joinRow}>
+              <span style={positionText}>{g.title} · {g.eyebrow.replace('Happening near you · ', '')}{g.needsCode ? ' · code needed' : ''}</span>
+              {g.needsCode && (
+                <input
+                  style={codeInput}
+                  value={nearbyCode}
+                  onChange={e => setNearbyCode(e.target.value.toUpperCase())}
+                  placeholder="ENTRY CODE"
+                  disabled={groupBusy}
+                />
+              )}
+              <button
+                style={changePointBtn}
+                disabled={groupBusy || away || (g.needsCode === true && !nearbyCode.trim())}
+                onClick={() => handleJoinNearby(g)}
+              >
+                Join group
+              </button>
+            </div>
+          ))}
+          <button style={linkBtn} onClick={() => setNearbyGroups(null)}>close</button>
+        </div>
       )}
 
       {error && <div style={errorText}>{error}</div>}
@@ -750,7 +985,8 @@ const nameInput: React.CSSProperties = { flex: 1, minWidth: 0, fontWeight: 600, 
 const nameLabel: React.CSSProperties = { flex: 1, minWidth: 0, fontWeight: 600, fontSize: '0.85rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }
 const removeBtn: React.CSSProperties = { border: 'none', background: 'none', fontSize: '1.1rem', cursor: 'pointer', color: '#94a3b8', lineHeight: 1, padding: '0 0.15rem', flexShrink: 0 }
 
-const statusPillRow: React.CSSProperties = { marginBottom: '0.5rem' }
+const statusPillRow: React.CSSProperties = { marginBottom: '0.5rem', display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }
+const groupPill: React.CSSProperties = { fontSize: '0.72rem', fontWeight: 600, padding: '0.15rem 0.5rem', borderRadius: 999, background: '#ede9fe', color: '#5b21b6' }
 const statusPill = (status: PhoneStatus): React.CSSProperties => {
   const colors: Record<PhoneStatus, [string, string]> = {
     idle: ['#f1f5f9', '#64748b'],
