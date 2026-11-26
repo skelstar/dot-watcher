@@ -491,7 +491,10 @@ struct CasualMapScreen: View {
             pins: pins,
             nearby: nearby,
             routes: casual.routeLines,
+            joinRange: ownedGroupJoinRange(for: location),
             route: routeActions,
+            // An organiser can drag the map and set their group's join location at the crosshair.
+            crosshairActions: MapCrosshairAction.joinLocations(for: location),
             onStop: { casual.stop() },
             railTop: {
                 MapRailButton(symbol: "square.and.arrow.up", label: "Share a link to watch me") {

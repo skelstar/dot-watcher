@@ -43,6 +43,10 @@ import nz.skelstar.dotwatcher.groups.GroupsModel
 import nz.skelstar.dotwatcher.groups.GroupOrganiserActions
 import nz.skelstar.dotwatcher.network.SessionMembership
 import nz.skelstar.dotwatcher.ui.groups.GoMapGroupBar
+import nz.skelstar.dotwatcher.ui.groups.MapCrosshair
+import nz.skelstar.dotwatcher.ui.groups.MapCrosshairActionBar
+import nz.skelstar.dotwatcher.ui.groups.joinLocationActions
+import nz.skelstar.dotwatcher.ui.groups.ownedGroupJoinRange
 import nz.skelstar.dotwatcher.ui.groups.GroupsOnMapSheet
 import java.time.Instant
 import nz.skelstar.dotwatcher.ui.casual.ShareRunSheet
@@ -113,6 +117,10 @@ fun CasualMapScreen(
     var hasOwnRoute by remember { mutableStateOf(false) }
     var routeFocus by remember { mutableStateOf<List<RoutePoint>?>(null) }
     var routeFocusTick by remember { mutableStateOf(0) }
+    // An organiser can drag the map and set their group's join location at the crosshair (JoinLocationOnMap.kt).
+    var mapCentre by remember { mutableStateOf<Pair<Double, Double>?>(null) }
+    val crosshairActions = joinLocationActions(groupsState?.joined.orEmpty(), organiserActions)
+    val showsCrosshair = crosshairActions.isNotEmpty() && !fitAll && followedRunner == null
 
     suspend fun loadLive() {
         val live = runCatching { repository.casualLive() }.getOrNull()?.body() ?: return
@@ -319,8 +327,10 @@ fun CasualMapScreen(
             nearby = nearby,
             lockedRunners = locked,
             routes = routeLines,
+            joinRange = ownedGroupJoinRange(groupsState?.joined.orEmpty(), organiserActions),
             routeFocus = routeFocus,
             routeFocusTick = routeFocusTick,
+            onCenterChanged = { latitude, longitude -> mapCentre = latitude to longitude },
             onRunnerTapped = { name ->
                 followedRunner = if (name == followedRunner) null else name
                 fitAll = false
@@ -330,6 +340,17 @@ fun CasualMapScreen(
                 fitAll = false
             },
         )
+        if (showsCrosshair) {
+            MapCrosshair(modifier = Modifier.align(Alignment.Center))
+            MapCrosshairActionBar(
+                actions = crosshairActions,
+                centre = mapCentre,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .navigationBarsPadding()
+                    .padding(start = 14.dp, end = 14.dp, bottom = 90.dp),
+            )
+        }
 
         Box(
             modifier = Modifier

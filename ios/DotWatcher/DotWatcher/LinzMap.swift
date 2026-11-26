@@ -177,6 +177,9 @@ struct LinzMapView: UIViewRepresentable {
     /// Called with a marker's id when the person taps on or near it. The markers themselves take no
     /// touches (drags on a pin must still move the map), so the map finds the nearest one to the tap.
     var onMarkerTap: ((String) -> Void)?
+    /// Called with the map's centre each time the camera settles, for whatever moved it (a drag, a zoom, a
+    /// camera request). The crosshair's point when choosing a join location.
+    var onCenterChanged: ((CLLocationCoordinate2D) -> Void)?
 
     func makeCoordinator() -> Coordinator { Coordinator() }
 
@@ -210,6 +213,7 @@ struct LinzMapView: UIViewRepresentable {
         let coordinator = context.coordinator
         coordinator.onUserMovedCamera = onUserMovedCamera
         coordinator.onMarkerTap = onMarkerTap
+        coordinator.onCenterChanged = onCenterChanged
         coordinator.update(markers: markers)
         coordinator.update(routes: [route] + extraRoutes, joinRange: joinRange)
         coordinator.requestedCamera = camera
@@ -220,6 +224,7 @@ struct LinzMapView: UIViewRepresentable {
         weak var mapView: MLNMapView?
         var onUserMovedCamera: () -> Void = {}
         var onMarkerTap: ((String) -> Void)?
+        var onCenterChanged: ((CLLocationCoordinate2D) -> Void)?
         var requestedCamera = LinzMapCamera()
         /// How far from a marker's centre a tap still counts as on it: about a pin's radius plus a margin.
         private static let tapRadius: CGFloat = 26
@@ -450,6 +455,11 @@ struct LinzMapView: UIViewRepresentable {
         /// The map has settled. After a gesture: if it was dragged far enough from where it was aimed, the
         /// screen lets go (stops following or fitting); otherwise the waiting request puts it back.
         fileprivate func regionDidChange() {
+            if let mapView, let onCenterChanged {
+                let centre = mapView.centerCoordinate
+                // Reported after this update pass: the callback sets SwiftUI state.
+                DispatchQueue.main.async { onCenterChanged(centre) }
+            }
             guard gestureInProgress, let mapView else { return }
             gestureInProgress = false
             if let aimed = appliedRegion?.center {

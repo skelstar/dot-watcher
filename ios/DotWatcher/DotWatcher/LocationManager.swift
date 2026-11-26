@@ -731,6 +731,27 @@ final class LocationManager {
         }
     }
 
+    /// Groups: the organiser puts the join location at a point they chose on the map (the crosshair), rather
+    /// than where they are. Sent without an accuracy: the point is exact. Keeps the range they chose.
+    /// Returns nil when it's set, or what went wrong.
+    func setGroupJoinLocation(sessionId targetId: String, at coordinate: CLLocationCoordinate2D) async -> String? {
+        let body: [String: Any] = [
+            "latitude": coordinate.latitude,
+            "longitude": coordinate.longitude,
+            "enabled": true,
+        ]
+        do {
+            let status: NearbyJoinStatus = try await send(path: "/sessions/\(targetId)/nearby", method: "PUT", body: body)
+            nearbyStatuses[targetId] = status
+            nearbyMeetingPoints[targetId] = coordinate
+            return nil
+        } catch DotWatcherAPIError.badResponse(410, _) {
+            return "This session has ended."
+        } catch {
+            return error.localizedDescription
+        }
+    }
+
     /// Ends a session for everyone (owner only). Replay stays on the server.
     func endSession(sessionId targetId: String) async throws {
         if isTracking && sessionId == targetId { stop() }
