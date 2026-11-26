@@ -10,6 +10,13 @@ let groupsFeature = "groups"
 /// Who may organise a group: with "groups", creating a session makes a group, and that needs this too.
 let createGroupsFeature = "create-groups"
 
+/// The line above "Go" on the start screen while the person is in any groups: the newest by name, and how
+/// many more. Nil when they're in none.
+func goSignEyebrow(groups: [SessionMembership]) -> String? {
+    guard let newest = groups.first else { return nil }
+    return groups.count > 1 ? "With \(newest.sessionName) + \(groups.count - 1) more" : "With \(newest.sessionName)"
+}
+
 /// A group's entry code: the organiser gives it to entrants so someone passing by can't join a race.
 enum EntryCode {
     static let minLength = 4

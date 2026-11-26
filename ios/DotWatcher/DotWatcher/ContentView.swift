@@ -278,7 +278,8 @@ struct ContentView: View {
             } else if casual.isAvailable {
                 HoldSignButton(
                     title: "Go",
-                    subtitle: "Hold to start"
+                    subtitle: "Hold to start",
+                    eyebrow: goSignEyebrow(groups: location.groupMemberships)
                 ) { casual.isBeforeYouGoPresented = true }
             }
             // Only when the server has events for this account (the "events" feature): the runs people

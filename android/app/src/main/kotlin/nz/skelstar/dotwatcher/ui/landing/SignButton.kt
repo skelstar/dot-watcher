@@ -119,6 +119,8 @@ fun HoldSignButton(
     subtitle: String,
     onComplete: () -> Unit,
     modifier: Modifier = Modifier,
+    /** A small line above the title: the group(s) the person is in, so Go says who will see them. */
+    eyebrow: String? = null,
 ) {
     val progress = remember { Animatable(0f) }
     val scope = rememberCoroutineScope()
@@ -131,7 +133,7 @@ fun HoldSignButton(
         modifier = modifier
             .fillMaxWidth()
             .semantics {
-                contentDescription = "$title. $subtitle."
+                contentDescription = listOfNotNull(eyebrow, title, subtitle).joinToString(". ") + "."
                 onLongClick(label = "Start tracking") { onComplete(); true }
             },
     ) {
@@ -157,6 +159,7 @@ fun HoldSignButton(
                 }
                 .padding(horizontal = 20.dp, vertical = 18.dp),
             alignBottom = true,
+            eyebrow = eyebrow,
             nudging = !held,
         )
     }

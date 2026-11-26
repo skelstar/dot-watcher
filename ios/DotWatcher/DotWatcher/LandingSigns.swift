@@ -244,6 +244,8 @@ struct SignButton: View {
 struct HoldSignButton: View {
     let title: String
     let subtitle: String
+    /// A small line above the title: the group(s) the person is in, so Go says who will see them.
+    var eyebrow: String? = nil
     let onComplete: () -> Void
     @State private var progress: CGFloat = 0
 
@@ -252,7 +254,7 @@ struct HoldSignButton: View {
         VStack(spacing: 0) {
             colors.goBar.frame(height: signBarHeight * 1.5)
             SignContent(
-                title: title, subtitle: subtitle, titleSize: 44, icon: .chevrons,
+                eyebrow: eyebrow, title: title, subtitle: subtitle, titleSize: 44, icon: .chevrons,
                 ink: colors.goFg, nudging: progress == 0
             )
             .padding(.horizontal, 20)
@@ -269,7 +271,7 @@ struct HoldSignButton: View {
             .holdToComplete(progress: $progress, onComplete: onComplete)
         }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(title). \(subtitle)")
+        .accessibilityLabel([eyebrow, title, subtitle].compactMap { $0 }.joined(separator: ". "))
         .accessibilityHint("Hold to start tracking")
         .accessibilityAction { onComplete() }
     }

@@ -91,6 +91,7 @@ import nz.skelstar.dotwatcher.ui.nearby.ActiveSessionDialog
 import nz.skelstar.dotwatcher.ui.nearby.NearbyCreateSection
 import nz.skelstar.dotwatcher.ui.nearby.NearbyJoinSheet
 import nz.skelstar.dotwatcher.ui.groups.GroupInCard
+import nz.skelstar.dotwatcher.groups.goSignEyebrow
 import nz.skelstar.dotwatcher.groups.GroupsModel
 import nz.skelstar.dotwatcher.groups.GroupOrganiserActions
 import nz.skelstar.dotwatcher.network.SessionMembership
@@ -303,6 +304,7 @@ fun SessionScreen(
                     title = "Go",
                     subtitle = "Hold to start",
                     onComplete = { showBeforeYouGo = true },
+                    eyebrow = goSignEyebrow(groupsState.joined),
                 )
             }
             // Only when the server has events for this account (the "events" feature): the runs people
