@@ -10,6 +10,10 @@ namespace DotWatcher.Server;
 /// says, unless they turned <see cref="CasualLiveEntry.VisibleToCrew"/> off. Then they don't appear
 /// to their crew at all, not even as an anonymous dot (which crew could easily tell apart). Like the
 /// non-crew toggle it is reciprocal: a viewer with it off doesn't see their crew either.</item>
+/// <item>Group members (people the viewer shares an active group with, see .ai/plans/go-and-groups.md)
+/// are named at any distance too, but "My crew" doesn't apply to them: joining a group is the consent,
+/// and leaving it is the way out. Someone who is both crew and in the group keeps their crew label
+/// unless the crew rule hides them, and then appears under their group label.</item>
 /// <item>Anyone else is an anonymous dot, only if both they and the viewer have the toggle on, they are
 /// within <see cref="NearbyRadiusMeters"/> of the viewer, and they are not within
 /// <see cref="StartFuzzMeters"/> of where their own run began (unless they turned
@@ -55,7 +59,8 @@ public static class CasualVisibility
         IReadOnlyCollection<CasualLiveEntry> live,
         DateTimeOffset now,
         bool viewerVisibleToCrew = true,
-        IReadOnlyDictionary<string, DateTimeOffset>? routeTimes = null)
+        IReadOnlyDictionary<string, DateTimeOffset>? routeTimes = null,
+        IReadOnlyDictionary<string, string>? groupLabels = null)
     {
         var participants = new List<string>();
         var positions = new List<RunnerPosition[]>();
@@ -86,15 +91,26 @@ public static class CasualVisibility
             if (blockedUserIds.Contains(entry.UserId))
                 continue;
 
-            if (crewLabels.TryGetValue(entry.UserId, out var label))
+            var isCrew = crewLabels.TryGetValue(entry.UserId, out var label);
+            if (isCrew && entry.VisibleToCrew && viewerVisibleToCrew)
             {
-                if (!entry.VisibleToCrew || !viewerVisibleToCrew)
-                    continue;
-                participants.Add(label);
-                positions.Add([ToCasualPosition(entry, label, isSelf: false)]);
-                AddRoute(entry, label);
+                participants.Add(label!);
+                positions.Add([ToCasualPosition(entry, label!, isSelf: false)]);
+                AddRoute(entry, label!);
                 continue;
             }
+
+            if (groupLabels is not null && groupLabels.TryGetValue(entry.UserId, out var groupLabel))
+            {
+                participants.Add(groupLabel);
+                positions.Add([ToCasualPosition(entry, groupLabel, isSelf: false)]);
+                AddRoute(entry, groupLabel);
+                continue;
+            }
+
+            // Crew hidden by the crew switch don't show as an anonymous dot either (crew could tell them apart).
+            if (isCrew)
+                continue;
 
             if (!viewerVisibleToNonCrew || !entry.VisibleToNonCrew || viewerPosition is not { } here)
                 continue;

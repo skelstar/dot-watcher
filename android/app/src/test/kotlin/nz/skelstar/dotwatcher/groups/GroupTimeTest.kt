@@ -15,6 +15,14 @@ class GroupTimeTest {
     private val now = Instant.parse("2026-11-24T20:12:00Z")
     private val auckland = ZoneId.of("Pacific/Auckland") // UTC+13 in November
 
+    @Test fun `end words are the clock time today, and the day too after that`() {
+        // now is 09:12 on Wednesday 25 November in Auckland.
+        assertEquals("12:00", groupEndWords("2026-11-24T23:00:00Z", now, auckland))
+        assertEquals("Sun 18:00", groupEndWords("2026-11-29T05:00:00Z", now, auckland))
+        assertNull(groupEndWords("2026-11-24T20:00:00Z", now, auckland))
+        assertNull(groupEndWords(null, now, auckland))
+    }
+
     @Test fun `hours and minutes left, ending at local time`() {
         assertEquals(GroupTime("12:00", "2 h 48 m left"), groupTime("2026-11-24T23:00:00Z", now, auckland))
     }
