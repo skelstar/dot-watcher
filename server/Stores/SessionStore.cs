@@ -793,6 +793,18 @@ public partial class SessionStore(string connectionString) : IDisposable
                 return false;
         }
 
+        ArchiveAndEmpty(conn, tx, sessionId, now);
+        tx.Commit();
+        _sessions.TryRemove(sessionId, out _);
+        return true;
+    }
+
+    /// <summary>
+    /// Ends a session for everyone, inside <paramref name="tx"/>: archives it (if it isn't already) and marks
+    /// every current member as having left. Used by <see cref="EndSession"/> and the admin's End group.
+    /// </summary>
+    private static void ArchiveAndEmpty(NpgsqlConnection conn, NpgsqlTransaction tx, string sessionId, string now)
+    {
         using (var archive = conn.CreateCommand())
         {
             archive.Transaction = tx;
@@ -802,18 +814,12 @@ public partial class SessionStore(string connectionString) : IDisposable
             archive.ExecuteNonQuery();
         }
 
-        using (var leave = conn.CreateCommand())
-        {
-            leave.Transaction = tx;
-            leave.CommandText = "UPDATE session_members SET left_at = @now WHERE session_id = @sessionId AND left_at IS NULL";
-            leave.Parameters.AddWithValue("@now", now);
-            leave.Parameters.AddWithValue("@sessionId", sessionId);
-            leave.ExecuteNonQuery();
-        }
-
-        tx.Commit();
-        _sessions.TryRemove(sessionId, out _);
-        return true;
+        using var leave = conn.CreateCommand();
+        leave.Transaction = tx;
+        leave.CommandText = "UPDATE session_members SET left_at = @now WHERE session_id = @sessionId AND left_at IS NULL";
+        leave.Parameters.AddWithValue("@now", now);
+        leave.Parameters.AddWithValue("@sessionId", sessionId);
+        leave.ExecuteNonQuery();
     }
 
     /// <summary>
@@ -1062,7 +1068,12 @@ public partial class SessionStore(string connectionString) : IDisposable
         return reader.Read() ? new SessionInfo(reader.GetString(0), reader.GetString(1)) : null;
     }
 
-    public IReadOnlyList<SessionMembership> GetSessionsForUser(string userId)
+    /// <summary>
+    /// The caller's sessions (groups) that aren't over: not ended (archived) and not past their end time
+    /// (<see cref="GroupEndsAt"/>), newest joined first. An expired group is left out even though its
+    /// membership row stays until <see cref="PurgeFinishedGroups"/> deletes it.
+    /// </summary>
+    public IReadOnlyList<SessionMembership> GetSessionsForUser(string userId, DateTimeOffset now)
     {
         using var conn = Connect();
         using var cmd = conn.CreateCommand();
@@ -1072,11 +1083,13 @@ public partial class SessionStore(string connectionString) : IDisposable
             FROM session_members m
             JOIN app_sessions s ON s.id = m.session_id
             JOIN session_members owner ON owner.session_id = s.id AND owner.user_id = s.owner_user_id
-            WHERE m.user_id = @userId AND m.left_at IS NULL
+            WHERE m.user_id = @userId AND m.left_at IS NULL AND s.archived_at IS NULL
             ORDER BY m.joined_at DESC
             """;
         cmd.Parameters.AddWithValue("@userId", userId);
-        return ReadMemberships(cmd);
+        return ReadMemberships(cmd)
+            .Where(membership => membership.EndsAt is null || DateTimeOffset.Parse(membership.EndsAt) > now)
+            .ToList();
     }
 
     private static readonly TimeSpan RecentSessionActiveWindow = TimeSpan.FromSeconds(45);

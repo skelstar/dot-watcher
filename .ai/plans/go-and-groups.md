@@ -324,6 +324,14 @@ Built from mock-up 0a.
 - [x] Who organised a group (**#407**, CI green): `isOwner` on every membership, and owner-only `nearby`.
 - [x] Per-account feature grants cached on the hot path (#386): `FeatureFlags.IsOnFor` no longer reads the database on
       every casual post and live read; 30 s cache, cleared at once by the admin features endpoint.
+- [x] Admin **Groups** tab (`client/src/GroupsTab.tsx`, `AdminGroupsController`, `AdminGroupsTests`): every named
+      session with organiser, status (active / expired / ended), nearby area, join location and entry code. Edit
+      name, length, nearby, radius, join location (click a map, `JoinLocationPicker.tsx`; OpenStreetMap tiles, since
+      LINZ is NZ-only) and code; End, Reopen, Delete; add a member by username (no distance or code check) or remove
+      one. No organiser checks, so for test groups.
+- [x] Finished groups: `GET /me/sessions` leaves out ended and expired ones; the hourly maintenance deletes them after
+      `Groups:RetentionDays` (7), counted from when they were over, keeping any with recorded positions or a route
+      (`PurgeFinishedGroups`, `FinishedGroupsTests`).
 - [ ] Show the invite code on a nearby group's organiser card. Today the card only shows it for groups without nearby,
       so for a nearby group the tile is the only way in unless the organiser finds the code elsewhere.
 - [ ] Invite links for groups that work outside the region (e.g. `dotwatchr.app/g/<slug>`), opening the join sheet
