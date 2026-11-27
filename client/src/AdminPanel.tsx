@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type FormEvent, Fragment 
 import { apiHeaders } from './apiHeaders'
 import LoadRouteButton from './LoadRouteButton.tsx'
 import ActivityTab from './ActivityTab.tsx'
+import GroupsTab from './GroupsTab.tsx'
 import { BEARER_TOKEN_KEY, readAdminToken } from './adminToken.ts'
 import { withFeature } from './featureGrants.ts'
 
@@ -86,10 +87,11 @@ const PROTECTED_USERNAMES = new Set(['dw-demo', 'dw-casual'])
 type FeatureSwitch = { feature: string; enabled: boolean }
 const FEATURE_LABELS: Record<string, string> = { crew: 'Crew', casual: 'Casual tracking', events: 'Events', groups: 'Groups', 'create-groups': 'Create groups' }
 
-type AdminTab = 'users' | 'sessions' | 'go' | 'activity' | 'palette'
+type AdminTab = 'users' | 'sessions' | 'groups' | 'go' | 'activity' | 'palette'
 const TABS: { id: AdminTab; label: string }[] = [
   { id: 'users', label: 'Users' },
   { id: 'sessions', label: 'Sessions' },
+  { id: 'groups', label: 'Groups' },
   { id: 'go', label: 'Go runs' },
   { id: 'activity', label: 'Activity' },
   { id: 'palette', label: 'Palette' },
@@ -1079,6 +1081,8 @@ export default function AdminPanel({ serverUrl }: { serverUrl: string }) {
           )}
         </>
       )}
+
+      {tab === 'groups' && token && <GroupsTab serverUrl={serverUrl} token={token} />}
 
       {tab === 'activity' && token && <ActivityTab serverUrl={serverUrl} token={token} />}
 

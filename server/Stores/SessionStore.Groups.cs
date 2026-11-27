@@ -67,4 +67,52 @@ public partial class SessionStore
 
         return labels;
     }
+    /// <summary>
+    /// Deletes groups that have been over for longer than <paramref name="retention"/>, with their members:
+    /// over means ended (archived) or past their end time, whichever came first. Sessions with recorded
+    /// positions or a route are kept, so an older session-tracked run keeps its replay; groups never have
+    /// either (members track on Go). The casual and demo sessions are never touched. Returns how many went.
+    /// Safe to run from both servers at once.
+    /// </summary>
+    public int PurgeFinishedGroups(DateTimeOffset now, TimeSpan retention)
+    {
+        var cutoff = now - retention;
+        var finished = new List<string>();
+        using (var conn = Connect())
+        using (var cmd = conn.CreateCommand())
+        {
+            cmd.CommandText = """
+                SELECT s.id, s.created_at, s.max_length_hours, s.archived_at
+                FROM app_sessions s
+                WHERE s.id <> @casualSessionId AND s.id <> @demoSessionId
+                  AND NOT EXISTS (SELECT 1 FROM location_updates l WHERE l.session_id = s.id)
+                  AND NOT EXISTS (SELECT 1 FROM session_routes r WHERE r.session_id = s.id)
+                """;
+            cmd.Parameters.AddWithValue("@casualSessionId", CasualSessionId);
+            cmd.Parameters.AddWithValue("@demoSessionId", DemoSessionId ?? "");
+            using var reader = cmd.ExecuteReader();
+            while (reader.Read())
+            {
+                int? maxLengthHours = reader.IsDBNull(2) ? null : reader.GetInt16(2);
+                var overAt = GroupEndsAt(DateTimeOffset.Parse(reader.GetString(1)), maxLengthHours);
+                if (!reader.IsDBNull(3))
+                {
+                    var archivedAt = DateTimeOffset.Parse(reader.GetString(3));
+                    if (archivedAt < overAt)
+                        overAt = archivedAt;
+                }
+                if (overAt < cutoff)
+                    finished.Add(reader.GetString(0));
+            }
+        }
+
+        var deleted = 0;
+        foreach (var sessionId in finished)
+        {
+            if (DeleteSession(sessionId))
+                deleted++;
+        }
+
+        return deleted;
+    }
 }
