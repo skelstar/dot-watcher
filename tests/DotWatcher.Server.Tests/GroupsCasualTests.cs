@@ -154,16 +154,36 @@ public class GroupsCasualTests
     }
 
     [Fact]
-    public async Task MyCrewSwitchedOff_HidesGroupMembersToo()
+    public async Task MyCrewSwitchedOff_DoesNotHideGroupMembers()
     {
         using var factory = GroupsFactory();
         using var client = factory.CreateClient();
         var (alice, bob, _) = await GroupOfTwoAsync(client);
         await GoAsync(client, bob.AccessToken, FarLatitude);
+        // Either side switching "My crew" off: the group still names them (joining is the consent).
+        foreach (var token in new[] { bob.AccessToken, alice.AccessToken })
+        {
+            var settings = await SendAsync(client, HttpMethod.Put, "/me/casual/settings", token, new { visibleToCrew = false });
+            Assert.Equal(HttpStatusCode.OK, settings.StatusCode);
+        }
+
+        Assert.Equal(new[] { "Bobby" }, (await GetLiveAsync(client, alice.AccessToken)).Participants);
+    }
+
+    [Fact]
+    public async Task CrewInTheSameGroup_WithMyCrewOff_StillShowUnderTheirGroupName()
+    {
+        using var factory = GroupsFactory();
+        using var client = factory.CreateClient();
+        var (alice, bob, _) = await GroupOfTwoAsync(client);
+        var code = await CrewApiTests.CreateCodeAsync(client, alice.AccessToken);
+        var redeem = await SendAsync(client, HttpMethod.Post, $"/me/crew/codes/{code.Code}/redeem", bob.AccessToken);
+        Assert.Equal(HttpStatusCode.OK, redeem.StatusCode);
+        await GoAsync(client, bob.AccessToken, FarLatitude);
         var settings = await SendAsync(client, HttpMethod.Put, "/me/casual/settings", bob.AccessToken, new { visibleToCrew = false });
         Assert.Equal(HttpStatusCode.OK, settings.StatusCode);
 
-        Assert.Empty((await GetLiveAsync(client, alice.AccessToken)).Participants);
+        Assert.Equal(new[] { "Bobby" }, (await GetLiveAsync(client, alice.AccessToken)).Participants);
     }
 
     [Fact]

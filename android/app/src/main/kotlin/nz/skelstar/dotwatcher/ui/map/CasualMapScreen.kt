@@ -307,6 +307,7 @@ fun CasualMapScreen(
             onCrewVisibleChange = casual::setVisibleToCrew,
             onVisibleChange = casual::setVisibleToNonCrew,
             onHideStartAreaChange = casual::setHideStartArea,
+            groups = groupsState?.joined.orEmpty(),
             onDismiss = {
                 showWhoCanSeeMe = false
                 casual.clearError()

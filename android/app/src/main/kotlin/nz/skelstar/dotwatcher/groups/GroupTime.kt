@@ -28,6 +28,18 @@ fun groupTime(endsAtIso: String?, now: Instant, zone: ZoneId = ZoneId.systemDefa
     return GroupTime(endsAt = clock, left = timeLeft(Duration.between(now, ends)))
 }
 
+/**
+ * When a group ends, for "until it ends, …": the clock time if that's today, else the day too ("Sun 18:00").
+ * Null when the server didn't say or it has already ended. Matches iOS's `groupEndWords`.
+ */
+fun groupEndWords(endsAtIso: String?, now: Instant, zone: ZoneId = ZoneId.systemDefault()): String? {
+    val ends = endsAtIso?.let { runCatching { OffsetDateTime.parse(it).toInstant() }.getOrNull() } ?: return null
+    if (!ends.isAfter(now)) return null
+    val sameDay = ends.atZone(zone).toLocalDate() == now.atZone(zone).toLocalDate()
+    val pattern = if (sameDay) "H:mm" else "EEE H:mm"
+    return DateTimeFormatter.ofPattern(pattern, Locale.getDefault()).withZone(zone).format(ends)
+}
+
 private fun timeLeft(left: Duration): String {
     val minutes = left.toMinutes()
     return when {
