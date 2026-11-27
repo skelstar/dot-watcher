@@ -347,6 +347,11 @@ Built from mock-up 0a.
       nearby sheet on their session map.
 - [x] Invite-code join and the organiser's own session follow the groups flow too (#408): creating stays on the start
       screen; the organiser's card has Ping here, Entry code and End group (`endGroup` doesn't stop a Go run).
+- [x] Group sign above Go (option D of the "Group button on the start screen" canvas,
+      https://claude.ai/artifact/4mn7F9ANH1Ck5NnQTrHrub): one pink sign listing every group, a row each ("Yours ·
+      9 h 6 m left", "Kiri's · 2 h left") with a gear. A row opens that group's sheet (the old card: organiser
+      controls, or Leave). Replaces the "You're in" cards and Go's "With <group>" line (`GroupSign`, `GroupSheet`
+      in `GroupCards.kt`). Not tried on a device.
 - [ ] Start screen: Go and "Who can see me" replace the four cards (Private / Crew / Group / Race). Coordinate with
       the `android-start-screen-design` branch.
 - [ ] Before pushing: `cd android && ./gradlew :app:compileDebugKotlin :app:testDebugUnitTest`.
@@ -366,6 +371,8 @@ Built from mock-up 0a.
 - [x] Organiser: "Ask for a code to join" at create; Entry code section in the nearby settings sheet.
 - [x] Invite-code join and the organiser's own session follow the groups flow too (#409).
 - [x] Fixes from the simulator run (#398): scrolling join sheet; no hang getting a location while out.
+- [x] Group sign above Go, as Android (`GroupSign`, `GroupSheet` in `GroupsViews.swift`; membership now reads
+      `ownerDisplayName`). Run in the simulator.
 - [ ] Start screen redesign (as Android).
 
 ### Step 3 — Groups as their own thing; rules; events as run slices

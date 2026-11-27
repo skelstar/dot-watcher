@@ -22,11 +22,21 @@ const val GROUPS_FEATURE = "groups"
 /** Who may organise a group: with groups, creating a session makes a group, and that needs this too. */
 const val CREATE_GROUPS_FEATURE = "create-groups"
 
-/** The line above "Go" on the start screen while the person is in any groups: the newest by name, and how many
- *  more. Null when they're in none. Matches iOS's `goSignEyebrow`. */
-fun goSignEyebrow(groups: List<SessionMembership>): String? {
-    val newest = groups.firstOrNull() ?: return null
-    return if (groups.size > 1) "With ${newest.sessionName} + ${groups.size - 1} more" else "With ${newest.sessionName}"
+/** The small line at the top of the start screen's group sign: "GROUP", or how many. Matches iOS's
+ *  `groupSignHeader`. */
+fun groupSignHeader(count: Int): String = if (count > 1) "$count GROUPS" else "GROUP"
+
+/** The line under a group's name on the group sign: whose it is ("Yours", "Kiri's", or "Joined" when an older
+ *  server doesn't name the organiser), and how long is left when the server says ([time] null shows no time).
+ *  Matches iOS's `groupSignLine`. */
+fun groupSignLine(group: SessionMembership, time: GroupTime?): String {
+    val organiser = group.ownerDisplayName?.trim().orEmpty()
+    val whose = when {
+        group.isOwner -> "Yours"
+        organiser.isEmpty() -> "Joined"
+        else -> "$organiser's"
+    }
+    return time?.let { "$whose · ${it.left}" } ?: whose
 }
 
 /** What the organiser can do from their own group's card on the start screen (the session map isn't used for a

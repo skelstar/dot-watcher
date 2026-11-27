@@ -119,7 +119,7 @@ fun HoldSignButton(
     subtitle: String,
     onComplete: () -> Unit,
     modifier: Modifier = Modifier,
-    /** A small line above the title: the group(s) the person is in, so Go says who will see them. */
+    /** A small line above the title. */
     eyebrow: String? = null,
 ) {
     val progress = remember { Animatable(0f) }
