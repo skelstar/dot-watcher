@@ -428,7 +428,7 @@ public partial class SessionStore
     /// <paramref name="viewerVisibleToCrew"/> is the viewer's own "My crew": off, they don't see
     /// their crew (as they aren't seen by them). <paramref name="includeGroups"/> (the "groups" feature,
     /// see .ai/plans/go-and-groups.md) also names people the viewer shares an active named session with,
-    /// treated exactly as crew (same "My crew" switch, same block rule). Crew keep their crew label.
+    /// at any distance, whatever either side's "My crew" says (same block rule). Crew keep their crew label.
     /// </summary>
     public CasualLiveResponse GetCasualLive(
         string viewerId,
@@ -455,9 +455,7 @@ public partial class SessionStore
         if (includeCrew)
             foreach (var member in GetCrewOverview(conn, viewerId).Crew)
                 crewLabels[member.UserId] = string.IsNullOrWhiteSpace(member.Nickname) ? member.DisplayName : member.Nickname;
-        if (includeGroups)
-            foreach (var (userId, label) in GetGroupMemberLabels(conn, viewerId, now))
-                crewLabels.TryAdd(userId, label);
+        var groupLabels = includeGroups ? GetGroupMemberLabels(conn, viewerId, now) : null;
 
         return CasualVisibility.ForViewer(
             viewerId,
@@ -468,7 +466,8 @@ public partial class SessionStore
             entries,
             now,
             viewerVisibleToCrew,
-            GetCasualRouteTimes(conn, entries.Select(e => e.RunId).OfType<string>().ToList()));
+            GetCasualRouteTimes(conn, entries.Select(e => e.RunId).OfType<string>().ToList()),
+            groupLabels);
     }
 
     private IReadOnlyList<CasualLiveEntry> GetCasualSnapshot(DateTimeOffset now)

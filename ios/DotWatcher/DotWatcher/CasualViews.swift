@@ -119,6 +119,8 @@ struct BeforeYouGoSheet: View {
     var casual: CasualStore
     let me: String
     let crew: [CrewMember]
+    /// The groups the person is in (only with the "groups" feature): shown as the yellow circle and a line each.
+    var groups: [SessionMembership] = []
     @State private var duration = CasualStore.defaultDuration
     let onGo: (TimeInterval) -> Void
 
@@ -130,7 +132,7 @@ struct BeforeYouGoSheet: View {
 
                 VStack(alignment: .leading, spacing: 14) {
                     sectionHeader("WHO CAN SEE ME")
-                    WhoCanSeeMeControls(casual: casual, me: me, crew: crew)
+                    WhoCanSeeMeControls(casual: casual, me: me, crew: crew, groups: groups)
                 }
 
                 VStack(alignment: .leading, spacing: 6) {
@@ -180,13 +182,14 @@ struct WhoCanSeeMeSheet: View {
     var casual: CasualStore
     let me: String
     let crew: [CrewMember]
+    var groups: [SessionMembership] = []
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 Text("Who can see me")
                     .font(.app(.largeTitle, weight: .bold))
-                WhoCanSeeMeControls(casual: casual, me: me, crew: crew)
+                WhoCanSeeMeControls(casual: casual, me: me, crew: crew, groups: groups)
             }
             .padding(24)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -197,11 +200,20 @@ struct WhoCanSeeMeSheet: View {
 
 /// The "Who can see me" switches, shared by that sheet (from the map) and "Before you go". A small picture
 /// of who sees you sits above them and follows each switch. Each switch saves as soon as it changes.
+///
+/// In a group (mock-up "Before you go · in a group" on the "Group button on the start screen" canvas) the
+/// picture puts this person inside a yellow circle with the group, a key explains it, and each group gets a
+/// line under "My crew": the group sees them by name whatever the switches say, until it ends or they leave.
+/// "Hide my start area" isn't shown then (groups start at a meeting point); the saved setting still applies.
 struct WhoCanSeeMeControls: View {
     var casual: CasualStore
     /// This person's runner name, for the initials on their own dot.
     let me: String
     let crew: [CrewMember]
+    var groups: [SessionMembership] = []
+    var now = Date()
+
+    private var inGroup: Bool { !groups.isEmpty }
 
     /// "who aren't in your crew" is underlined: it is the group the setting is about.
     private static let hideStartAreaCaption: AttributedString = {
@@ -222,42 +234,67 @@ struct WhoCanSeeMeControls: View {
                 crew: crew,
                 crewVisible: casual.visibleToCrew,
                 nearbyVisible: casual.visibleToNonCrew,
-                startHidden: casual.visibleToNonCrew && casual.hideStartArea
+                startHidden: !inGroup && casual.visibleToNonCrew && casual.hideStartArea,
+                inGroup: inGroup
             )
+            if inGroup {
+                WhoSeesYouKey(
+                    groupName: groups.count == 1 ? groups[0].sessionName : "your groups",
+                    // The first crew dot's colour, as drawn in the picture.
+                    crewColor: crew.first.map { RunnerColorPalette.color(for: $0.nickname ?? $0.displayName) } ?? .orange
+                )
+            }
             Toggle(isOn: Binding(
                 get: { casual.visibleToCrew },
                 set: { visible in Task { await casual.setVisibleToCrew(visible) } }
             )) {
-                Text("My crew").font(.app(.headline))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("My crew").font(.app(.headline))
+                    if inGroup {
+                        Text("By name, anywhere").font(.app(.subheadline)).foregroundStyle(.secondary)
+                    }
+                }
+            }
+            ForEach(groups) { group in
+                GroupSeesYouLine(group: group, now: now)
             }
             Toggle(isOn: Binding(
                 get: { casual.visibleToNonCrew },
                 set: { visible in Task { await casual.setVisibleToNonCrew(visible) } }
             )) {
-                Text("Show me to people nearby").font(.app(.headline))
-            }
-            Toggle(isOn: Binding(
-                get: { casual.hideStartArea },
-                set: { hide in Task { await casual.setHideStartArea(hide) } }
-            )) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Hide my start area").font(.app(.headline))
-                    if startExposed {
-                        Label {
-                            Text("Anyone nearby can see where you set off from, which may be your home.")
-                        } icon: {
-                            Image(systemName: "exclamationmark.circle.fill")
-                        }
-                        .font(.app(.subheadline))
-                        .foregroundStyle(.orange)
-                    } else {
-                        Text(Self.hideStartAreaCaption)
+                    Text("Show me to people nearby").font(.app(.headline))
+                    if inGroup {
+                        Text("Anyone else within 5 km, as a dot with no name")
                             .font(.app(.subheadline)).foregroundStyle(.secondary)
                     }
                 }
             }
-            .disabled(!casual.visibleToNonCrew)
-            if casual.isPrivate {
+            if !inGroup {
+                Toggle(isOn: Binding(
+                    get: { casual.hideStartArea },
+                    set: { hide in Task { await casual.setHideStartArea(hide) } }
+                )) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Hide my start area").font(.app(.headline))
+                        if startExposed {
+                            Label {
+                                Text("Anyone nearby can see where you set off from, which may be your home.")
+                            } icon: {
+                                Image(systemName: "exclamationmark.circle.fill")
+                            }
+                            .font(.app(.subheadline))
+                            .foregroundStyle(.orange)
+                        } else {
+                            Text(Self.hideStartAreaCaption)
+                                .font(.app(.subheadline)).foregroundStyle(.secondary)
+                        }
+                    }
+                }
+                .disabled(!casual.visibleToNonCrew)
+            }
+            // In a group they're never private: the group always sees them.
+            if casual.isPrivate, !inGroup {
                 Label {
                     Text("You're private: nobody sees you on the map, and you don't see your crew. You can still send someone a link to watch you. On the map, tap \(Image(systemName: "square.and.arrow.up")) Share.")
                 } icon: {
@@ -280,18 +317,32 @@ struct WhoCanSeeMeControls: View {
 /// crew along a route, and two anonymous nearby dots. Turning a switch off fades its dots away, which shows
 /// the two-way part (with "My crew" off you don't see them either). With the start hidden, a dashed ring
 /// circles the start and this person's dot is half see-through. Decorative: the switches carry the meaning.
+///
+/// With `inGroup`, a yellow circle around this person and two stand-in members shows the group, which sees
+/// them by name whatever the switches say; the nearby dots move outside it.
 struct WhoSeesYouStrip: View {
     let me: String
     let crew: [CrewMember]
     let crewVisible: Bool
     let nearbyVisible: Bool
     let startHidden: Bool
+    var inGroup = false
 
     /// Drawn on a 300 × 84 grid, scaled to the width it is given.
     private static let grid = CGSize(width: 300, height: 84)
     private static let start = CGPoint(x: 36, y: 66)
     private static let crewSpots = [CGPoint(x: 132, y: 46), CGPoint(x: 164, y: 40), CGPoint(x: 262, y: 20)]
     private static let nearbySpots = [CGPoint(x: 94, y: 24), CGPoint(x: 212, y: 64)]
+    /// In a group: the circle around the start, two members in it, and the nearby dots clear of it.
+    private static let groupCenter = CGPoint(x: 58, y: 50)
+    private static let groupRadius: CGFloat = 38
+    private static let groupMemberSpots = [CGPoint(x: 66, y: 30), CGPoint(x: 80, y: 56)]
+    private static let groupMemberColors = [Color(red: 0x37 / 255, green: 0x47 / 255, blue: 0x4F / 255),
+                                            Color(red: 0x00 / 255, green: 0x79 / 255, blue: 0x6B / 255)]
+    private static let groupNearbySpots = [CGPoint(x: 200, y: 18), CGPoint(x: 212, y: 64)]
+    /// The join-area yellow (as on the organiser's map), for the group circle and its key.
+    static let groupFill = Color(red: 0xFA / 255, green: 0xCC / 255, blue: 0x15 / 255).opacity(0.35)
+    static let groupStroke = Color(red: 0xCA / 255, green: 0x8A / 255, blue: 0x04 / 255)
     /// Stand-ins when the person has no crew yet, drawn without initials.
     private static let placeholderCrewColors: [Color] = [.orange, .green, .purple]
     private static let nearbyGrey = Color(red: 0x9A / 255, green: 0xA3 / 255, blue: 0xAB / 255)
@@ -308,6 +359,18 @@ struct WhoSeesYouStrip: View {
                 }
                 .stroke(Color(.systemGray3), style: StrokeStyle(lineWidth: 5 * scale, lineCap: .round))
 
+                if inGroup {
+                    Circle()
+                        .fill(Self.groupFill)
+                        .overlay(Circle().stroke(Self.groupStroke, lineWidth: 1.5))
+                        .frame(width: Self.groupRadius * 2 * scale, height: Self.groupRadius * 2 * scale)
+                        .position(point(Self.groupCenter.x, Self.groupCenter.y, scale))
+                    ForEach(Self.groupMemberSpots.indices, id: \.self) { index in
+                        dot(color: Self.groupMemberColors[index], label: nil, scale: scale)
+                            .position(point(Self.groupMemberSpots[index].x, Self.groupMemberSpots[index].y, scale))
+                    }
+                }
+
                 Circle()
                     .stroke(Color.secondary, style: StrokeStyle(lineWidth: 1.5, dash: [3, 3]))
                     .frame(width: 48 * scale, height: 48 * scale)
@@ -315,11 +378,12 @@ struct WhoSeesYouStrip: View {
                     .opacity(startHidden ? 1 : 0)
                     .scaleEffect(startHidden ? 1 : 0.4, anchor: anchor(Self.start))
 
-                ForEach(Self.nearbySpots.indices, id: \.self) { index in
+                let nearbySpots = inGroup ? Self.groupNearbySpots : Self.nearbySpots
+                ForEach(nearbySpots.indices, id: \.self) { index in
                     dot(color: Self.nearbyGrey, label: "?", scale: scale)
-                        .position(point(Self.nearbySpots[index].x, Self.nearbySpots[index].y, scale))
+                        .position(point(nearbySpots[index].x, nearbySpots[index].y, scale))
                         .opacity(nearbyVisible ? 1 : 0)
-                        .scaleEffect(nearbyVisible ? 1 : 0.4, anchor: anchor(Self.nearbySpots[index]))
+                        .scaleEffect(nearbyVisible ? 1 : 0.4, anchor: anchor(nearbySpots[index]))
                 }
 
                 ForEach(Self.crewSpots.indices, id: \.self) { index in
@@ -377,6 +441,68 @@ struct WhoSeesYouStrip: View {
     }
 }
 
+/// Under the picture while in a group: what the circle, the crew colour and the grey dots mean.
+struct WhoSeesYouKey: View {
+    let groupName: String
+    let crewColor: Color
+
+    var body: some View {
+        // Wraps onto two lines on a narrow phone or with large text.
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 14) { items }
+            VStack(alignment: .leading, spacing: 4) { items }
+        }
+        .font(.app(.footnote))
+        .foregroundStyle(.secondary)
+    }
+
+    @ViewBuilder
+    private var items: some View {
+        item(Circle().fill(WhoSeesYouStrip.groupFill).overlay(Circle().stroke(WhoSeesYouStrip.groupStroke, lineWidth: 1.5)),
+             "In \(groupName), by name")
+        item(Circle().fill(crewColor), "Crew, by name")
+        item(Circle().fill(Color(.systemGray)), "Others, no name")
+    }
+
+    private func item(_ swatch: some View, _ text: String) -> some View {
+        HStack(spacing: 6) {
+            swatch.frame(width: 11, height: 11)
+            Text(text).lineLimit(1)
+        }
+    }
+}
+
+/// One group under "My crew": everyone in it sees this person by name until it ends. Not a switch: joining was
+/// the consent, and leaving (from the group sign) is the way out.
+struct GroupSeesYouLine: View {
+    let group: SessionMembership
+    let now: Date
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: "person.2")
+                .font(.app(.headline))
+                .frame(width: 26)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(group.sessionName).font(.app(.headline))
+                Text(summary)
+                    .font(.app(.subheadline))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(12)
+        .background(WhoSeesYouStrip.groupFill.opacity(0.6), in: RoundedRectangle(cornerRadius: 12))
+        .accessibilityElement(children: .combine)
+    }
+
+    private var summary: String {
+        let until = groupEndWords(endsAtISO: group.endsAt, now: now).map { "until it ends, \($0)" } ?? "until it ends"
+        return "Everyone in it sees you by name \(until). Leave it from the group sign."
+    }
+}
+
 // MARK: - Hosting
 
 /// Presents the casual sheets and map once, at the top of `ContentView`, and keeps the store in step
@@ -390,7 +516,8 @@ struct CasualHost: ViewModifier {
     func body(content: Content) -> some View {
         content
             .sheet(isPresented: $casual.isBeforeYouGoPresented) {
-                BeforeYouGoSheet(casual: casual, me: location.runnerName, crew: crew.members) { duration in
+                BeforeYouGoSheet(casual: casual, me: location.runnerName, crew: crew.members,
+                                 groups: location.groupMemberships) { duration in
                     casual.isBeforeYouGoPresented = false
                     Task { await casual.start(duration: duration) }
                 }
@@ -521,7 +648,8 @@ struct CasualMapScreen: View {
             }
         }
         .sheet(isPresented: $showWhoCanSeeMe) {
-            WhoCanSeeMeSheet(casual: casual, me: location.runnerName, crew: crew.members)
+            WhoCanSeeMeSheet(casual: casual, me: location.runnerName, crew: crew.members,
+                             groups: location.groupMemberships)
                 .presentationDetents([.medium, .large])
         }
         .sheet(isPresented: $showShare) {

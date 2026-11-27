@@ -17,6 +17,16 @@ func goSignEyebrow(groups: [SessionMembership]) -> String? {
     return groups.count > 1 ? "With \(newest.sessionName) + \(groups.count - 1) more" : "With \(newest.sessionName)"
 }
 
+/// When a group ends, for "until it ends, …": the clock time if that's today, else the day too ("Sun 18:00").
+/// Nil when the server didn't say or it has already ended.
+func groupEndWords(endsAtISO: String?, now: Date, calendar: Calendar = .current) -> String? {
+    guard let iso = endsAtISO, let ends = GroupTime.parse(iso), ends > now else { return nil }
+    let formatter = DateFormatter()
+    formatter.timeZone = calendar.timeZone
+    formatter.dateFormat = calendar.isDate(ends, inSameDayAs: now) ? "H:mm" : "EEE H:mm"
+    return formatter.string(from: ends)
+}
+
 /// A group's entry code: the organiser gives it to entrants so someone passing by can't join a race.
 enum EntryCode {
     static let minLength = 4

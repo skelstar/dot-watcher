@@ -213,8 +213,8 @@ Turning it around, with casual as the base and groups as visibility on top:
 - **Groups are time-limited.** Every group has an end time set by its owner; when it passes, members stop seeing each
   other through the group. (Length options and a hard cap: settle in the mock-ups.)
 - **Group members are like crew, but visibility only.** Inside an active group, the group's rules decide who is named
-  to whom. Being in a group never creates a `crew_links` row, and the same reciprocal rules as crew apply
-  (`VisibleToCrew` off hides you from them too).
+  to whom. Being in a group never creates a `crew_links` row. Unlike crew, "My crew" (`VisibleToCrew`) doesn't
+  apply: joining is the consent and leaving is the way out (changed 27 Nov 2026; it used to hide you from them too).
 - **Each group has a visibility rule: who sees whom.** The rule is a property of the group, chosen by the owner when
   creating it. Starting set:
 
@@ -294,7 +294,8 @@ Built in **#386** (CI green, not merged). New `SessionStore.Groups.cs`.
       viewer's **group members** under each active group's rule: other members of active named sessions
       (`session_members`, both `left_at IS NULL`, session not archived, within its event length). Label: the member's
       `display_name` in that session. Crew keep their crew label. Casual and demo sessions never count.
-- [x] Respect blocks (already applied by `ForViewer` via `GetBlockedPartyIds`) and `VisibleToCrew`.
+- [x] Respect blocks (already applied by `ForViewer` via `GetBlockedPartyIds`). `VisibleToCrew` no longer applies
+      to group members (27 Nov 2026): `ForViewer` takes them as `groupLabels`, apart from crew.
 - [x] Gate behind a feature flag (new `groups` flag in `FeatureFlags.cs`, per-account like `crew`; checked with
       `FeatureFlags.IsOnFor`) so installed builds and accounts without it see no change. Wired into `GET /casual/live`,
       casual `POST /location` and the casual route download.
@@ -347,6 +348,9 @@ Built from mock-up 0a.
       nearby sheet on their session map.
 - [x] Invite-code join and the organiser's own session follow the groups flow too (#408): creating stays on the start
       screen; the organiser's card has Ping here, Entry code and End group (`endGroup` doesn't stop a Go run).
+- [x] "Before you go" / "Who can see me" in a group (`CasualSheets.kt`; mock-up "Before you go · in a group" on
+      the canvas): yellow circle and key in the picture, a line per group under My crew ("until it ends, Sun
+      18:00", `groupEndWords`), no Hide my start area. Not built locally.
 - [ ] Start screen: Go and "Who can see me" replace the four cards (Private / Crew / Group / Race). Coordinate with
       the `android-start-screen-design` branch.
 - [ ] Before pushing: `cd android && ./gradlew :app:compileDebugKotlin :app:testDebugUnitTest`.
@@ -366,6 +370,8 @@ Built from mock-up 0a.
 - [x] Organiser: "Ask for a code to join" at create; Entry code section in the nearby settings sheet.
 - [x] Invite-code join and the organiser's own session follow the groups flow too (#409).
 - [x] Fixes from the simulator run (#398): scrolling join sheet; no hang getting a location while out.
+- [x] "Before you go" / "Who can see me" in a group, as Android (mock-up "Before you go · in a group" on the
+      canvas): yellow circle and key in the picture, a line per group under My crew, no Hide my start area.
 - [ ] Start screen redesign (as Android).
 
 ### Step 3 — Groups as their own thing; rules; events as run slices

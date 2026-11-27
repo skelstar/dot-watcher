@@ -364,6 +364,7 @@ fun SessionScreen(
             onCrewVisibleChange = casual::setVisibleToCrew,
             onVisibleChange = casual::setVisibleToNonCrew,
             onHideStartAreaChange = casual::setHideStartArea,
+            groups = groupsState.joined,
             onGo = { duration ->
                 showBeforeYouGo = false
                 casual.clearError()
