@@ -325,6 +325,14 @@ Built from mock-up 0a.
 - [x] Who organised a group (**#407**, CI green): `isOwner` on every membership, and owner-only `nearby`.
 - [x] Per-account feature grants cached on the hot path (#386): `FeatureFlags.IsOnFor` no longer reads the database on
       every casual post and live read; 30 s cache, cleared at once by the admin features endpoint.
+- [x] Admin **Groups** tab (`client/src/GroupsTab.tsx`, `AdminGroupsController`, `AdminGroupsTests`): every named
+      session with organiser, status (active / expired / ended), nearby area, join location and entry code. Edit
+      name, length, nearby, radius, join location (click a map, `JoinLocationPicker.tsx`; OpenStreetMap tiles, since
+      LINZ is NZ-only) and code; End, Reopen, Delete; add a member by username (no distance or code check) or remove
+      one. No organiser checks, so for test groups.
+- [x] Finished groups: `GET /me/sessions` leaves out ended and expired ones; the hourly maintenance deletes them after
+      `Groups:RetentionDays` (7), counted from when they were over, keeping any with recorded positions or a route
+      (`PurgeFinishedGroups`, `FinishedGroupsTests`).
 - [ ] Show the invite code on a nearby group's organiser card. Today the card only shows it for groups without nearby,
       so for a nearby group the tile is the only way in unless the organiser finds the code elsewhere.
 - [ ] Invite links for groups that work outside the region (e.g. `dotwatchr.app/g/<slug>`), opening the join sheet
@@ -348,6 +356,11 @@ Built from mock-up 0a.
       nearby sheet on their session map.
 - [x] Invite-code join and the organiser's own session follow the groups flow too (#408): creating stays on the start
       screen; the organiser's card has Ping here, Entry code and End group (`endGroup` doesn't stop a Go run).
+- [x] Group sign above Go (option D of the "Group button on the start screen" canvas,
+      https://claude.ai/artifact/4mn7F9ANH1Ck5NnQTrHrub): one pink sign listing every group, a row each ("Yours ·
+      9 h 6 m left", "Kiri's · 2 h left") with a gear. A row opens that group's sheet (the old card: organiser
+      controls, or Leave). Replaces the "You're in" cards and Go's "With <group>" line (`GroupSign`, `GroupSheet`
+      in `GroupCards.kt`). Not tried on a device.
 - [x] "Before you go" / "Who can see me" in a group (`CasualSheets.kt`; mock-up "Before you go · in a group" on
       the canvas): yellow circle and key in the picture, a line per group under My crew ("until it ends, Sun
       18:00", `groupEndWords`), no Hide my start area. Not built locally.
@@ -370,6 +383,8 @@ Built from mock-up 0a.
 - [x] Organiser: "Ask for a code to join" at create; Entry code section in the nearby settings sheet.
 - [x] Invite-code join and the organiser's own session follow the groups flow too (#409).
 - [x] Fixes from the simulator run (#398): scrolling join sheet; no hang getting a location while out.
+- [x] Group sign above Go, as Android (`GroupSign`, `GroupSheet` in `GroupsViews.swift`; membership now reads
+      `ownerDisplayName`). Run in the simulator.
 - [x] "Before you go" / "Who can see me" in a group, as Android (mock-up "Before you go · in a group" on the
       canvas): yellow circle and key in the picture, a line per group under My crew, no Hide my start area.
 - [ ] Start screen redesign (as Android).

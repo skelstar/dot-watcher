@@ -53,9 +53,121 @@ import nz.skelstar.dotwatcher.ui.map.JoinRangePreview
 import nz.skelstar.dotwatcher.ui.nearby.RadiusChips
 import kotlinx.coroutines.launch
 import nz.skelstar.dotwatcher.network.SessionMembership
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.size
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.Icon
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.style.TextOverflow
+import nz.skelstar.dotwatcher.groups.groupSignHeader
+import nz.skelstar.dotwatcher.groups.groupSignLine
+import nz.skelstar.dotwatcher.ui.theme.SignFontFamily
+import nz.skelstar.dotwatcher.ui.theme.animatedSignColors
 
 // Groups (see .ai/plans/go-and-groups.md, mock-up .ai/mockups/go-and-groups-before-go.html, option B): a group
 // joined from the start screen waits for Go. This card says so, and is where the person leaves it.
+
+/**
+ * The group sign above Go (option D in the "Group button on the start screen" mock-up): every group the person is
+ * in, one row each with a gear, in the palette's accent colours. A row opens that group's [GroupSheet], which holds
+ * what the big group cards used to: the organiser's controls, or Leave. Matches iOS's `GroupSign`.
+ */
+@Composable
+fun GroupSign(
+    groups: List<SessionMembership>,
+    now: Instant,
+    onOpen: (SessionMembership) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val colors = animatedSignColors()
+    val ink = colors.accentInk
+    val text = TextStyle(fontFamily = SignFontFamily, color = ink)
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .background(colors.accent)
+            .padding(bottom = 6.dp),
+    ) {
+        Box(Modifier.fillMaxWidth().height(6.dp).background(ink))
+        Text(
+            text = groupSignHeader(groups.size),
+            style = text.copy(fontSize = 11.sp, letterSpacing = 1.sp),
+            modifier = Modifier
+                .padding(start = 16.dp, top = 10.dp, end = 16.dp, bottom = 2.dp)
+                .semantics { heading() },
+        )
+        groups.forEachIndexed { index, group ->
+            if (index > 0) {
+                Box(
+                    Modifier
+                        .padding(horizontal = 16.dp)
+                        .fillMaxWidth()
+                        .height(2.dp)
+                        .background(ink.copy(alpha = 0.25f)),
+                )
+            }
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable(role = Role.Button, onClickLabel = "Open the group's settings") { onOpen(group) }
+                    .padding(start = 16.dp, top = 6.dp, end = 14.dp, bottom = 6.dp),
+            ) {
+                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(
+                        text = group.sessionName,
+                        style = text.copy(fontSize = 20.sp),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        text = groupSignLine(group, groupTime(group.endsAt, now)),
+                        style = text.copy(fontSize = 12.sp),
+                    )
+                }
+                // About the size of the Join and Create icons; no frame, since the whole row is the button.
+                Icon(Icons.Filled.Settings, contentDescription = null, tint = ink, modifier = Modifier.size(36.dp))
+            }
+        }
+    }
+}
+
+/** One group, opened from its row on the group sign: the organiser's controls on their own group (with
+ *  [organiser]), Leave on anyone else's. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun GroupSheet(
+    group: SessionMembership,
+    isOut: Boolean,
+    time: GroupTime?,
+    onLeave: () -> Unit,
+    onDismiss: () -> Unit,
+    error: String? = null,
+    organiser: GroupOrganiserActions? = null,
+) {
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+    ) {
+        Column(
+            modifier = Modifier
+                .verticalScroll(rememberScrollState())
+                .navigationBarsPadding()
+                .padding(horizontal = 24.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            GroupInCard(group = group, isOut = isOut, time = time, onLeave = onLeave, organiser = organiser)
+            error?.let { Text(text = it, color = MaterialTheme.colorScheme.error) }
+            TextButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) { Text("Done") }
+        }
+    }
+}
 
 /**
  * One group the person is in, on the start screen. [isOut] is whether they are tracking right now: out,

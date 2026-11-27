@@ -102,6 +102,8 @@ struct SessionMembership: Codable, Identifiable {
     let inviteCode: String
     let role: String
     let displayName: String
+    /// The organiser's name in the session; nil from older servers.
+    var ownerDisplayName: String? = nil
     /// Only present on the join-session response (`POST /session-invites/{code}/join`); nil for
     /// membership objects that don't carry it (e.g. `GET /me/sessions`).
     let participants: [SessionRunner]?

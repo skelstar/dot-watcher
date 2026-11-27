@@ -2,7 +2,9 @@ namespace DotWatcher.Server;
 
 /// <summary>
 /// Keeps the never-ending casual session from growing without bound: closes abandoned runs and
-/// deletes positions and finished runs older than <c>Casual:RetentionDays</c> (default 7). Staging
+/// deletes positions and finished runs older than <c>Casual:RetentionDays</c> (default 7). Also deletes
+/// activity events after <c>Activity:RetentionDays</c> (30) and finished groups after
+/// <c>Groups:RetentionDays</c> (7, counted from when the group was over). Staging
 /// and Production both run it against the shared database; it is idempotent, so that is harmless.
 /// </summary>
 public sealed class CasualMaintenanceService(
@@ -63,6 +65,19 @@ public sealed class CasualMaintenanceService(
         catch (Exception ex)
         {
             logger.LogWarning(ex, "Activity maintenance failed");
+        }
+
+        // Groups that are over (ended or past their end time) go after Groups:RetentionDays, as Go runs do.
+        try
+        {
+            var groupRetention = TimeSpan.FromDays(configuration.GetValue<double>("Groups:RetentionDays", 7));
+            var deleted = store.PurgeFinishedGroups(timeProvider.GetUtcNow(), groupRetention);
+            if (deleted > 0)
+                logger.LogInformation("Group maintenance deleted {DeletedGroups} finished groups", deleted);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Group maintenance failed");
         }
     }
 }

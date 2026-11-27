@@ -14,7 +14,7 @@ public class SessionsController(
     TimeProvider timeProvider,
     ILogger<SessionsController> logger) : ControllerBase
 {
-    /// <summary>Lists the caller's active session memberships.</summary>
+    /// <summary>Lists the caller's active session memberships: none that have ended or are past their end time.</summary>
     [HttpGet("/me/sessions")]
     [ProducesResponseType(typeof(IReadOnlyList<SessionMembership>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
@@ -23,7 +23,7 @@ public class SessionsController(
         if (!userAuth.TryAuthenticate(Request, out var user))
             return Unauthorized();
 
-        return Ok(store.GetSessionsForUser(user.UserId));
+        return Ok(store.GetSessionsForUser(user.UserId, timeProvider.GetUtcNow()));
     }
 
     /// <summary>Lists sessions the caller recently left, most recent first.</summary>

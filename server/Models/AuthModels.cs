@@ -249,3 +249,53 @@ public record AdminMemberStats(
     string? LastPositionAt
 );
 
+
+/// <summary>A group on the admin page's Groups tab. <c>Status</c> is "active", "expired" (past its end
+/// time) or "ended" (archived: its organiser or an admin ended it). The join location is the admin's
+/// to see; it's never returned to phones.</summary>
+public record AdminGroupSummary(
+    string SessionId,
+    string SessionName,
+    string InviteCode,
+    string OwnerUserId,
+    string OwnerUsername,
+    string OwnerDisplayName,
+    int MemberCount,
+    string CreatedAt,
+    int LengthHours,
+    string EndsAt,
+    string Status,
+    bool Nearby,
+    int? NearbyRadiusMeters,
+    double? JoinLatitude,
+    double? JoinLongitude,
+    string? EntryCode
+);
+
+/// <summary>Someone who is or was in a group; <c>LeftAt</c> null means they're still in.</summary>
+public record AdminGroupMember(
+    string UserId,
+    string Username,
+    string DisplayName,
+    string Role,
+    string JoinedAt,
+    string? LeftAt
+);
+
+/// <summary>PATCH /admin/groups/{id}: only the fields given change. <c>EntryCode</c> "" removes the code.
+/// <c>JoinLatitude</c> and <c>JoinLongitude</c> go together.</summary>
+public record AdminUpdateGroupRequest(
+    string? SessionName = null,
+    int? LengthHours = null,
+    bool? Nearby = null,
+    int? NearbyRadiusMeters = null,
+    double? JoinLatitude = null,
+    double? JoinLongitude = null,
+    string? EntryCode = null
+);
+
+/// <summary>POST /admin/groups/{id}/members: an existing account by username; <c>DisplayName</c> null uses theirs.</summary>
+public record AdminAddGroupMemberRequest(
+    string? Username = null,
+    string? DisplayName = null
+);

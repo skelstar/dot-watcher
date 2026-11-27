@@ -90,8 +90,8 @@ import nz.skelstar.dotwatcher.network.NearbyEvent
 import nz.skelstar.dotwatcher.ui.nearby.ActiveSessionDialog
 import nz.skelstar.dotwatcher.ui.nearby.NearbyCreateSection
 import nz.skelstar.dotwatcher.ui.nearby.NearbyJoinSheet
-import nz.skelstar.dotwatcher.ui.groups.GroupInCard
-import nz.skelstar.dotwatcher.groups.goSignEyebrow
+import nz.skelstar.dotwatcher.ui.groups.GroupSheet
+import nz.skelstar.dotwatcher.ui.groups.GroupSign
 import nz.skelstar.dotwatcher.groups.GroupsModel
 import nz.skelstar.dotwatcher.groups.GroupOrganiserActions
 import nz.skelstar.dotwatcher.network.SessionMembership
@@ -143,7 +143,7 @@ fun SessionScreen(
     onJoinNearby: (sessionId: String, entryCode: String?) -> Unit,
     /** While out on a Go run: back to the Go map (this screen is reached from its "‹ Home"). */
     onBackToMap: () -> Unit = {},
-    /** Groups: the organiser's controls for a group they organised (see [GroupInCard]). */
+    /** Groups: the organiser's controls for a group they organised (see [GroupSheet]). */
     organiserActions: ((SessionMembership) -> GroupOrganiserActions)? = null,
     activeSessionConflict: ActiveSessionConflict?,
     onEndActiveSessionAndCreate: () -> Unit,
@@ -176,6 +176,9 @@ fun SessionScreen(
             now = Instant.now()
         }
     }
+    // The group whose row on the group sign was tapped, showing its sheet; null when none is up. Held by id so the
+    // sheet follows the live list and goes when the group ends or the person leaves it.
+    var openGroupId by remember { mutableStateOf<String?>(null) }
     var showCreateDialog by remember { mutableStateOf(false) }
     var showAccount by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
@@ -255,17 +258,6 @@ fun SessionScreen(
                     }
                 }
 
-                // The groups the person is in (only with the "groups" feature): joined ahead of Go, or while out.
-                groupsState.joined.forEach { group ->
-                    Spacer(modifier = Modifier.height(12.dp))
-                    GroupInCard(
-                        group = group,
-                        isOut = outOnGo,
-                        time = groupTime(group.endsAt, now),
-                        onLeave = { groups.leave(group.sessionId) },
-                        organiser = organiserActions?.takeIf { group.isOwner }?.invoke(group),
-                    )
-                }
                 groupsState.error?.let {
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(text = it, color = MaterialTheme.colorScheme.error)
@@ -292,6 +284,10 @@ fun SessionScreen(
             modifier = Modifier.padding(start = 24.dp, top = 16.dp, end = 24.dp, bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
+            // The groups the person is in (only with the "groups" feature), right above Go: who sees them by name.
+            if (groupsState.joined.isNotEmpty()) {
+                GroupSign(groups = groupsState.joined, now = now, onOpen = { openGroupId = it.sessionId })
+            }
             if (outOnGo) {
                 EventSignButton(
                     eyebrow = "You're out",
@@ -304,7 +300,6 @@ fun SessionScreen(
                     title = "Go",
                     subtitle = "Hold to start",
                     onComplete = { showBeforeYouGo = true },
-                    eyebrow = goSignEyebrow(groupsState.joined),
                 )
             }
             // Only when the server has events for this account (the "events" feature): the runs people
@@ -351,6 +346,23 @@ fun SessionScreen(
                 )
             }
         }
+    }
+
+    val openGroup = groupsState.joined.firstOrNull { it.sessionId == openGroupId }
+    LaunchedEffect(openGroupId, openGroup == null) {
+        // Left or ended (here or on another phone): forget it, so joining again later doesn't reopen the sheet.
+        if (openGroupId != null && openGroup == null) openGroupId = null
+    }
+    openGroup?.let { group ->
+        GroupSheet(
+            group = group,
+            isOut = outOnGo,
+            time = groupTime(group.endsAt, now),
+            onLeave = { groups.leave(group.sessionId) },
+            onDismiss = { openGroupId = null },
+            error = groupsState.error,
+            organiser = organiserActions?.takeIf { group.isOwner }?.invoke(group),
+        )
     }
 
     if (showBeforeYouGo) {

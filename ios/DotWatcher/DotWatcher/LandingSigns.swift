@@ -244,7 +244,7 @@ struct SignButton: View {
 struct HoldSignButton: View {
     let title: String
     let subtitle: String
-    /// A small line above the title: the group(s) the person is in, so Go says who will see them.
+    /// A small line above the title.
     var eyebrow: String? = nil
     let onComplete: () -> Void
     @State private var progress: CGFloat = 0

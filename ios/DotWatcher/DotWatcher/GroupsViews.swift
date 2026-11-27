@@ -10,11 +10,18 @@ let groupsFeature = "groups"
 /// Who may organise a group: with "groups", creating a session makes a group, and that needs this too.
 let createGroupsFeature = "create-groups"
 
-/// The line above "Go" on the start screen while the person is in any groups: the newest by name, and how
-/// many more. Nil when they're in none.
-func goSignEyebrow(groups: [SessionMembership]) -> String? {
-    guard let newest = groups.first else { return nil }
-    return groups.count > 1 ? "With \(newest.sessionName) + \(groups.count - 1) more" : "With \(newest.sessionName)"
+/// The small line at the top of the start screen's group sign: "GROUP", or how many.
+func groupSignHeader(count: Int) -> String {
+    count > 1 ? "\(count) GROUPS" : "GROUP"
+}
+
+/// The line under a group's name on the group sign: whose it is ("Yours", "Kiri's", or "Joined" when an older
+/// server doesn't name the organiser), and how long is left when the server says.
+func groupSignLine(group: SessionMembership, now: Date) -> String {
+    let organiser = group.ownerDisplayName?.trimmingCharacters(in: .whitespaces) ?? ""
+    let whose = group.isOwner == true ? "Yours" : organiser.isEmpty ? "Joined" : "\(organiser)'s"
+    guard let time = GroupTime(endsAtISO: group.endsAt, now: now) else { return whose }
+    return "\(whose) · \(time.left)"
 }
 
 /// When a group ends, for "until it ends, …": the clock time if that's today, else the day too ("Sun 18:00").
@@ -79,6 +86,123 @@ struct GroupTime: Equatable {
 }
 
 // MARK: - Start screen
+
+/// The group sign above Go (option D in the "Group button on the start screen" mock-up): every group the person
+/// is in, one row each with a gear, in the palette's accent colours. A row opens that group's `GroupSheet`, which
+/// holds what the big group cards used to: the organiser's controls, or Leave.
+struct GroupSign: View {
+    let groups: [SessionMembership]
+    let now: Date
+    let onOpen: (SessionMembership) -> Void
+
+    var body: some View {
+        let colors = SignColors.current
+        VStack(alignment: .leading, spacing: 0) {
+            colors.accentInk.frame(height: 6)
+            Text(groupSignHeader(count: groups.count))
+                .font(SignFont.font(size: 11))
+                .tracking(1)
+                .padding(.horizontal, 16)
+                .padding(.top, 10)
+                .padding(.bottom, 2)
+                .accessibilityAddTraits(.isHeader)
+            ForEach(Array(groups.enumerated()), id: \.element.id) { index, group in
+                if index > 0 {
+                    colors.accentInk.opacity(0.25)
+                        .frame(height: 2)
+                        .padding(.horizontal, 16)
+                }
+                Button { onOpen(group) } label: {
+                    row(group, ink: colors.accentInk)
+                }
+                .buttonStyle(.plain)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("\(group.sessionName). \(groupSignLine(group: group, now: now))")
+                .accessibilityHint("Opens the group's settings")
+                .accessibilityAddTraits(.isButton)
+            }
+        }
+        .padding(.bottom, 6)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(colors.accent)
+        .foregroundStyle(colors.accentInk)
+    }
+
+    private func row(_ group: SessionMembership, ink: Color) -> some View {
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(group.sessionName)
+                    .font(SignFont.font(size: 20))
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                Text(groupSignLine(group: group, now: now))
+                    .font(SignFont.font(size: 12))
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            // About the size of the Join and Create icons; no frame, since the whole row is the button.
+            Image(systemName: "gearshape.fill")
+                .resizable()
+                .scaledToFit()
+                .frame(width: 36, height: 36)
+        }
+        .padding(.leading, 16)
+        .padding(.trailing, 14)
+        .padding(.vertical, 6)
+        .contentShape(Rectangle())
+    }
+}
+
+/// One group, opened from its row on the group sign: the organiser's controls on their own group, Leave on
+/// anyone else's. Follows the live membership, so it closes when the group ends or the person leaves.
+struct GroupSheet: View {
+    var location: LocationManager
+    let sessionId: String
+    let isOut: Bool
+    let now: Date
+    @Environment(\.dismiss) private var dismiss
+    @State private var errorText: String?
+
+    private var group: SessionMembership? {
+        location.groupMemberships.first { $0.sessionId == sessionId }
+    }
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack {
+                    Spacer()
+                    Button("Done") { dismiss() }
+                        .font(.headline)
+                }
+                if let group {
+                    GroupInCard(group: group, isOut: isOut, now: now, onLeave: {
+                        Task { await leave() }
+                    }, organiser: location)
+                } else {
+                    Text("You're not in this group any more.")
+                }
+                if let errorText {
+                    Text(errorText)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.red)
+                }
+            }
+            .padding(24)
+        }
+        .onChange(of: group == nil) { _, gone in
+            if gone { dismiss() }
+        }
+    }
+
+    private func leave() async {
+        do {
+            try await location.leaveGroup(sessionId: sessionId)
+            errorText = nil
+        } catch {
+            errorText = "Couldn't leave the group. Check your connection and try again."
+        }
+    }
+}
 
 /// One group the person is in, on the start screen and in "Your groups". `isOut` is whether they're on a Go
 /// run right now: out, the group can see them; not out, nobody can yet.
