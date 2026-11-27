@@ -24,6 +24,8 @@ struct ContentView: View {
     @State private var noSessionNearbyDraft = NearbyCreateDraft()
     /// A nearby run the person tapped, showing its join sheet; nil when none is up.
     @State private var nearbyCandidate: NearbyEvent?
+    /// The group whose row on the group sign was tapped, showing its sheet; nil when none is up.
+    @State private var openGroup: SessionMembership?
     /// The id of the session that stopped a new one being created (409), while the person decides
     /// whether to end it; nil when no prompt is up.
     @State private var activeSessionConflict: String?
@@ -208,18 +210,6 @@ struct ContentView: View {
                 VStack(spacing: 16) {
                     headerSection
                     CrewRow(crew: crew)
-                    // The groups the person is in (only with the "groups" feature): joined ahead of Go, or while out.
-                    ForEach(location.groupMemberships) { group in
-                        GroupInCard(group: group, isOut: location.isCasualTracking, now: now, onLeave: {
-                            Task {
-                                do {
-                                    try await location.leaveGroup(sessionId: group.sessionId)
-                                } catch {
-                                    formError = "Couldn't leave the group. Check your connection and try again."
-                                }
-                            }
-                        }, organiser: location)
-                    }
                     if casual.isAvailable, !crew.members.isEmpty, let line = crewOutLine(casual.crewOut) {
                         Text(line)
                             .font(.app(.subheadline))
@@ -269,6 +259,10 @@ struct ContentView: View {
 
     private var noSessionSigns: some View {
         VStack(spacing: 14) {
+            // The groups the person is in (only with the "groups" feature), right above Go: who sees them by name.
+            if !location.groupMemberships.isEmpty {
+                GroupSign(groups: location.groupMemberships, now: now) { openGroup = $0 }
+            }
             if location.isCasualTracking {
                 // Reached from the Go map's "‹ Home" (groups): tracking carries on.
                 EventSignButton(
@@ -276,11 +270,7 @@ struct ContentView: View {
                     subtitle: "Tracking carries on while you're here"
                 ) { casual.isMapPresented = true }
             } else if casual.isAvailable {
-                HoldSignButton(
-                    title: "Go",
-                    subtitle: "Hold to start",
-                    eyebrow: goSignEyebrow(groups: location.groupMemberships)
-                ) { casual.isBeforeYouGoPresented = true }
+                HoldSignButton(title: "Go", subtitle: "Hold to start") { casual.isBeforeYouGoPresented = true }
             }
             // Only when the server has events for this account (the "events" feature): the runs people
             // nearby can join, or the placeholder while there's no position to look near.
@@ -317,6 +307,11 @@ struct ContentView: View {
         .padding(.horizontal)
         .padding(.top, 8)
         .padding(.bottom)
+        .sheet(item: $openGroup) { group in
+            GroupSheet(location: location, sessionId: group.sessionId, isOut: location.isCasualTracking, now: now)
+                .presentationDetents([.medium, .large])
+                .preferredColorScheme(location.appearanceMode.colorScheme)
+        }
         .sheet(item: $nearbyCandidate) { event in
             NearbyJoinSheet(
                 event: event, location: location,
