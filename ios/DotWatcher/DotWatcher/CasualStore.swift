@@ -55,12 +55,24 @@ private struct CasualRouteRef: Decodable {
     let uploadedAt: String
 }
 
+/// A group near the person that asks for an entry code: its join area, drawn as a yellow spot on the Go map.
+/// Groups without a code keep their meeting point secret, so the server never sends those.
+struct CasualGroupArea: Decodable, Equatable {
+    let sessionId: String
+    let name: String
+    let latitude: Double
+    let longitude: Double
+    let radiusMeters: Int
+}
+
 private struct CasualLiveResponse: Decodable {
     let participants: [String]?
     let positions: [[CasualPosition]]?
     let nearby: [CasualNearbyDot]?
     /// Absent from an older server, which has no routes.
     let routes: [CasualRouteRef]?
+    /// Only sent to "groups" accounts while they are out, and absent from an older server.
+    let groupAreas: [CasualGroupArea]?
 }
 
 /// Casual state and actions for the signed-in account. Shares `LocationManager`'s network stack
@@ -108,6 +120,15 @@ final class CasualStore {
     /// What the map shows: this person and their crew by name, and anonymous dots nearby.
     private(set) var people: [CasualPosition] = []
     private(set) var nearby: [CasualNearbyDot] = []
+    /// Join areas of coded groups near the person, to draw on the map.
+    private(set) var groupAreas: [CasualGroupArea] = []
+    var groupJoinRanges: [LinzJoinRange] {
+        groupAreas.map {
+            LinzJoinRange(
+                center: CLLocationCoordinate2D(latitude: $0.latitude, longitude: $0.longitude),
+                radiusMeters: Double($0.radiusMeters))
+        }
+    }
 
     /// GPX routes to draw: this person's own and those of crew who are out, as lines. Kept in step with
     /// the live poll (`loadLive`), so a route someone adds or removes appears for everyone within a poll.
@@ -172,6 +193,7 @@ final class CasualStore {
         let everyone = (live.positions ?? []).compactMap(\.first)
         people = everyone
         nearby = live.nearby ?? []
+        groupAreas = live.groupAreas ?? []
         crewOut = everyone.filter { $0.isSelf != true }.count
         await syncRoutes(live.routes ?? [], selfName: everyone.first { $0.isSelf == true }?.runnerName)
     }
@@ -251,6 +273,7 @@ final class CasualStore {
         crewOut = nil
         people = []
         nearby = []
+        groupAreas = []
         forgetRoutes()
         watchLink = nil
         watchLinkError = nil
@@ -352,6 +375,7 @@ final class CasualStore {
             guard location.isTracking else { return }
             people = []
             nearby = []
+        groupAreas = []
             forgetRoutes()
             watchLink = nil
             watchLinkError = nil

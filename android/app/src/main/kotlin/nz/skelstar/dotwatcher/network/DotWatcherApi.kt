@@ -305,6 +305,20 @@ data class CasualLiveResponse(
     val nearby: List<NearbyDot> = emptyList(),
     /** Null or missing on a server from before routes. */
     val routes: List<CasualRouteRef>? = null,
+    /** Join areas of coded groups near the caller. Only sent to "groups" accounts while they are out;
+     *  null or missing otherwise, and on an older server. */
+    val groupAreas: List<GroupArea>? = null,
+)
+
+/** A group near the caller that asks for an entry code: its join area, drawn as a yellow spot on the
+ *  Go map. Groups without a code keep their meeting point secret, so the server never sends those. */
+@Serializable
+data class GroupArea(
+    val sessionId: String,
+    val name: String,
+    val latitude: Double,
+    val longitude: Double,
+    val radiusMeters: Int,
 )
 
 @Serializable

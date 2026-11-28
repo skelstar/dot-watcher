@@ -85,6 +85,7 @@ fun CasualMapScreen(
     var positions by remember { mutableStateOf<List<RunnerPosition>>(emptyList()) }
     var locked by remember { mutableStateOf<Set<String>>(emptySet()) }
     var nearby by remember { mutableStateOf<List<NearbyDot>>(emptyList()) }
+    var groupAreas by remember { mutableStateOf<List<JoinRange>>(emptyList()) }
     var showPeople by remember { mutableStateOf(false) }
     /** This person's runner name as the server sends it (their own row), for the chip's "you". */
     var ownName by remember { mutableStateOf<String?>(null) }
@@ -138,6 +139,7 @@ fun CasualMapScreen(
         }
         locked = everyone.filter { it.inSession }.map { it.runnerName }.toSet()
         nearby = live.nearby
+        groupAreas = live.groupAreas.orEmpty().map { JoinRange(it.latitude, it.longitude, it.radiusMeters) }
 
         val refs = live.routes.orEmpty()
         val selfName = everyone.firstOrNull { it.isSelf }?.runnerName
@@ -329,6 +331,7 @@ fun CasualMapScreen(
             lockedRunners = locked,
             routes = routeLines,
             joinRange = ownedGroupJoinRange(groupsState?.joined.orEmpty(), organiserActions),
+            otherJoinRanges = groupAreas,
             routeFocus = routeFocus,
             routeFocusTick = routeFocusTick,
             onCenterChanged = { latitude, longitude -> mapCentre = latitude to longitude },

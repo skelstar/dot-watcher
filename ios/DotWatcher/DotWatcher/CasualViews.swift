@@ -619,6 +619,7 @@ struct CasualMapScreen: View {
             nearby: nearby,
             routes: casual.routeLines,
             joinRange: ownedGroupJoinRange(for: location),
+            otherJoinRanges: casual.groupJoinRanges,
             route: routeActions,
             // An organiser can drag the map and set their group's join location at the crosshair.
             crosshairActions: MapCrosshairAction.joinLocations(for: location),

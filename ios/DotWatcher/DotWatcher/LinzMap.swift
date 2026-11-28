@@ -169,6 +169,8 @@ struct LinzMapView: UIViewRepresentable {
     /// More lines drawn the same way as `route`, for a map that shows several people's routes.
     var extraRoutes: [[CLLocationCoordinate2D]] = []
     var joinRange: LinzJoinRange?
+    /// More join ranges drawn the same way: coded groups near the person (`CasualLive.groupAreas`).
+    var otherJoinRanges: [LinzJoinRange] = []
     var camera: LinzMapCamera
     /// Called when the person drags the map away: after a gesture, when its centre ends up more than 10% of
     /// the visible width from where the camera was aimed. A zoom alone, or a small nudge, doesn't count, as on
@@ -215,7 +217,7 @@ struct LinzMapView: UIViewRepresentable {
         coordinator.onMarkerTap = onMarkerTap
         coordinator.onCenterChanged = onCenterChanged
         coordinator.update(markers: markers)
-        coordinator.update(routes: [route] + extraRoutes, joinRange: joinRange)
+        coordinator.update(routes: [route] + extraRoutes, joinRanges: [joinRange].compactMap { $0 } + otherJoinRanges)
         coordinator.requestedCamera = camera
         coordinator.applyCameraIfNeeded()
     }
@@ -244,11 +246,11 @@ struct LinzMapView: UIViewRepresentable {
 
         private var style: MLNStyle?
         private var routes: [[CLLocationCoordinate2D]] = []
-        private var joinRange: LinzJoinRange?
+        private var joinRanges: [LinzJoinRange] = []
         /// What the style's sources hold now; `shapesShown` is false until the first upload.
         private var shapesShown = false
         private var shownRoutes: [[CLLocationCoordinate2D]] = []
-        private var shownJoinRange: LinzJoinRange?
+        private var shownJoinRanges: [LinzJoinRange] = []
 
         private static let routeSourceID = "route-source"
         private static let routeLayerID = "route-line"
@@ -369,10 +371,10 @@ struct LinzMapView: UIViewRepresentable {
 
         // MARK: Route and join range
 
-        func update(routes: [[CLLocationCoordinate2D]], joinRange: LinzJoinRange?) {
+        func update(routes: [[CLLocationCoordinate2D]], joinRanges: [LinzJoinRange]) {
             // A line needs two points; empty ones (no route loaded) are dropped so they compare equal.
             self.routes = routes.filter { $0.count > 1 }
-            self.joinRange = joinRange
+            self.joinRanges = joinRanges
             applyShapes()
         }
 
@@ -417,13 +419,17 @@ struct LinzMapView: UIViewRepresentable {
                 default: source?.shape = MLNShapeCollectionFeature(shapes: lines)
                 }
             }
-            if first || shownJoinRange != joinRange {
-                shownJoinRange = joinRange
+            if first || shownJoinRanges != joinRanges {
+                shownJoinRanges = joinRanges
                 let source = style.source(withIdentifier: Self.joinRangeSourceID) as? MLNShapeSource
-                if let ring = joinRange?.ring {
-                    source?.shape = MLNPolygonFeature(coordinates: ring, count: UInt(ring.count))
-                } else {
-                    source?.shape = nil
+                var spots = joinRanges.map { range in
+                    let ring = range.ring
+                    return MLNPolygonFeature(coordinates: ring, count: UInt(ring.count))
+                }
+                switch spots.count {
+                case 0: source?.shape = nil
+                case 1: source?.shape = spots.removeFirst()
+                default: source?.shape = MLNShapeCollectionFeature(shapes: spots)
                 }
             }
         }
