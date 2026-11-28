@@ -457,7 +457,7 @@ public partial class SessionStore
                 crewLabels[member.UserId] = string.IsNullOrWhiteSpace(member.Nickname) ? member.DisplayName : member.Nickname;
         var groupLabels = includeGroups ? GetGroupMemberLabels(conn, viewerId, now) : null;
 
-        return CasualVisibility.ForViewer(
+        var live = CasualVisibility.ForViewer(
             viewerId,
             viewerVisibleToNonCrew,
             viewerPosition,
@@ -468,6 +468,10 @@ public partial class SessionStore
             viewerVisibleToCrew,
             GetCasualRouteTimes(conn, entries.Select(e => e.RunId).OfType<string>().ToList()),
             groupLabels);
+
+        if (includeGroups && viewerPosition is { } here)
+            live = live with { GroupAreas = FindCodedGroupAreas(conn, viewerId, here.Latitude, here.Longitude, now) };
+        return live;
     }
 
     private IReadOnlyList<CasualLiveEntry> GetCasualSnapshot(DateTimeOffset now)

@@ -387,6 +387,10 @@ Built from mock-up 0a.
       `ownerDisplayName`). Run in the simulator.
 - [x] "Before you go" / "Who can see me" in a group, as Android (mock-up "Before you go · in a group" on the
       canvas): yellow circle and key in the picture, a line per group under My crew, no Hide my start area.
+- [x] Coded groups' join areas on the Go map (both phones): `/casual/live` sends `groupAreas` (location, radius,
+      name) for active nearby groups that ask for an entry code, within 5 km, to "groups" accounts while out.
+      Not the organiser's own (already drawn), not across a block, and never for groups without a code (their
+      meeting point stays secret). Drawn as the same yellow spot. Tested on the iOS simulator; Android by CI.
 - [ ] Start screen redesign (as Android).
 
 ### Step 3 — Groups as their own thing; rules; events as run slices

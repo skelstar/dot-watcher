@@ -138,6 +138,8 @@ fun MapScreen(
     lockedRunners: Set<String> = emptySet(),
     /** The organiser of a nearby session: the range around the join location, drawn as a yellow spot. */
     joinRange: JoinRange? = null,
+    /** Casual only: coded groups' join areas near the person, drawn like [joinRange]. */
+    otherJoinRanges: List<JoinRange> = emptyList(),
     /** GPX routes, drawn as orange lines under everything else: the session's one route, or on the
      *  casual map this person's own and their crew's. Lines with fewer than two points are skipped. */
     routes: List<List<RoutePoint>> = emptyList(),
@@ -372,11 +374,8 @@ fun MapScreen(
                     }
                 }
                 val joinRangeSource = currentStyle.getSourceAs<GeoJsonSource>(JOIN_RANGE_SOURCE_ID)
-                if (joinRange != null) {
-                    joinRangeSource?.setGeoJson(Feature.fromGeometry(joinRange.toPolygon()))
-                } else {
-                    joinRangeSource?.setGeoJson(FeatureCollection.fromFeatures(emptyList<Feature>()))
-                }
+                val spots = listOfNotNull(joinRange) + otherJoinRanges
+                joinRangeSource?.setGeoJson(FeatureCollection.fromFeatures(spots.map { Feature.fromGeometry(it.toPolygon()) }))
                 currentStyle.getSourceAs<GeoJsonSource>(CHEVRONS_SOURCE_ID)
                     ?.setGeoJson(positions.toChevronFeatures(specs))
 

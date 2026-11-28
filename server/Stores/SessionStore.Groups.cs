@@ -67,6 +67,59 @@ public partial class SessionStore
 
         return labels;
     }
+
+    /// <summary>
+    /// Join areas of active groups within <see cref="CasualVisibility.NearbyRadiusMeters"/> of the viewer that
+    /// let people nearby join and ask for an entry code, nearest first. A coded group can't be joined without
+    /// the organiser's code, so its meeting point is shown to anyone nearby with a "groups" account; groups
+    /// without a code keep it secret (their tile only shows once you're inside). Leaves out the viewer's own
+    /// groups (the phone already draws those) and groups whose organiser and viewer have blocked each other.
+    /// </summary>
+    private IReadOnlyList<GroupArea> FindCodedGroupAreas(
+        NpgsqlConnection conn, string viewerId, double latitude, double longitude, DateTimeOffset now)
+    {
+        // A cheap latitude band before measuring: 5 km is about 0.045 degrees of latitude.
+        const double LatitudeBand = 0.05;
+        const int MaxShown = 20;
+
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = """
+            SELECT s.id, s.session_name, s.anchor_lat, s.anchor_lon, s.nearby_radius_m, s.created_at, s.max_length_hours
+            FROM app_sessions s
+            WHERE s.nearby
+              AND s.entry_code IS NOT NULL
+              AND s.archived_at IS NULL
+              AND s.anchor_lat BETWEEN @minLat AND @maxLat
+              AND s.anchor_lon IS NOT NULL
+              AND s.owner_user_id <> @viewerId
+              AND NOT EXISTS (
+                  SELECT 1 FROM blocked_users b
+                  WHERE (b.blocker_user_id = @viewerId AND b.blocked_user_id = s.owner_user_id)
+                     OR (b.blocker_user_id = s.owner_user_id AND b.blocked_user_id = @viewerId)
+              )
+            """;
+        cmd.Parameters.AddWithValue("@viewerId", viewerId);
+        cmd.Parameters.AddWithValue("@minLat", latitude - LatitudeBand);
+        cmd.Parameters.AddWithValue("@maxLat", latitude + LatitudeBand);
+
+        var areas = new List<(double Distance, GroupArea Area)>();
+        using var reader = cmd.ExecuteReader();
+        while (reader.Read())
+        {
+            int? maxLengthHours = reader.IsDBNull(6) ? null : reader.GetInt16(6);
+            if (!IsGroupActive(DateTimeOffset.Parse(reader.GetString(5)), maxLengthHours, now))
+                continue;
+            var lat = reader.GetDouble(2);
+            var lon = reader.GetDouble(3);
+            var distance = GeoMath.DistanceMeters(latitude, longitude, lat, lon);
+            if (distance > CasualVisibility.NearbyRadiusMeters)
+                continue;
+            var radius = reader.IsDBNull(4) ? NearbyJoin.DefaultRadiusMeters : reader.GetInt16(4);
+            areas.Add((distance, new GroupArea(reader.GetString(0), reader.GetString(1), lat, lon, radius)));
+        }
+
+        return areas.OrderBy(a => a.Distance).Take(MaxShown).Select(a => a.Area).ToList();
+    }
     /// <summary>
     /// Deletes groups that have been over for longer than <paramref name="retention"/>, with their members:
     /// over means ended (archived) or past their end time, whichever came first. Sessions with recorded

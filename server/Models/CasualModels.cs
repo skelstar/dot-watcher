@@ -46,8 +46,16 @@ public record CasualLiveResponse(
     // Which of the people above (the viewer and their visible crew, never anonymous dots) have loaded a
     // route. Only a reference: the GPX itself is fetched from GET /casual/runs/{runId}/route when
     // UploadedAt changes, so a poll stays small. Absent from older servers.
-    IReadOnlyList<CasualRouteRef>? Routes = null
+    IReadOnlyList<CasualRouteRef>? Routes = null,
+    // Join areas of groups near the viewer that ask for an entry code (see .ai/plans/go-and-groups.md).
+    // A coded group can't be joined without the organiser's code, so its meeting point isn't secret:
+    // phones draw it as a yellow circle. Only sent to "groups" accounts while they are out; absent otherwise.
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    IReadOnlyList<GroupArea>? GroupAreas = null
 );
+
+/// <summary>A coded group's join area: its name, the join location and the radius in metres.</summary>
+public record GroupArea(string SessionId, string Name, double Latitude, double Longitude, int RadiusMeters);
 
 /// <summary>A route loaded by someone the viewer can see. <see cref="RunnerName"/> matches that person's
 /// entry in <see cref="CasualLiveResponse.Participants"/>.</summary>

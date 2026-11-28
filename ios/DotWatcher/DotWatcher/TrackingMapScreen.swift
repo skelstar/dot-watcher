@@ -99,6 +99,8 @@ struct TrackingMapScreen<RailTop: View, RailMiddle: View, BottomLeading: View>: 
     var nearby: [MapPin] = []
     var routes: [[CLLocationCoordinate2D]] = []
     var joinRange: LinzJoinRange?
+    /// Coded groups' join areas near the person, drawn like `joinRange`.
+    var otherJoinRanges: [LinzJoinRange] = []
     /// nil hides the Route button.
     var route: RouteActions?
     /// What can be done at the map's centre. While the map is dragged off everyone (not fitting or following),
@@ -154,6 +156,7 @@ struct TrackingMapScreen<RailTop: View, RailMiddle: View, BottomLeading: View>: 
                 markers: markers(at: context.date),
                 extraRoutes: routes,
                 joinRange: joinRange,
+                otherJoinRanges: otherJoinRanges,
                 camera: controller.camera,
                 onUserMovedCamera: { controller.userMovedCamera() },
                 onMarkerTap: handleMarkerTap,
